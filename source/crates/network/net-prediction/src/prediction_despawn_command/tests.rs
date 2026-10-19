@@ -10,16 +10,16 @@ use campfire_net_interpolation::internals::CompFull;
 use campfire_net_replication::internals::CompSimple;
 use campfire_net_replication::{PredictionTarget, Replicate};
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 
 #[derive(Component, Debug, PartialEq)]
 struct TestComponent(usize);
 
-/// Test that if a predicted entity gets despawned erroneously
+/// If a predicted entity gets despawned erroneously
 /// The rollback re-adds the predicted entity.
 #[test]
 fn rollback_restores_a_prediction_despawned_entity() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -160,10 +160,10 @@ fn rollback_restores_a_prediction_despawned_entity() {
     );
 }
 
-/// A world that predicts: a prediction manager, and a client topology.
+/// A world that predicts: a prediction setup, and a client topology.
 fn predicting_world() -> World {
     let mut world = World::new();
-    world.insert_resource(PredictionManager::default());
+    world.insert_resource(PredictionSetup::default());
     world.insert_resource(LocalTimeline::default());
     let client = world.spawn_empty().id();
     let mut networking = NetworkingState::default();
@@ -172,12 +172,12 @@ fn predicting_world() -> World {
     world
 }
 
-/// Without a client topology the app does not predict, even with a manager, and a
+/// Without a client topology the app does not predict, even with a prediction setup, and a
 /// prediction despawn despawns.
 #[test]
 fn a_prediction_despawn_despawns_where_nothing_predicts() {
     let mut world = World::new();
-    world.insert_resource(PredictionManager::default());
+    world.insert_resource(PredictionSetup::default());
     world.insert_resource(LocalTimeline::default());
     world.init_resource::<NetworkingState>();
     let entity = world.spawn(Predicted).id();

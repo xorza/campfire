@@ -105,7 +105,7 @@ fn switch_app() -> App {
     app.init_resource::<PredictionRegistry>();
     // The resource `TimelineSwitchPlugin` installs.
     // Requests are components, so there is no message or cursor to register.
-    app.init_resource::<TimelineSwitchConfig>();
+    app.init_resource::<TimelineSwitchSetup>();
     app.init_resource::<LocalTimeline>();
     app.init_resource::<LocalTimelineSync>();
     app.insert_resource(Time::<Virtual>::default());
@@ -189,7 +189,7 @@ fn blend_marker(world: &World, entity: Entity) -> SwitchBlend {
 }
 
 #[test]
-fn switch_to_predicted_swaps_markers_and_saves_visual() {
+fn a_switch_to_predicted_swaps_the_markers_and_saves_the_visual() {
     let mut app = switch_app();
     let entity = app.world_mut().spawn((TestPos(10.0), Interpolated)).id();
     app.world_mut().flush();
@@ -225,7 +225,7 @@ fn switch_to_predicted_swaps_markers_and_saves_visual() {
 }
 
 #[test]
-fn switch_to_interpolated_swaps_markers_and_saves_visual() {
+fn a_switch_to_interpolated_swaps_the_markers_and_saves_the_visual() {
     let mut app = switch_app();
     let entity = app
         .world_mut()
@@ -242,7 +242,7 @@ fn switch_to_interpolated_swaps_markers_and_saves_visual() {
     let world = app.world();
     assert!(world.get::<Interpolated>(entity).is_some());
     assert!(world.get::<Predicted>(entity).is_none());
-    // Delayed interpolation owns the pose from here on; frame
+    // Delayed interpolation holds the pose from here on; frame
     // interpolation would freeze the render on its stale value.
     assert!(world.get::<FrameInterpolate>(entity).is_none());
     assert_eq!(
@@ -312,11 +312,11 @@ fn blend_waits_for_a_component_the_destination_has_not_presented() {
 /// by its length rather than by normalising it.
 #[test]
 fn blend_error_decays_on_the_window_curve() {
-    use crate::prediction_manager::PredictionManager;
+    use crate::prediction_setup::PredictionSetup;
     use bevy_ecs::system::RunSystemOnce;
 
     let mut app = switch_app();
-    app.insert_resource(PredictionManager::default());
+    app.insert_resource(PredictionSetup::default());
     // Same offset, one with a window and one without. Early in a one second
     // smoothstep window the curve gives up almost nothing, while the policy's
     // 200 ms half-life is already shrinking it.
@@ -395,11 +395,11 @@ fn blend_error_decays_on_the_window_curve() {
 /// window would be dumped into a single frame.
 #[test]
 fn window_curve_never_outpaces_the_correction_policy() {
-    use crate::prediction_manager::PredictionManager;
+    use crate::prediction_setup::PredictionSetup;
     use bevy_ecs::system::RunSystemOnce;
 
     let mut app = switch_app();
-    app.insert_resource(PredictionManager::default());
+    app.insert_resource(PredictionSetup::default());
     // The blend starts at 0; the correction 479 ms later, as a rollback arrives late in the
     // window.
     app.world_mut()
@@ -441,12 +441,12 @@ fn window_curve_never_outpaces_the_correction_policy() {
 /// Sets up the resources a rollback frame needs, with the rollback target at
 /// tick 5 and the local timeline at tick 10.
 fn rollback_env(app: &mut App) {
-    use crate::prediction_manager::PredictionManager;
+    use crate::prediction_setup::PredictionSetup;
     use campfire_net_timeline::Rollback;
 
     app.init_resource::<LocalTimeline>();
     app.init_resource::<ComponentRegistry>();
-    app.insert_resource(PredictionManager::default());
+    app.insert_resource(PredictionSetup::default());
     app.insert_resource(Rollback(NetTick(5)));
     app.world_mut().resource_mut::<LocalTimeline>().shift(10);
 }
@@ -600,7 +600,7 @@ fn forced_rollback_that_finds_no_state_can_still_blend() {
 #[test]
 fn forced_rollback_captures_the_value_a_switch_blends_from() {
     use crate::prediction_history::PredictionHistory;
-    use crate::prediction_manager::PredictionManager;
+    use crate::prediction_setup::PredictionSetup;
     use bevy_ecs::system::RunSystemOnce;
     use campfire_net_replication::ComponentRegistry;
     use campfire_net_timeline::LocalTimeline;
@@ -609,7 +609,7 @@ fn forced_rollback_captures_the_value_a_switch_blends_from() {
     let mut app = switch_app();
     app.init_resource::<LocalTimeline>();
     app.init_resource::<ComponentRegistry>();
-    app.insert_resource(PredictionManager::default());
+    app.insert_resource(PredictionSetup::default());
     app.insert_resource(Rollback(NetTick(5)));
     app.world_mut().resource_mut::<LocalTimeline>().shift(10);
     let mut history = PredictionHistory::<TestPos>::default();
@@ -666,11 +666,11 @@ fn forced_rollback_captures_the_value_a_switch_blends_from() {
 /// prediction timeline: the rollback in `PreUpdate`, replay, then the switch
 /// correction pass in `PostUpdate`.
 fn frame_with_rollback(app: &mut App, replayed: f32) {
-    use crate::prediction_manager::PredictionManager;
+    use crate::prediction_setup::PredictionSetup;
     use campfire_net_timeline::Rollback;
 
     app.world_mut().init_resource::<ComponentRegistry>();
-    app.world_mut().init_resource::<PredictionManager>();
+    app.world_mut().init_resource::<PredictionSetup>();
     app.world_mut().insert_resource(Rollback(NetTick(5)));
     app.world_mut().resource_mut::<LocalTimeline>().shift(10);
     app.world_mut().flush();
@@ -773,11 +773,11 @@ fn rollback_during_a_to_predicted_blend_updates_the_correction() {
 /// tuning the old correction had.
 #[test]
 fn switch_takes_over_an_in_flight_correction() {
-    use crate::prediction_manager::PredictionManager;
+    use crate::prediction_setup::PredictionSetup;
     use bevy_ecs::system::RunSystemOnce;
 
     let mut app = switch_app();
-    app.insert_resource(PredictionManager::default());
+    app.insert_resource(PredictionSetup::default());
     // Mid-correction: the destination timeline has written 12 and an error of
     // -2 from an earlier rollback is being decayed, so 10 is on screen.
     let entity = app
@@ -809,7 +809,7 @@ fn switch_takes_over_an_in_flight_correction() {
     run_blend(&mut app);
 
     let world = app.world();
-    // The offset is measured from what was on screen, and the window owns it
+    // The offset is measured from what was on screen, and the window holds it
     // now: the old correction's tuning no longer applies.
     assert_eq!(
         world
@@ -822,7 +822,7 @@ fn switch_takes_over_an_in_flight_correction() {
         on_screen > 10.0 && on_screen < 12.0,
         "the old correction was partway through decaying, got {on_screen}"
     );
-    // The saved value was consumed: the window owns the error now.
+    // The saved value was consumed: the window holds the error now.
     assert!(
         world
             .get::<PreviousVisual<TestPos>>(entity)
@@ -1010,7 +1010,7 @@ fn switch_drops_the_frame_history_in_both_directions() {
 }
 
 #[test]
-fn snap_duration_flips_without_blend_state() {
+fn a_snap_flips_with_no_blend() {
     for duration in [0.0, -1.0, f32::NAN] {
         let mut app = switch_app();
         let entity = app.world_mut().spawn((TestPos(1.0), Interpolated)).id();
@@ -1040,7 +1040,7 @@ fn snap_duration_flips_without_blend_state() {
 /// would leave a permanent offset behind, and one that grew would make the
 /// render move away from its destination.
 #[test]
-fn ease_remaining_bookends_and_monotonic() {
+fn each_window_curve_starts_whole_ends_converged_and_never_grows() {
     // Bounded curves are normalised over the window they run in.
     for ease in [
         CorrectionEase::Linear,
@@ -1062,12 +1062,12 @@ fn ease_remaining_bookends_and_monotonic() {
 }
 
 /// The request's own overrides win; what is left resolves against
-/// [`TimelineSwitchConfig`] when the request is saved, so a game retunes the
+/// [`TimelineSwitchSetup`] when the request is saved, so a game retunes the
 /// feel in one place and can still tune a single switch.
 #[test]
-fn settings_resolve_default_and_override() {
+fn a_request_resolves_its_overrides_then_the_setup() {
     let mut app = switch_app();
-    app.world_mut().insert_resource(TimelineSwitchConfig {
+    app.world_mut().insert_resource(TimelineSwitchSetup {
         default_transition_secs: 2.0,
         default_ease: CorrectionEase::Smoothstep,
     });
@@ -1128,7 +1128,7 @@ fn exponential_ease_matches_the_correction_policy() {
 }
 
 #[test]
-fn invalid_requests_are_dropped() {
+fn an_invalid_request_is_dropped() {
     let mut app = switch_app();
     let predicted = app.world_mut().spawn((TestPos(1.0), Predicted)).id();
     let interpolated = app.world_mut().spawn((TestPos(2.0), Interpolated)).id();
@@ -1223,7 +1223,7 @@ fn default_flips_the_entity_to_the_other_timeline() {
 }
 
 #[test]
-fn expired_switch_window_clears_state_of_missing_component() {
+fn an_expired_window_clears_the_state_of_a_missing_component() {
     use bevy_ecs::system::RunSystemOnce;
 
     let mut app = switch_app();
@@ -1265,7 +1265,7 @@ fn expired_switch_window_clears_state_of_missing_component() {
 }
 
 #[test]
-fn prepare_skips_visual_capture_on_interpolated() {
+fn a_switch_saves_no_visual_on_an_interpolated_entity() {
     fn histories(value: f32) -> (PredictionHistory<TestPos>, ConfirmedHistory<TestPos>) {
         let mut predicted = PredictionHistory::<TestPos>::default();
         predicted.add(NetTick(5), Some(TestPos(value)));
@@ -1275,15 +1275,14 @@ fn prepare_skips_visual_capture_on_interpolated() {
     }
 
     use crate::prediction_history::PredictionHistory;
-    use crate::prediction_manager::PredictionManager;
+    use crate::prediction_setup::PredictionSetup;
     use bevy_ecs::system::RunSystemOnce;
     use campfire_net_replication::ComponentRegistry;
     use campfire_net_timeline::Rollback;
 
     let mut app = switch_app();
     app.world_mut().init_resource::<ComponentRegistry>();
-    app.world_mut()
-        .insert_resource(PredictionManager::default());
+    app.world_mut().insert_resource(PredictionSetup::default());
     app.world_mut().insert_resource(Rollback(NetTick(5)));
     app.world_mut().resource_mut::<LocalTimeline>().shift(10);
 
@@ -1445,7 +1444,7 @@ fn to_predicted_without_a_rollback_has_nothing_to_blend_from() {
     assert!(world.get::<SwitchBlend>(entity).is_some());
 }
 
-/// A committed switch owns the entity until it is applied: the save pass has
+/// A committed switch holds the entity until it is applied: the save pass has
 /// already recorded the value on screen for it, so a request arriving inside
 /// that window must be dropped rather than resolved on top of it. Resolving
 /// it would leave the recorded value to be measured as a jump that never
@@ -1584,7 +1583,7 @@ fn contradictory_requests_in_one_frame_keep_the_last_insert() {
 }
 
 #[test]
-fn consumed_request_does_not_replay() {
+fn a_consumed_request_runs_once() {
     // One-shot semantics: running a handler with no request on the entity
     // changes nothing, even right after a switch.
     let mut app = switch_app();

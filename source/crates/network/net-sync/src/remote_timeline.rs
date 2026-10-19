@@ -5,27 +5,24 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use campfire_net_connection::Connected;
 use campfire_net_core::NetTick;
-use campfire_net_core::TickDelta;
 use campfire_net_core::TickInstant;
 use campfire_net_core::TickRate;
+use campfire_net_core::TickSpan;
 use campfire_net_link::Linked;
 use campfire_net_timeline::Clock;
 use campfire_net_timeline::NetworkTimeline;
 use campfire_net_timeline::Timeline;
-use campfire_net_timeline::TimelineConfig;
+use campfire_net_timeline::TimelineSetup;
 use campfire_net_transport::PacketReceived;
 use core::num::NonZeroU32;
 use core::time::Duration;
 use tracing::trace;
 
-/// The local peer's estimate of the remote peer's timeline
-///
-/// This component maintains the local estimate of what time it is on a remote peer
-/// based on received network packets and measured latency. It's primarily used to
-/// synchronize game state between peers in a networked environment.
+/// This peer's estimate of the remote peer's timeline, from the ticks its packets carry and the
+/// link's latency.
 #[derive(Debug, Reflect)]
 pub struct RemoteEstimate {
-    /// Returns true if we have received a packet from the remote peer this frame
+    /// Whether a packet of the remote peer arrived this frame.
     received_packet: bool,
     /// Most recent tick received from the Server
     last_received_tick: Option<NetTick>,
@@ -33,7 +30,7 @@ pub struct RemoteEstimate {
     /// if we just updated the timeline without any adjustments
     ///
     /// We don't touch the remote estimate directly but only modify the offset.
-    offset: TickDelta,
+    offset: TickSpan,
     /// Indicator for whether this is the first estimate or not
     first_estimate: bool,
 }
@@ -43,42 +40,32 @@ impl Default for RemoteEstimate {
         Self {
             received_packet: false,
             last_received_tick: None,
-            offset: TickDelta::from(0),
+            offset: TickSpan::from(0),
             first_estimate: true,
         }
     }
 }
 
-/// The config of a [`RemoteTimeline`], beside the timeline it configures.
+/// The setup of a [`RemoteTimeline`], beside the timeline it configures.
 #[derive(Component, Default, Debug, Reflect)]
 #[require(RemoteTimeline)]
-pub struct RemoteTimelineConfig;
+pub struct RemoteTimelineSetup;
 
-impl TimelineConfig for RemoteTimelineConfig {
+impl TimelineSetup for RemoteTimelineSetup {
     type State = RemoteEstimate;
 }
 
 // We need to wrap the inner Timeline to avoid the orphan rule
 #[derive(Component, Default, Debug, Deref, DerefMut, Reflect)]
-pub struct RemoteTimeline(Timeline<RemoteTimelineConfig>);
+pub struct RemoteTimeline(Timeline<RemoteTimelineSetup>);
 
 impl RemoteTimeline {
-    /// Returns the most recent tick received from the remote peer.
+    /// The most recent tick received from the remote peer.
     ///
     /// # Returns
     ///
     /// An Option containing the most recent NetTick if available, or None if no ticks have been
     /// received.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use campfire_net_sync::RemoteTimeline;
-    /// # use std::time::Duration;
-    /// #
-    /// let remote_estimate = RemoteTimeline::default();
-    /// assert_eq!(remote_estimate.last_received_tick(), None);
-    /// ```
     pub fn last_received_tick(&self) -> Option<NetTick> {
         self.state.last_received_tick
     }
@@ -113,7 +100,7 @@ impl RemoteTimeline {
             self.state.last_received_tick = Some(remote_tick);
 
             // we have received the packet now, so the remote must already be at RTT/2 ahead
-            let network_delay = TickDelta::from_duration(estimate.rtt() / 2, tick_rate);
+            let network_delay = TickSpan::from_duration(estimate.rtt() / 2, tick_rate);
             let new_estimate = TickInstant::from(remote_tick) + network_delay;
             let ideal_estimate = self.now();
 
@@ -123,7 +110,7 @@ impl RemoteTimeline {
             // correction: an offset from the local origin would saturate past 2^31 ticks.
             let raw_offset = if self.state.first_estimate {
                 self.set_now(new_estimate);
-                self.offset = TickDelta::from(0);
+                self.offset = TickSpan::from(0);
                 self.state.first_estimate = false;
                 None
             } else {
@@ -163,7 +150,7 @@ impl RemoteTimeline {
     ) {
         if let Ok(mut timeline) = query.get_mut(trigger.entity) {
             timeline.received_packet = false;
-            timeline.offset = TickDelta::from(0);
+            timeline.offset = TickSpan::from(0);
             timeline.first_estimate = true;
             timeline.last_received_tick = None;
         }
@@ -233,7 +220,7 @@ impl RemoteTimeline {
     }
 
     /// Whether a packet arrived this frame, which a timeline may sync on.
-    pub const fn received_packet(&self) -> bool {
+    pub const fn has_received_packet(&self) -> bool {
         self.0.state.received_packet
     }
 }
@@ -296,9 +283,9 @@ mod tests {
         let mut timeline = RemoteTimeline::default();
         timeline.update(NetTick(100), estimate(Duration::ZERO), TICK);
         assert_eq!(timeline.last_received_tick(), Some(NetTick(100)));
-        assert_eq!(timeline.offset, TickDelta::from(0));
+        assert_eq!(timeline.offset, TickSpan::from(0));
         assert_eq!(timeline.current_estimate(), TickInstant::from(NetTick(101)));
-        assert!(timeline.received_packet());
+        assert!(timeline.has_received_packet());
 
         timeline.update(NetTick(99), estimate(Duration::ZERO), TICK);
         assert_eq!(timeline.last_received_tick(), Some(NetTick(100)));
@@ -326,18 +313,15 @@ mod tests {
             }
             timeline.offset
         };
-        assert_eq!(smoothed(Duration::ZERO, 1), TickDelta::from(1));
-        assert_eq!(smoothed(Duration::from_millis(1), 1), TickDelta::from(1));
+        assert_eq!(smoothed(Duration::ZERO, 1), TickSpan::from(1));
+        assert_eq!(smoothed(Duration::from_millis(1), 1), TickSpan::from(1));
         assert_eq!(
             smoothed(Duration::from_micros(5_500), 1),
-            TickDelta::lit("0.6")
+            TickSpan::lit("0.6")
         );
-        assert_eq!(
-            smoothed(Duration::from_millis(10), 1),
-            TickDelta::lit("0.2")
-        );
-        assert_eq!(smoothed(Duration::from_secs(1), 1), TickDelta::lit("0.2"));
-        assert_eq!(smoothed(Duration::ZERO, 2), TickDelta::lit("1.9"));
+        assert_eq!(smoothed(Duration::from_millis(10), 1), TickSpan::lit("0.2"));
+        assert_eq!(smoothed(Duration::from_secs(1), 1), TickSpan::lit("0.2"));
+        assert_eq!(smoothed(Duration::ZERO, 2), TickSpan::lit("1.9"));
     }
 
     /// A connection resets the estimate: the next packet is a first estimate again.
@@ -351,8 +335,8 @@ mod tests {
         world.entity_mut(entity).insert(Connected);
         let timeline = world.get::<RemoteTimeline>(entity).unwrap();
         assert_eq!(timeline.last_received_tick(), None);
-        assert_eq!(timeline.offset, TickDelta::from(0));
+        assert_eq!(timeline.offset, TickSpan::from(0));
         assert!(timeline.first_estimate);
-        assert!(!timeline.received_packet());
+        assert!(!timeline.has_received_packet());
     }
 }

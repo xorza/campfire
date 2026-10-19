@@ -1,7 +1,6 @@
 use bevy_ecs::schedule::SystemSet;
 
-/// System sets for connection-related logic.
-/// These are used to order systems that handle receiving and sending packets.
+/// The connection's two steps of the frame.
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub enum ConnectionSystems {
     /// Receive bytes from the Link, process them as Packets and buffer them into the Transport

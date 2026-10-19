@@ -5,68 +5,9 @@ use core::time::Duration;
 use crate::rate_limit::RateLimit;
 
 /// How one direction of a link carries packets, in the terms of `tc-netem(8)`: a latency with
-/// jitter, Gilbert–Elliott loss, duplication, reordering, and a rate limit with a finite queue.
-/// These are the conditions a `Phase` may replace; the link's MTU and the
-/// seed its draws follow, so a run repeats exactly, are the link's own, in a `DuplexModel` or a
-/// `LinkConditioning`.
-///
-/// A `LinkConditioner` applies it to the packets a real IO
-/// receives; with the `sim` feature, each direction of a `EmulatedIo` link follows one.
-///
-/// Build a configuration from [`default`](Default::default) with the
-/// `with_` methods:
-///
-/// ```
-/// # use core::time::Duration;
-/// # use campfire_net_emulator::LinkModel;
-/// let model = LinkModel::default()
-///     .with_latency(Duration::from_millis(40))
-///     .with_jitter(Duration::from_millis(8))
-///     .with_simple_gilbert_loss(0.005, 8.0);
-/// ```
-///
-/// When modeling a full round trip, use one conditioner on each peer or
-/// call [`half`](Self::half) to derive an approximate one-way configuration
-/// from an end-to-end configuration.
-///
-/// # How packet loss probability is modeled
-///
-/// The probability that a given packet is lost follows the [Gilbert–Elliott
-/// model]. Consider the link being in either a
-/// good or bad
-/// state. The probability that a packet is lost depends on which state the link
-/// is in (see [`good_loss`](Self::good_loss) and [`bad_loss`](Self::bad_loss)).
-/// After each packet is sent or lost, the link's state may change (see
-/// [`good_to_bad`](Self::good_to_bad) and [`bad_to_good`](Self::bad_to_good)).
-///
-/// ## Choosing a loss model
-///
-/// The model can represent the full [Gilbert–Elliott model]. However, you
-/// may not need the level of fidelity that it provides, so the config has
-/// four different methods to set the packet-loss probability:
-///
-/// * [`with_fixed_loss`](Self::with_fixed_loss): The probability that a packet
-///   is lost is the same for every packet. The conditioner does not consider if
-///   the link is in a good or bad state. Use when only the overall packet-loss
-///   rate matters.
-/// * [`with_simple_gilbert_loss`](Self::with_simple_gilbert_loss): Packet loss
-///   occurs in "bursts" which are periods of complete packet loss (the
-///   bad state) separated by gaps where packet
-///   loss does not occur (the good state). This
-///   is the default choice for simulating a real link as it is easier to create
-///   and is similar enough to how real links behave.
-/// * [`with_gilbert_loss`](Self::with_gilbert_loss): Bursts are now "leaky"
-///   where only some of a burst's packets are lost instead of all of them. Pick
-///   when bursts shouldn't be total blackouts (e.g. you want to simulate
-///   network congestion that delays and thins traffic rather than severing it).
-/// * [`with_gilbert_elliott_loss`](Self::with_gilbert_elliott_loss): Bursts are
-///   leaky and now there is a minimum packet-loss probability to all packets
-///   even in the non-burst periods (the good
-///   state). This minimum packet-loss probability is rarely distinguishable
-///   from short bursts in a capture of real packet loss over any realistic
-///   length, so pick it only when the minimum packet-loss probability is known.
-///
-/// [Gilbert–Elliott model]: https://en.wikipedia.org/wiki/Burst_error#Gilbert%E2%80%93Elliott_model
+/// jitter, Gilbert–Elliott loss, duplication, reordering, and a rate limit with a finite queue
+/// (13-net-stack/testing.md, One `LinkModel` for emulated and real links, in netem's terms). The
+/// MTU and the seed are the link's, in a `DuplexModel` or a `LinkConditioning`.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct LinkModel {
     /// One-way delay of every packet. For a symmetric link this is half the round-trip time.
@@ -77,20 +18,16 @@ pub struct LinkModel {
     /// packets whose delays cross arrive in the other order, as in netem.
     pub jitter: Duration,
 
-    /// Probability that a packet is lost while in
-    /// good (`0.0..=1.0`).
+    /// Probability that a packet is lost in the good state (`0.0..=1.0`).
     pub good_loss: f32,
 
-    /// Probability that a packet is lost while in
-    /// bad (`0.0..=1.0`).
+    /// Probability that a packet is lost in the bad state (`0.0..=1.0`).
     pub bad_loss: f32,
 
-    /// Probability of going from good to
-    /// bad after each packet (`0.0..=1.0`).
+    /// Probability of going from the good state to the bad after each packet (`0.0..=1.0`).
     pub good_to_bad: f32,
 
-    /// Probability of going from bad to
-    /// good after each packet (`0.0..=1.0`).
+    /// Probability of going from the bad state to the good after each packet (`0.0..=1.0`).
     pub bad_to_good: f32,
 
     /// Probability that a delivered packet arrives twice, at the same moment (`0.0..=1.0`).
@@ -291,7 +228,7 @@ impl LinkModel {
         self
     }
 
-    /// Returns the fraction of total packets this configuration drops.
+    /// The fraction of total packets this configuration drops.
     pub fn mean_loss(&self) -> f32 {
         let transition = self.good_to_bad + self.bad_to_good;
         if transition <= 0.0 {
@@ -309,7 +246,7 @@ impl LinkModel {
         (1.0 - stationary_bad) * self.good_loss + stationary_bad * self.bad_loss
     }
 
-    /// Returns an approximate one-way half of this model.
+    /// An approximate one-way half of this model.
     ///
     /// This divides latency, jitter, and loss probabilities by two.
     #[must_use]
@@ -325,7 +262,7 @@ impl LinkModel {
         }
     }
 
-    /// Returns a preset for a low-latency, low-loss connection.
+    /// A preset for a low-latency, low-loss connection.
     pub fn good_condition() -> Self {
         Self::default()
             .with_latency(Duration::from_millis(40))
@@ -333,7 +270,7 @@ impl LinkModel {
             .with_fixed_loss(0.002)
     }
 
-    /// Returns a preset for a typical moderate-latency connection.
+    /// A preset for a typical moderate-latency connection.
     pub fn average_condition() -> Self {
         Self::default()
             .with_latency(Duration::from_millis(100))
@@ -341,7 +278,7 @@ impl LinkModel {
             .with_fixed_loss(0.02)
     }
 
-    /// Returns a preset for a high-latency, lossy connection.
+    /// A preset for a high-latency, lossy connection.
     pub fn poor_condition() -> Self {
         Self::default()
             .with_latency(Duration::from_millis(200))
@@ -365,69 +302,69 @@ mod tests {
     }
 
     #[test]
-    fn fixed_loss_probability_is_state_independent() {
-        let config = LinkModel::default().with_fixed_loss(0.3);
+    fn a_fixed_loss_is_the_same_in_each_state() {
+        let setup = LinkModel::default().with_fixed_loss(0.3);
         // Both `LossState` states lose packets at the same rate, so the mean loss
         // is exactly the rate regardless of which state the chain sits in.
-        assert_eq!(config.mean_loss(), 0.3);
-        assert_eq!(config.good_loss, config.bad_loss);
+        assert_eq!(setup.mean_loss(), 0.3);
+        assert_eq!(setup.good_loss, setup.bad_loss);
     }
 
     #[test]
-    fn default_is_lossless() {
+    fn the_default_model_loses_nothing() {
         assert_eq!(LinkModel::default().mean_loss(), 0.0);
     }
 
     #[test]
-    fn simple_gilbert_hits_target_mean_loss() {
+    fn the_simple_gilbert_model_hits_its_mean_loss() {
         for &(mean_loss, mean_bad_len) in
             &[(0.002_f32, 3.0_f32), (0.02, 4.0), (0.10, 6.0), (0.5, 10.0)]
         {
-            let config = LinkModel::default().with_simple_gilbert_loss(mean_loss, mean_bad_len);
-            assert_round_trips(config.mean_loss(), mean_loss);
+            let setup = LinkModel::default().with_simple_gilbert_loss(mean_loss, mean_bad_len);
+            assert_round_trips(setup.mean_loss(), mean_loss);
             // The `LossState::Bad` state must persist long enough to average
             // `mean_bad_len` drops.
-            assert_round_trips(1.0 / config.bad_to_good, mean_bad_len);
+            assert_round_trips(1.0 / setup.bad_to_good, mean_bad_len);
         }
     }
 
     #[test]
-    fn gilbert_hits_target_mean_loss() {
+    fn the_gilbert_model_hits_its_mean_loss() {
         for &(mean_loss, mean_bad_len, bad_loss) in &[
             (0.002_f32, 3.0_f32, 0.5_f32),
             (0.02, 4.0, 0.8),
             (0.10, 6.0, 0.3),
         ] {
-            let config = LinkModel::default().with_gilbert_loss(mean_loss, mean_bad_len, bad_loss);
-            assert_round_trips(config.mean_loss(), mean_loss);
-            assert_round_trips(1.0 / config.bad_to_good, mean_bad_len);
-            assert_eq!(config.good_loss, 0.0);
-            assert_eq!(config.bad_loss, bad_loss);
+            let setup = LinkModel::default().with_gilbert_loss(mean_loss, mean_bad_len, bad_loss);
+            assert_round_trips(setup.mean_loss(), mean_loss);
+            assert_round_trips(1.0 / setup.bad_to_good, mean_bad_len);
+            assert_eq!(setup.good_loss, 0.0);
+            assert_eq!(setup.bad_loss, bad_loss);
         }
     }
 
     #[test]
-    fn gilbert_elliott_hits_target_mean_loss() {
+    fn the_gilbert_elliott_model_hits_its_mean_loss() {
         for &(mean_loss, mean_bad_len, bad_loss, min_loss) in &[
             (0.01_f32, 3.0_f32, 0.5_f32, 0.001_f32),
             (0.05, 8.0, 0.8, 0.01),
             (0.10, 6.0, 0.3, 0.02),
         ] {
-            let config = LinkModel::default().with_gilbert_elliott_loss(
+            let setup = LinkModel::default().with_gilbert_elliott_loss(
                 mean_loss,
                 mean_bad_len,
                 bad_loss,
                 min_loss,
             );
-            assert_round_trips(config.mean_loss(), mean_loss);
-            assert_round_trips(1.0 / config.bad_to_good, mean_bad_len);
-            assert_eq!(config.good_loss, min_loss);
-            assert_eq!(config.bad_loss, bad_loss);
+            assert_round_trips(setup.mean_loss(), mean_loss);
+            assert_round_trips(1.0 / setup.bad_to_good, mean_bad_len);
+            assert_eq!(setup.good_loss, min_loss);
+            assert_eq!(setup.bad_loss, bad_loss);
         }
     }
 
     #[test]
-    fn constructor_ladder_reduces_downward() {
+    fn each_loss_constructor_is_the_one_above_it_with_a_parameter_fixed() {
         // Each constructor with its extra knob pinned must produce exactly the
         // rung below it.
         let (mean_loss, mean_bad_len) = (0.02_f32, 4.0_f32);

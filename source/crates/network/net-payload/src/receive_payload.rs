@@ -3,8 +3,8 @@ use core::ops::Deref;
 
 /// Byte payload received from a transport, in the form its IO backend holds it.
 ///
-/// A session hands this payload to the frame once it opened it, and neither form costs it a copy.
-/// Higher-level systems of the stack that read cheap immutable subslices take it with
+/// A packet session hands this payload to the frame once it opened it, and neither form costs it a
+/// copy. Higher-level systems of the stack that read cheap immutable subslices take it with
 /// [`freeze`](Self::freeze), which never copies; a layer that changes it in place takes it with
 /// [`into_mut`](Self::into_mut), which copies only a frozen payload whose allocation is shared.
 #[derive(Debug, Clone)]

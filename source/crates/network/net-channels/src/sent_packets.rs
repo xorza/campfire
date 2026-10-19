@@ -5,9 +5,9 @@ use campfire_net_payload::PayloadToken;
 use core::ops::Range;
 use std::collections::VecDeque;
 
-/// The packets a transport gave its session and whose fate the session has not reported: the
-/// tick each carried, which the tick encoder learns at its delivery, and the reliable messages
-/// each carried, whose channels learn its fate.
+/// The packets a transport gave its packet session and whose fate the packet session has not
+/// reported: the tick each carried, which the tick encoder learns at its delivery, and the reliable
+/// messages each carried, whose channels learn its fate.
 ///
 /// The transport numbers its packets in order, so a packet's place is its token's distance from
 /// the first's; its messages are a range of one buffer in the same order. A fate leaves its entry
@@ -67,7 +67,7 @@ impl SentPackets {
         self.messages.push_back(message);
     }
 
-    /// Takes the packet of `token`, whose fate the session reports once; a token of a packet
+    /// Takes the packet of `token`, whose fate the packet session reports once; a token of a packet
     /// before a reset names none.
     pub(crate) fn take(&mut self, token: PayloadToken) -> Option<SentPacket> {
         let slot = usize::try_from(token.0.checked_sub(self.first)?).ok()?;

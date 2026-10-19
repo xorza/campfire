@@ -63,7 +63,7 @@ fn outgoing(token: u64, data: &[u8]) -> BytesMut {
     payload
 }
 
-/// Two sessions and the frame's queues of each, joined by a wire that delivers at once.
+/// Two packet sessions and the frame's queues of each, joined by a wire that delivers at once.
 #[derive(Debug)]
 struct Pair {
     ends: [End; 2],
@@ -71,15 +71,15 @@ struct Pair {
 
 #[derive(Debug)]
 struct End {
-    session: PacketSession,
-    queues: SessionQueues,
+    packet_session: PacketSession,
+    queues: PacketSessionQueues,
 }
 
 impl Pair {
-    fn new(protection: impl Fn() -> Protection, config: SessionConfig) -> Self {
+    fn new(protection: impl Fn() -> Protection, setup: PacketSessionSetup) -> Self {
         let end = || End {
-            session: PacketSession::new(protection(), None, config, at(0)),
-            queues: SessionQueues::default(),
+            packet_session: PacketSession::new(protection(), None, setup, at(0)),
+            queues: PacketSessionQueues::default(),
         };
         Self {
             ends: [end(), end()],
@@ -87,7 +87,7 @@ impl Pair {
     }
 
     fn plain() -> Self {
-        Self::new(|| Protection::Plain, SessionConfig::default())
+        Self::new(|| Protection::Plain, PacketSessionSetup::default())
     }
 
     /// End `from` sends `data` as payload `token` at `now`, and its datagrams reach the other end
@@ -107,7 +107,7 @@ impl Pair {
             outgoing(token, data),
         );
         let mut out = Vec::new();
-        end.session.take_over(&mut end.queues, now, &mut out);
+        end.packet_session.take_over(&mut end.queues, now, &mut out);
         if let Some(arrival) = arrival {
             self.deliver(1 - from, out, arrival);
         }
@@ -116,20 +116,23 @@ impl Pair {
     fn deliver(&mut self, to: usize, transmits: Vec<Transmit>, now: Instant) {
         let mut answers = Vec::new();
         for transmit in transmits {
-            self.ends[to]
-                .session
-                .receive(now, transmit.datagram, transmit.path, &mut answers);
+            self.ends[to].packet_session.receive(
+                now,
+                transmit.datagram,
+                transmit.path,
+                &mut answers,
+            );
         }
         if !answers.is_empty() {
             self.deliver(1 - to, answers, now);
         }
     }
 
-    /// End `end`'s frame takes what its session opened, and accepts each payload when `accept`
-    /// holds, by the session's next take: the data of each, in order.
+    /// End `end`'s frame takes what its packet session opened, and accepts each payload when
+    /// `accept` holds, by the packet session's next take: the data of each, in order.
     fn take(&mut self, end: usize, accept: bool, now: Instant) -> Vec<Vec<u8>> {
         let end = &mut self.ends[end];
-        end.session.hand_over(&mut end.queues, 1_200, now);
+        end.packet_session.hand_over(&mut end.queues, 1_200, now);
         let opened: Vec<_> = end.queues.opened().collect();
         let mut data = Vec::new();
         for payload in opened {
@@ -139,7 +142,7 @@ impl Pair {
             data.push(payload.payload.freeze().to_vec());
         }
         let mut out = Vec::new();
-        end.session.take_over(&mut end.queues, now, &mut out);
+        end.packet_session.take_over(&mut end.queues, now, &mut out);
         assert!(out.is_empty(), "the frame queued no payload");
         data
     }
@@ -148,7 +151,7 @@ impl Pair {
     /// datagrams' packet types.
     fn poll(&mut self, end: usize, now: Instant, drop: bool) -> Vec<PacketType> {
         let mut out = Vec::new();
-        self.ends[end].session.poll(now, &mut out);
+        self.ends[end].packet_session.poll(now, &mut out);
         let types = out
             .iter()
             .map(|transmit| Header::read(&transmit.datagram).unwrap().packet_type)
@@ -161,7 +164,7 @@ impl Pair {
 
     fn fates(&mut self, end: usize) -> Vec<PayloadFate> {
         let end = &mut self.ends[end];
-        end.session.hand_over(&mut end.queues, 1_200, at(0));
+        end.packet_session.hand_over(&mut end.queues, 1_200, at(0));
         end.queues.fates().collect()
     }
 
@@ -180,7 +183,7 @@ fn an_accepted_payload_is_delivered_and_gives_a_sample() {
         let mut pair = if sealed {
             Pair::new(
                 || Protection::Sealed(Box::new(TestSeal)),
-                SessionConfig::default(),
+                PacketSessionSetup::default(),
             )
         } else {
             Pair::plain()
@@ -234,15 +237,16 @@ fn a_replayed_datagram_is_dropped() {
     end.queues
         .send(PayloadToken(0), PayloadKind::new(1), outgoing(0, b"once"));
     let mut out = Vec::new();
-    end.session.take_over(&mut end.queues, at(0), &mut out);
+    end.packet_session
+        .take_over(&mut end.queues, at(0), &mut out);
     let datagram = out.pop().unwrap().datagram;
-    let receiver = &mut pair.ends[1].session;
+    let receiver = &mut pair.ends[1].packet_session;
     let mut answers = Vec::new();
     for _ in 0..2 {
         receiver.receive(at(1), datagram.clone(), Path::Peer, &mut answers);
     }
     assert_eq!(pair.take(1, true, at(2)), [b"once".to_vec()]);
-    let receiver = &mut pair.ends[1].session;
+    let receiver = &mut pair.ends[1].packet_session;
     assert_eq!(
         receiver.receive(at(3), datagram, Path::Peer, &mut answers),
         Received::Dropped
@@ -273,34 +277,36 @@ fn an_accept_behind_the_window_is_skipped() {
     end.queues
         .send(PayloadToken(0), PayloadKind::new(1), outgoing(0, b"held"));
     let mut out = Vec::new();
-    end.session.take_over(&mut end.queues, at(0), &mut out);
+    end.packet_session
+        .take_over(&mut end.queues, at(0), &mut out);
     let held = out.pop().unwrap().datagram;
     let mut answers = Vec::new();
     pair.ends[1]
-        .session
+        .packet_session
         .receive(at(1), held.clone(), Path::Peer, &mut answers);
     let end = &mut pair.ends[1];
-    end.session.hand_over(&mut end.queues, 1_200, at(1));
+    end.packet_session.hand_over(&mut end.queues, 1_200, at(1));
     for _ in 0..40 {
         let mut pings = Vec::new();
-        pair.ends[0].session.ping(at(1), &mut pings);
+        pair.ends[0].packet_session.ping(at(1), &mut pings);
         pair.deliver(1, pings, at(1));
     }
     let end = &mut pair.ends[1];
     let number = end.queues.opened().next().unwrap().number;
     end.queues.accept(number);
-    end.session.take_over(&mut end.queues, at(2), &mut out);
+    end.packet_session
+        .take_over(&mut end.queues, at(2), &mut out);
     assert_eq!(
         pair.ends[1]
-            .session
+            .packet_session
             .receive(at(3), held, Path::Peer, &mut answers),
         Received::Dropped
     );
 }
 
-/// The control packets split from the session's arena: with each one dropped once it is sent, as
-/// an IO does, the arena holds `CONTROL_ARENA_BYTES / (HEADROOM + TAILROOM)` pings, and the next
-/// reuses the first one's bytes instead of an allocation.
+/// The control packets split from the packet session's arena: with each one dropped once it is
+/// sent, as an IO does, the arena holds `CONTROL_ARENA_BYTES / (HEADROOM + TAILROOM)` pings, and
+/// the next reuses the first one's bytes instead of an allocation.
 #[test]
 fn control_packets_reuse_their_arena() {
     let mut pair = Pair::plain();
@@ -308,7 +314,7 @@ fn control_packets_reuse_their_arena() {
     let starts: Vec<*const u8> = (0..=fit)
         .map(|_| {
             let mut out = Vec::new();
-            pair.ends[0].session.ping(at(0), &mut out);
+            pair.ends[0].packet_session.ping(at(0), &mut out);
             out.pop().unwrap().datagram.as_ptr()
         })
         .collect();
@@ -324,22 +330,25 @@ fn an_ack_only_packet_waits_for_the_ack_delay() {
     pair.send(0, 0, b"data", at(0), Some(at(0)));
     pair.take(1, true, at(0));
     let due = at(0) + MAX_ACK_DELAY;
-    assert_eq!(pair.ends[1].session.next_deadline(), Some(due));
+    assert_eq!(pair.ends[1].packet_session.next_deadline(), Some(due));
     assert!(pair.poll(1, at(24), false).is_empty());
     assert_eq!(pair.poll(1, due, false), [PacketType::AckOnly]);
     assert_eq!(pair.fates(0), [PayloadFate::Delivered(PayloadToken(0))]);
 }
 
-/// A silent session sends a keep-alive after 1 s, and one that hears nothing for 5 s ends with
-/// `TimedOut`.
+/// A silent packet session sends a keep-alive after 1 s, and one that hears nothing for 5 s ends
+/// with `TimedOut`.
 #[test]
 fn a_silent_session_keeps_alive_and_a_deaf_one_times_out() {
     let mut pair = Pair::plain();
     assert_eq!(pair.poll(0, at(999), true), []);
     assert_eq!(pair.poll(0, at(1_000), true), [PacketType::Ping]);
-    assert_eq!(pair.ends[0].session.ended(), None);
+    assert_eq!(pair.ends[0].packet_session.ended(), None);
     pair.poll(0, at(5_000), true);
-    assert_eq!(pair.ends[0].session.ended(), Some(UnlinkReason::TimedOut));
+    assert_eq!(
+        pair.ends[0].packet_session.ended(),
+        Some(UnlinkReason::TimedOut)
+    );
 }
 
 /// A payload whose acknowledgement does not come is probed at the probe timeout: with no sample,
@@ -347,18 +356,18 @@ fn a_silent_session_keeps_alive_and_a_deaf_one_times_out() {
 /// counts from it, doubled: 2,048 ms later. A keep-alive of 4 s stays out of the way.
 #[test]
 fn an_unacknowledged_payload_is_probed_at_the_probe_timeout() {
-    let config = SessionConfig {
+    let setup = PacketSessionSetup {
         keep_alive: Duration::from_secs(4),
-        ..SessionConfig::default()
+        ..PacketSessionSetup::default()
     };
-    let mut pair = Pair::new(|| Protection::Plain, config);
+    let mut pair = Pair::new(|| Protection::Plain, setup);
     pair.send(0, 0, b"data", at(0), None);
     let probe = at(0) + INITIAL_RTT + INITIAL_RTT * 2 + MAX_ACK_DELAY;
     assert_eq!(probe, at(1_024));
-    assert_eq!(pair.ends[0].session.next_deadline(), Some(probe));
+    assert_eq!(pair.ends[0].packet_session.next_deadline(), Some(probe));
     assert_eq!(pair.poll(0, probe, true), [PacketType::Ping]);
     assert_eq!(
-        pair.ends[0].session.next_deadline(),
+        pair.ends[0].packet_session.next_deadline(),
         Some(probe + Duration::from_millis(2_048))
     );
 }
@@ -370,13 +379,13 @@ fn a_close_carries_its_code_and_answers_for_three_probe_timeouts() {
     let mut pair = Pair::plain();
     let code = AppCode::new(42);
     let mut out = Vec::new();
-    pair.ends[0].session.close(at(0), code, &mut out);
+    pair.ends[0].packet_session.close(at(0), code, &mut out);
     let close = out.pop().unwrap().datagram;
     pair.ends[1]
-        .session
+        .packet_session
         .receive(at(1), close, Path::Peer, &mut out);
     assert_eq!(
-        pair.ends[1].session.ended(),
+        pair.ends[1].packet_session.ended(),
         Some(UnlinkReason::ClosedByPeer(code))
     );
     // A packet the peer sent before it read the close.
@@ -385,13 +394,13 @@ fn a_close_carries_its_code_and_answers_for_three_probe_timeouts() {
         .queues
         .send(PayloadToken(0), PayloadKind::new(1), outgoing(0, b"late"));
     late.ends[1]
-        .session
+        .packet_session
         .take_over(&mut late.ends[1].queues, at(1), &mut out);
     let late = out.pop().unwrap().datagram;
     let answered: Vec<usize> = (1..=8)
         .filter(|_| {
             pair.ends[0]
-                .session
+                .packet_session
                 .receive(at(2), late.clone(), Path::Peer, &mut out);
             out.pop().is_some_and(|answer| {
                 Header::read(&answer.datagram).unwrap().packet_type == PacketType::Close
@@ -401,10 +410,10 @@ fn a_close_carries_its_code_and_answers_for_three_probe_timeouts() {
     assert_eq!(answered, [1, 2, 4, 8]);
     let until = at(0) + Duration::from_millis(1_024) * 3;
     pair.poll(0, until.saturating_sub(Duration::from_nanos(1)), true);
-    assert_eq!(pair.ends[0].session.ended(), None);
+    assert_eq!(pair.ends[0].packet_session.ended(), None);
     pair.poll(0, until, true);
     assert_eq!(
-        pair.ends[0].session.ended(),
+        pair.ends[0].packet_session.ended(),
         Some(UnlinkReason::Closed(code))
     );
 }
@@ -417,19 +426,21 @@ fn two_ends_that_close_at_once_end_at_each_others_close() {
     let codes = [AppCode::new(20), AppCode::new(21)];
     let closes = [0, 1].map(|end| {
         let mut out = Vec::new();
-        pair.ends[end].session.close(at(0), codes[end], &mut out);
+        pair.ends[end]
+            .packet_session
+            .close(at(0), codes[end], &mut out);
         out.pop().unwrap().datagram
     });
     for (end, close) in closes.into_iter().enumerate() {
         let mut answers = Vec::new();
         pair.ends[1 - end]
-            .session
+            .packet_session
             .receive(at(1), close, Path::Peer, &mut answers);
         assert!(answers.is_empty());
     }
     for (end, code) in codes.into_iter().enumerate() {
         assert_eq!(
-            pair.ends[end].session.ended(),
+            pair.ends[end].packet_session.ended(),
             Some(UnlinkReason::Closed(code))
         );
     }
@@ -440,46 +451,47 @@ fn two_ends_that_close_at_once_end_at_each_others_close() {
 fn a_tampered_sealed_packet_is_unauthentic() {
     let mut pair = Pair::new(
         || Protection::Sealed(Box::new(TestSeal)),
-        SessionConfig::default(),
+        PacketSessionSetup::default(),
     );
     let end = &mut pair.ends[0];
     end.queues
         .send(PayloadToken(0), PayloadKind::new(1), outgoing(0, b"sealed"));
     let mut out = Vec::new();
-    end.session.take_over(&mut end.queues, at(0), &mut out);
+    end.packet_session
+        .take_over(&mut end.queues, at(0), &mut out);
     let mut datagram = out.pop().unwrap().datagram;
     // 3 bytes of header, 6 of data, 16 of tag.
     assert_eq!(datagram.len(), 3 + 6 + TAG_LEN);
     datagram[4] ^= 1;
     let received = pair.ends[1]
-        .session
+        .packet_session
         .receive(at(1), datagram, Path::Peer, &mut out);
     assert_eq!(received, Received::Unauthentic);
 }
 
-/// A session with a prefix starts each datagram with it, and counts it in its overhead: 8 + 10
-/// with no seal, 8 + 10 + 16 with one.
+/// A packet session with a prefix starts each datagram with it, and counts it in its overhead: 8 +
+/// 10 with no seal, 8 + 10 + 16 with one.
 #[test]
 fn a_prefix_starts_each_datagram_and_counts_in_the_overhead() {
     const PREFIX: ConnectionId = ConnectionId::from_random([0x12, 0x34, 0x56, 0x78, 0, 0, 0, 1]);
-    let mut session = PacketSession::new(
+    let mut packet_session = PacketSession::new(
         Protection::Plain,
         Some(PREFIX),
-        SessionConfig::default(),
+        PacketSessionSetup::default(),
         at(0),
     );
-    assert_eq!(session.overhead(), 18);
+    assert_eq!(packet_session.overhead(), 18);
     let sealed = PacketSession::new(
         Protection::Sealed(Box::new(TestSeal)),
         Some(PREFIX),
-        SessionConfig::default(),
+        PacketSessionSetup::default(),
         at(0),
     );
     assert_eq!(sealed.overhead(), 34);
-    let mut queues = SessionQueues::default();
+    let mut queues = PacketSessionQueues::default();
     queues.send(PayloadToken(0), PayloadKind::new(3), outgoing(0, b"x"));
     let mut out = Vec::new();
-    session.take_over(&mut queues, at(0), &mut out);
+    packet_session.take_over(&mut queues, at(0), &mut out);
     let datagram = &out[0].datagram;
     assert_eq!(datagram[..8], PREFIX.to_bytes());
     let header = Header::read(&datagram[8..]).unwrap();
@@ -494,18 +506,18 @@ fn a_path_check_validates_an_answer_and_fails_silence() {
     let mut pair = Pair::plain();
     let mut out = Vec::new();
     pair.ends[0]
-        .session
+        .packet_session
         .start_challenge(at(0), [9; CHALLENGE_LEN], &mut out);
     pair.deliver(1, out, at(1));
     assert_eq!(
-        pair.ends[0].session.take_path_outcome(),
+        pair.ends[0].packet_session.take_path_outcome(),
         Some(PathOutcome::Validated)
     );
 
     let mut pair = Pair::plain();
     let mut out = Vec::new();
     pair.ends[0]
-        .session
+        .packet_session
         .start_challenge(at(0), [9; CHALLENGE_LEN], &mut out);
     assert_eq!(out[0].path, Path::Candidate);
     let timeout = Duration::from_millis(1_024);
@@ -513,12 +525,12 @@ fn a_path_check_validates_an_answer_and_fails_silence() {
     for _ in 0..2 {
         now += timeout;
         let mut out = Vec::new();
-        pair.ends[0].session.poll(now, &mut out);
+        pair.ends[0].packet_session.poll(now, &mut out);
         assert!(out.iter().any(|transmit| transmit.path == Path::Candidate));
     }
     pair.poll(0, now + timeout, true);
     assert_eq!(
-        pair.ends[0].session.take_path_outcome(),
+        pair.ends[0].packet_session.take_path_outcome(),
         Some(PathOutcome::Failed)
     );
 }
@@ -526,10 +538,15 @@ fn a_path_check_validates_an_answer_and_fails_silence() {
 /// The room is the window's, and none past the numbers the peer reads whole.
 #[test]
 fn the_room_stops_where_the_peer_cannot_read_a_number() {
-    let mut session = PacketSession::new(Protection::Plain, None, SessionConfig::default(), at(0));
-    assert_eq!(session.room(at(0)), 12_000);
-    session.next_number = PacketNumber(32_766);
-    assert_eq!(session.room(at(0)), 0);
+    let mut packet_session = PacketSession::new(
+        Protection::Plain,
+        None,
+        PacketSessionSetup::default(),
+        at(0),
+    );
+    assert_eq!(packet_session.room(at(0)), 12_000);
+    packet_session.next_number = PacketNumber(32_766);
+    assert_eq!(packet_session.room(at(0)), 0);
 }
 
 /// An app's rate holds the room below the window: a burst of 2,000 at 1,000 B/s. A payload of
@@ -537,44 +554,46 @@ fn the_room_stops_where_the_peer_cannot_read_a_number() {
 /// refill 100: 2,000 − 1,003 + 100 = 1,097.
 #[test]
 fn the_apps_rate_holds_the_room_below_the_window() {
-    let config = SessionConfig {
+    let setup = PacketSessionSetup {
         bandwidth: Some(BandwidthLimit::new(1_000).with_burst(2_000)),
-        ..SessionConfig::default()
+        ..PacketSessionSetup::default()
     };
-    let mut session = PacketSession::new(Protection::Plain, None, config, at(0));
-    assert_eq!(session.room(at(0)), 2_000);
-    let mut queues = SessionQueues::default();
+    let mut packet_session = PacketSession::new(Protection::Plain, None, setup, at(0));
+    assert_eq!(packet_session.room(at(0)), 2_000);
+    let mut queues = PacketSessionQueues::default();
     let mut payload = BytesMut::zeroed(OutgoingPayload::HEADROOM);
     payload.extend_from_slice(&[0; 1_000]);
     queues.send(PayloadToken(1), PayloadKind::new(0), payload);
-    session.take_over(&mut queues, at(0), &mut Vec::new());
-    assert_eq!(session.room(at(100)), 1_097);
+    packet_session.take_over(&mut queues, at(0), &mut Vec::new());
+    assert_eq!(packet_session.room(at(100)), 1_097);
 }
 
-/// Datagrams of each type a session sends: a payload that acknowledges the peer's, a ping, a
+/// Datagrams of each type a packet session sends: a payload that acknowledges the peer's, a ping, a
 /// path challenge and a close, each under `protection`.
 fn datagrams_of_each_type(protection: impl Fn() -> Protection) -> Vec<BytesMut> {
-    let mut pair = Pair::new(protection, SessionConfig::default());
+    let mut pair = Pair::new(protection, PacketSessionSetup::default());
     pair.send(0, 1, b"first", at(10), Some(at(15)));
     pair.take(1, true, at(16));
     let end = &mut pair.ends[1];
     end.queues
         .send(PayloadToken(2), PayloadKind::new(2), outgoing(2, b"reply"));
     let mut out = Vec::new();
-    end.session.take_over(&mut end.queues, at(20), &mut out);
-    end.session.ping(at(21), &mut out);
-    end.session
+    end.packet_session
+        .take_over(&mut end.queues, at(20), &mut out);
+    end.packet_session.ping(at(21), &mut out);
+    end.packet_session
         .start_challenge(at(22), [9; CHALLENGE_LEN], &mut out);
-    end.session.close(at(23), AppCode::new(40), &mut out);
+    end.packet_session.close(at(23), AppCode::new(40), &mut out);
     out.into_iter().map(|transmit| transmit.datagram).collect()
 }
 
-/// A seeded mutation test of the session's parsers: 2,048 mutations of each datagram type reach
-/// a fresh session of each protection, and none panics; a session reads a mutation only when its
-/// header parses. The test seal's tag is a byte sum, which a mutation can keep, so the UDP
-/// crate's test with ChaCha20-Poly1305 shows that a seal refuses every changed datagram.
+/// A seeded mutation test of the packet session's parsers: 2,048 mutations of each datagram type
+/// reach a fresh packet session of each protection, and none panics; a packet session reads a
+/// mutation only when its header parses. The test seal's tag is a byte sum, which a mutation can
+/// keep, so the UDP crate's test with ChaCha20-Poly1305 shows that a seal refuses every changed
+/// datagram.
 #[test]
-fn mutated_datagrams_are_refused_or_read() {
+fn a_mutated_datagram_is_refused_or_read() {
     use campfire_net_bytes::internals::Mutations;
 
     type Case = (&'static str, fn() -> Protection);
@@ -588,7 +607,7 @@ fn mutated_datagrams_are_refused_or_read() {
         let [mut read, mut refused] = [0; 2];
         for original in datagrams_of_each_type(protection) {
             let mut receiver =
-                PacketSession::new(protection(), None, SessionConfig::default(), at(0));
+                PacketSession::new(protection(), None, PacketSessionSetup::default(), at(0));
             for _ in 0..2_048 {
                 mutations.mutate(&original, &mut mutated);
                 let parses = Header::read(&mutated).is_ok();

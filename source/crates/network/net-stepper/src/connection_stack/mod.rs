@@ -1,6 +1,6 @@
 use bevy_app::App;
 use bevy_ecs::world::{EntityWorldMut, World};
-use campfire_net_connection::{ConnectionPlugins, RawClientPlugin, ServerConnectionPlugins};
+use campfire_net_connection::{ConnectionPlugins, ServerConnectionPlugins};
 use campfire_net_core::TickRate;
 use campfire_net_endpoint::EndpointPlugin;
 use campfire_net_link::{LinkPlugin, ServerLinkPlugin};
@@ -9,7 +9,7 @@ use campfire_net_timeline::{ClockPlugin, TimelinePlugins};
 
 use crate::stack::Stack;
 
-/// The connection layer alone: raw clients and a raw server, connected once linked.
+/// The connection layer alone: clients and a server, connected once linked.
 ///
 /// Every stack adds a layer only if it is not added yet, so a server app that holds a host client
 /// adds the layers both sides share once.
@@ -32,9 +32,6 @@ impl ConnectionStack {
 impl Stack for ConnectionStack {
     fn add_client(&self, app: &mut App, tick_rate: TickRate) {
         Self::add_shared(app, tick_rate);
-        if !app.is_plugin_added::<RawClientPlugin>() {
-            app.add_plugins(RawClientPlugin);
-        }
     }
 
     fn add_server(&self, app: &mut App, tick_rate: TickRate) {

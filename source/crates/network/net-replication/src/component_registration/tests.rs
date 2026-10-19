@@ -7,7 +7,7 @@ use crate::fixtures::steps::{
 use crate::replication_target::Replicate;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 
 use crate::app_component_ext::AppComponentExt;
 
@@ -39,7 +39,7 @@ fn registration_without_replication_leaves_the_protocol() {
     assert!(app.world().get_resource::<ComponentRegistry>().is_none());
 }
 
-/// The replication method records the kind that the later layers read.
+/// The replication method records the type_id that the later layers read.
 #[test]
 fn replication_records_its_kind() {
     let mut app = replicon_app();
@@ -50,12 +50,12 @@ fn replication_records_its_kind() {
     let registry = app.world().resource::<ComponentRegistry>();
     assert!(registry.is_registered::<CompA>());
     assert_eq!(
-        registry.replication(&ComponentKind::of::<CompA>()),
-        Some(Replication::Full)
+        registry.replication(&ComponentTypeId::of::<CompA>()),
+        Some(ReplicationKind::Full)
     );
     assert_eq!(
-        registry.replication(&ComponentKind::of::<CompRepliconDiff>()),
-        Some(Replication::Diff)
+        registry.replication(&ComponentTypeId::of::<CompRepliconDiff>()),
+        Some(ReplicationKind::Diff)
     );
 
     app.register_component::<CompA>().already_replicated();
@@ -91,7 +91,7 @@ fn already_replicated_diff_needs_an_earlier_diff_replication() {
 #[test]
 fn a_replicate_once_component_sends_only_its_insert() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
         let source_entity = spawn_on_server(
             &mut stepper,

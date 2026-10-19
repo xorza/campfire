@@ -1,5 +1,5 @@
 use super::*;
-use crate::new_reno::MINIMUM_WINDOW;
+use crate::new_reno::MIN_WINDOW;
 
 fn at(millis: u64) -> Instant {
     Instant::from_elapsed(Duration::from_millis(millis))
@@ -116,7 +116,7 @@ fn the_probe_timeout_doubles_with_each_probe() {
 /// = 5 ms. It calls 0 to 17 lost by number, and 18 and 19 by time, 9/8 · 9.375 ms after their
 /// sends. They span 190 ms, past (9.375 + 4 · 5 + 25) · 3 = 163.125 ms.
 #[test]
-fn losses_over_three_probe_timeouts_are_persistent_congestion() {
+fn losses_over_three_probe_timeouts_are_a_persistent_congestion() {
     let (mut packets, mut reno) = sent(21);
     let mut rtt = RttEstimator::default();
     rtt.update(Duration::from_millis(10), Duration::ZERO);
@@ -127,7 +127,7 @@ fn losses_over_three_probe_timeouts_are_persistent_congestion() {
         .filter(|fate| matches!(fate, PayloadFate::Lost(_)))
         .count();
     assert_eq!(lost, 20);
-    assert_eq!(reno.window(), MINIMUM_WINDOW);
+    assert_eq!(reno.window(), MIN_WINDOW);
 
     // An acknowledgement among the losses breaks the span: the window only halves.
     let (mut packets, mut reno) = sent(21);

@@ -5,11 +5,11 @@ use bytes::{Buf, BytesMut};
 use core::time::Duration;
 use std::collections::VecDeque;
 
-use campfire_net_bytes::Arena;
+use campfire_net_bytes::ByteArena;
 use campfire_net_core::Instant;
 use campfire_net_payload::{
-    AppCode, OpenedPayload, OutgoingPayload, PacketNumber, PayloadFate, PayloadKind,
-    ReceivePayload, SessionQueues, UnlinkReason,
+    AppCode, OpenedPayload, OutgoingPayload, PacketNumber, PacketSessionQueues, PayloadFate,
+    PayloadKind, ReceivePayload, UnlinkReason,
 };
 
 use crate::bandwidth_limiter::BandwidthLimiter;
@@ -17,29 +17,30 @@ use crate::connection_id::ConnectionId;
 use crate::header::{AckFields, Header, PacketType};
 use crate::new_reno::NewReno;
 use crate::packet_numbers;
+use crate::packet_session_setup::PacketSessionSetup;
 use crate::protection::Protection;
 use crate::received_window::ReceivedWindow;
 use crate::rtt_estimator::RttEstimator;
 use crate::seal::TAG_LEN;
 use crate::sent_packets::{Ack, SentPackets};
-use crate::session_config::SessionConfig;
 use crate::transmit::{Path, Transmit};
 
 /// The bytes of a path packet's challenge.
 pub(crate) const CHALLENGE_LEN: usize = 8;
 
-/// The bytes a session splits its control packets from, about 20 of the largest: a pass sends a
-/// few, the IO drops each once it sent it, and so the arena is whole again by the next pass.
+/// The bytes a packet session splits its control packets from, about 20 of the largest: a pass
+/// sends a few, the IO drops each once it sent it, and so the arena is whole again by the next
+/// pass.
 const CONTROL_ARENA_BYTES: usize = 1024;
 
 /// The tries of a path challenge before its candidate is dropped.
 const CHALLENGE_TRIES: u8 = 3;
 
-/// A closed session answers the peer for this many probe timeouts (RFC 9000 §10.2).
+/// A closed packet session answers the peer for this many probe timeouts (RFC 9000 §10.2).
 const CLOSING_PROBE_TIMEOUTS: u32 = 3;
 
-/// Failed decryptions past which a sealed session ends, as ChaCha20-Poly1305 bears no more for
-/// one key (RFC 9001 §6.6).
+/// Failed decryptions past which a sealed packet session ends, as ChaCha20-Poly1305 bears no more
+/// for one key (RFC 9001 §6.6).
 const INTEGRITY_LIMIT: u64 = 1 << 36;
 
 const _: () = assert!(
@@ -54,7 +55,7 @@ pub(crate) struct PacketSession {
     /// The connection ID each datagram this end sends starts with, which the peer's IO routes it
     /// by.
     prefix: Option<ConnectionId>,
-    config: SessionConfig,
+    setup: PacketSessionSetup,
     next_number: PacketNumber,
     received: ReceivedWindow,
     sent: SentPackets,
@@ -76,9 +77,9 @@ pub(crate) struct PacketSession {
     state: State,
     /// What the control packets' buffers are split from, so that a Ping, an ACK or a close
     /// allocates nothing once the IO dropped the ones before it.
-    control: Arena,
+    control: ByteArena,
     #[cfg(feature = "internals")]
-    counts: internals::SessionCounts,
+    counts: internals::PacketSessionCounts,
 }
 
 #[derive(Debug)]
@@ -126,10 +127,10 @@ enum State {
 /// What became of a received datagram.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Received {
-    /// The session read it; `largest` when its number is above every number opened before, as a
-    /// peer's packet from a new address is, once the peer moved.
+    /// The packet session read it; `largest` when its number is above every number opened before,
+    /// as a peer's packet from a new address is, once the peer moved.
     Read { largest: bool },
-    /// The session dropped it: a replay, a malformed header, or a session that ended.
+    /// The packet session dropped it: a replay, a malformed header, or a packet session that ended.
     Dropped,
     /// It did not authenticate.
     Unauthentic,
@@ -139,23 +140,23 @@ impl PacketSession {
     pub(crate) fn new(
         protection: Protection,
         prefix: Option<ConnectionId>,
-        config: SessionConfig,
+        setup: PacketSessionSetup,
         now: Instant,
     ) -> Self {
         debug_assert!(
-            config.keep_alive < config.idle_timeout,
-            "an endpoint checks its sessions' config"
+            setup.keep_alive < setup.idle_timeout,
+            "an endpoint checks its packet sessions' setup"
         );
         Self {
             protection,
             prefix,
-            config,
+            setup,
             next_number: PacketNumber(0),
             received: ReceivedWindow::default(),
             sent: SentPackets::default(),
             rtt: RttEstimator::default(),
             reno: NewReno::default(),
-            limiter: config
+            limiter: setup
                 .bandwidth
                 .map(|limit| BandwidthLimiter::new(limit, now)),
             last_sent: now,
@@ -168,13 +169,13 @@ impl PacketSession {
             challenge: None,
             path_outcome: None,
             state: State::Open,
-            control: Arena::new(CONTROL_ARENA_BYTES, 0),
+            control: ByteArena::new(CONTROL_ARENA_BYTES, 0),
             #[cfg(feature = "internals")]
-            counts: internals::SessionCounts::default(),
+            counts: internals::PacketSessionCounts::default(),
         }
     }
 
-    /// How the session ended, once it did.
+    /// How the packet session ended, once it did.
     pub(crate) const fn ended(&self) -> Option<UnlinkReason> {
         match self.state {
             State::Ended(reason) => Some(reason),
@@ -188,11 +189,12 @@ impl PacketSession {
         self.prefix.map_or(0, |_| ConnectionId::LEN) + Header::MAX_LEN + self.protection.tag_len()
     }
 
-    /// The bytes on the wire the session sends at `now`: the window's room within the app's
-    /// rate, and none past the packet numbers the peer reads whole, or once the session closed.
+    /// The bytes on the wire the packet session sends at `now`: the window's room within the app's
+    /// rate, and none past the packet numbers the peer reads whole, or once the packet session
+    /// closed.
     pub(crate) fn room(&self, now: Instant) -> usize {
         let open = matches!(self.state, State::Open);
-        if !open || !packet_numbers::in_reach(self.next_number, self.sent.largest_acked()) {
+        if !open || !packet_numbers::is_in_reach(self.next_number, self.sent.largest_acked()) {
             return 0;
         }
         let rate = self
@@ -205,7 +207,7 @@ impl PacketSession {
     /// Hands the frame what it reads at `now`: the opened payloads, which it accepts or refuses by
     /// its next send, the fates, the RTT samples, and the room and the largest payload of a
     /// datagram of `mtu` bytes.
-    pub(crate) fn hand_over(&mut self, queues: &mut SessionQueues, mtu: usize, now: Instant) {
+    pub(crate) fn hand_over(&mut self, queues: &mut PacketSessionQueues, mtu: usize, now: Instant) {
         for Inbound {
             payload,
             received_at,
@@ -229,7 +231,7 @@ impl PacketSession {
     /// refuses the rest, and its payloads, which go out at once.
     pub(crate) fn take_over(
         &mut self,
-        queues: &mut SessionQueues,
+        queues: &mut PacketSessionQueues,
         now: Instant,
         out: &mut Vec<Transmit>,
     ) {
@@ -290,7 +292,7 @@ impl PacketSession {
         });
     }
 
-    /// Sends a packet of the session's own of `packet_type`, carrying `content`, on `path`.
+    /// Sends a packet of the packet session's own of `packet_type`, carrying `content`, on `path`.
     fn send_control(
         &mut self,
         now: Instant,
@@ -514,7 +516,7 @@ impl PacketSession {
             }
             State::Open => {}
         }
-        if now >= self.last_received + self.config.idle_timeout {
+        if now >= self.last_received + self.setup.idle_timeout {
             self.state = State::Ended(UnlinkReason::TimedOut);
             return;
         }
@@ -558,24 +560,24 @@ impl PacketSession {
         {
             self.send_control(now, PacketType::AckOnly, &[], Path::Peer, out);
         }
-        if now >= self.last_sent + self.config.keep_alive {
+        if now >= self.last_sent + self.setup.keep_alive {
             self.send_control(now, PacketType::Ping, &[], Path::Peer, out);
         }
     }
 
-    /// The earliest moment a timer of `poll` is due; none once the session ended.
+    /// The earliest moment a timer of `poll` is due; none once the packet session ended.
     pub(crate) fn next_deadline(&self) -> Option<Instant> {
         match self.state {
             State::Ended(_) => None,
             State::Closing { until, .. } => Some(until),
             State::Open => [
-                Some(self.last_received + self.config.idle_timeout),
+                Some(self.last_received + self.setup.idle_timeout),
                 self.sent.loss_time(),
                 self.sent.probe_deadline(&self.rtt),
                 self.challenge
                     .map(|challenge| challenge.sent_at + self.rtt.probe_timeout()),
                 self.received.ack_deadline(),
-                Some(self.last_sent + self.config.keep_alive),
+                Some(self.last_sent + self.setup.keep_alive),
             ]
             .into_iter()
             .flatten()
@@ -583,7 +585,7 @@ impl PacketSession {
         }
     }
 
-    /// Closes the session with `code` at `now`: its close goes to the peer now, and again in
+    /// Closes the packet session with `code` at `now`: its close goes to the peer now, and again in
     /// answer to each packet of the next 3 probe timeouts.
     pub(crate) fn close(&mut self, now: Instant, code: AppCode, out: &mut Vec<Transmit>) {
         if !matches!(self.state, State::Open) {
@@ -603,12 +605,13 @@ impl PacketSession {
         );
     }
 
-    /// The peer's stateless reset ended the session: its endpoint holds it no more.
+    /// The peer's stateless reset ended the packet session: its endpoint holds it no more.
     pub(crate) const fn reset(&mut self) {
         self.state = State::Ended(UnlinkReason::Reset);
     }
 
-    /// Sends a `Ping` at `now`, as each end's first packet tells its peer that the session is open.
+    /// Sends a `Ping` at `now`, as each end's first packet tells its peer that the packet session
+    /// is open.
     pub(crate) fn ping(&mut self, now: Instant, out: &mut Vec<Transmit>) {
         self.send_control(now, PacketType::Ping, &[], Path::Peer, out);
     }
@@ -639,17 +642,17 @@ pub(crate) mod internals {
     use crate::header::PacketType;
     use crate::packet_session::PacketSession;
 
-    /// The packets of its own that a session sent, which a bench reads: each accumulates over the
-    /// session's life.
+    /// The packets of its own that a packet session sent, which a bench reads: each accumulates
+    /// over the packet session's life.
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-    pub struct SessionCounts {
+    pub struct PacketSessionCounts {
         /// `Ping`s: the first packet, the keep-alives and the probes.
         pub pings: u64,
         /// Packets that carry only an ACK.
         pub ack_only: u64,
     }
 
-    impl SessionCounts {
+    impl PacketSessionCounts {
         pub(crate) const fn count(&mut self, packet_type: PacketType) {
             match packet_type {
                 PacketType::Ping => self.pings += 1,
@@ -663,7 +666,7 @@ pub(crate) mod internals {
     }
 
     impl PacketSession {
-        pub(crate) const fn counts(&self) -> SessionCounts {
+        pub(crate) const fn counts(&self) -> PacketSessionCounts {
             self.counts
         }
     }

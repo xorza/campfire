@@ -1,17 +1,16 @@
-use crate::interpolation_sample_context::InterpolationSampleContext;
+use crate::interpolation_sample_cx::InterpolationSampleCx;
 use bevy_ecs::component::Component;
 use core::any::Any;
 use core::fmt;
 use core::marker::PhantomData;
 use std::sync::Arc;
 
-/// Function used to interpolate from one component state (`start`) to another (`other`):
-/// `t` goes from 0.0 (`start`) to 1.0 (`other`).
+/// An interpolation from `start` at `t` 0.0 to `other` at 1.0.
 pub type LerpFn<C> = fn(start: &C, other: &C, t: f32) -> C;
 
 /// The interpolation of a component rule, as the rule stores it.
 pub(crate) type ComponentInterpolation<C> =
-    dyn Fn(&C, &C, InterpolationSampleContext) -> C + Send + Sync;
+    dyn Fn(&C, &C, InterpolationSampleCx) -> C + Send + Sync;
 
 /// Interpolation function stored by a rule: a component's, which reads each endpoint as `&C`, or
 /// a bundle's, which reads it as a tuple of references to the members. A fn of a fraction alone
@@ -60,8 +59,8 @@ impl<S> fmt::Debug for InterpolationFn<S> {
 
 impl<C: Component> InterpolationFn<C> {
     /// Applies the interpolation function using the provided context.
-    pub fn interpolate(&self, start: &C, other: &C, context: InterpolationSampleContext) -> C {
-        self.component()(start, other, context)
+    pub fn interpolate(&self, start: &C, other: &C, cx: InterpolationSampleCx) -> C {
+        self.component()(start, other, cx)
     }
 
     /// The fn of a component rule, which its system takes once for each run.

@@ -1,4 +1,5 @@
-//! Handles client-side prediction
+//! Client-side prediction: the predicted history of each component, the rollback from a confirmed
+//! tick whose state differs, and the correction that eases the visual error.
 
 #![expect(
     clippy::type_complexity,
@@ -30,7 +31,6 @@ mod prediction_despawned;
 mod prediction_diagnostics_plugin;
 mod prediction_gate;
 mod prediction_history;
-mod prediction_manager;
 mod prediction_marker_plugin;
 mod prediction_mode;
 mod prediction_plugin;
@@ -39,21 +39,22 @@ mod prediction_registration;
 mod prediction_registration_ext;
 mod prediction_registry;
 mod prediction_registry_plugin;
+mod prediction_setup;
 mod prediction_systems;
 mod previous_visual;
 mod rollback_check_stage;
 mod rollback_check_state;
-mod rollback_config;
 mod rollback_mode;
 mod rollback_plugin;
 mod rollback_scan;
+mod rollback_setup;
 mod rollback_systems;
 mod switch_blend;
 mod switch_direction;
 mod tick_period_history;
 mod timeline_switch;
-mod timeline_switch_config;
 mod timeline_switch_plugin;
+mod timeline_switch_setup;
 mod visual_correction;
 
 pub use crate::correction_ease::CorrectionEase;
@@ -69,7 +70,6 @@ pub use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
 pub use crate::prediction_despawned::PredictionDespawned;
 pub use crate::prediction_diagnostics_plugin::PredictionDiagnosticsPlugin;
 pub use crate::prediction_history::{Iter, PredictionHistory};
-pub use crate::prediction_manager::PredictionManager;
 pub use crate::prediction_marker_plugin::PredictionMarkerPlugin;
 pub use crate::prediction_mode::PredictionMode;
 pub use crate::prediction_plugins::PredictionPlugins;
@@ -77,18 +77,19 @@ pub use crate::prediction_registration_ext::LocalRollbackMode;
 pub use crate::prediction_registration_ext::PredictionRegistrationExt;
 pub use crate::prediction_registry::PredictionRegistry;
 pub use crate::prediction_registry_plugin::PredictionRegistryPlugin;
+pub use crate::prediction_setup::PredictionSetup;
 pub use crate::prediction_systems::PredictionSystems;
 pub use crate::previous_visual::PreviousVisual;
 pub use crate::rollback_check_state::RollbackCheckState;
-pub use crate::rollback_config::RollbackConfig;
 pub use crate::rollback_mode::RollbackMode;
 pub use crate::rollback_plugin::RollbackPlugin;
+pub use crate::rollback_setup::RollbackSetup;
 pub use crate::rollback_systems::RollbackSystems;
 pub use crate::switch_blend::SwitchBlend;
 pub use crate::switch_direction::SwitchDirection;
 pub use crate::timeline_switch::TimelineSwitch;
-pub use crate::timeline_switch_config::TimelineSwitchConfig;
-pub use crate::visual_correction::{VisualCorrection, VisualError};
+pub use crate::timeline_switch_setup::TimelineSwitchSetup;
+pub use crate::visual_correction::{VisualCorrection, VisualOffset};
 
 /// What the tests and benches of the layers above share: this layer's stack, test protocol,
 /// fixtures and measurements.

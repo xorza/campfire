@@ -16,7 +16,7 @@ use rustls::{DigitallySignedStruct, SignatureScheme};
 use std::sync::Arc;
 use zeroize::Zeroizing;
 
-use crate::admission_config::AdmissionConfig;
+use crate::admission_setup::AdmissionSetup;
 use crate::certificate_chain::CertificateChain;
 use crate::certificate_error::CertificateError;
 use crate::handshake_packet::HandshakePacket;
@@ -53,15 +53,15 @@ fn pinned() -> ServerTrust {
     ServerTrust::pinned(identity().server_key().unwrap())
 }
 
-fn roomy() -> AdmissionConfig {
-    AdmissionConfig::new(NonZeroU32::new(8).unwrap(), Duration::from_secs(1))
+fn roomy() -> AdmissionSetup {
+    AdmissionSetup::new(NonZeroU32::new(8).unwrap(), Duration::from_secs(1))
 }
 
 fn at(millis: u64) -> Instant {
     Instant::from_elapsed(Duration::from_millis(millis))
 }
 
-/// What a handshake packet is, by its first byte; a session's datagram has no type.
+/// What a handshake packet is, by its first byte; a packet session's datagram has no type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Initial,
@@ -69,12 +69,12 @@ enum Kind {
     Handshake,
     Refuse,
     Alert,
-    Session,
+    PacketSession,
 }
 
 fn kind(datagram: &[u8]) -> Kind {
     match datagram[0] {
-        byte if byte & 0x80 == 0 => Kind::Session,
+        byte if byte & 0x80 == 0 => Kind::PacketSession,
         byte => [
             Kind::Initial,
             Kind::Retry,
@@ -103,7 +103,7 @@ struct Exchange {
 }
 
 impl Exchange {
-    fn new(trust: &ServerTrust, identity: &ServerIdentity, admission: AdmissionConfig) -> Self {
+    fn new(trust: &ServerTrust, identity: &ServerIdentity, admission: AdmissionSetup) -> Self {
         Self::with_client(
             ClientSide::new(
                 trust.tls_config(ALPN),
@@ -119,7 +119,7 @@ impl Exchange {
     fn with_client(
         client: ClientSide,
         identity: &ServerIdentity,
-        admission: AdmissionConfig,
+        admission: AdmissionSetup,
     ) -> Self {
         let mut server = ServerSide::new(
             identity.tls_config(ALPN),
@@ -203,12 +203,12 @@ impl Exchange {
     }
 }
 
-/// A client's first handshake takes a Retry, then its `Initial` again with the Retry's token;
-/// the server's flight is its `ServerHello` and one sealed packet; the client's end is one more.
-/// Both ends then hold a sealed session: the client starts its datagrams with the server's ID and
+/// A client's first handshake takes a Retry, then its `Initial` again with the Retry's token; the
+/// server's flight is its `ServerHello` and one sealed packet; the client's end is one more. Both
+/// ends then hold a sealed packet session: the client starts its datagrams with the server's ID and
 /// knows the reset token of it, the server routes by that ID, and both read one binding.
 #[test]
-fn a_first_handshake_takes_a_retry_then_seals_a_session_both_ends_bind() {
+fn a_first_handshake_takes_a_retry_then_seals_a_packet_session_both_ends_bind() {
     let mut exchange = Exchange::new(&pinned(), &identity(), roomy());
     exchange.connect(at(0));
     let [client, server] = exchange.run(at(0));
@@ -220,10 +220,10 @@ fn a_first_handshake_takes_a_retry_then_seals_a_session_both_ends_bind() {
         ]
     );
     let [client] = &*client else {
-        panic!("the client holds one session: {client:?}");
+        panic!("the client holds one packet session: {client:?}");
     };
     let [server] = &*server else {
-        panic!("the server holds one session: {server:?}");
+        panic!("the server holds one packet session: {server:?}");
     };
     let id = server.route.unwrap();
     assert_eq!(client.prefix, Some(id));
@@ -271,7 +271,7 @@ fn a_token_of_the_last_handshake_skips_the_retry_once() {
 }
 
 /// A client that pins another key refuses the server with `access_denied`: it fails as a wrong
-/// server key, its alert drops the server's handshake, and neither holds a session.
+/// server key, its alert drops the server's handshake, and neither holds a packet session.
 #[test]
 fn a_wrong_pin_refuses_the_server_by_access_denied() {
     let other = ServerIdentity::raw_key(ServerSecret::new(Zeroizing::new([8; 32])));
@@ -341,12 +341,12 @@ fn a_server_that_does_not_accept_refuses() {
     assert_eq!(exchange.client_out.failed, Some(UnlinkReason::Refused));
 }
 
-/// An address that holds as many live sessions as its admission lets is refused another, after
-/// its Retry and before its handshake costs a signature; once the session left, it takes one
-/// again. The bucket refills in 1 ms, so only the live session refuses.
+/// An address that holds as many live packet sessions as its admission lets is refused another,
+/// after its Retry and before its handshake costs a signature; once the packet session left, it
+/// takes one again. The bucket refills in 1 ms, so only the live packet session refuses.
 #[test]
 fn an_address_past_its_admission_is_refused() {
-    let one = AdmissionConfig::new(NonZeroU32::MIN, Duration::from_millis(1));
+    let one = AdmissionSetup::new(NonZeroU32::MIN, Duration::from_millis(1));
     let mut exchange = Exchange::new(&pinned(), &identity(), one);
     exchange.connect(at(0));
     let [_, server] = exchange.run(at(0));
@@ -368,7 +368,7 @@ fn an_address_past_its_admission_is_refused() {
     second.run(at(10));
     assert_eq!(second.sent[1], [Kind::Retry, Kind::Refuse]);
     assert_eq!(second.client_out.failed, Some(UnlinkReason::Refused));
-    // The first session left: the address takes one again.
+    // The first packet session left: the address takes one again.
     second.server.ended(server[0].route);
     second.client_out.failed = None;
     second.sent = [Vec::new(), Vec::new()];
@@ -377,8 +377,8 @@ fn an_address_past_its_admission_is_refused() {
     assert_eq!(client.len(), 1);
 }
 
-/// A datagram whose connection ID no session holds gets a stateless reset of that ID's token, a
-/// byte shorter and a session's first bit; one of 21 bytes or less gets none.
+/// A datagram whose connection ID no packet session holds gets a stateless reset of that ID's
+/// token, a byte shorter and a packet session's first bit; one of 21 bytes or less gets none.
 #[test]
 fn an_unknown_connection_id_gets_a_reset_of_its_token() {
     let mut exchange = Exchange::new(&pinned(), &identity(), roomy());
@@ -412,7 +412,7 @@ fn an_unknown_connection_id_gets_a_reset_of_its_token() {
 }
 
 /// A lost `Initial` goes again at the handshake's timer, 999 ms, and a lost end of the client's
-/// goes again when the server sends its flight again at its own; the session then opens.
+/// goes again when the server sends its flight again at its own; the packet session then opens.
 #[test]
 fn lost_handshake_packets_go_again_at_their_timers() {
     let mut exchange = Exchange::new(&pinned(), &identity(), roomy());
@@ -535,7 +535,7 @@ fn an_initial_under_1200_bytes_gets_no_answer() {
 /// from an address of its own, which no token names, so the server answers it with no more bytes
 /// than it received.
 #[test]
-fn mutated_handshake_datagrams_are_refused_or_read() {
+fn a_mutated_handshake_datagram_is_refused_or_read() {
     use campfire_net_bytes::internals::Mutations;
 
     let mut done = Exchange::new(&pinned(), &identity(), roomy());
@@ -592,8 +592,8 @@ fn mutated_handshake_datagrams_are_refused_or_read() {
     }
 }
 
-/// The session's ChaCha20-Poly1305 seal of a handshake opens what it sealed, and no mutation that
-/// changed a byte of the header it authenticates, of the payload or of the tag.
+/// The packet session's ChaCha20-Poly1305 seal of a handshake opens what it sealed, and no mutation
+/// that changed a byte of the header it authenticates, of the payload or of the tag.
 #[test]
 fn the_seal_refuses_every_changed_datagram() {
     use campfire_net_bytes::internals::Mutations;
@@ -605,7 +605,7 @@ fn the_seal_refuses_every_changed_datagram() {
     let (Protection::Sealed(sealer), Protection::Sealed(opener)) =
         (client.remove(0).protection, server.remove(0).protection)
     else {
-        panic!("both ends hold a sealed session");
+        panic!("both ends hold a sealed packet session");
     };
     let header = [0x08, 0x00, 0x05];
     let number = PacketNumber(5);

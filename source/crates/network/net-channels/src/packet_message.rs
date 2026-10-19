@@ -3,17 +3,17 @@ use crate::send_message_key::SendMessageKey;
 use campfire_net_core::NetId;
 
 /// A message that a packet carries, as the sender records it until the packet goes to the
-/// session.
+/// packet session.
 ///
-/// The commit handle updates channel-owned pending data only after the packet goes to the
-/// session, and the byte count feeds the channel's post-admission bench counter.
+/// The commit handle updates channel-held pending data only after the packet goes to the
+/// packet session, and the byte count feeds the channel's post-admission bench counter.
 #[derive(Debug, PartialEq)]
 pub(crate) struct PacketMessage {
-    /// Channel-owned pending state to update after this packet goes to the session.
+    /// Channel-held pending state to update after this packet goes to the packet session.
     pub(crate) commit: SendCommit,
     /// Payload bytes of the message, without its id and length framing (for fragments, only the
     /// fragment's bytes)
-    pub(crate) num_bytes: BenchCounter,
+    pub(crate) len: BenchCounter,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

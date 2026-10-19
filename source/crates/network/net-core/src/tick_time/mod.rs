@@ -20,7 +20,8 @@ use fixed::traits::ToFixed;
 use fixed::types::I32F32;
 use fixed::types::U32F32;
 
-/// A position on a timeline: a whole tick and the fraction of the next one.
+/// A position on a timeline: a whole tick and the fraction of the next one (13-net-stack/time.md,
+/// Conversions are exact).
 ///
 /// Arithmetic saturates at the `U32F32` range, as [`NetTick`]'s does at its own.
 #[derive(Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -79,10 +80,10 @@ impl TickInstant {
     }
 }
 
-impl TryFrom<TickDelta> for TickInstant {
+impl TryFrom<TickSpan> for TickInstant {
     type Error = TickRangeError;
 
-    fn try_from(value: TickDelta) -> Result<Self, Self::Error> {
+    fn try_from(value: TickSpan) -> Result<Self, Self::Error> {
         value
             .value
             .checked_to_fixed()
@@ -99,20 +100,20 @@ impl From<NetTick> for TickInstant {
     }
 }
 
-impl Add<TickDelta> for TickInstant {
+impl Add<TickSpan> for TickInstant {
     type Output = Self;
 
-    fn add(self, rhs: TickDelta) -> Self::Output {
+    fn add(self, rhs: TickSpan) -> Self::Output {
         Self {
             value: self.value.saturating_add_signed(rhs.value),
         }
     }
 }
 
-impl Sub<TickDelta> for TickInstant {
+impl Sub<TickSpan> for TickInstant {
     type Output = Self;
 
-    fn sub(self, rhs: TickDelta) -> Self::Output {
+    fn sub(self, rhs: TickSpan) -> Self::Output {
         Self {
             value: self.value.saturating_sub_signed(rhs.value),
         }
@@ -120,12 +121,12 @@ impl Sub<TickDelta> for TickInstant {
 }
 
 impl Sub for TickInstant {
-    type Output = TickDelta;
+    type Output = TickSpan;
 
     fn sub(self, rhs: Self) -> Self::Output {
         let bits = i128::from(self.value.to_bits()) - i128::from(rhs.value.to_bits());
         let bits = i64::try_from(bits).unwrap_or(if bits < 0 { i64::MIN } else { i64::MAX });
-        TickDelta::new(I32F32::from_bits(bits))
+        TickSpan::new(I32F32::from_bits(bits))
     }
 }
 
@@ -135,19 +136,19 @@ impl Sub for TickInstant {
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "reflect", derive(Reflect))]
 #[cfg_attr(feature = "reflect", reflect(opaque))]
-pub struct TickDelta {
+pub struct TickSpan {
     /// This is the combined representation of a signed 32-bit tick diff
     /// plus an unsigned 32-bit overstep (range 0 to ~0.99998, always positive).
     pub(crate) value: I32F32,
 }
 
-impl Debug for TickDelta {
+impl Debug for TickSpan {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{:.6}", self.value)
     }
 }
 
-impl TryFrom<NetTick> for TickDelta {
+impl TryFrom<NetTick> for TickSpan {
     type Error = TickRangeError;
 
     fn try_from(value: NetTick) -> Result<Self, Self::Error> {
@@ -157,7 +158,7 @@ impl TryFrom<NetTick> for TickDelta {
     }
 }
 
-impl From<i32> for TickDelta {
+impl From<i32> for TickSpan {
     fn from(value: i32) -> Self {
         Self {
             value: value.to_fixed(),
@@ -165,10 +166,10 @@ impl From<i32> for TickDelta {
     }
 }
 
-impl TryFrom<PositiveTickDelta> for TickDelta {
+impl TryFrom<PositiveTickSpan> for TickSpan {
     type Error = TickRangeError;
 
-    fn try_from(value: PositiveTickDelta) -> Result<Self, Self::Error> {
+    fn try_from(value: PositiveTickSpan) -> Result<Self, Self::Error> {
         value
             .value
             .checked_to_fixed()
@@ -177,7 +178,7 @@ impl TryFrom<PositiveTickDelta> for TickDelta {
     }
 }
 
-impl TryFrom<TickInstant> for TickDelta {
+impl TryFrom<TickInstant> for TickSpan {
     type Error = TickRangeError;
 
     fn try_from(value: TickInstant) -> Result<Self, Self::Error> {
@@ -189,7 +190,7 @@ impl TryFrom<TickInstant> for TickDelta {
     }
 }
 
-impl TickDelta {
+impl TickSpan {
     pub const fn new(value: I32F32) -> Self {
         Self { value }
     }
@@ -231,20 +232,19 @@ impl TickDelta {
     }
 
     /// The size of the delta: exact, as `I32F32`'s smallest value is `-2^31`.
-    pub const fn unsigned_abs(self) -> PositiveTickDelta {
-        PositiveTickDelta {
+    pub const fn unsigned_abs(self) -> PositiveTickSpan {
+        PositiveTickSpan {
             value: self.value.unsigned_abs(),
         }
     }
 
-    /// Returns the number of tick difference (positive or negative) that this TickDelta represents,
-    /// rounding to the closest integer value
+    /// The span in whole ticks, rounded to the nearest.
     pub fn to_i32(&self) -> i32 {
         self.value.round().to_num()
     }
 }
 
-impl Neg for TickDelta {
+impl Neg for TickSpan {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -254,7 +254,7 @@ impl Neg for TickDelta {
     }
 }
 
-impl Add for TickDelta {
+impl Add for TickSpan {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -264,7 +264,7 @@ impl Add for TickDelta {
     }
 }
 
-impl Sub for TickDelta {
+impl Sub for TickSpan {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -274,15 +274,15 @@ impl Sub for TickDelta {
     }
 }
 
-/// A non-negative [`TickDelta`], as an interval travels on the wire.
+/// A non-negative [`TickSpan`], as an interval travels on the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[cfg_attr(feature = "reflect", derive(Reflect))]
 #[cfg_attr(feature = "reflect", reflect(opaque))]
-pub struct PositiveTickDelta {
+pub struct PositiveTickSpan {
     pub value: U32F32,
 }
 
-impl PositiveTickDelta {
+impl PositiveTickSpan {
     pub const fn lit(src: &str) -> Self {
         Self {
             value: U32F32::lit(src),
@@ -309,10 +309,10 @@ impl PositiveTickDelta {
     }
 }
 
-impl TryFrom<TickDelta> for PositiveTickDelta {
+impl TryFrom<TickSpan> for PositiveTickSpan {
     type Error = TickRangeError;
 
-    fn try_from(value: TickDelta) -> Result<Self, Self::Error> {
+    fn try_from(value: TickSpan) -> Result<Self, Self::Error> {
         value
             .value
             .checked_to_fixed()
@@ -321,7 +321,7 @@ impl TryFrom<TickDelta> for PositiveTickDelta {
     }
 }
 
-impl ToBytes for PositiveTickDelta {
+impl ToBytes for PositiveTickSpan {
     fn bytes_len(&self) -> usize {
         4 + self.overstep().bytes_len()
     }

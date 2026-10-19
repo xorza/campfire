@@ -1,9 +1,9 @@
 //! The network stack's header codec: a writer that reuses its chunks, a reader, varints, and
 //! `ToBytes` for the stack's own headers, whose writes cannot fail.
 
-mod arena;
 #[cfg(feature = "internals")]
 pub mod bench;
+mod byte_arena;
 #[cfg(feature = "internals")]
 mod mutations;
 mod reader;
@@ -13,7 +13,7 @@ mod var_int;
 mod wrapping_id;
 mod writer;
 
-pub use crate::arena::Arena;
+pub use crate::byte_arena::ByteArena;
 pub use crate::reader::ReadInteger;
 pub use crate::reader::ReadVarInt;
 pub use crate::reader::Reader;

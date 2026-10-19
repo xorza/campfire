@@ -1,16 +1,17 @@
-use crate::prediction_manager::PredictionManager;
+use crate::prediction_setup::PredictionSetup;
 use bevy_ecs::prelude::*;
 use bevy_time::{Fixed, Time};
 use campfire_net_core::{NetTick, TickBuffer};
-use campfire_net_sync::InputTimelineConfig;
+use campfire_net_sync::InputTimelineSetup;
 use campfire_net_timeline::{LocalTimeline, LocalTimelineShift};
 use core::time::Duration;
 
-/// The period each local tick ran with, which a rollback replays it with: a rate change inside
-/// the rollback window leaves the ticks before it at their own period.
+/// The period each local tick ran with, which a rollback replays it with: a rate change inside the
+/// rollback window leaves the ticks before it at their own period (13-net-stack/time.md, A rollback
+/// replays each tick at the period it ran with).
 ///
 /// Only the ticks where the period changed hold an entry, and a tick before every entry did not
-/// run. Without a [`PredictionManager`] no rollback window exists, so nothing is forgotten.
+/// run. Without a [`PredictionSetup`] no rollback window exists, so nothing is forgotten.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct TickPeriodHistory {
     periods: TickBuffer<Duration>,
@@ -55,14 +56,14 @@ impl TickPeriodHistory {
     pub(crate) fn record_tick(
         timeline: Res<'_, LocalTimeline>,
         time: Res<'_, Time<Fixed>>,
-        manager: Option<Res<'_, PredictionManager>>,
-        input_config: Option<Res<'_, InputTimelineConfig>>,
+        setup: Option<Res<'_, PredictionSetup>>,
+        input_setup: Option<Res<'_, InputTimelineSetup>>,
         mut history: ResMut<'_, Self>,
     ) {
         let tick = timeline.tick();
         history.record(tick, time.delta());
-        if let (Some(manager), Some(input_config)) = (manager, input_config) {
-            history.forget_before(manager.oldest_rollback_tick(tick, &input_config));
+        if let (Some(setup), Some(input_setup)) = (setup, input_setup) {
+            history.forget_before(setup.oldest_rollback_tick(tick, &input_setup));
         }
     }
 

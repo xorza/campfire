@@ -1,5 +1,5 @@
-use crate::fragment_data::FragmentData;
-use crate::single_data::SingleData;
+use crate::fragment_body::FragmentBody;
+use crate::single_body::SingleBody;
 use crate::tick_decoder::TickDecoder;
 use bevy_platform::collections::HashMap;
 use bytes::Bytes;
@@ -29,15 +29,15 @@ impl Packet {
         if self.kind == PacketKind::DataFragment {
             // read the fragment data
             let channel_id = NetId::from_bytes(&mut cursor)?;
-            let fragment_data = FragmentData::from_bytes(&mut cursor)?;
-            res.entry(channel_id).or_default().push(fragment_data.bytes);
+            let fragment_body = FragmentBody::from_bytes(&mut cursor)?;
+            res.entry(channel_id).or_default().push(fragment_body.bytes);
         }
         while cursor.has_remaining() {
             let channel_id = NetId::from_bytes(&mut cursor)?;
-            let num_messages = cursor.read_u8().map_err(SerializationError::from)?;
-            for _ in 0..num_messages {
-                let single_data = SingleData::read(&mut cursor, has_id(channel_id))?;
-                res.entry(channel_id).or_default().push(single_data.bytes);
+            let messages = cursor.read_u8().map_err(SerializationError::from)?;
+            for _ in 0..messages {
+                let single_body = SingleBody::read(&mut cursor, has_id(channel_id))?;
+                res.entry(channel_id).or_default().push(single_body.bytes);
             }
         }
         Ok(res)
@@ -45,22 +45,18 @@ impl Packet {
 }
 
 #[test]
-fn fragment_size_uses_its_own_encoded_length_and_is_maximal() {
-    assert_eq!(
-        fragment_size_for_max_payload(MIN_FRAGMENT_PAYLOAD - 1),
-        None
-    );
-    assert_eq!(fragment_size_for_max_payload(MIN_FRAGMENT_PAYLOAD), Some(1));
+fn the_fragment_len_counts_its_own_encoding_and_is_the_largest() {
+    assert_eq!(fragment_len_for_max_payload(MIN_FRAGMENT_PAYLOAD - 1), None);
+    assert_eq!(fragment_len_for_max_payload(MIN_FRAGMENT_PAYLOAD), Some(1));
 
-    let fragment_size = fragment_size_for_max_payload(DEFAULT_MAX_PAYLOAD).unwrap();
-    let packet_size = FIXED_FRAGMENT_PACKET_BYTES
-        + VarInt::new(fragment_size as u64).encoded_len()
-        + fragment_size;
-    assert!(packet_size <= DEFAULT_MAX_PAYLOAD);
+    let fragment_len = fragment_len_for_max_payload(DEFAULT_MAX_PAYLOAD).unwrap();
+    let packet_len =
+        FIXED_FRAGMENT_PACKET_BYTES + VarInt::new(fragment_len as u64).encoded_len() + fragment_len;
+    assert!(packet_len <= DEFAULT_MAX_PAYLOAD);
 
-    let next_fragment_size = fragment_size + 1;
-    let next_packet_size = FIXED_FRAGMENT_PACKET_BYTES
-        + VarInt::new(next_fragment_size as u64).encoded_len()
-        + next_fragment_size;
-    assert!(next_packet_size > DEFAULT_MAX_PAYLOAD);
+    let next_fragment_len = fragment_len + 1;
+    let next_packet_len = FIXED_FRAGMENT_PACKET_BYTES
+        + VarInt::new(next_fragment_len as u64).encoded_len()
+        + next_fragment_len;
+    assert!(next_packet_len > DEFAULT_MAX_PAYLOAD);
 }

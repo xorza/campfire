@@ -1,18 +1,16 @@
-use crate::endpoint_side::EndpointSide;
-use crate::message_kind::MessageKind;
-use crate::message_manager::{Endpoint, MessageManager};
+use crate::endpoint_user::EndpointUser;
+use crate::link_messages::{EndpointList, LinkMessages, ListedEndpoint};
+use crate::message_type_id::MessageTypeId;
 use crate::send_queue::Priority;
 use crate::send_queue::{QueuedSender, SendQueue};
-use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
-use bevy_ecs::world::DeferredWorld;
 use campfire_net_channels::Channel;
-use campfire_net_channels::ChannelKind;
+use campfire_net_channels::ChannelTypeId;
 
-/// Component used to send triggers of type `M` remotely.
+/// The events of type `M` a link sends to its peer to trigger.
 #[derive(Debug, Component)]
-#[require(MessageManager)]
-#[component(on_add = EventSender::<M>::on_add_hook, on_remove = EventSender::<M>::on_remove_hook)]
+#[require(LinkMessages)]
+#[component(on_add = LinkMessages::list::<EventSender<M>>, on_remove = LinkMessages::unlist::<EventSender<M>>)]
 pub struct EventSender<M: Event> {
     queue: SendQueue<M>,
 }
@@ -33,31 +31,21 @@ impl<M: Event> EventSender<M> {
 
     /// Buffers an event with an explicit bandwidth priority.
     pub fn trigger_with_priority<C: Channel>(&mut self, trigger: M, priority: Priority) {
-        self.queue.push(trigger, ChannelKind::of::<C>(), priority);
-    }
-
-    fn on_add_hook(world: DeferredWorld<'_>, context: HookContext) {
-        MessageManager::on_endpoint_add(
-            world,
-            context,
-            Endpoint::Send(EndpointSide::Link),
-            MessageKind::of::<M>(),
-        );
-    }
-
-    fn on_remove_hook(world: DeferredWorld<'_>, context: HookContext) {
-        MessageManager::on_endpoint_remove(
-            world,
-            context,
-            Endpoint::Send(EndpointSide::Link),
-            MessageKind::of::<M>(),
-        );
+        self.queue.push(trigger, ChannelTypeId::of::<C>(), priority);
     }
 }
 
 impl<M: Event> QueuedSender<M> for EventSender<M> {
     fn queue_mut(&mut self) -> &mut SendQueue<M> {
         &mut self.queue
+    }
+}
+
+impl<M: Event> ListedEndpoint for EventSender<M> {
+    const LIST: EndpointList = EndpointList::Send(EndpointUser::Link);
+
+    fn message_type_id() -> MessageTypeId {
+        MessageTypeId::of::<M>()
     }
 }
 

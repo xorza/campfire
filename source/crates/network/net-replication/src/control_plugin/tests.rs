@@ -1,7 +1,7 @@
 use super::*;
+use crate::controlled_lifetime::ControlledLifetime;
 use crate::controlled_send::ControlledSend;
 use crate::fixtures::replication_stack::ReplicationStack;
-use crate::lifetime::Lifetime;
 use crate::replication_target::Replicate;
 use crate::server_send_plugin::ServerSendPlugin;
 use bevy::prelude::*;
@@ -10,13 +10,13 @@ use campfire_net_connection::{Connect, NetworkTarget};
 use campfire_net_despawn::DespawnReplicated;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::{Init, StepperConfig};
+use campfire_net_stepper::{Init, StepperSetup};
 
 /// When a client disconnects, entities it controlled (via ControlledBy with SessionBased lifetime)
 /// should be despawned on the server.
 #[test]
-fn a_session_controlled_entity_is_despawned_when_its_client_disconnects() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::with_raw_clients(2));
+fn a_link_lifetime_entity_is_despawned_when_its_client_disconnects() {
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let client_of_1 = stepper.client_of(1).id();
     let server_entity = stepper
@@ -26,7 +26,7 @@ fn a_session_controlled_entity_is_despawned_when_its_client_disconnects() {
             Replicate::to_clients(NetworkTarget::All),
             ControlledBy {
                 link: client_of_1,
-                lifetime: Lifetime::default(),
+                lifetime: ControlledLifetime::default(),
             },
         ))
         .id();
@@ -58,11 +58,11 @@ fn a_session_controlled_entity_is_despawned_when_its_client_disconnects() {
     );
 }
 
-/// `Lifetime::Independent` keeps a controlled entity alive on the sender when its controller
-/// disconnects.
+/// `ControlledLifetime::Independent` keeps a controlled entity alive on the sender when its
+/// controller disconnects.
 #[test]
 fn an_independent_controlled_entity_survives_its_client_disconnect() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let client_of_1 = stepper.client_of(1).id();
     let server_entity = stepper
@@ -72,7 +72,7 @@ fn an_independent_controlled_entity_survives_its_client_disconnect() {
             Replicate::to_clients(NetworkTarget::All),
             ControlledBy {
                 link: client_of_1,
-                lifetime: Lifetime::Independent,
+                lifetime: ControlledLifetime::Independent,
             },
         ))
         .id();
@@ -96,7 +96,7 @@ fn an_independent_controlled_entity_survives_its_client_disconnect() {
 /// marker and the host-local receiver marker.
 #[test]
 fn a_host_owned_controlled_by_adds_local_controlled() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::host_server());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::host_server());
 
     let host_client_entity = stepper.host_client_entity();
     let server_entity = stepper
@@ -106,7 +106,7 @@ fn a_host_owned_controlled_by_adds_local_controlled() {
             Replicate::to_clients(NetworkTarget::All),
             ControlledBy {
                 link: host_client_entity,
-                lifetime: Lifetime::default(),
+                lifetime: ControlledLifetime::default(),
             },
         ))
         .id();
@@ -125,7 +125,7 @@ fn a_host_owned_controlled_by_adds_local_controlled() {
 
 #[test]
 fn a_remote_owned_controlled_by_adds_no_local_controlled_on_a_host_server() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::host_server());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::host_server());
 
     let remote_client_entity = stepper.client_of_entity(0);
     let server_entity = stepper
@@ -135,7 +135,7 @@ fn a_remote_owned_controlled_by_adds_no_local_controlled_on_a_host_server() {
             Replicate::to_clients(NetworkTarget::All),
             ControlledBy {
                 link: remote_client_entity,
-                lifetime: Lifetime::default(),
+                lifetime: ControlledLifetime::default(),
             },
         ))
         .id();
@@ -164,7 +164,7 @@ fn controlled_backfills_when_a_client_becomes_the_host_client() {
             Replicate::to_clients(NetworkTarget::All),
             ControlledBy {
                 link: host_client_entity,
-                lifetime: Lifetime::default(),
+                lifetime: ControlledLifetime::default(),
             },
         ))
         .id();
@@ -201,9 +201,9 @@ fn controlled_backfills_when_a_client_becomes_the_host_client() {
 }
 
 fn host_only_stepper_before_host_connect() -> Stepper<ReplicationStack> {
-    let mut config = StepperConfig::with_clients(vec![ClientKind::Host]);
-    config.init = Init::Deferred;
-    let mut stepper = Stepper::new(ReplicationStack, config);
+    let mut setup = StepperSetup::with_clients(vec![ClientKind::Host]);
+    setup.init = Init::Deferred;
+    let mut stepper = Stepper::new(ReplicationStack, setup);
     stepper.start_server();
     stepper
 }
@@ -217,25 +217,25 @@ fn connect_host(stepper: &mut Stepper<ReplicationStack>) -> Entity {
     host_client_entity
 }
 
-/// A link that goes without a disconnect, as a despawned link does, takes its session-based
-/// entities with it and leaves its independent ones.
+/// A link that goes without a disconnect, as a despawned link does, takes its entities of the
+/// `Link` lifetime with it and leaves its independent ones.
 #[test]
-fn a_link_despawn_ends_its_session() {
+fn a_link_despawn_takes_its_link_lifetime_entities() {
     let mut app = App::new();
-    app.add_observer(ControlledBy::end_link_session);
+    app.add_observer(ControlledBy::end_with_link);
     let link = app.world_mut().spawn_empty().id();
-    let [session, independent] = [Lifetime::SessionBased, Lifetime::Independent]
+    let [packet_session, independent] = [ControlledLifetime::Link, ControlledLifetime::Independent]
         .map(|lifetime| app.world_mut().spawn(ControlledBy { link, lifetime }).id());
 
     DespawnReplicated.apply(app.world_mut().entity_mut(link));
     app.world_mut().flush();
 
-    assert!(app.world().get_entity(session).is_err());
+    assert!(app.world().get_entity(packet_session).is_err());
     assert!(app.world().get_entity(independent).is_ok());
 }
 
-/// On a host server, an entity is `Controlled` exactly while a host client owns it: a new link
-/// that is remote takes the marker, and the link's end of its host role takes it too.
+/// On a host server, an entity is `Controlled` exactly while a host client holds it: a new link
+/// that is remote takes the marker, and the link's end of its host side takes it too.
 #[test]
 fn controlled_follows_a_host_link() {
     let mut app = App::new();
@@ -249,7 +249,7 @@ fn controlled_follows_a_host_link() {
         .world_mut()
         .spawn(ControlledBy {
             link: host,
-            lifetime: Lifetime::default(),
+            lifetime: ControlledLifetime::default(),
         })
         .id();
     app.world_mut().flush();
@@ -258,14 +258,14 @@ fn controlled_follows_a_host_link() {
 
     app.world_mut().entity_mut(entity).insert(ControlledBy {
         link: remote,
-        lifetime: Lifetime::default(),
+        lifetime: ControlledLifetime::default(),
     });
     app.world_mut().flush();
     assert!(!controlled(&app));
 
     app.world_mut().entity_mut(entity).insert(ControlledBy {
         link: host,
-        lifetime: Lifetime::default(),
+        lifetime: ControlledLifetime::default(),
     });
     app.world_mut().flush();
     assert!(controlled(&app));

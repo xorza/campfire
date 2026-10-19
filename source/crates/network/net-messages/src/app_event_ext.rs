@@ -6,8 +6,8 @@ use crate::message_registry::{
 };
 use crate::remote_event::receive_event_typed;
 use crate::send_queue::SendQueue;
-use crate::serialize_fns::ContextDeserializeFns;
-use crate::serialize_fns::ContextSerializeFns;
+use crate::serialize_fns::CxDeserializeFns;
+use crate::serialize_fns::CxSerializeFns;
 use crate::serialize_fns::SerializeFns;
 use bevy_app::App;
 use bevy_ecs::event::Event;
@@ -73,8 +73,8 @@ fn register_event_with<M: Event>(
                 receive_event_fn: receive_event_typed::<M>,
             },
         },
-        ContextSerializeFns::new(serialize_fns.serialize),
-        ContextDeserializeFns::new(serialize_fns.deserialize),
+        CxSerializeFns::new(serialize_fns.serialize),
+        CxDeserializeFns::new(serialize_fns.deserialize),
     );
     EventRegistration {
         app,

@@ -2,15 +2,15 @@ use bytes::Bytes;
 use core::time::Duration;
 use std::collections::VecDeque;
 
-use crate::compression_config::CompressionConfig;
 use crate::compression_scratch::CompressionScratch;
+use crate::compression_setup::CompressionSetup;
 use crate::fragmented_message::FragmentedMessage;
 use crate::message_id::MessageId;
 use crate::message_ref::MessageRef;
 use crate::queued_message::QueuedMessage;
 use crate::send_candidate::{CandidateRank, CandidateSink};
 use crate::send_message_key::SendMessageKey;
-use crate::single_data::SingleData;
+use crate::single_body::SingleBody;
 
 /// The most message ids a reliable channel has in flight, from its oldest unacked message to its
 /// next id.
@@ -49,7 +49,8 @@ struct PendingQueuedMessage {
     listed: bool,
 }
 
-/// State which differs specifically for reliable channel sends.
+/// State which differs specifically for reliable channel sends (13-net-stack/transport.md, A
+/// reliable message goes again when the packet session finds its packet lost).
 #[derive(Debug)]
 pub(super) struct ReliableSendState {
     delivery: ReliableDelivery,
@@ -107,21 +108,21 @@ impl ReliableSendState {
         &mut self,
         message: Bytes,
         priority: f32,
-        fragment_size: usize,
-        compression: CompressionConfig,
+        fragment_len: usize,
+        compression: CompressionSetup,
         compression_scratch: &mut CompressionScratch,
     ) -> Option<MessageId> {
         // The id is set when the message enters the window.
-        let message = if message.len() > fragment_size {
+        let message = if message.len() > fragment_len {
             QueuedMessage::Fragmented(FragmentedMessage::split(
                 MessageId(0),
                 message,
-                fragment_size,
+                fragment_len,
                 compression,
                 compression_scratch,
             ))
         } else {
-            QueuedMessage::whole(SingleData::new(None, message))
+            QueuedMessage::whole(SingleBody::new(None, message))
         };
         if self.delivery == ReliableDelivery::Newest {
             self.waiting.clear();
@@ -272,7 +273,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::packet::FRAGMENT_SIZE;
+    use crate::packet::FRAGMENT_LEN;
     use crate::send_candidate::SendCandidate;
     use campfire_net_core::NetId;
 
@@ -280,8 +281,8 @@ mod tests {
         state.buffer_send(
             bytes,
             1.0,
-            FRAGMENT_SIZE,
-            CompressionConfig::DISABLED,
+            FRAGMENT_LEN,
+            CompressionSetup::DISABLED,
             &mut CompressionScratch::default(),
         )
     }
@@ -303,7 +304,7 @@ mod tests {
     /// order, at their distance from the oldest unacked one, and the ack of the first leaves the
     /// second at the window's start.
     #[test]
-    fn pending_send_order_and_lookup_survive_message_id_rollover() {
+    fn the_pending_order_and_its_lookup_hold_across_the_wrap_of_the_message_id() {
         let mut state = ReliableSendState::new(ReliableDelivery::Every);
         state.oldest_unacked = MessageId(u16::MAX);
         assert_eq!(
@@ -398,7 +399,7 @@ mod tests {
     #[test]
     fn a_fragmented_message_is_one_candidate_with_its_first_due_fragment() {
         let mut state = ReliableSendState::new(ReliableDelivery::Every);
-        send(&mut state, Bytes::from(vec![0; FRAGMENT_SIZE * 5 / 2]));
+        send(&mut state, Bytes::from(vec![0; FRAGMENT_LEN * 5 / 2]));
         let fragment = |index| SendMessageKey::of_id(MessageId(0), index);
         let candidates = collect(&mut state);
         assert_eq!(candidates.len(), 1);

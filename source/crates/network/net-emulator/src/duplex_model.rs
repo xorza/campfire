@@ -3,7 +3,8 @@ use core::time::Duration;
 use crate::link_model::LinkModel;
 use crate::rate_limit::RateLimit;
 
-/// The models of both directions of a `EmulatedIo` link.
+/// The models of both directions of an `EmulatedIo` link (13-net-stack/testing.md, Presets are
+/// plausible profiles).
 ///
 /// The presets other than [`perfect`](Self::perfect) take the Network Link Conditioner's values as
 /// third parties report them (countingup, NSHipster), downlink as server to client; each queue
@@ -13,11 +14,11 @@ pub struct DuplexModel {
     pub client_to_server: LinkModel,
     pub server_to_client: LinkModel,
     /// The largest packet the link carries each way, in bytes; a larger one is dropped, in every
-    /// phase. `None` carries any size. The session sizes its payloads by it.
+    /// phase. `None` carries any size. The packet session sizes its payloads by it.
     pub mtu: Option<usize>,
     /// The seed each direction's draws follow, indexed by
-    /// [`Direction::index`](campfire_net_core::Direction::index): two runs of one model on the same
-    /// packet sequence condition it identically.
+    /// [`LinkDirection::index`](campfire_net_core::Direction::index): two runs of one model on the
+    /// same packet sequence condition it identically.
     pub seeds: [u64; 2],
 }
 

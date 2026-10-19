@@ -1,7 +1,7 @@
 /// How a channel's messages are sent and received. See more information
 /// [here](https://web.archive.org/web/20250113064633/http://www.jenkinssoftware.com/raknet/manual/reliabilitytypes.html).
 ///
-/// A reliable message goes again each time the session finds its packet lost, until a packet
+/// A reliable message goes again each time the packet session finds its packet lost, until a packet
 /// that carries it is delivered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChannelMode {

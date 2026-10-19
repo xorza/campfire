@@ -4,7 +4,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BinaryHeap};
 use std::net::{IpAddr, Ipv4Addr};
 
-use crate::admission_config::AdmissionConfig;
+use crate::admission_setup::AdmissionSetup;
 
 /// What a server's endpoint admits from each address while it takes connections
 /// (13-net-stack/udp.md, Each address holds a bounded count of connections and handshakes): a
@@ -16,7 +16,7 @@ use crate::admission_config::AdmissionConfig;
 /// keeps that bound for keys an attacker picks, which a hashed map with a fixed hasher does not.
 #[derive(Debug)]
 pub(crate) struct Admission {
-    config: AdmissionConfig,
+    setup: AdmissionSetup,
     /// When the admission started, from which each bucket's time counts.
     start: Instant,
     /// Each address whose bucket is not full, with the time it is full again: nanoseconds since
@@ -64,9 +64,9 @@ impl AddressKey {
 }
 
 impl Admission {
-    pub(crate) const fn new(config: AdmissionConfig, now: Instant) -> Self {
+    pub(crate) const fn new(setup: AdmissionSetup, now: Instant) -> Self {
         Self {
-            config,
+            setup,
             start: now,
             buckets: BTreeMap::new(),
             times: BinaryHeap::new(),
@@ -86,8 +86,8 @@ impl Admission {
         let Some(key) = AddressKey::of(ip) else {
             return true;
         };
-        let per_address = self.config.per_address().get();
-        let share = self.config.refill().as_nanos();
+        let per_address = self.setup.per_address().get();
+        let share = self.setup.refill().as_nanos();
         let now = now.saturating_duration_since(self.start).as_nanos() * u128::from(per_address);
         while let Some(&Reverse((full_at, held))) = self.times.peek()
             && full_at <= now

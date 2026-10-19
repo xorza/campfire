@@ -2,7 +2,7 @@ use campfire_net_packets::{OpenError, Seal, TAG_LEN};
 use campfire_net_payload::PacketNumber;
 use rustls::quic::{Keys, PacketKey};
 
-/// A sealed session's AEAD: the 1-RTT keys of its TLS handshake, ChaCha20-Poly1305 with each
+/// A sealed packet session's AEAD: the 1-RTT keys of its TLS handshake, ChaCha20-Poly1305 with each
 /// packet's nonce from its number (RFC 9001 §5.3).
 pub(crate) struct RustlsSeal {
     local: Box<dyn PacketKey>,
@@ -29,7 +29,7 @@ impl Seal for RustlsSeal {
         let tag = self
             .local
             .encrypt_in_place(number.0, header, payload)
-            .expect("a session sends fewer packets than ChaCha20-Poly1305's limit");
+            .expect("a packet session sends fewer packets than ChaCha20-Poly1305's limit");
         let mut bytes = [0; TAG_LEN];
         bytes.copy_from_slice(tag.as_ref());
         bytes

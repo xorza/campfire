@@ -11,7 +11,7 @@ use campfire_measure::Scale;
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput};
 
 use crate::admission::Admission;
-use crate::admission_config::AdmissionConfig;
+use crate::admission_setup::AdmissionSetup;
 
 /// The handshakes of each case, each iteration's.
 const COUNT: u32 = 4096;
@@ -24,7 +24,7 @@ const PLAYERS: u32 = 64;
 /// many real addresses send them, each admitted and its bucket kept; `rejoins`, from `PLAYERS`
 /// addresses, one each 10 ms, most refused once their buckets run dry.
 pub(crate) fn admission(c: &mut Criterion) {
-    let config = AdmissionConfig::new(NonZeroU32::new(8).unwrap(), Duration::from_secs(60));
+    let setup = AdmissionSetup::new(NonZeroU32::new(8).unwrap(), Duration::from_secs(60));
     let start = Instant::ZERO;
     let address = |nth: u32| {
         let [_, a, b, c] = nth.to_be_bytes();
@@ -42,7 +42,7 @@ pub(crate) fn admission(c: &mut Criterion) {
     for (name, handshakes) in [("flood", &flood), ("rejoins", &rejoins)] {
         group.bench_function(BenchmarkId::from_parameter(name), |b| {
             b.iter_batched_ref(
-                || Admission::new(config, start),
+                || Admission::new(setup, start),
                 |admission| {
                     for &(ip, now) in handshakes {
                         black_box(admission.admit(black_box(ip), now, |_| 0));

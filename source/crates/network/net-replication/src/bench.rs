@@ -8,7 +8,7 @@ use campfire_measure::Kind;
 use campfire_measure::Scale;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 use core::time::Duration;
 use criterion::{BenchmarkId, Criterion};
 use std::time::Instant;
@@ -90,7 +90,7 @@ impl Case {
         for _ in 0..iters {
             let mut stepper = Stepper::new(
                 ReplicationStack,
-                StepperConfig::with_raw_clients(self.clients),
+                StepperSetup::with_plain_clients(self.clients),
             );
             let spawned = match self.change {
                 Change::Insert => 0.0,

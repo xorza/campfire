@@ -1,8 +1,8 @@
 use crate::component_codec::ComponentCodec;
-use crate::component_kind::ComponentKind;
 use crate::component_registry::ComponentRegistry;
+use crate::component_type_id::ComponentTypeId;
 use crate::history_diff_receiver::HistoryDiffReceiver;
-use crate::replication_kind::{DiffReplicated, FullReplicated, NotReplicated, Replication};
+use crate::replication_kind::{DiffReplicated, FullReplicated, NotReplicated, ReplicationKind};
 use crate::replication_systems::ReplicationSystems;
 use bevy_app::{App, PostUpdate};
 use bevy_ecs::component::Component;
@@ -12,8 +12,10 @@ use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
 use bevy_replicon::shared::replication::registry::receive_fns::MutWrite;
 use serde::{Serialize, de::DeserializeOwned};
 
-/// A component's registration, typed by how it replicates: [`NotReplicated`], [`FullReplicated`]
-/// or [`DiffReplicated`], which prediction and interpolation read their mode from.
+/// A component's registration, typed by how it replicates: [`NotReplicated`], [`FullReplicated`] or
+/// [`DiffReplicated`], which prediction and interpolation read their mode from
+/// (13-net-stack/api.md, One builder per protocol item, and the replication mode lives in its
+/// type).
 #[derive(Debug)]
 pub struct ComponentRegistration<'a, C, M = NotReplicated> {
     pub app: &'a mut App,
@@ -36,7 +38,7 @@ impl<'a, C> ComponentRegistration<'a, C> {
         C: Component<Mutability: MutWrite<C>> + Serialize + DeserializeOwned,
     {
         self.app.replicate_with(ComponentCodec::rule_fns::<C>());
-        self.record(Replication::Full)
+        self.record(ReplicationKind::Full)
     }
 
     /// Replicates this component's first value and its removal, encoded through `codec`.
@@ -46,7 +48,7 @@ impl<'a, C> ComponentRegistration<'a, C> {
     {
         self.app
             .replicate_with((ComponentCodec::rule_fns::<C>(), ReplicationMode::Once));
-        self.record(Replication::Full)
+        self.record(ReplicationKind::Full)
     }
 
     /// Register this component using Replicon's diff-based replication.
@@ -64,7 +66,7 @@ impl<'a, C> ComponentRegistration<'a, C> {
             PostUpdate,
             HistoryDiffReceiver::<C>::prune.after(ReplicationSystems::CutHistory),
         );
-        self.record(Replication::Diff)
+        self.record(ReplicationKind::Diff)
     }
 
     /// Types the registration of a component that an earlier [`replicate`](Self::replicate) or
@@ -78,7 +80,7 @@ impl<'a, C> ComponentRegistration<'a, C> {
     where
         C: Component,
     {
-        self.expect_recorded(Replication::Full)
+        self.expect_recorded(ReplicationKind::Full)
     }
 
     /// Types the registration of a component that an earlier
@@ -91,10 +93,10 @@ impl<'a, C> ComponentRegistration<'a, C> {
     where
         C: Component,
     {
-        self.expect_recorded(Replication::Diff)
+        self.expect_recorded(ReplicationKind::Diff)
     }
 
-    fn expect_recorded<M>(self, replication: Replication) -> ComponentRegistration<'a, C, M>
+    fn expect_recorded<M>(self, replication: ReplicationKind) -> ComponentRegistration<'a, C, M>
     where
         C: Component,
     {
@@ -102,7 +104,7 @@ impl<'a, C> ComponentRegistration<'a, C> {
             .app
             .world()
             .get_resource::<ComponentRegistry>()
-            .and_then(|registry| registry.replication(&ComponentKind::of::<C>()));
+            .and_then(|registry| registry.replication(&ComponentTypeId::of::<C>()));
         assert_eq!(
             recorded,
             Some(replication),
@@ -114,7 +116,7 @@ impl<'a, C> ComponentRegistration<'a, C> {
 
     /// Adds the component to the protocol, and records how it replicates for the layers that read
     /// it at run time.
-    fn record<M>(self, replication: Replication) -> ComponentRegistration<'a, C, M>
+    fn record<M>(self, replication: ReplicationKind) -> ComponentRegistration<'a, C, M>
     where
         C: Component,
     {

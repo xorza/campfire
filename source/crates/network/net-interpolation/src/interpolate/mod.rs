@@ -1,11 +1,11 @@
 use crate::history_component::HistoryComponent;
 use crate::interpolation_fn::{ComponentInterpolation, InterpolationFn};
-use crate::interpolation_owners::InterpolationOwners;
+use crate::interpolation_holders::InterpolationHolders;
 use crate::interpolation_rule_id::InterpolationRuleId;
-use crate::interpolation_sample_context::InterpolationSampleContext;
+use crate::interpolation_sample_cx::InterpolationSampleCx;
 use crate::interpolation_stage::InterpolationStage;
 use crate::interpolation_timeline::InterpolationTimeline;
-use crate::update_history_context::UpdateHistoryContext;
+use crate::update_history_cx::UpdateHistoryCx;
 use bevy_app::{App, Update};
 use bevy_ecs::entity::EntityLocation;
 use bevy_ecs::prelude::*;
@@ -22,7 +22,7 @@ use std::borrow::Cow;
 use tracing::trace;
 
 /// Installs the system that applies the component rule `rule_id` of `C`, with `interpolation`,
-/// to the live `C` of each entity whose apply the rule owns. An equal value is not written, so
+/// to the live `C` of each entity whose apply the rule holds. An equal value is not written, so
 /// `Changed<C>` fires only when the component changes.
 pub(crate) fn install_component_interpolation<C: HistoryComponent>(
     app: &mut App,
@@ -31,7 +31,7 @@ pub(crate) fn install_component_interpolation<C: HistoryComponent>(
 ) {
     let system = move |timeline: Res<'_, InterpolationTimeline>,
                        tick_rate: Option<Res<'_, TickRate>>,
-                       owners: Res<'_, InterpolationOwners>,
+                       holders: Res<'_, InterpolationHolders>,
                        mut query: Query<
         '_,
         '_,
@@ -41,10 +41,10 @@ pub(crate) fn install_component_interpolation<C: HistoryComponent>(
         let interpolation_tick = timeline.now().tick();
         let interpolation_overstep = timeline.overstep().to_f32();
         let tick_rate = tick_rate.as_deref().copied();
-        let owned = owners.delayed.apply(rule_id);
+        let held = holders.delayed.apply(rule_id);
         let interpolation = interpolation.component();
         for (location, live, history) in &mut query {
-            if !owned.contains(location.archetype_id) {
+            if !held.contains(location.archetype_id) {
                 continue;
             }
             let Some(HistoryState::Updated(interpolated)) = sample_history_with_interpolation(
@@ -89,7 +89,7 @@ pub(crate) fn set_if_neq<C: Clone + PartialEq>(
 pub(crate) fn update_history_inner<C: Component + Clone>(
     history: &mut ConfirmedHistory<C>,
     entity: Entity,
-    ctx: &UpdateHistoryContext,
+    ctx: &UpdateHistoryCx,
 ) {
     // Replicon's marker fns already ran before this system. If this component received an
     // explicit update or removal at the completed server tick T, `write_history` /
@@ -184,7 +184,7 @@ pub(crate) fn sample_history_with_interpolation<'a, C: Component + Clone>(
     // Clamp rather than extrapolate beyond the newest confirmed value. This
     // makes late packets converge to the freshest server state instead of
     // overshooting when motion changes direction.
-    let context = InterpolationSampleContext::from_ticks(
+    let cx = InterpolationSampleCx::from_ticks(
         bracket.start.tick,
         end_tick,
         interpolation_tick,
@@ -199,12 +199,12 @@ pub(crate) fn sample_history_with_interpolation<'a, C: Component + Clone>(
         start_tick = bracket.start.tick.0,
         end_tick = end_tick.0,
         interpolation_overstep,
-        fraction = context.t,
+        fraction = cx.t,
         history_len = history.len(),
         "sampled confirmed history for interpolation"
     );
     Some(HistoryState::Updated(Cow::Owned(interpolation(
-        start, end, context,
+        start, end, cx,
     ))))
 }
 
@@ -215,7 +215,7 @@ pub(crate) struct HistoryBracket<'a, C> {
     pub(crate) end: Option<Ticked<&'a HistoryState<C>>>,
 }
 
-/// Returns the immediate resolved history window around `tick`.
+/// The immediate resolved history window around `tick`.
 ///
 /// Both component and bundle interpolation use this lookup so they agree on
 /// the bracketing entries around the interpolation timeline.

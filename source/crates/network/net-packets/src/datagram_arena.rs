@@ -1,4 +1,4 @@
-use campfire_net_bytes::Arena;
+use campfire_net_bytes::ByteArena;
 
 /// How many chunks the arena holds.
 const CHUNKS: usize = 4;
@@ -8,12 +8,14 @@ const CHUNKS: usize = 4;
 /// the stack keeps, holds one chunk.
 const CHUNK_BYTES: usize = 256 * 1024;
 
-/// The memory an IO copies each datagram it reads into, as a session opens a datagram in place
-/// and the frame then keeps a message slice of it: each copy a view of a chunk, so a datagram and
-/// the others of its read share one allocation, and a slice of one never promotes. Each chunk
-/// holds at least a slot of `slot` bytes, and all are allocated now.
-pub fn datagram_arena(slot: usize) -> Arena {
-    Arena::preallocated(slot.max(CHUNK_BYTES), CHUNKS - 1)
+/// The memory an IO copies each datagram it reads into, as a packet session opens a datagram in
+/// place and the frame then keeps a message slice of it: each copy a view of a chunk, so a datagram
+/// and the others of its read share one allocation, and a slice of one never promotes. Each chunk
+/// holds at least a slot of `slot` bytes, and all are allocated now
+/// (13-net-stack/packet-session.md, An IO copies each datagram it reads into an arena of four
+/// chunks).
+pub fn datagram_arena(slot: usize) -> ByteArena {
+    ByteArena::preallocated(slot.max(CHUNK_BYTES), CHUNKS - 1)
 }
 
 #[cfg(test)]

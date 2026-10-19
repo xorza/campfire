@@ -1,7 +1,7 @@
 use crate::locally_predicted::LocallyPredicted;
 use crate::prediction_despawned::PredictionDespawned;
 use crate::prediction_gate;
-use crate::prediction_manager::PredictionManager;
+use crate::prediction_setup::PredictionSetup;
 use bevy_ecs::prelude::*;
 use campfire_net_connection::NetworkingState;
 use campfire_net_despawn::DespawnReplicated;
@@ -31,10 +31,7 @@ impl Command for PredictionDespawnCommand {
         let predicting = world
             .get_resource::<NetworkingState>()
             .is_some_and(|networking| {
-                prediction_gate::predicts(
-                    world.contains_resource::<PredictionManager>(),
-                    networking,
-                )
+                prediction_gate::predicts(world.contains_resource::<PredictionSetup>(), networking)
             });
         let disabled_at = world
             .get_resource::<LocalTimeline>()
@@ -43,7 +40,7 @@ impl Command for PredictionDespawnCommand {
             return;
         };
         // Without prediction there is no rollback, so the entity is despawned at once, and its
-        // replicated children stay, as their server owns their life.
+        // replicated children stay, as their server holds their life.
         let Some(disabled_at) = disabled_at.filter(|_| predicting) else {
             DespawnReplicated.apply(entity);
             return;

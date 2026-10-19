@@ -1,8 +1,8 @@
-//! The network model and the simulated network: a [`LinkModel`] of latency, jitter, loss,
+//! The network model and the emulated network: a [`LinkModel`] of latency, jitter, loss,
 //! duplication, reordering and rate in netem's terms; the [`LinkConditioner`] that applies one to
 //! what an endpoint receives; and a [`EmulatedNetwork`], whose [`EmulatedIo`] wires each follow a
 //! seeded model in each direction, on the network's own wire clock (13-net-stack/testing.md, One
-//! `LinkModel` for simulated and real links, in netem's terms).
+//! `LinkModel` for emulated and real links, in netem's terms).
 
 #[cfg(feature = "internals")]
 pub mod bench;

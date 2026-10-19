@@ -7,15 +7,16 @@ use crate::link_conditioning::LinkConditioning;
 use crate::link_model::LinkModel;
 use crate::link_model_run::LinkModelRun;
 
-/// Generic receive-side packet conditioner.
+/// Generic receive-side packet conditioner (13-net-stack/packet-session.md, The link conditioner
+/// goes into the endpoint, before the packet sessions).
 ///
 /// `LinkConditioner` delays, drops and duplicates payloads according to a [`LinkModel`], so a
-/// developer plays over a real IO with a simulated network in front of it.
+/// developer plays over a real IO with an emulated network in front of it.
 #[derive(Debug, Clone)]
 pub struct LinkConditioner<P> {
     model: LinkModel,
     run: LinkModelRun,
-    /// Payloads waiting for their simulated delivery instant.
+    /// Payloads waiting for their emulated delivery instant.
     time_queue: ReadyBuffer<Instant, P>,
 }
 
@@ -32,7 +33,7 @@ impl<P: Clone> LinkConditioner<P> {
 
     /// Applies the model to `packet`, of `bytes` bytes, received at `instant`.
     ///
-    /// Dropped packets are discarded immediately. Delivered packets are queued by their simulated
+    /// Dropped packets are discarded immediately. Delivered packets are queued by their emulated
     /// delivery instant, twice when the model duplicates them.
     pub fn condition_packet(&mut self, packet: P, bytes: usize, instant: Instant) {
         let Some(delivery) = self.run.admit(&self.model, bytes, instant) else {
@@ -46,7 +47,7 @@ impl<P: Clone> LinkConditioner<P> {
         }
     }
 
-    /// Returns the next packet whose delivery instant has elapsed.
+    /// The next packet whose delivery instant has elapsed.
     pub fn pop_packet(&mut self, instant: Instant) -> Option<P> {
         self.time_queue.pop_ready(&instant)
     }
@@ -83,7 +84,7 @@ mod tests {
 
     /// A frame's packets share one receive instant, so a constant latency makes them due together.
     #[test]
-    fn packets_due_together_leave_in_arrival_order() {
+    fn packets_due_at_one_instant_leave_in_their_arrival_order() {
         let mut conditioner =
             LinkConditioner::new(LinkModel::perfect().with_latency(Duration::from_millis(30)));
         for packet in 0..8_u32 {

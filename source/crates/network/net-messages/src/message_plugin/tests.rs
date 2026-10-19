@@ -10,11 +10,11 @@ use crate::fixtures::protocol::StringMessage;
 use crate::fixtures::received_messages::ReceivedMessages;
 use crate::host_event_sender::HostEventSender;
 use crate::host_message_sender::HostMessageSender;
-use crate::message_kind::MessageKind;
-use crate::message_manager::LinkEndpoint;
+use crate::link_messages::LinkEndpoint;
 use crate::message_receiver::HostMessageReceiver;
 use crate::message_receiver::MessageReceiver;
 use crate::message_sender::MessageSender;
+use crate::message_type_id::MessageTypeId;
 use crate::multi_message_sender::MultiMessageSender;
 use crate::received_message::ReceivedMessage;
 use crate::remote_event::RemoteEvent;
@@ -23,17 +23,17 @@ use bevy_ecs::event::Event;
 use bevy_ecs::prelude::ResMut;
 use bevy_ecs::prelude::Resource;
 use bevy_replicon::shared::replication::Replicated;
-use campfire_net_channels::fragment_size_for_max_payload;
+use campfire_net_channels::fragment_len_for_max_payload;
 use campfire_net_connection::NetworkingState;
-use campfire_net_core::Directions;
+use campfire_net_core::LinkDirections;
 use campfire_net_core::TickRate;
 use campfire_net_link::Link;
 use campfire_net_link::LinkPlugin;
 use campfire_net_link::Linked;
-use campfire_net_payload::SessionQueues;
+use campfire_net_payload::PacketSessionQueues;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 use campfire_net_timeline::internals::TestTimelinePlugins;
 use campfire_net_transport::TransportPlugin;
 use campfire_net_transport::internals::Channel1;
@@ -62,9 +62,11 @@ fn message_test_app(register_event: bool) -> App {
     });
     app.add_plugins(TestTransportPlugin);
     app.init_resource::<NetworkingState>();
-    app.register_message::<M>().add_direction(Directions::BOTH);
+    app.register_message::<M>()
+        .add_direction(LinkDirections::BOTH);
     if register_event {
-        app.register_event::<E>().add_direction(Directions::BOTH);
+        app.register_event::<E>()
+            .add_direction(LinkDirections::BOTH);
         app.init_resource::<EventCount>();
         app.add_observer(count_event);
     }
@@ -73,17 +75,17 @@ fn message_test_app(register_event: bool) -> App {
     app
 }
 
-/// A link whose session takes every payload, which a test loops back to itself.
+/// A link whose packet session takes every payload, which a test loops back to itself.
 fn loopback_link() -> Link {
     Link {
-        session: SessionQueues::unbounded(),
+        packet_session: PacketSessionQueues::unbounded(),
     }
 }
 
 fn loopback_link_payload(app: &mut App, entity: Entity) {
     let mut entity_mut = app.world_mut().entity_mut(entity);
     let mut link = entity_mut.get_mut::<Link>().unwrap();
-    assert_eq!(link.session.loop_back(), 1, "one outgoing payload");
+    assert_eq!(link.packet_session.loop_back(), 1, "one outgoing payload");
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -101,7 +103,7 @@ fn to_clients_link(client: bool) -> (App, Entity) {
     });
     app.add_plugins(TestTransportPlugin);
     app.register_message::<ToClients>()
-        .add_direction(Direction::ServerToClient);
+        .add_direction(LinkDirection::ServerToClient);
     app.add_plugins(MessagePlugin);
     app.init_resource::<Unlinks>();
     app.add_observer(
@@ -155,7 +157,7 @@ fn a_message_against_its_direction_unlinks() {
     assert!(
         app.world()
             .get::<MessageReceiver<ToClients>>(entity)
-            .is_none_or(|receiver| receiver.num_messages() == 0)
+            .is_none_or(MessageReceiver::is_empty)
     );
 }
 
@@ -207,7 +209,7 @@ fn a_sent_message_is_received_through_the_link() {
     }
     app.update();
 
-    // the payload went to the session, which loops it back to the receive side of the link
+    // the payload went to the packet session, which loops it back to the receive side of the link
     loopback_link_payload(&mut app, entity);
 
     app.world_mut().run_schedule(PreUpdate);
@@ -230,7 +232,7 @@ fn a_sent_message_is_received_through_the_link() {
             .entity_mut(entity)
             .get_mut::<MessageReceiver<M>>()
             .unwrap()
-            .num_messages(),
+            .len(),
         0
     );
 }
@@ -260,7 +262,7 @@ fn an_unread_message_is_dropped_at_the_frame_end() {
         .push_received(ReceivedMessage {
             data: M(2),
             remote_tick: NetTick::default(),
-            channel_kind: ChannelKind::of::<TestChannel>(),
+            channel_type_id: ChannelTypeId::of::<TestChannel>(),
             message_id: None,
         });
     app.update();
@@ -271,7 +273,7 @@ fn an_unread_message_is_dropped_at_the_frame_end() {
             .entity_mut(entity)
             .get_mut::<MessageReceiver<M>>()
             .unwrap()
-            .num_messages(),
+            .len(),
         0
     );
 }
@@ -329,7 +331,7 @@ fn host_client_messages_land_on_the_other_side_in_the_next_receive() {
             Connected,
         ))
         .id();
-    // Apply the sender hooks so MessageManager knows about them.
+    // Apply the sender hooks so LinkMessages knows about them.
     app.world_mut().flush();
     let mut entity_mut = app.world_mut().entity_mut(entity);
     entity_mut
@@ -408,7 +410,7 @@ fn host_client_events_come_from_their_side() {
 }
 
 #[test]
-fn direction_adds_senders_but_not_receivers() {
+fn a_direction_adds_the_senders_and_not_the_receivers() {
     let mut app = message_test_app(true);
     let client = app.world_mut().spawn(Client).id();
     app.world_mut().flush();
@@ -445,10 +447,10 @@ fn an_event_on_a_channel_the_transport_lacks_panics() {
     app.update();
 }
 
-/// A sender or receiver an app adds is listed once, by its net id and side; one an app removes
-/// leaves its manager's lists, so the frame's send and clear passes do not look for it.
+/// A sender or receiver an app adds is listed once, by its net id and user; one an app removes
+/// leaves its link's lists, so the frame's send and clear passes do not look for it.
 #[test]
-fn a_removed_endpoint_leaves_the_manager() {
+fn a_removed_endpoint_leaves_the_link_messages() {
     let mut app = message_test_app(true);
     let entity = app
         .world_mut()
@@ -460,16 +462,19 @@ fn a_removed_endpoint_leaves_the_manager() {
             Connected,
         ))
         .id();
-    let manager = app.world().get::<MessageManager>(entity).unwrap();
+    let link_messages = app.world().get::<LinkMessages>(entity).unwrap();
     let registry = app.world().resource::<MessageRegistry>();
-    let link = |kind| LinkEndpoint {
-        net_id: registry.net_id(kind).unwrap(),
-        side: EndpointSide::Link,
+    let link = |type_id| LinkEndpoint {
+        net_id: registry.net_id(type_id).unwrap(),
+        user: EndpointUser::Link,
     };
-    assert_eq!(manager.receivers, [link(MessageKind::of::<M>())]);
+    assert_eq!(link_messages.receivers, [link(MessageTypeId::of::<M>())]);
     assert_eq!(
-        manager.senders,
-        [link(MessageKind::of::<M>()), link(MessageKind::of::<E>())]
+        link_messages.senders,
+        [
+            link(MessageTypeId::of::<M>()),
+            link(MessageTypeId::of::<E>())
+        ]
     );
 
     app.world_mut()
@@ -477,13 +482,13 @@ fn a_removed_endpoint_leaves_the_manager() {
         .remove::<(MessageReceiver<M>, MessageSender<M>, EventSender<E>)>();
     app.update();
 
-    let manager = app.world().get::<MessageManager>(entity).unwrap();
-    assert!(manager.receivers.is_empty());
-    assert!(manager.senders.is_empty());
+    let link_messages = app.world().get::<LinkMessages>(entity).unwrap();
+    assert!(link_messages.receivers.is_empty());
+    assert!(link_messages.senders.is_empty());
 }
 
 #[test]
-fn disconnect_removes_message_receivers() {
+fn a_disconnect_removes_the_message_receivers() {
     let mut app = message_test_app(true);
     let entity = app
         .world_mut()
@@ -500,7 +505,7 @@ fn disconnect_removes_message_receivers() {
         .push_received(ReceivedMessage {
             data: M(0),
             remote_tick: NetTick(1),
-            channel_kind: ChannelKind::of::<TestChannel>(),
+            channel_type_id: ChannelTypeId::of::<TestChannel>(),
             message_id: None,
         });
     app.world_mut()
@@ -512,7 +517,7 @@ fn disconnect_removes_message_receivers() {
     assert!(!entity_ref.contains::<MessageReceiver<M>>());
     assert!(
         entity_ref
-            .get::<MessageManager>()
+            .get::<LinkMessages>()
             .unwrap()
             .receivers
             .is_empty()
@@ -528,7 +533,7 @@ struct Ends {
 
 fn ends(stepper: &Stepper<MessagesStack>, kind: ClientKind) -> Ends {
     match kind {
-        ClientKind::Raw | ClientKind::Udp => Ends {
+        ClientKind::Plain | ClientKind::Udp => Ends {
             client: stepper.client_entity(0),
             server: stepper.client_of_entity(0),
         },
@@ -542,7 +547,7 @@ fn ends(stepper: &Stepper<MessagesStack>, kind: ClientKind) -> Ends {
 
 fn client_app(stepper: &mut Stepper<MessagesStack>, kind: ClientKind) -> &mut App {
     match kind {
-        ClientKind::Raw | ClientKind::Udp => stepper.client_app_mut(0),
+        ClientKind::Plain | ClientKind::Udp => stepper.client_app_mut(0),
         ClientKind::Host => stepper.server_app_mut(),
     }
 }
@@ -552,12 +557,12 @@ fn client_app(stepper: &mut Stepper<MessagesStack>, kind: ClientKind) -> &mut Ap
 /// client sends through its own side's sender, and reads its own side's receiver.
 #[test]
 fn messages_cross_both_ways_for_each_client_kind() {
-    for kind in [ClientKind::Raw, ClientKind::Udp, ClientKind::Host] {
-        let mut stepper = Stepper::new(MessagesStack, StepperConfig::with_clients(vec![kind]));
+    for kind in [ClientKind::Plain, ClientKind::Udp, ClientKind::Host] {
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(vec![kind]));
         let Ends { client, server } = ends(&stepper, kind);
         ReceivedMessages::<StringMessage>::collect_in(stepper.server_app_mut());
         match kind {
-            ClientKind::Raw | ClientKind::Udp => {
+            ClientKind::Plain | ClientKind::Udp => {
                 ReceivedMessages::<StringMessage>::collect_in(client_app(&mut stepper, kind));
             }
             ClientKind::Host => {
@@ -570,7 +575,7 @@ fn messages_cross_both_ways_for_each_client_kind() {
             .world_mut()
             .entity_mut(client);
         match kind {
-            ClientKind::Raw | ClientKind::Udp => client_mut
+            ClientKind::Plain | ClientKind::Udp => client_mut
                 .get_mut::<MessageSender<StringMessage>>()
                 .unwrap()
                 .send::<Channel1>(hello.clone()),
@@ -589,16 +594,16 @@ fn messages_cross_both_ways_for_each_client_kind() {
         );
         assert_eq!(received, [(server, hello)], "{kind:?}");
 
-        // A remote client's message of one byte past two fragments of its session's largest
+        // A remote client's message of one byte past two fragments of its packet session's largest
         // payload crosses whole in three fragments.
         if kind != ClientKind::Host {
             let max_payload = stepper
                 .client(0)
                 .get::<Link>()
                 .unwrap()
-                .session
+                .packet_session
                 .max_payload();
-            let fragment = fragment_size_for_max_payload(max_payload).unwrap();
+            let fragment = fragment_len_for_max_payload(max_payload).unwrap();
             let long = StringMessage("ab".repeat(fragment) + "c");
             stepper
                 .client_mut(0)
@@ -633,7 +638,7 @@ fn messages_cross_both_ways_for_each_client_kind() {
         stepper.frame_step(2);
         let client_world = client_app(&mut stepper, kind).world();
         let received = match kind {
-            ClientKind::Raw | ClientKind::Udp => {
+            ClientKind::Plain | ClientKind::Udp => {
                 &client_world.resource::<ReceivedMessages<StringMessage>>().0
             }
             ClientKind::Host => {
@@ -663,8 +668,8 @@ fn messages_cross_both_ways_for_each_client_kind() {
 /// cross unchanged.
 #[test]
 fn only_a_client_maps_the_entities_a_message_names() {
-    for kind in [ClientKind::Raw, ClientKind::Udp, ClientKind::Host] {
-        let mut stepper = Stepper::new(MessagesStack, StepperConfig::with_clients(vec![kind]));
+    for kind in [ClientKind::Plain, ClientKind::Udp, ClientKind::Host] {
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(vec![kind]));
         let Ends { client, server } = ends(&stepper, kind);
         let replicated = stepper.server_app_mut().world_mut().spawn(Replicated).id();
         let server_only = stepper.server_app_mut().world_mut().spawn_empty().id();
@@ -678,15 +683,15 @@ fn only_a_client_maps_the_entities_a_message_names() {
         let (copy, stale, client_only) = (spawn(), spawn(), spawn());
         ReceivedMessages::<EntityMessage>::collect_in(stepper.server_app_mut());
         let (client_sends, server_reads, server_sends, client_reads) = match kind {
-            ClientKind::Raw | ClientKind::Udp => {
+            ClientKind::Plain | ClientKind::Udp => {
                 ReceivedMessages::<EntityMessage>::collect_in(client_app(&mut stepper, kind));
                 let mut map = stepper.client_mut(0);
-                let map = &mut map.get_mut::<MessageManager>().unwrap().entity_mapper;
+                let map = &mut map.get_mut::<LinkMessages>().unwrap().entity_mapper;
                 map.insert(server, client);
                 map.insert(replicated, copy);
                 map.insert(server_only, stale);
                 let mut map = stepper.client_of_mut(0);
-                let map = &mut map.get_mut::<MessageManager>().unwrap().entity_mapper;
+                let map = &mut map.get_mut::<LinkMessages>().unwrap().entity_mapper;
                 map.insert(client, server);
                 (
                     vec![client, copy, stale, client_only],
@@ -711,7 +716,7 @@ fn only_a_client_maps_the_entities_a_message_names() {
             .entity_mut(client);
         for &entity in &client_sends {
             match kind {
-                ClientKind::Raw | ClientKind::Udp => client_mut
+                ClientKind::Plain | ClientKind::Udp => client_mut
                     .get_mut::<MessageSender<EntityMessage>>()
                     .unwrap()
                     .send::<Channel1>(EntityMessage(entity)),
@@ -759,7 +764,7 @@ fn only_a_client_maps_the_entities_a_message_names() {
         stepper.frame_step(2);
         let client_world = client_app(&mut stepper, kind).world();
         let received = match kind {
-            ClientKind::Raw | ClientKind::Udp => {
+            ClientKind::Plain | ClientKind::Udp => {
                 &client_world.resource::<ReceivedMessages<EntityMessage>>().0
             }
             ClientKind::Host => {
@@ -788,8 +793,8 @@ fn collect_events(
 /// host client triggers through its own side's sender.
 #[test]
 fn events_reach_the_server_for_each_client_kind() {
-    for kind in [ClientKind::Raw, ClientKind::Udp, ClientKind::Host] {
-        let mut stepper = Stepper::new(MessagesStack, StepperConfig::with_clients(vec![kind]));
+    for kind in [ClientKind::Plain, ClientKind::Udp, ClientKind::Host] {
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(vec![kind]));
         let Ends { client, server } = ends(&stepper, kind);
         stepper
             .server_app_mut()
@@ -801,7 +806,7 @@ fn events_reach_the_server_for_each_client_kind() {
             .world_mut()
             .entity_mut(client);
         match kind {
-            ClientKind::Raw | ClientKind::Udp => client_mut
+            ClientKind::Plain | ClientKind::Udp => client_mut
                 .get_mut::<EventSender<StringEvent>>()
                 .unwrap()
                 .trigger::<Channel1>(hello.clone()),
@@ -820,7 +825,7 @@ fn events_reach_the_server_for_each_client_kind() {
 /// alike: what client 0 queues after it disconnected is gone a frame later.
 #[test]
 fn queues_of_a_link_that_is_not_connected_are_dropped() {
-    let mut stepper = Stepper::new(MessagesStack, StepperConfig::with_raw_clients(1));
+    let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_plain_clients(1));
     stepper.disconnect(0);
     let mut client = stepper.client_mut(0);
     client

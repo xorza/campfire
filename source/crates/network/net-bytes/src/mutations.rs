@@ -2,7 +2,8 @@ use campfire_math::SplitMix64;
 
 /// A seeded stream of mutations of valid inputs, for a parser's robustness test: each flips a few
 /// bits, cuts the input short, extends it, or overwrites a run of it, by a seeded draw, so a
-/// failing input replays from its seed.
+/// failing input replays from its seed (13-net-stack/testing.md, A parser's robustness is a seeded
+/// mutation test).
 #[derive(Debug, Clone)]
 pub struct Mutations {
     random: SplitMix64,

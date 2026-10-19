@@ -2,26 +2,17 @@ use crate::correction_ease::CorrectionEase;
 use crate::on_timeline::OnTimeline;
 use crate::pending_switch::PendingSwitch;
 use crate::switch_direction::SwitchDirection;
-use crate::timeline_switch_config::TimelineSwitchConfig;
+use crate::timeline_switch_setup::TimelineSwitchSetup;
 use bevy_ecs::prelude::*;
 
 /// Request to move an entity between the prediction and interpolation timelines.
 ///
 /// Insert it on the entity — the switch pipeline is what adds or removes
-/// [`Predicted`](campfire_net_replication::Predicted) / [`Interpolated`](campfire_net_replication::Interpolated), so callers never touch those directly:
-/// ```rust,ignore
-/// // To a named timeline:
-/// commands.entity(entity).insert(TimelineSwitch::to_predicted());
-/// // ...or blend over an explicit window instead of the default:
-/// commands.entity(entity).insert(
-///     TimelineSwitch::to_predicted().with_transition_secs(1.0),
-/// );
-/// // Or flip to whichever timeline the entity is not on:
-/// commands.entity(entity).insert(TimelineSwitch::default());
-/// ```
+/// [`Predicted`](campfire_net_replication::Predicted) /
+/// [`Interpolated`](campfire_net_replication::Interpolated), so callers never touch those directly:
 ///
 /// You can customize the blend length and ease curve per request, which overrides the
-/// [`TimelineSwitchConfig`] default: `<= 0` (or non-finite) snaps instantly,
+/// [`TimelineSwitchSetup`] default: `<= 0` (or non-finite) snaps instantly,
 /// otherwise the jump is smoothed over the window and further requests for the
 /// entity are ignored until the switch finishes.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Default)]
@@ -31,9 +22,9 @@ pub struct TimelineSwitch {
     /// on neither timeline has nothing to flip from and the request is dropped.
     direction: Option<SwitchDirection>,
     /// Blend length in seconds, overriding
-    /// [`TimelineSwitchConfig::default_transition_secs`].
+    /// [`TimelineSwitchSetup::default_transition_secs`].
     transition_secs: Option<f32>,
-    /// Ease curve, overriding [`TimelineSwitchConfig::default_ease`].
+    /// Ease curve, overriding [`TimelineSwitchSetup::default_ease`].
     ease: Option<CorrectionEase>,
 }
 
@@ -54,7 +45,7 @@ impl TimelineSwitch {
         }
     }
 
-    /// Override the [`TimelineSwitchConfig`] default blend length for this
+    /// Override the [`TimelineSwitchSetup`] default blend length for this
     /// request. `<= 0` (or non-finite) snaps instantly instead of blending.
     #[must_use]
     pub const fn with_transition_secs(mut self, transition_secs: f32) -> Self {
@@ -62,7 +53,7 @@ impl TimelineSwitch {
         self
     }
 
-    /// Override the [`TimelineSwitchConfig`] default ease curve for this
+    /// Override the [`TimelineSwitchSetup`] default ease curve for this
     /// request.
     #[must_use]
     pub const fn with_ease(mut self, ease: CorrectionEase) -> Self {
@@ -70,12 +61,12 @@ impl TimelineSwitch {
         self
     }
 
-    /// Resolves the request against the timeline the entity is on and `config` into the
+    /// Resolves the request against the timeline the entity is on and `setup` into the
     /// [`PendingSwitch`] the apply pass serves.
     pub(crate) fn resolve(
         &self,
         on: OnTimeline,
-        config: &TimelineSwitchConfig,
+        setup: &TimelineSwitchSetup,
     ) -> Result<PendingSwitch, SwitchRejection> {
         let direction = match (self.direction, on) {
             (_, OnTimeline::Neither) => return Err(SwitchRejection::OnNeither),
@@ -93,8 +84,8 @@ impl TimelineSwitch {
             direction,
             total_secs: self
                 .transition_secs
-                .unwrap_or(config.default_transition_secs),
-            ease: self.ease.unwrap_or(config.default_ease),
+                .unwrap_or(setup.default_transition_secs),
+            ease: self.ease.unwrap_or(setup.default_ease),
         })
     }
 }
@@ -126,10 +117,10 @@ mod tests {
 
     /// A named switch needs the entity on the other timeline, a flip goes to the timeline the
     /// entity is not on, and an entity on neither is refused either way; the request's window
-    /// overrides the config's.
+    /// overrides the setup's.
     #[test]
     fn a_request_resolves_against_the_timeline_it_leaves() {
-        let config = TimelineSwitchConfig::default();
+        let setup = TimelineSwitchSetup::default();
         let requests = [
             TimelineSwitch::to_predicted(),
             TimelineSwitch::to_interpolated(),
@@ -137,9 +128,7 @@ mod tests {
         ];
         let resolved = |on| {
             requests.map(|request: TimelineSwitch| {
-                request
-                    .resolve(on, &config)
-                    .map(|pending| pending.direction)
+                request.resolve(on, &setup).map(|pending| pending.direction)
             })
         };
         assert_eq!(
@@ -164,10 +153,10 @@ mod tests {
         );
         let pending = TimelineSwitch::to_predicted()
             .with_transition_secs(1.5)
-            .resolve(OnTimeline::Interpolated, &config)
+            .resolve(OnTimeline::Interpolated, &setup)
             .unwrap();
         assert_eq!(pending.total_secs, 1.5);
-        assert_ne!(config.default_transition_secs, 1.5);
+        assert_ne!(setup.default_transition_secs, 1.5);
         assert_eq!(OnTimeline::of(true, true), OnTimeline::Predicted);
     }
 }

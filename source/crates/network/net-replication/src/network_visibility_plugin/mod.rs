@@ -1,103 +1,7 @@
-//! Replication visibility and interest management.
-//!
-//! The stack provides entity-level helpers in `VisibilityExt` and room-based interest management in
-//! [`room_plugin`](crate::room_plugin). For component-level visibility, register a Replicon
-//! [`VisibilityFilter`] whose scope contains the components to gate. Add the filter component to
-//! the replicated entity and its [`VisibilityFilter::ClientComponent`] to each sender link entity.
-//! If both sides use the same component type, set `ClientComponent = Self`:
-//!
-//! ```rust,ignore
-//! use bevy_ecs::prelude::*;
-//! use bevy_replicon::prelude::{//!     AppVisibilityExt, SingleComponent, VisibilityFilter, //!};
-//!
-//! #[derive(Component, PartialEq)]
-//! #[component(immutable)]
-//! struct Team(u8);
-//!
-//! #[derive(Component)]
-//! struct PrivateState(u32);
-//!
-//! impl VisibilityFilter for Team {
-//!     type ClientComponent = Self;
-//!     type Scope = SingleComponent<PrivateState>;
-//!
-//!     fn is_visible(
-//!         &self,
-//!         _client: Entity,
-//!         client_team: Option<&Self::ClientComponent>,
-//!     ) -> bool {
-//!         client_team == Some(self)
-//!     }
-//! }
-//!
-//! // Register the filter and its component scope during app setup.
-//! app.add_visibility_filter::<Team>();
-//!
-//! // `sender_link` is the entity representing this client connection.
-//! commands.entity(sender_link).insert(Team(1));
-//! commands.spawn((Replicate::default(), PrivateState(42), Team(1)));
-//! ```
-//!
-//! Use a tuple such as `(Health, Inventory)` for `Scope` when several
-//! components should share one visibility bit. The filter and client component
-//! can also be different types when client permissions and entity metadata are
-//! represented separately.
-//!
-//! [`VisibilityFilter`]: bevy_replicon::prelude::VisibilityFilter
-//! [`VisibilityFilter::ClientComponent`]: bevy_replicon::prelude::VisibilityFilter::ClientComponent
-//!
-//! # Network visibility
-//!
-//! The **network visibility** is used to determine which entities are replicated to a client. The
-//! server will only replicate the entities that are relevant to a client. When an entity loses
-//! visibility, it can either be despawned on that client or retained without receiving updates.
-//! This lets you save bandwidth by only sending the necessary data to each client.
-//!
-//! Replicon supports three visibility scope lifetimes:
-//!
-//! | Scope lifetime | Hidden before first replication | Hidden after replication |
-//! | --- | --- | --- |
-//! | [`WhileVisible`](bevy_replicon::prelude::ScopeLifetime::WhileVisible) | Not spawned | Despawned |
-//! | [`AfterFirstVisibility`](bevy_replicon::prelude::ScopeLifetime::AfterFirstVisibility) | Not spawned | Retained without updates |
-//! | [`AlwaysPresent`](bevy_replicon::prelude::ScopeLifetime::AlwaysPresent) | Spawned, but receives no further updates | Retained without updates |
-//!
-//! `VisibilityExt::lose_visibility` keeps its common despawning behavior. The two retaining
-//! lifetimes are exposed separately because they differ before the first replication:
-//!
-//! - `VisibilityExt::lose_visibility_retained` retains an entity only after the client has seen it.
-//!   This is useful for last-known-state views, stable client-side references, or avoiding repeated
-//!   spawn setup when an entity moves in and out of interest.
-//! - `VisibilityExt::lose_visibility_always_present` ensures that the entity is spawned even if it
-//!   is already hidden, then pauses further updates. This is useful for identity or hierarchy roots,
-//!   roster entries, objectives, and other placeholders that must exist before their live state is
-//!   relevant. It deliberately reveals the entity's existence and initial state, so it should not be
-//!   used when hidden entities must remain secret.
-//!
-//! The retaining policies pause mutations while hidden. The client keeps the last state it
-//! received, and is not automatically notified that the entity became hidden. Applications that
-//! need to mark the state as stale or suspend prediction should send or derive that state
-//! separately. Replicon also does not replay component removals that occur while a retaining scope
-//! is hidden, so retained entities should generally have a stable component layout or an
-//! application-level structural resync.
-//!
-//! Visibility only controls what happens when an entity becomes hidden. Actually despawning an
-//! authoritative entity still despawns every retained remote copy. To intentionally despawn only on
-//! the sender, remove [`Replicated`] before despawning the entity.
-//!
-//! Visibility is cached, so after you set an entity as `visible` for a client, it will remain
-//! relevant until you change the setting again.
-//!
-//! ```rust,no_run
-//! # use bevy_ecs::entity::Entity;
-//! # use bevy_ecs::prelude::World;
-//! # use campfire_net_replication::VisibilityExt;
-//!
-//! # let client = Entity::from_bits(1);
-//! # let entity = Entity::from_bits(2);
-//! # let mut world = World::new();
-//! world.gain_visibility(entity, client);
-//! world.lose_visibility(entity, client);
-//! ```
+//! Each link's manual visibility of each replicated entity, on Replicon's visibility filters, and
+//! the hierarchy members that follow their root's (13-net-stack/replication.md, A member follows
+//! its root for each aspect, unless it overrides that aspect). Replicon does not replay a removal
+//! made while a retaining scope hides the entity, so a retained entity keeps a stable layout.
 
 use bevy_app::prelude::*;
 use bevy_ecs::entity::EntityHashMap;
@@ -203,7 +107,7 @@ impl VisibilityChange {
     }
 }
 
-/// Plugin that handles the visibility system
+/// Each link's manual visibility.
 #[derive(Debug, Default)]
 pub(crate) struct NetworkVisibilityPlugin;
 
@@ -251,14 +155,15 @@ impl NetworkVisibilityPlugin {
     /// Makes a real authoritative despawn override the stack's retaining visibility scopes.
     ///
     /// Replicon normally suppresses an entity despawn while an `AfterFirstVisibility` or
-    /// `AlwaysPresent` scope is hidden, because those scopes retain the remote entity when visibility
-    /// is lost. That is surprising for an actual server-side despawn: visibility loss should retain the
-    /// remote entity, but ending the authoritative entity's lifecycle should still remove it. Clearing
-    /// The stack's retaining bits here lets Replicon send the authoritative despawn.
+    /// `AlwaysPresent` scope is hidden, because those scopes retain the remote entity when
+    /// visibility is lost. That is surprising for an actual server-side despawn: visibility loss
+    /// should retain the remote entity, but ending the authoritative entity's lifecycle should
+    /// still remove it. Clearing The stack's retaining bits here lets Replicon send the
+    /// authoritative despawn.
     ///
-    /// If the server intentionally wants to despawn its local entity without sending a despawn to the
-    /// client, it should remove [`Replicated`] before despawning, so this observer will not run for
-    /// that entity.
+    /// If the server intentionally wants to despawn its local entity without sending a despawn to
+    /// the client, it should remove [`Replicated`] before despawning, so this observer will not run
+    /// for that entity.
     fn clear_retained_visibility_on_despawn(
         trigger: On<'_, '_, Despawn<Replicated>>,
         bits: Res<'_, VisibilityBits>,

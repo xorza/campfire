@@ -1,4 +1,4 @@
-//! The round-trip estimate the session's timers read, as RFC 9002 §5 keeps it.
+//! The round-trip estimate the packet session's timers read, as RFC 9002 §5 keeps it.
 
 use core::time::Duration;
 
@@ -10,6 +10,8 @@ pub(crate) const INITIAL_RTT: Duration = Duration::from_millis(333);
 /// The smallest span a timer tells apart (RFC 9002 §6.1.2, `kGranularity`).
 pub(crate) const GRANULARITY: Duration = Duration::from_millis(1);
 
+/// RFC 9002's estimate of a link's RTT, for the packet session's timers (13-net-stack/time.md, An
+/// RTT sample is exact).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RttEstimator {
     latest: Duration,
@@ -50,7 +52,7 @@ impl RttEstimator {
     }
 
     /// Takes the sample `latest`, whose acknowledgement waited `ack_delay` at the peer, and
-    /// returns it less that whole delay, as a reader outside the session takes it. The first
+    /// returns it less that whole delay, as a reader outside the packet session takes it. The first
     /// sample sets the estimate; each later one moves it by RFC 9002 §5.3's gains, 1/8 and 1/4,
     /// with the delay capped at `MAX_ACK_DELAY` taken off, unless that would put it below the
     /// least RTT.

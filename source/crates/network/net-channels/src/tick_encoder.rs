@@ -13,7 +13,7 @@ pub(crate) const LONG_TICK_MARK: u8 = 0x80;
 /// largest.
 pub(crate) const SHORT_TICK_WINDOW: u32 = 1 << 15;
 
-/// A tick as a packet carries it, after the session's headroom.
+/// A tick as a packet carries it, after the packet session's headroom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct EncodedTick {
     bytes: [u8; LONG_TICK_LEN],
@@ -28,8 +28,10 @@ impl EncodedTick {
 
 /// Writes each packet's tick in 2 bytes once the peer surely reads it whole, as RFC 9000 §A.2
 /// writes a packet number: the receiver's reference, the largest tick it read, lies between the
-/// largest tick the peer accepted and the largest sent; a tick within half the short window of
-/// both is the nearest one to that reference, whatever it is. Any other tick goes whole.
+/// largest tick the peer accepted and the largest sent; a tick within half the short window of both
+/// is the nearest one to that reference, whatever it is. Any other tick goes whole
+/// (13-net-stack/transport.md, A packet's tick goes in 2 bytes once the peer surely reads it
+/// whole).
 #[derive(Debug, Default)]
 pub(crate) struct TickEncoder {
     /// The largest tick of a packet the peer accepted.

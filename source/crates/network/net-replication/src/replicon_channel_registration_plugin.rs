@@ -4,14 +4,14 @@ use crate::replicon_mutations_channel::RepliconMutationsChannel;
 use crate::replicon_updates_channel::RepliconUpdatesChannel;
 use bevy_app::prelude::*;
 use bevy_replicon::shared::backend::channels::{Channel, RepliconChannels};
-use campfire_net_channels::ChannelConfig;
-use campfire_net_channels::ChannelKind;
 use campfire_net_channels::ChannelMode;
-use campfire_net_core::Direction;
+use campfire_net_channels::ChannelSetup;
+use campfire_net_channels::ChannelTypeId;
+use campfire_net_core::LinkDirection;
 use campfire_net_transport::{AppChannelExt, ChannelRegistry};
 
-/// Plugin that registers replicon's core channels as the stack's transport channels
-/// and builds the `RepliconChannelMap` resource.
+/// Registers Replicon's channels as the transport's, with their map (13-net-stack/transport.md,
+/// Replicon's channels map from `RepliconChannels`).
 #[derive(Debug)]
 pub(crate) struct RepliconChannelRegistrationPlugin;
 
@@ -19,33 +19,33 @@ impl Plugin for RepliconChannelRegistrationPlugin {
     fn build(&self, app: &mut App) {
         // ServerChannel::Updates - Ordered Reliable
         // High priority: entity actions (spawn/despawn/insert/remove) should be sent ASAP
-        app.register_channel::<RepliconUpdatesChannel>(ChannelConfig {
+        app.register_channel::<RepliconUpdatesChannel>(ChannelSetup {
             mode: ChannelMode::OrderedReliable,
             priority: 10.0,
             ..Default::default()
         })
-        .add_direction(Direction::ServerToClient);
+        .add_direction(LinkDirection::ServerToClient);
 
         // ServerChannel::Mutations - Unreliable
         // Low priority: component mutations can be dropped if bandwidth is limited because a
         // later mutation contains fresher state.
-        app.register_channel::<RepliconMutationsChannel>(ChannelConfig {
+        app.register_channel::<RepliconMutationsChannel>(ChannelSetup {
             mode: ChannelMode::UnorderedUnreliable,
             priority: 1.0,
             // A later mutation contains fresher component state, so do not build a stale backlog.
             retry_unsent_messages: false,
             ..Default::default()
         })
-        .add_direction(Direction::ServerToClient);
+        .add_direction(LinkDirection::ServerToClient);
 
         // ClientChannel::MutationAcks - Ordered Reliable
         // High priority: acks should be sent ASAP to avoid unnecessary resends
-        app.register_channel::<RepliconMutationAcksChannel>(ChannelConfig {
+        app.register_channel::<RepliconMutationAcksChannel>(ChannelSetup {
             mode: ChannelMode::OrderedReliable,
             priority: 10.0,
             ..Default::default()
         })
-        .add_direction(Direction::ClientToServer);
+        .add_direction(LinkDirection::ClientToServer);
     }
 
     fn finish(&self, app: &mut App) {
@@ -66,12 +66,12 @@ impl Plugin for RepliconChannelRegistrationPlugin {
         );
 
         let registry = app.world().resource::<ChannelRegistry>();
-        let entry = |kind: ChannelKind| registry.net_id(kind).unwrap();
+        let entry = |type_id: ChannelTypeId| registry.net_id(type_id).unwrap();
         let server_channels = std::vec![
-            entry(ChannelKind::of::<RepliconUpdatesChannel>()),
-            entry(ChannelKind::of::<RepliconMutationsChannel>()),
+            entry(ChannelTypeId::of::<RepliconUpdatesChannel>()),
+            entry(ChannelTypeId::of::<RepliconMutationsChannel>()),
         ];
-        let client_channels = std::vec![entry(ChannelKind::of::<RepliconMutationAcksChannel>())];
+        let client_channels = std::vec![entry(ChannelTypeId::of::<RepliconMutationAcksChannel>())];
 
         app.insert_resource(RepliconChannelMap {
             server_channels,
@@ -99,11 +99,11 @@ mod tests {
         app
     }
 
-    fn kinds(app: &App, channels: &[NetId]) -> Vec<ChannelKind> {
+    fn type_ids(app: &App, channels: &[NetId]) -> Vec<ChannelTypeId> {
         let registry = app.world().resource::<ChannelRegistry>();
         channels
             .iter()
-            .map(|&net_id| registry.kind(net_id).unwrap())
+            .map(|&net_id| registry.type_id(net_id).unwrap())
             .collect()
     }
 
@@ -115,15 +115,15 @@ mod tests {
         app.finish();
         let map = app.world().resource::<RepliconChannelMap>();
         assert_eq!(
-            kinds(&app, &map.server_channels),
+            type_ids(&app, &map.server_channels),
             [
-                ChannelKind::of::<RepliconUpdatesChannel>(),
-                ChannelKind::of::<RepliconMutationsChannel>()
+                ChannelTypeId::of::<RepliconUpdatesChannel>(),
+                ChannelTypeId::of::<RepliconMutationsChannel>()
             ]
         );
         assert_eq!(
-            kinds(&app, &map.client_channels),
-            [ChannelKind::of::<RepliconMutationAcksChannel>()]
+            type_ids(&app, &map.client_channels),
+            [ChannelTypeId::of::<RepliconMutationAcksChannel>()]
         );
     }
 

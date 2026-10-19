@@ -25,7 +25,7 @@ slow-timeout = { period = "20s", terminate-after = 4 }
 # (13-net-stack/testing.md, A test runs in 1 s or less): each takes every core while it runs, so no
 # two of them, nor other tests, share the cores they count on.
 [[profile.default.overrides]]
-filter = 'package(campfire-net-stack) & test(/^scenario::tests::(swarm|one_seed_repeats)/)'
+filter = 'package(campfire-net-stack) & test(/^scenario::tests::(each_seed_of_the_swarm|one_seed_repeats)/)'
 threads-required = "num-cpus"
 
 # The wire cost cases run in parallel, a thread for each of its five.
@@ -45,7 +45,7 @@ filter = 'test(/(^|::)scripted_match::/)'
 slow-timeout = { period = "15s", terminate-after = 12 }
 
 [[profile.ci.overrides]]
-filter = 'package(campfire-net-stack) & test(/^scenario::tests::(swarm|one_seed_repeats)/)'
+filter = 'package(campfire-net-stack) & test(/^scenario::tests::(each_seed_of_the_swarm|one_seed_repeats)/)'
 threads-required = "num-cpus"
 
 [[profile.ci.overrides]]

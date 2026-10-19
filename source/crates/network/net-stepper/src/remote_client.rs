@@ -6,7 +6,7 @@ use core::net::SocketAddr;
 use crate::app_schedule::AppSchedule;
 
 /// A remote client of the stepper: its app, its client entity there, the address its link has at
-/// the server, the simulated link it is on, and how its app runs.
+/// the server, the emulated link it is on, and how its app runs.
 #[derive(Debug)]
 pub(crate) struct RemoteClient {
     pub(crate) app: App,

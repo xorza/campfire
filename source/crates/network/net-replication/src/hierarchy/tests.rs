@@ -15,7 +15,7 @@ use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_connection::RemoteId;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 
 use crate::hierarchy_send_plugin::HierarchySendPlugin;
 use crate::inheritance_plugin::InheritancePlugin;
@@ -39,10 +39,10 @@ fn app_with_hierarchy_plugin() -> App {
     app
 }
 
-/// Check that ReplicateLike linking works correctly when Children gets updated
-/// on an entity that has ReplicationMarker
+/// A change to the `Children` of an entity with `ReplicationMarker` attaches every child to its
+/// root.
 #[test]
-fn replicate_like_links_all_children() {
+fn a_children_change_attaches_every_child_to_its_root() {
     let mut app = app_with_hierarchy_plugin();
 
     let grandparent = app.world_mut().spawn(Replicate::to_links([])).id();
@@ -51,7 +51,7 @@ fn replicate_like_links_all_children() {
     let child_1 = app.world_mut().spawn_empty().id();
     let parent_1 = app.world_mut().spawn_empty().add_child(child_1).id();
 
-    // parent with ReplicationMarker: it is linked like any other child, and
+    // parent with ReplicationMarker: it is attached like any other child, and
     // its whole subtree inherits from the ultimate root (flattening)
     let child_2a = app.world_mut().spawn_empty().id();
     let child_2b = app.world_mut().spawn(Replicate::default()).id();
@@ -111,7 +111,7 @@ fn replicate_like_links_all_children() {
         grandparent
     );
 
-    // parent_2 is linked despite its own `Replicate`, which it keeps as an override
+    // parent_2 is attached despite its own `Replicate`, which it keeps as an override
     assert_eq!(
         app.world().get::<ReplicateLike>(parent_2).unwrap().root,
         grandparent
@@ -119,7 +119,7 @@ fn replicate_like_links_all_children() {
     assert!(app.world().get::<Replicate>(parent_2).is_some());
     assert!(app.world().get::<Overridden<Replicate>>(parent_2).is_some());
     // the whole subtree inherits from the ultimate root (flattening):
-    // child_2a follows the grandparent's config, child_2b keeps its own
+    // child_2a follows the grandparent's `Replicate`, child_2b keeps its own
     assert_eq!(
         app.world().get::<ReplicateLike>(child_2a).unwrap().root,
         grandparent
@@ -135,7 +135,7 @@ fn replicate_like_links_all_children() {
     );
     assert!(app.world().get::<Replicate>(child_2b).is_some());
     assert!(app.world().get::<Overridden<Replicate>>(child_2b).is_some());
-    // manually added links are preserved, not overwritten
+    // manually added attachments are preserved, not overwritten
     assert_eq!(
         app.world().get::<ReplicateLike>(child_2c).unwrap().root,
         grandparent
@@ -170,10 +170,9 @@ fn replicate_like_links_all_children() {
     );
 }
 
-/// Check that ReplicateLike linking works correctly when ReplicationMarker gets added
-/// on an entity that already has children
+/// A `ReplicationMarker` added to an entity that already has children attaches them to their root.
 #[test]
-fn replicate_like_links_below_a_replication_marker() {
+fn a_replication_marker_attaches_the_children_below_it() {
     let mut app = app_with_hierarchy_plugin();
 
     let grandparent = app.world_mut().spawn_empty().id();
@@ -234,7 +233,7 @@ fn replicate_like_links_below_a_replication_marker() {
         grandparent
     );
 
-    // parent_2 is linked despite its own `Replicate`, which it keeps as an override
+    // parent_2 is attached despite its own `Replicate`, which it keeps as an override
     assert_eq!(
         app.world().get::<ReplicateLike>(parent_2).unwrap().root,
         grandparent
@@ -251,7 +250,7 @@ fn replicate_like_links_below_a_replication_marker() {
     );
     assert!(app.world().get::<Replicate>(child_2b).is_some());
     assert!(app.world().get::<Overridden<Replicate>>(child_2b).is_some());
-    // manually added links are preserved, not overwritten
+    // manually added attachments are preserved, not overwritten
     assert_eq!(
         app.world().get::<ReplicateLike>(child_2c).unwrap().root,
         grandparent
@@ -272,9 +271,9 @@ fn replicate_like_links_below_a_replication_marker() {
 }
 
 /// A root that stops replicating takes its members' copies of its `Replicate` with it, and
-/// their links; a member's own `Replicate` stays.
+/// their attachments; a member's own `Replicate` stays.
 #[test]
-fn root_replicate_removal_clears_cloned_members() {
+fn a_root_that_stops_replicating_clears_its_members_copies() {
     let mut app = app_with_hierarchy_plugin();
     let cloned = app.world_mut().spawn_empty().id();
     let own = app.world_mut().spawn(Replicate::default()).id();
@@ -303,8 +302,8 @@ fn root_replicate_removal_clears_cloned_members() {
 }
 
 /// A child that leaves its parent leaves its root: a member with only a copy of the root's
-/// config loses it and its link, and a member with a `Replicate` of its own becomes the root of
-/// its subtree.
+/// `Replicate` loses it and its `ReplicateLike`, and a member with a `Replicate` of its own becomes
+/// the root of its subtree.
 #[test]
 fn an_unparented_child_leaves_its_root() {
     let mut app = app_with_hierarchy_plugin();
@@ -348,10 +347,10 @@ fn an_unparented_child_leaves_its_root() {
     }
 }
 
-/// `DisableReplicateHierarchy` added to a linked member unlinks it and its subtree, as it does
+/// `DisableReplicateHierarchy` added to an attached member detaches it and its subtree, as it does
 /// for a member that has it when it joins.
 #[test]
-fn a_later_disable_unlinks_the_subtree() {
+fn a_later_disable_detaches_the_subtree() {
     let mut app = app_with_hierarchy_plugin();
     let grandchild = app.world_mut().spawn_empty().id();
     let child = app.world_mut().spawn_empty().add_child(grandchild).id();
@@ -421,7 +420,7 @@ fn a_reparented_child_follows_its_new_root() {
 }
 
 fn setup_hierarchy() -> (Stepper<ReplicationStack>, Entity, Entity, Entity) {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     let grandparent = stepper.server_app_mut().world_mut().spawn_empty().id();
     let parent = stepper
         .server_app_mut()
@@ -440,7 +439,7 @@ fn setup_hierarchy() -> (Stepper<ReplicationStack>, Entity, Entity, Entity) {
 /// and the ChildOf component should be present on the replicated entity
 #[test]
 fn a_replicated_child_keeps_its_child_of() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -483,11 +482,11 @@ fn a_replicated_child_keeps_its_child_of() {
 }
 
 #[test]
-fn a_linked_hierarchy_replicates_and_an_unlinked_member_does_not() {
+fn an_attached_hierarchy_replicates_and_a_detached_member_does_not() {
     let (mut stepper, grandparent, parent, child) = setup_hierarchy();
 
     let replicate = Replicate::to_links([stepper.client_of_entity(0)]);
-    // disable linking for the child, so the child won't have ReplicateLike or RelationshipSync
+    // disable attaching for the child, so the child won't have ReplicateLike or RelationshipSync
     stepper
         .server_app_mut()
         .world_mut()
@@ -564,10 +563,10 @@ fn a_linked_hierarchy_replicates_and_an_unlinked_member_does_not() {
     );
 }
 
-/// Test that lose_visibility on a parent reaches ReplicateLike children.
+/// Lose_visibility on a parent reaches ReplicateLike children.
 #[test]
 fn children_follow_a_parents_lost_visibility() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let server_parent = stepper
         .server_app_mut()
@@ -641,11 +640,11 @@ fn children_follow_a_parents_lost_visibility() {
     );
 }
 
-/// Test that a child spawned AFTER lose_visibility on the parent inherits
+/// A child spawned AFTER lose_visibility on the parent inherits
 /// the parent's hidden state instead of being visible by default.
 #[test]
 fn a_late_child_of_a_hidden_parent_stays_hidden() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let server_parent = stepper
         .server_app_mut()
@@ -730,13 +729,13 @@ fn a_late_child_of_a_hidden_parent_stays_hidden() {
     );
 }
 
-/// Test that a child with explicitly set visibility keeps it (override):
+/// A child with explicitly set visibility keeps it (override):
 /// direct writes on a member insert `Overridden<ManualVisibility>` and
 /// later parent changes no longer reach it. Removing the marker
 /// follows the parent again, and an overridden-visible child replicates while hidden.
 #[test]
 fn a_child_with_its_own_visibility_overrides_the_parent() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let server_parent = stepper
         .server_app_mut()
@@ -830,12 +829,12 @@ fn a_child_with_its_own_visibility_overrides_the_parent() {
     assert!(is_marked(&stepper));
 }
 
-/// Test that a child with its own `Replicate` is still linked (`ReplicateLike`)
-/// and inherits rooms/visibility, while its own replication config acts as an
+/// A child with its own `Replicate` is still attached (`ReplicateLike`)
+/// and inherits rooms/visibility, while its own `Replicate` acts as an
 /// override: here the child's target includes a client the rooms exclude.
 #[test]
 fn a_child_with_its_own_replicate_follows_the_rooms() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let room_a = stepper
         .server_app_mut()
@@ -886,7 +885,7 @@ fn a_child_with_its_own_replicate_follows_the_rooms() {
         .id();
     stepper.frame_step(2);
 
-    // linked, own config kept, rooms followed from the parent
+    // attached, own `Replicate` kept, rooms followed from the parent
     assert_eq!(
         stepper
             .server_app()
@@ -932,11 +931,11 @@ fn a_child_with_its_own_replicate_follows_the_rooms() {
     );
 }
 
-/// Test that a child with ReplicateLike follows the parent's room visibility,
+/// A child with ReplicateLike follows the parent's room visibility,
 /// even though the child itself has no Rooms component.
 #[test]
 fn children_follow_the_parents_rooms() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let room_a = stepper
         .server_app_mut()
@@ -980,7 +979,7 @@ fn children_follow_the_parents_rooms() {
         .id();
     stepper.frame_step(2);
 
-    // The hierarchy walk should have linked the child to the parent
+    // The hierarchy walk should have attached the child to the parent
     assert_eq!(
         stepper
             .server_app()
@@ -1127,7 +1126,7 @@ fn children_follow_the_parents_rooms() {
 /// mapping arrives.
 #[test]
 fn a_child_attaches_once_its_parent_arrives() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     let parent = stepper.server_app_mut().world_mut().spawn_empty().id();
     let child = stepper
         .server_app_mut()
@@ -1167,7 +1166,7 @@ fn a_child_attaches_once_its_parent_arrives() {
 /// `ChildOf` and with its `RemoteParent`.
 #[test]
 fn a_member_outlives_a_root_that_stops_replicating() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     let client_id = stepper.client_of(0).get::<RemoteId>().unwrap().0;
     let root = stepper
         .server_app_mut()
@@ -1218,7 +1217,7 @@ fn a_member_outlives_a_root_that_stops_replicating() {
 /// its `ChildOf` back to the root's new copy once the root is visible again.
 #[test]
 fn a_member_outlives_its_hidden_root_and_attaches_when_it_returns() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     let root = stepper
         .server_app_mut()
         .world_mut()

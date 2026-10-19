@@ -1,8 +1,9 @@
 use bevy_ecs::query::{IterQueryData, QueryFilter, QueryItem};
 use bevy_ecs::system::Query;
 
-/// A mutable query iterated serially when it holds at most one item, and in parallel otherwise:
-/// a parallel iteration costs more than it saves on a single item.
+/// A mutable query iterated serially when it holds at most one item, and in parallel otherwise: a
+/// parallel iteration costs more than it saves on a single item (13-net-stack/layering.md, The
+/// iteration over links is `net-transport`'s).
 #[derive(Debug)]
 pub struct AdaptiveQueryIterMut<'query, 'world, 'state, D, F>
 where

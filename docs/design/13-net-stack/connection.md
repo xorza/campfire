@@ -8,13 +8,13 @@ How a link, a connection and a server come up and go down, and who ends each.
   `ClientOf` that is not a host client once it is `Disconnected`, for any cause, with `try_`
   commands, and a reconnect is a new entity. Practice: bevy_replicon's backend contract, aeronet's
   `ConnectionPlugin`, renet, naia. Refused: each IO despawning its own links, which neither the
-  session's endpoints nor Campfire's QUIC does; despawning on `Unlinked`, which skips
+  packet session's endpoints nor Campfire's QUIC does; despawning on `Unlinked`, which skips
   `Disconnected` and its observers; keeping the entity and stripping replicon's state, which
   replicon forbids and which leaks every per-connection component.
 - **Cleanup hangs off removal, not off one event.** The peer map entry goes with `Connected`'s
-  removal, and only when it names this entity; `ControlledBy` sessions end with the controlling
-  link's despawn; replicon's client components come and go with `Connected`; send queues clear
-  with the session.
+  removal, and only when it names this entity; a `ControlledBy` entity of the
+  `Link` lifetime goes with the controlling link's despawn; replicon's client components come and
+  go with `Connected`; send queues clear with the connection.
 - **One state per marker, in parallel for each layer.** A link is linking, linked or unlinked; a
   connection is connecting, connected, disconnecting or disconnected; a server is starting,
   started, stopping or stopped. Each layer maps the one below it state for state, each down state
@@ -23,8 +23,8 @@ How a link, a connection and a server come up and go down, and who ends each.
   `Link::state` field, which can disagree with the markers. A link has no going-down state, as an
   unlink is immediate.
 - **Each IO closes its end on a local `Unlink`,** and each IO pair has distinct addresses.
-- **An unlinked link holds nothing of its last connection.** `Unlinked` empties the link's
-  session queues, for every IO: the next session would read them as its own, as the fate of a
+- **An unlinked link holds nothing of its last connection.** `Unlinked` empties the link's packet
+  session queues, for every IO: the next packet session would read them as its own, as the fate of a
   payload it never sent. Refused: each IO emptying its own, as Campfire's QUIC did, which leaves the
   defect in every IO that forgets.
 - **"Stopped" names a server only.** A peer whose endpoint went away, as its app exited, closes

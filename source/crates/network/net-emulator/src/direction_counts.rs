@@ -1,4 +1,4 @@
-/// What one direction of a simulated link did with its packets so far.
+/// What one direction of an emulated link did with its packets so far.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DirectionCounts {
     /// Packets put on the direction.

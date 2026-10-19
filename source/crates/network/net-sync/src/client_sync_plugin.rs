@@ -15,7 +15,7 @@ impl Plugin for ClientSyncPlugin {
         app.register_required_components::<Client, RemoteTimeline>();
         // `ClientSyncPlugins` builds the local timeline's sync, which this observer reconfigures,
         // first.
-        app.add_observer(LocalTimelineSync::recompute_input_delay_on_config_update);
+        app.add_observer(LocalTimelineSync::recompute_input_delay_on_setup_update);
 
         app.add_observer(RemoteTimeline::handle_connect);
         app.add_observer(RemoteTimeline::update_from_packet);

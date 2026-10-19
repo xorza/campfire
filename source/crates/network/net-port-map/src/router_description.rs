@@ -47,7 +47,7 @@ impl RouterDescription {
                 }
                 let url = |name: &str| {
                     let url = base.join(&service.get_child(name)?.get_text()?)?;
-                    (url.addr().ip() == location.addr().ip()).then_some(url)
+                    (url.address().ip() == location.address().ip()).then_some(url)
                 };
                 let (control, schema) = (url("controlURL")?, url("SCPDURL")?);
                 return Some(Self {
@@ -124,7 +124,7 @@ mod tests {
         let based = document("<URLBase>http://192.168.0.1:5000/</URLBase>", &tree);
         let parsed = RouterDescription::parse(based.as_bytes(), &location).unwrap();
         assert_eq!(
-            parsed.control().addr(),
+            parsed.control().address(),
             SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 1), 5000)
         );
         assert_eq!(parsed.schema().whole(), "http://192.168.0.1:5000/scpd.xml");

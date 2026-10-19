@@ -1,9 +1,9 @@
-use crate::endpoint_side::EndpointSide;
+use crate::endpoint_user::EndpointUser;
+use crate::link_messages::LinkMessages;
 use crate::message::Message;
 use crate::message_error::MessageError;
-use crate::message_kind::MessageKind;
-use crate::message_manager::MessageManager;
 use crate::message_registry::MessageRegistry;
+use crate::message_type_id::MessageTypeId;
 use crate::replicon_map_param::RepliconMapParam;
 use crate::send_map_view::SendMapView;
 use crate::send_queue::Priority;
@@ -18,7 +18,7 @@ use bytes::Bytes;
 use campfire_common::ErrorReport;
 use campfire_net_bytes::Writer;
 use campfire_net_channels::Channel;
-use campfire_net_channels::ChannelKind;
+use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::TransportError;
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
@@ -55,7 +55,7 @@ pub struct MultiMessageSender<'w, 's, F: QueryFilter + 'static = ()> {
         'w,
         's,
         (
-            &'static MessageManager,
+            &'static LinkMessages,
             &'static mut Transport,
             Option<&'static mut HostClient>,
             Has<Client>,
@@ -100,12 +100,12 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
     ) -> Result<(), MessageError> {
         let channel = self
             .channels
-            .net_id(ChannelKind::of::<C>())
+            .net_id(ChannelTypeId::of::<C>())
             .expect("a message is sent on a registered channel");
         let tick = self.timeline.tick();
         let registered = self.registry.message(
             self.registry
-                .net_id(MessageKind::of::<M>())
+                .net_id(MessageTypeId::of::<M>())
                 .expect("a message is registered before it is sent"),
         );
         let maps_entities = registered.serialize_fns.maps_entities;
@@ -113,11 +113,11 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
         // The bytes as this world names its entities, serialized once for every link that
         // takes them so: each link of a server, and a host client.
         let mut as_is: Option<Bytes> = None;
-        for (manager, mut transport, mut host_client, is_client) in
+        for (link_messages, mut transport, mut host_client, is_client) in
             self.query.iter_many_unique_mut(links).matched()
         {
             let remote_client = is_client && host_client.is_none();
-            let sends = EndpointSide::Link.sends(remote_client);
+            let sends = EndpointUser::Link.sends(remote_client);
             debug_assert!(
                 travels(sends),
                 "{} is sent {sends:?}, against its registered direction: on a host client, the \
@@ -130,7 +130,7 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
             let bytes = if maps_entities && remote_client {
                 let view = self
                     .replicon
-                    .send_view(manager.entity_mapper.local_to_remote());
+                    .send_view(link_messages.entity_mapper.local_to_remote());
                 self.registry
                     .serialize::<M>(message, &mut self.writer, &view);
                 self.writer.take_written()
@@ -224,7 +224,7 @@ mod tests {
     use campfire_net_core::PeerId;
     use campfire_net_payload::AppCode;
     use campfire_net_stepper::Stepper;
-    use campfire_net_stepper::StepperConfig;
+    use campfire_net_stepper::StepperSetup;
     use campfire_net_transport::internals::Channel1;
 
     fn received(stepper: &Stepper<MessagesStack>, client: usize) -> &[(Entity, StringMessage)] {
@@ -238,7 +238,7 @@ mod tests {
     /// A message to two links reaches each of their clients once.
     #[test]
     fn a_message_reaches_each_listed_link() {
-        let mut stepper = Stepper::new(MessagesStack, StepperConfig::with_raw_clients(2));
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_plain_clients(2));
         for client in 0..2 {
             ReceivedMessages::<StringMessage>::collect_in(stepper.client_app_mut(client));
         }
@@ -269,7 +269,7 @@ mod tests {
     /// An event arrives as a remote event, once on each listed link, from the server.
     #[test]
     fn an_event_reaches_each_listed_link() {
-        let mut stepper = Stepper::new(MessagesStack, StepperConfig::with_raw_clients(2));
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_plain_clients(2));
         for client in 0..2 {
             let app = stepper.client_app_mut(client);
             app.init_resource::<Triggered>();
@@ -308,7 +308,7 @@ mod tests {
     /// sender's reused target set keeps nothing of the broadcast before it.
     #[test]
     fn a_target_selects_its_clients() {
-        let mut stepper = Stepper::new(MessagesStack, StepperConfig::with_raw_clients(2));
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_plain_clients(2));
         for client in 0..2 {
             ReceivedMessages::<StringMessage>::collect_in(stepper.client_app_mut(client));
         }
@@ -364,7 +364,7 @@ mod tests {
     /// disconnecting, and only client 0 receives.
     #[test]
     fn all_reaches_only_connected_links() {
-        let mut stepper = Stepper::new(MessagesStack, StepperConfig::with_raw_clients(2));
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_plain_clients(2));
         for client in 0..2 {
             ReceivedMessages::<StringMessage>::collect_in(stepper.client_app_mut(client));
         }
@@ -397,7 +397,7 @@ mod tests {
     /// and alone what it sends to the host's id.
     #[test]
     fn a_host_client_receives_its_targets() {
-        let mut stepper = Stepper::new(MessagesStack, StepperConfig::host_server());
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::host_server());
         let host = stepper.host_client_entity();
         let host_id = stepper.host_client().get::<RemoteId>().unwrap().0;
         HostReceivedMessages::<StringMessage>::collect_in(stepper.server_app_mut());
@@ -454,7 +454,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "is sent ServerToClient, against its registered direction")]
     fn a_message_against_its_direction_is_a_bug() {
-        let mut stepper = Stepper::new(MessagesStack, StepperConfig::host_server());
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::host_server());
         let host = stepper.host_client_entity();
         let system = stepper.server_app_mut().register_system(
             move |mut sender: MultiMessageSender<'_, '_>| {

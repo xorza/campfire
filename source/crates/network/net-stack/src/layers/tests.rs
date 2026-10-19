@@ -11,15 +11,15 @@ use campfire_net_connection::{LocalId, RemoteId};
 use campfire_net_endpoint::Endpoint;
 use campfire_net_interpolation::InterpolationTimeline;
 use campfire_net_interpolation::internals::interpolation_timeline_is_synced;
-use campfire_net_link::{LocalAddr, PeerAddr, Unlinked};
-use campfire_net_messages::MessageManager;
+use campfire_net_link::{LocalAddress, RemoteAddress, Unlinked};
+use campfire_net_messages::LinkMessages;
 use campfire_net_messages::internals::StringMessage;
 use campfire_net_messages::{EventSender, MessageReceiver, MessageSender};
 use campfire_net_payload::UnlinkReason;
 use campfire_net_replication::{ReplicationReceiver, ReplicationSender, SenderHello};
 use campfire_net_stepper::AppId;
-use campfire_net_stepper::StepperConfig;
-use campfire_net_stepper::{Order, Stepper};
+use campfire_net_stepper::StepperSetup;
+use campfire_net_stepper::{StepOrder, Stepper};
 use campfire_net_sync::internals::input_timeline_is_synced;
 use campfire_net_sync::{LinkEstimator, LocalTimelineSync, RemoteTimeline};
 use campfire_net_transport::Transport;
@@ -38,7 +38,7 @@ use core::time::Duration;
 /// - the various components we expect are present
 #[test]
 fn a_client_server_has_every_layers_components() {
-    let stepper = Stepper::new(FullStack, StepperConfig::single());
+    let stepper = Stepper::new(FullStack, StepperSetup::single());
 
     // Check that the various components we expect are present
     assert!(stepper.client(0).contains::<LinkEstimator>());
@@ -58,7 +58,7 @@ fn a_client_server_has_every_layers_components() {
     );
     assert!(!stepper.client(0).contains::<InterpolationTimeline>());
     assert!(stepper.client(0).contains::<Transport>());
-    assert!(stepper.client(0).contains::<MessageManager>());
+    assert!(stepper.client(0).contains::<LinkMessages>());
     assert!(stepper.client(0).contains::<MessageSender<StringMessage>>());
     // Message receivers are created lazily when the first payload arrives.
     assert!(
@@ -69,8 +69,8 @@ fn a_client_server_has_every_layers_components() {
     assert!(stepper.client(0).contains::<ReplicationSender>());
     assert!(stepper.client(0).contains::<Endpoint<EmulatedWires>>());
     assert!(stepper.client(0).contains::<Connected>());
-    assert!(stepper.client(0).contains::<LocalAddr>());
-    assert!(stepper.client(0).contains::<PeerAddr>());
+    assert!(stepper.client(0).contains::<LocalAddress>());
+    assert!(stepper.client(0).contains::<RemoteAddress>());
     assert!(stepper.client(0).contains::<LocalId>());
     assert!(stepper.client(0).contains::<RemoteId>());
 
@@ -78,7 +78,7 @@ fn a_client_server_has_every_layers_components() {
     assert!(stepper.server().contains::<Endpoint<EmulatedWires>>());
 
     assert!(stepper.client_of(0).contains::<Transport>());
-    assert!(stepper.client_of(0).contains::<MessageManager>());
+    assert!(stepper.client_of(0).contains::<LinkMessages>());
     assert!(
         stepper
             .client_of(0)
@@ -90,7 +90,7 @@ fn a_client_server_has_every_layers_components() {
             .contains::<MessageReceiver<StringMessage>>()
     );
     assert!(stepper.client_of(0).contains::<Connected>());
-    assert!(stepper.client_of(0).contains::<PeerAddr>());
+    assert!(stepper.client_of(0).contains::<RemoteAddress>());
     assert!(stepper.client_of(0).contains::<LocalId>());
     assert!(stepper.client_of(0).contains::<RemoteId>());
 }
@@ -99,7 +99,7 @@ fn a_client_server_has_every_layers_components() {
 /// - the various components we expect are present
 #[test]
 fn a_host_server_has_every_layers_components() {
-    let mut stepper = Stepper::new(FullStack, StepperConfig::host_server());
+    let mut stepper = Stepper::new(FullStack, StepperSetup::host_server());
     stepper.frame_step(1);
 
     // Check that the various components we expect are present
@@ -120,7 +120,7 @@ fn a_host_server_has_every_layers_components() {
         stepper.server_app().world()
     ));
     assert!(stepper.host_client().contains::<Transport>());
-    assert!(stepper.host_client().contains::<MessageManager>());
+    assert!(stepper.host_client().contains::<LinkMessages>());
     assert!(
         stepper
             .host_client()
@@ -159,8 +159,8 @@ fn use_single_threaded_schedules(stepper: &mut Stepper<FullStack>) {
 /// server-requested path disconnects clients while stopping the server; it must clean up the
 /// per-client entity without emitting any stack errors in that frame or subsequent frames.
 #[test]
-fn server_requested_disconnection_does_not_emit_error_logs() {
-    let mut stepper = Stepper::new(FullStack, StepperConfig::single());
+fn a_disconnect_the_server_asks_for_logs_no_error() {
+    let mut stepper = Stepper::new(FullStack, StepperSetup::single());
     use_single_threaded_schedules(&mut stepper);
     let server = stepper.server_entity();
     let server_client = stepper.client_of_entity(0);
@@ -169,7 +169,7 @@ fn server_requested_disconnection_does_not_emit_error_logs() {
             .server_app_mut()
             .world_mut()
             .trigger(Stop::from(server));
-        stepper.step(20, stepper.frame_interval(), Order::ServerFirst);
+        stepper.step(20, stepper.frame_interval(), StepOrder::ServerFirst);
 
         assert!(
             stepper
@@ -196,12 +196,12 @@ fn record_disconnect(
 
 /// Regression test for https://github.com/cBournhonesque/lightyear/issues/949.
 ///
-/// An IO layer reports an abruptly closed session as `Unlinked`. The server disconnects the
+/// An IO layer reports an abruptly closed packet session as `Unlinked`. The server disconnects the
 /// client with the link's reason and despawns its link, so no stale sender emits errors on later
 /// frames.
 #[test]
-fn abrupt_unlink_does_not_emit_error_logs() {
-    let mut stepper = Stepper::new(FullStack, StepperConfig::single());
+fn an_abrupt_unlink_logs_no_error() {
+    let mut stepper = Stepper::new(FullStack, StepperSetup::single());
     use_single_threaded_schedules(&mut stepper);
     let server_client = stepper.client_of_entity(0);
     stepper.server_app_mut().init_resource::<Disconnects>();
@@ -266,5 +266,4 @@ fn a_host_server_builds_both_sides() {
     });
     assert!(app.world().contains_resource::<InterpolationTimeline>());
     assert!(app.is_plugin_added::<ServerLinkPlugin>());
-    assert!(app.is_plugin_added::<RawClientPlugin>());
 }

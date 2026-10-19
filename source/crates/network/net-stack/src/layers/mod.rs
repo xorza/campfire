@@ -1,9 +1,9 @@
-//! The layers each role's plugin group lists: those both sides share, then a client's and a
+//! The layers each app kind's plugin group lists: those both sides share, then a client's and a
 //! server's own, so a host server, which is both, lists the shared ones once
 //! (14-workspace-alignment.md, A plugin group lists every layer).
 
 use bevy_app::PluginGroupBuilder;
-use campfire_net_connection::{ConnectionPlugins, RawClientPlugin, ServerConnectionPlugins};
+use campfire_net_connection::{ConnectionPlugins, ServerConnectionPlugins};
 use campfire_net_core::TickRate;
 #[cfg(any(feature = "sim", feature = "udp"))]
 use campfire_net_endpoint::EndpointPlugin;
@@ -62,7 +62,6 @@ pub(crate) fn client(group: PluginGroupBuilder) -> PluginGroupBuilder {
         .add_group(ClientReplicationPlugins)
         .add_group(PredictionPlugins)
         .add_group(InterpolationPlugins)
-        .add(RawClientPlugin)
 }
 
 /// A server's own layers, on the shared ones.

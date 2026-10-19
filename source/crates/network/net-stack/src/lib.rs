@@ -1,6 +1,7 @@
-//! Plugin groups that install the stack's layer crates in the order they need.
+//! Plugin groups that install the stack's layer crates in the order they need (13-net-stack/api.md,
+//! One plugin group for each kind of app, and no plugin adds another).
 //!
-//! [`ClientPlugins`], [`ServerPlugins`] and [`HostPlugins`], one for each role of an app, are the
+//! [`ClientPlugins`], [`ServerPlugins`] and [`HostPlugins`], one for each kind of app, are the
 //! entry points.
 //! Every type comes from its layer crate, as `campfire_net_link::Link` or
 //! `campfire_net_replication::Replicate`; this crate re-exports none of them.

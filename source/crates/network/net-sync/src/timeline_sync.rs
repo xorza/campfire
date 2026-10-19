@@ -1,9 +1,9 @@
 use crate::sync_adjustment::SyncAdjustment;
-use crate::sync_config::SyncConfig;
 use crate::sync_hysteresis::SyncHysteresis;
 use crate::sync_sample::SyncSample;
+use crate::sync_setup::SyncSetup;
 use bevy_utils::prelude::DebugName;
-use campfire_net_core::{TickDelta, TickInstant};
+use campfire_net_core::{TickInstant, TickSpan};
 use tracing::trace;
 
 /// Runtime controller for synchronizing a local clock or cursor to a remote timeline.
@@ -15,42 +15,42 @@ use tracing::trace;
 ///
 /// This trait intentionally does not require
 /// [`NetworkTimeline`](campfire_net_timeline::NetworkTimeline). `LocalTimelineSync` controls the
-/// application-global `LocalTimeline` without owning a second clock, while interpolation owns and
+/// application-global `LocalTimeline` without holding a second clock, while interpolation holds and
 /// directly adjusts its independent presentation timeline.
 pub trait TimelineSync {
     /// Settings used by this synchronization policy.
-    type Config;
+    type Setup;
 
-    /// Return the mutable hysteresis state used by the common speed controller.
+    /// The mutable hysteresis state used by the common speed controller.
     fn sync_hysteresis(&mut self) -> &mut SyncHysteresis;
 
     /// Select the common controller settings from this policy's configuration.
-    fn sync_config(config: &Self::Config) -> &SyncConfig;
+    fn sync_setup(setup: &Self::Setup) -> &SyncSetup;
 
-    /// Get the ideal [`TickInstant`] that the controlled clock should follow.
-    fn sync_objective(&self, sample: &SyncSample<'_, Self::Config>) -> TickInstant;
+    /// The ideal [`TickInstant`] that the controlled clock should follow.
+    fn sync_objective(&self, sample: &SyncSample<'_, Self::Setup>) -> TickInstant;
 
     /// Apply a discontinuous correction and return its whole-tick delta.
     ///
-    /// `now` is explicit because not every controller owns the clock it disciplines.
+    /// `now` is explicit because not every controller holds the clock it disciplines.
     fn resync(&mut self, now: TickInstant, sync_objective: TickInstant) -> i32;
 
     /// Synchronize the controlled clock to the sample's remote timeline from its current `now`
     /// instant.
     ///
     /// Usually this slightly changes the relative speed. Initial synchronization and errors larger
-    /// than [`SyncConfig::max_error_margin`] instead call [`TimelineSync::resync`]. The returned
-    /// delta lets the caller propagate a discontinuity to any tick-indexed state it owns.
-    fn sync(&mut self, now: TickInstant, sample: &SyncSample<'_, Self::Config>) -> Option<i32>
+    /// than [`SyncSetup::max_error_margin`] instead call [`TimelineSync::resync`]. The returned
+    /// delta lets the caller propagate a discontinuity to any tick-indexed state it holds.
+    fn sync(&mut self, now: TickInstant, sample: &SyncSample<'_, Self::Setup>) -> Option<i32>
     where
         Self: Sized,
     {
-        let config = sample.config;
-        let sync_config = Self::sync_config(config);
+        let setup = sample.setup;
+        let sync_setup = Self::sync_setup(setup);
         let objective = self.sync_objective(sample);
         let error_ticks = now - objective;
         let adjustment = if self.is_synced() {
-            self.speed_adjustment(config, error_ticks)
+            self.speed_adjustment(setup, error_ticks)
         } else {
             SyncAdjustment::Resync
         };
@@ -60,8 +60,8 @@ pub trait TimelineSync {
             ?objective,
             ?adjustment,
             ?error_ticks,
-            error_margin = ?sync_config.error_margin,
-            max_error_margin = ?sync_config.max_error_margin,
+            error_margin = ?sync_setup.error_margin,
+            max_error_margin = ?sync_setup.max_error_margin,
             "timeline synchronization sample"
         );
         self.set_synced(true);
@@ -75,10 +75,10 @@ pub trait TimelineSync {
     /// Apply the common speed controller for an error measured in fractional ticks.
     ///
     /// A [`SyncAdjustment::Resync`] result is left to the synchronization policy.
-    fn speed_adjustment(&mut self, config: &Self::Config, offset: TickDelta) -> SyncAdjustment {
+    fn speed_adjustment(&mut self, setup: &Self::Setup, offset: TickSpan) -> SyncAdjustment {
         let adjustment = self
             .sync_hysteresis()
-            .speed_adjustment(Self::sync_config(config), offset);
+            .speed_adjustment(Self::sync_setup(setup), offset);
         match adjustment {
             SyncAdjustment::SpeedAdjust(ratio) => self.set_relative_speed(ratio),
             SyncAdjustment::Nominal => self.set_relative_speed(1.0),
@@ -91,11 +91,11 @@ pub trait TimelineSync {
 
     /// Set whether the timeline has completed its initial synchronization.
     ///
-    /// The sync plugins set it for network clients; a session driver that needs no remote
+    /// The sync plugins set it for network clients; a driver that needs no remote
     /// samples, such as an in-process host client, sets it directly.
     fn set_synced(&mut self, synced: bool);
 
-    /// Returns the speed of your timeline relative to your system clock as an `f32`.
+    /// The speed of your timeline relative to your system clock as an `f32`.
     /// A value of `1.0` means the timeline is running at normal speed.
     /// A value of `0.5` means the timeline is running at half speed,
     fn relative_speed(&self) -> f32;

@@ -21,8 +21,8 @@ impl RemoteParent {
         Self { server }
     }
 
-    /// Gives each replicated entity whose server parent is mapped and that shows no [`ChildOf`]
-    /// its view: a parent that arrives late, or that comes back after it was despawned here. It runs
+    /// Gives each replicated entity whose server parent is mapped and that shows no [`ChildOf`] its
+    /// view: a parent that arrives late, or that comes back after it was despawned here. It runs
     /// after the receive, and only in a frame whose receive mapped an entity.
     pub(crate) fn attach(
         entity_map: Res<'_, ServerEntityMap>,

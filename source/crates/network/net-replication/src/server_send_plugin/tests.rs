@@ -18,15 +18,15 @@ use campfire_net_channels::internals::TransportCounts;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_core::PeerId;
 use campfire_net_despawn::DespawnReplicated;
-use campfire_net_stepper::Order;
+use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 use campfire_net_transport::internals::summed_transport_counts;
 
 #[test]
 fn a_replicated_spawn_reaches_the_client() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
         let source_entity =
             spawn_on_server(&mut stepper, (Replicate::to_clients(NetworkTarget::All),));
@@ -40,7 +40,7 @@ fn a_replicated_spawn_reaches_the_client() {
 #[test]
 fn a_replicate_insert_spawns_the_entity_on_the_client() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
         let source_entity = spawn_on_server(&mut stepper, (Replicate::to_links([]),));
         stepper.frame_step(PROPAGATION_FRAMES);
@@ -65,7 +65,7 @@ fn a_replicate_insert_spawns_the_entity_on_the_client() {
 /// - the existing entities are replicated to the new client
 #[test]
 fn a_new_client_receives_the_existing_entities() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -102,7 +102,7 @@ fn a_new_client_receives_the_existing_entities() {
 /// - existing entities outside its replication target are not replicated to it
 #[test]
 fn a_new_client_receives_only_the_entities_that_target_it() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     let client_0_id = stepper.client_of(0).get::<RemoteId>().unwrap().0;
 
     let server_entity = stepper
@@ -141,7 +141,7 @@ fn a_new_client_receives_only_the_entities_that_target_it() {
 
 #[test]
 fn a_link_without_a_replication_sender_receives_no_replication() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     // Drop the marker from the second client's link: it stays connected
     // (messages still flow) but must receive no replication.
@@ -208,7 +208,7 @@ fn a_link_without_a_replication_sender_receives_no_replication() {
 /// manual visibility set before the detach still hides its entity.
 #[test]
 fn a_detached_link_respawns_its_entities_and_keeps_its_manual_visibility() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     let link = stepper.client_of_entity(0);
     let shown = spawn_on_server(&mut stepper, Replicate::to_clients(NetworkTarget::All));
     let hidden = spawn_on_server(&mut stepper, Replicate::to_clients(NetworkTarget::All));
@@ -239,8 +239,8 @@ fn a_detached_link_respawns_its_entities_and_keeps_its_manual_visibility() {
 }
 
 #[test]
-fn target_mode_replicates_to_matching_links() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::with_raw_clients(2));
+fn a_target_replicates_to_the_links_it_names() {
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
     let client_0_id = stepper.client_of(0).get::<RemoteId>().unwrap().0;
 
     let server_entity = stepper
@@ -279,7 +279,7 @@ fn target_mode_replicates_to_matching_links() {
 #[test]
 fn a_replicated_despawn_reaches_the_client() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
         let source_entity =
             spawn_on_server(&mut stepper, (Replicate::to_clients(NetworkTarget::All),));
@@ -309,7 +309,7 @@ fn a_replicated_despawn_reaches_the_client() {
 #[test]
 fn a_replicate_retarget_despawns_the_entity_on_the_client() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
         let source_entity =
             spawn_on_server(&mut stepper, (Replicate::to_clients(NetworkTarget::All),));
@@ -337,7 +337,7 @@ fn a_replicate_retarget_despawns_the_entity_on_the_client() {
 #[test]
 fn a_component_insert_reaches_the_client() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
         let source_entity =
             spawn_on_server(&mut stepper, (Replicate::to_clients(NetworkTarget::All),));
@@ -364,7 +364,7 @@ fn a_component_insert_reaches_the_client() {
 #[test]
 fn a_component_update_reaches_the_client() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
         let source_entity = spawn_on_server(
             &mut stepper,
@@ -402,14 +402,14 @@ fn a_component_update_reaches_the_client() {
     }
 }
 
-/// Test that replicating updates works even after a large tick jump.
+/// Replicating updates works even after a large tick jump.
 ///
 /// Exhausting a `u32` tick takes more than two years at 60 Hz, so this test only verifies that a
 /// moderate jump (10 000 ticks) does not break replication.
 #[test]
 fn a_component_update_reaches_the_client_after_a_large_tick_jump() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
         let source_entity = spawn_on_server(
             &mut stepper,
@@ -468,7 +468,7 @@ fn a_component_update_reaches_the_client_after_a_large_tick_jump() {
 #[test]
 fn a_component_remove_reaches_the_client() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
         let source_entity = spawn_on_server(
             &mut stepper,
@@ -502,7 +502,7 @@ fn a_component_remove_reaches_the_client() {
 #[test]
 fn a_component_remove_is_not_replicated_while_replication_is_paused() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
         let source_entity = spawn_on_server(
             &mut stepper,
             (Replicate::to_clients(NetworkTarget::All), CompA(1.0)),
@@ -555,9 +555,9 @@ fn a_component_remove_is_not_replicated_while_replication_is_paused() {
 
 /// Removing the replication target changes visibility instead of pausing replication in place.
 #[test]
-fn remove_replication_target_despawns_remote_entity() {
+fn the_removal_of_a_replication_target_despawns_the_remote_entity() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
         let source_entity =
             spawn_on_server(&mut stepper, (Replicate::to_clients(NetworkTarget::All),));
         stepper.frame_step(PROPAGATION_FRAMES);
@@ -590,7 +590,7 @@ fn remove_replication_target_despawns_remote_entity() {
 #[test]
 fn removing_a_non_replicated_component_keeps_the_replicated_ones() {
     {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
         let source_entity = spawn_on_server(
             &mut stepper,
@@ -629,8 +629,8 @@ fn removing_a_non_replicated_component_keeps_the_replicated_ones() {
 
 /// Removing `Replicated` before despawning keeps the despawn local to the sender.
 #[test]
-fn sender_can_despawn_without_replicating_despawn() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+fn a_sender_can_despawn_with_no_despawn_replicated() {
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -671,8 +671,8 @@ fn sender_can_despawn_without_replicating_despawn() {
 }
 
 #[test]
-fn host_owned_entity_reaches_remote_clients_without_loop_back() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::host_server());
+fn an_entity_of_the_host_reaches_the_remote_clients_and_not_back() {
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::host_server());
     let host_id = stepper.host_client().get::<RemoteId>().unwrap().0;
 
     let host_entity = stepper
@@ -764,13 +764,13 @@ fn spawn(stepper: &mut Stepper<ReplicationStack>) -> StepperCounts {
     let before = StepperCounts::read(stepper);
     let entities = vec![(CompA(0.0), Replicate::to_clients(NetworkTarget::All)); ENTITIES];
     stepper.server_app_mut().world_mut().spawn_batch(entities);
-    stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
     StepperCounts::read(stepper) - before
 }
 
 #[test]
 fn a_frame_that_spawns_1000_entities_sends_exact_bytes() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     assert_eq!(
         spawn(&mut stepper),
         StepperCounts {
@@ -793,7 +793,7 @@ fn a_frame_that_spawns_1000_entities_sends_exact_bytes() {
 
 #[test]
 fn a_frame_that_changes_1000_entities_sends_exact_bytes() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     spawn(&mut stepper);
     stepper.frame_step(1);
     let before = StepperCounts::read(&mut stepper);
@@ -804,7 +804,7 @@ fn a_frame_that_changes_1000_entities_sends_exact_bytes() {
     {
         component.0 = 1.0;
     }
-    stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
     assert_eq!(
         StepperCounts::read(&mut stepper) - before,
         StepperCounts {
@@ -827,7 +827,7 @@ fn a_frame_that_changes_1000_entities_sends_exact_bytes() {
 
 /// On a host server, an entity has its host marker exactly while the host client is in its
 /// target: a retarget away from the host takes `Predicted`, a retarget back gives it again, and
-/// the end of the host role and the removal of the target take it too.
+/// the end of the host side and the removal of the target take it too.
 #[test]
 fn the_host_marker_follows_the_target() {
     let mut app = App::new();
@@ -927,7 +927,7 @@ fn a_host_in_both_targets_is_predicted_alone() {
 /// once the server removes the prediction target.
 #[test]
 fn a_client_in_both_targets_is_predicted_alone() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     let source = spawn_on_server(
         &mut stepper,
         (

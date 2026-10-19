@@ -8,7 +8,7 @@
 /// `Delta` can be the value itself or a smaller type tailored to the changes
 /// between two values.
 pub trait Diffable<Delta = Self>: Clone {
-    /// Returns the baseline value used when there is no previous value.
+    /// The baseline value used when there is no previous value.
     fn base_value() -> Self;
 
     /// Computes the difference from `self` to `new` (`new - self`).

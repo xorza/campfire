@@ -11,7 +11,7 @@ use tracing::{info, warn};
 
 use crate::listening::Listening;
 use crate::port_mapper::{MapRequest, MapTimes, PortMapper, Routes};
-use crate::stop::Stop;
+use crate::thread_stop::ThreadStop;
 
 /// A server's port, which its router forwards from outside, on a thread of its own
 /// (13-net-stack/port-map.md, A server maps its own port): it maps the port by PCP or NAT-PMP at
@@ -22,7 +22,7 @@ use crate::stop::Stop;
 /// and joins it.
 #[derive(Debug)]
 pub struct PortMap {
-    stop: Arc<Stop>,
+    stop: Arc<ThreadStop>,
     _worker: Worker,
 }
 
@@ -31,7 +31,7 @@ impl PortMap {
     /// router lists as `name`, the app's; none, logged, for a socket no router forwards to, or
     /// when its thread cannot wait.
     pub fn start(local: SocketAddr, name: &'static str) -> Option<Self> {
-        if !Self::forwardable(local) {
+        if !Self::is_forwardable(local) {
             info!(%local, "the server listens where no router forwards; its port is not mapped");
             return None;
         }
@@ -50,14 +50,15 @@ impl PortMap {
     }
 
     /// Whether a router forwards to a socket at `local`: one bound to IPv4, all of the host's
-    /// addresses or one not loopback. A socket bound to IPv6 takes IPv4 only where its OS makes
-    /// it dual-stack by default, as Linux does and Windows does not.
-    const fn forwardable(local: SocketAddr) -> bool {
+    /// addresses or one not loopback. A socket bound to IPv6 takes IPv4 only where its OS makes it
+    /// dual-stack by default, as Linux does and Windows does not (13-net-stack/port-map.md, IPv4
+    /// alone).
+    const fn is_forwardable(local: SocketAddr) -> bool {
         matches!(local.ip(), IpAddr::V4(ip) if !ip.is_loopback())
     }
 
     fn of(mapper: PortMapper) -> io::Result<Self> {
-        let stop = Arc::new(Stop {
+        let stop = Arc::new(ThreadStop {
             stopped: AtomicBool::new(false),
             poller: Poller::new()?,
         });

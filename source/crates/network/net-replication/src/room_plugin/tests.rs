@@ -7,7 +7,7 @@ use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_connection::{ClientOf, Connected};
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 
 use crate::room_id::RoomId;
 
@@ -32,7 +32,7 @@ fn rooms_app() -> App {
 }
 
 /// Reads the rooms filter bit straight from the sender's [`ClientVisibility`].
-fn hidden(app: &App, sender: Entity, entity: Entity) -> bool {
+fn is_hidden(app: &App, sender: Entity, entity: Entity) -> bool {
     let registry = app.world().resource::<FilterRegistry>();
     let bit = registry.get_bit::<Rooms>().unwrap();
     let visibility = app.world().get::<ClientVisibility>(sender).unwrap();
@@ -40,7 +40,7 @@ fn hidden(app: &App, sender: Entity, entity: Entity) -> bool {
 }
 
 #[test]
-fn room_allocator_returns_distinct_monotonic_ids() {
+fn the_room_allocator_gives_distinct_rising_ids() {
     let mut allocator = RoomAllocator::default();
 
     let first = allocator.allocate();
@@ -51,7 +51,7 @@ fn room_allocator_returns_distinct_monotonic_ids() {
 }
 
 #[test]
-fn rooms_add_remove_and_iterate_memberships() {
+fn a_room_set_adds_removes_and_lists_its_rooms() {
     let room_a = RoomId(0);
     let room_b = RoomId(3);
     let mut rooms = Rooms::single(room_a);
@@ -70,7 +70,7 @@ fn rooms_add_remove_and_iterate_memberships() {
 }
 
 #[test]
-fn rooms_visibility_filter_requires_shared_room() {
+fn the_room_filter_needs_a_shared_room() {
     let sender = Entity::from_bits(1);
     let room_a = RoomId(0);
     let room_b = RoomId(1);
@@ -84,7 +84,7 @@ fn rooms_visibility_filter_requires_shared_room() {
 }
 
 #[test]
-fn rooms_visibility_tracks_client_and_entity_room_moves() {
+fn the_room_visibility_follows_each_move_of_a_client_or_an_entity() {
     let sender = Entity::from_bits(1);
     let room_a = RoomId(0);
     let room_b = RoomId(1);
@@ -135,7 +135,7 @@ fn rooms_visibility_survives_client_move_when_entity_is_in_both_rooms() {
 }
 
 #[test]
-fn rooms_visibility_is_lost_when_last_shared_room_is_removed() {
+fn the_room_visibility_goes_with_the_last_shared_room() {
     let sender = Entity::from_bits(1);
     let room_a = RoomId(0);
     let room_b = RoomId(1);
@@ -154,7 +154,7 @@ fn rooms_visibility_is_lost_when_last_shared_room_is_removed() {
 }
 
 #[test]
-fn room_plugin_registers_allocator_resource() {
+fn the_room_plugin_adds_the_allocator() {
     let mut app = App::new();
 
     app.add_plugins(RoomPlugin);
@@ -178,21 +178,21 @@ fn a_new_client_evaluates_preexisting_room_entities() {
     app.world_mut()
         .entity_mut(stranger)
         .insert(ClientVisibility::default());
-    assert!(hidden(&app, stranger, entity));
+    assert!(is_hidden(&app, stranger, entity));
 
     // ...while a link in the same room sees the entity
     let member = app.world_mut().spawn(Rooms::single(room_a)).id();
     app.world_mut()
         .entity_mut(member)
         .insert(ClientVisibility::default());
-    assert!(!hidden(&app, member, entity));
+    assert!(!is_hidden(&app, member, entity));
 
     // ...and a link without rooms yet sees nothing room-filtered
     let bare = app.world_mut().spawn_empty().id();
     app.world_mut()
         .entity_mut(bare)
         .insert(ClientVisibility::default());
-    assert!(hidden(&app, bare, entity));
+    assert!(is_hidden(&app, bare, entity));
 }
 
 /// When client 2 connects:
@@ -201,7 +201,7 @@ fn a_new_client_evaluates_preexisting_room_entities() {
 /// The new client's `Rooms` are already on its link when replicon inserts `ClientVisibility`.
 #[test]
 fn a_new_client_receives_only_the_entities_in_its_rooms() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let room_a = stepper
         .server_app_mut()

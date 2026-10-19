@@ -1,6 +1,6 @@
 //! An endpoint as its host and its IO thread share it: its core behind one mutex, and its IO, which
-//! the thread reads and waits on outside it (13-net-stack/session.md, One endpoint core and one
-//! pass for each IO).
+//! the thread reads and waits on outside it (13-net-stack/packet-session.md, One endpoint core and
+//! one pass for each IO).
 
 use std::sync::{Mutex, MutexGuard};
 
@@ -8,14 +8,14 @@ use campfire_net_emulator::LinkConditioner;
 use campfire_net_payload::AppCode;
 
 use crate::carrier::Carrier;
-use crate::close_session::CloseSession;
+use crate::close_packet_session::ClosePacketSession;
 use crate::datagram_io::Outbound;
 use crate::datagram_io::{Datagram, DatagramIo};
 use crate::endpoint_core::{EndpointCore, PeerKey};
-use crate::endpoint_parts::EndpointParts;
+use crate::endpoint_pieces::EndpointPieces;
 
 /// An endpoint's core and IO, which a host locks for its own steps and an IO thread runs; the
-/// carrier `C` names what carries each session for the host.
+/// carrier `C` names what carries each packet session for the host.
 #[derive(Debug)]
 pub struct EndpointRuntime<Io, C> {
     core: Mutex<EndpointCore<C>>,
@@ -24,7 +24,8 @@ pub struct EndpointRuntime<Io, C> {
 
 /// The most datagrams a pass opens under one hold of the endpoint's lock, for which the frame's
 /// endpoint systems wait: quinn's `IO_LOOP_BOUND`, the lowest bound of its endpoint loop that did
-/// not lower throughput in its benchmarks.
+/// not lower throughput in its benchmarks (13-net-stack/packet-session.md, A pass opens a bounded
+/// batch under each hold of the lock).
 const PASS_DATAGRAMS: usize = 160;
 
 /// The datagrams a pass reads and sends, which each pass reuses.
@@ -35,11 +36,11 @@ pub struct PassScratch {
 }
 
 impl<Io: DatagramIo, C: Carrier> EndpointRuntime<Io, C> {
-    pub fn new(parts: EndpointParts<Io>) -> Self {
-        let EndpointParts { io, side, config } = parts;
-        let conditioner = config.conditioner.map(LinkConditioner::new);
+    pub fn new(parts: EndpointPieces<Io>) -> Self {
+        let EndpointPieces { io, side, setup } = parts;
+        let conditioner = setup.conditioner.map(LinkConditioner::new);
         Self {
-            core: Mutex::new(EndpointCore::new(config.session, side, conditioner)),
+            core: Mutex::new(EndpointCore::new(setup.packet_session, side, conditioner)),
             io,
         }
     }
@@ -82,13 +83,13 @@ impl<Io: DatagramIo, C: Carrier> EndpointRuntime<Io, C> {
     }
 
     /// The IO thread: it waits for a datagram, its next deadline or a wake, and runs a pass,
-    /// until the endpoint closed all its sessions or its IO failed.
+    /// until the endpoint closed all its packet sessions or its IO failed.
     pub fn run(&self) {
         let mut scratch = PassScratch::default();
         loop {
             let timeout = {
                 let core = self.lock();
-                if core.ended() {
+                if core.is_ended() {
                     break;
                 }
                 let now = core.now();
@@ -101,7 +102,7 @@ impl<Io: DatagramIo, C: Carrier> EndpointRuntime<Io, C> {
     }
 }
 
-impl<Io: DatagramIo, C: Carrier> CloseSession for EndpointRuntime<Io, C> {
+impl<Io: DatagramIo, C: Carrier> ClosePacketSession for EndpointRuntime<Io, C> {
     fn close(&self, key: PeerKey, code: AppCode) {
         let mut outbound = Vec::new();
         {
@@ -115,7 +116,7 @@ impl<Io: DatagramIo, C: Carrier> CloseSession for EndpointRuntime<Io, C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::endpoint_config::EndpointConfig;
+    use crate::endpoint_setup::EndpointSetup;
     use crate::io_failed::IoFailed;
     use crate::plain_establishment::PlainEstablishment;
     use bytes::BytesMut;
@@ -167,10 +168,10 @@ mod tests {
             waiting: Mutex::new(600),
             reads: Mutex::new(Vec::new()),
         };
-        let runtime = EndpointRuntime::<Burst, u8>::new(EndpointParts::server(
+        let runtime = EndpointRuntime::<Burst, u8>::new(EndpointPieces::server(
             io,
             Box::new(PlainEstablishment::default()),
-            EndpointConfig::default(),
+            EndpointSetup::default(),
         ));
         runtime.pass(&mut PassScratch::default());
         assert_eq!(*runtime.io().reads.lock().unwrap(), [160, 160, 160, 120]);

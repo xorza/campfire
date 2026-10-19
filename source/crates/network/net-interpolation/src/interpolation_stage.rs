@@ -2,7 +2,7 @@ use bevy_ecs::schedule::SystemSet;
 
 /// The phases of
 /// [`InterpolationSystems::Prepare`](crate::interpolation_systems::InterpolationSystems::Prepare),
-/// in order: the owners resolve the archetypes before each typed phase, as the history phase's
+/// in order: the holders resolve the archetypes before each typed phase, as the history phase's
 /// insertions and removals create archetypes the apply phase reads.
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum InterpolationStage {

@@ -1,4 +1,4 @@
-use crate::prediction_manager::PredictionManager;
+use crate::prediction_setup::PredictionSetup;
 use crate::rollback_check_state::RollbackCheckState;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
@@ -8,13 +8,8 @@ use core::fmt::Debug;
 
 #[derive(Component, PartialEq, Eq, Debug, Clone, Copy)]
 #[component(on_add = LocallyPredicted::on_add)]
-/// Marker component used to indicate this entity is predicted (it has a PredictionHistory),
-/// but it won't check for rollback from state updates.
-///
-/// This marks entities the client spawns itself while predicting, as a projectile its own input
-/// fires, or stops a state-replicated entity from triggering rollbacks from state mismatch.
-///
-/// This entity will still get rolled back to its predicted history when a rollback happens.
+/// A predicted entity whose state never triggers a rollback, as a projectile the client's own
+/// input fires, which a rollback still returns to its predicted history.
 pub struct LocallyPredicted {
     /// After spawning a LocallyPredicted entity, any rollback that happens shortly after might
     /// despawn the entity (since it didn't exist at the start of rollback) or remove its
@@ -48,7 +43,7 @@ impl LocallyPredicted {
         let locally_predicted = *world.get::<Self>(context.entity).unwrap();
         let timeline = world.resource::<LocalTimeline>();
         let (tick, simulated) = (timeline.tick(), timeline.simulated_tick());
-        if !world.contains_resource::<PredictionManager>() {
+        if !world.contains_resource::<PredictionSetup>() {
             return;
         }
         let Some(mut check_state) = world.get_resource_mut::<RollbackCheckState>() else {

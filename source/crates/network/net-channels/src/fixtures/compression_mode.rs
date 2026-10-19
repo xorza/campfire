@@ -1,4 +1,4 @@
-use crate::compression_config::CompressionConfig;
+use crate::compression_setup::CompressionSetup;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompressionMode {
@@ -23,11 +23,11 @@ impl CompressionMode {
         }
     }
 
-    pub const fn config(self) -> CompressionConfig {
+    pub const fn setup(self) -> CompressionSetup {
         match self {
-            Self::Disabled => CompressionConfig::DISABLED,
+            Self::Disabled => CompressionSetup::DISABLED,
             #[cfg(feature = "compression_lz4")]
-            Self::Lz4 => CompressionConfig::LZ4,
+            Self::Lz4 => CompressionSetup::LZ4,
         }
     }
 }

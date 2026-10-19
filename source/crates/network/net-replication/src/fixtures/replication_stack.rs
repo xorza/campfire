@@ -79,12 +79,12 @@ mod tests {
     use bevy_replicon::prelude::Remote;
     use campfire_net_connection::NetworkTarget;
     use campfire_net_stepper::Stepper;
-    use campfire_net_stepper::StepperConfig;
+    use campfire_net_stepper::StepperSetup;
 
     /// A replicated entity reaches the client with its component.
     #[test]
     fn an_entity_replicates_to_the_client() {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
         stepper
             .server_app_mut()
             .world_mut()

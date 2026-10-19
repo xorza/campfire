@@ -1,5 +1,5 @@
 use crate::misprediction::CheckTarget;
-use crate::misprediction::rollback_needed;
+use crate::misprediction::needs_rollback;
 use crate::prediction_history::PredictionHistory;
 use crate::prediction_registry::PredictionRegistry;
 use bevy_ecs::prelude::*;
@@ -7,8 +7,8 @@ use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use campfire_net_core::NetTick;
 use campfire_net_interpolation::HistoryComponent;
-use campfire_net_replication::ComponentKind;
 use campfire_net_replication::ComponentRegistry;
+use campfire_net_replication::ComponentTypeId;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::HistoryDiffReceiver;
 use tracing::trace;
@@ -17,13 +17,13 @@ use tracing::warn;
 use crate::rollback_check_state::RollbackKind;
 
 /// What the stages of one frame's rollback check share, as each predicted component's survey and
-/// scan is its own system: the checkpoint they look at, what they report, and the rollback the
+/// scan is its own system: the confirmed tick they look at, what they report, and the rollback the
 /// frame asks for.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct RollbackScan {
     /// The local tick, once the timeline is synced: no rollback is asked for before.
     pub(crate) tick: Option<NetTick>,
-    /// The newest completed checkpoint at or before the local tick.
+    /// The newest completed confirmed tick at or before the local tick.
     pub(crate) candidate: Option<NetTick>,
     /// Whether this frame's policy looks at the candidate, so the surveys report on it.
     pub(crate) surveys: bool,
@@ -33,7 +33,7 @@ pub(crate) struct RollbackScan {
     pub(crate) has_check_entities: bool,
     /// The earliest unresolved predicted diff at or before the candidate.
     pub(crate) earliest_pending: Option<NetTick>,
-    /// The completed checkpoint the components compare at, when the policy asks for it.
+    /// The completed confirmed tick the components compare at, when the policy asks for it.
     pub(crate) scan_tick: Option<NetTick>,
     /// The first entity found mispredicted at the scan tick.
     pub(crate) mismatch: Option<Entity>,
@@ -43,7 +43,7 @@ pub(crate) struct RollbackScan {
 }
 
 impl RollbackScan {
-    /// The candidate checkpoint, when the surveys report on it.
+    /// The candidate confirmed tick, when the surveys report on it.
     pub(crate) const fn surveyed_candidate(&self) -> Option<NetTick> {
         if self.surveys { self.candidate } else { None }
     }
@@ -111,15 +111,15 @@ impl RollbackScan {
     ) {
         if scan.counts_targets
             && !scan.has_check_entities
-            && component_registry.contains(&ComponentKind::of::<C>())
+            && component_registry.contains(&ComponentTypeId::of::<C>())
             && !targets.is_empty()
         {
             scan.has_check_entities = true;
         }
     }
 
-    /// Reports the earliest diff of `C` at or before this frame's candidate checkpoint that is not
-    /// resolved yet: the authoritative state is unknown from there on.
+    /// Reports the earliest diff of `C` at or before this frame's candidate confirmed tick that is
+    /// not resolved yet: the authoritative state is unknown from there on.
     pub(crate) fn survey_pending_diffs<C: HistoryComponent + RepliconDiffable>(
         storage: Option<Res<'_, ReplicationStorage>>,
         targets: Query<'_, '_, Entity, (With<PredictionHistory<C>>, CheckTarget)>,
@@ -138,16 +138,16 @@ impl RollbackScan {
         }
     }
 
-    /// Compares `C`'s predicted state at the scan's completed checkpoint with the authoritative
+    /// Compares `C`'s predicted state at the scan's completed confirmed tick with the authoritative
     /// one, and reports the first entity that mispredicted.
     ///
-    /// For a diff component, checkpoint selection has already established that no update at or
-    /// before the tick remains pending, so the authoritative state there is either a received sample
-    /// or, with no update at the tick, the one before it, which global completion proves carried
-    /// forward. Both states are compared by reference; each entity the scan passes then keeps the
-    /// carried-forward state as an exact anchor at the tick, which a later replay over the tick
-    /// snaps to, as it snaps only to exact confirmed states. The anchor does not mark the history
-    /// changed, as [`ConfirmedHistory`] defines.
+    /// For a diff component, confirmed tick selection has already established that no update at or
+    /// before the tick remains pending, so the authoritative state there is either a received
+    /// sample or, with no update at the tick, the one before it, which global completion proves
+    /// carried forward. Both states are compared by reference; each entity the scan passes then
+    /// keeps the carried-forward state as an exact anchor at the tick, which a later replay over
+    /// the tick snaps to, as it snaps only to exact confirmed states. The anchor does not mark the
+    /// history changed, as [`ConfirmedHistory`] defines.
     pub(crate) fn scan_mismatches<C: HistoryComponent>(
         component_registry: Res<'_, ComponentRegistry>,
         registry: Res<'_, PredictionRegistry>,
@@ -162,7 +162,7 @@ impl RollbackScan {
         let Some(confirmed_tick) = scan.scan_tick else {
             return;
         };
-        if scan.mismatch.is_some() || !component_registry.contains(&ComponentKind::of::<C>()) {
+        if scan.mismatch.is_some() || !component_registry.contains(&ComponentTypeId::of::<C>()) {
             return;
         }
         let mismatch = registry.mismatch::<C>();
@@ -179,7 +179,7 @@ impl RollbackScan {
                 continue;
             };
             let mispredicted =
-                rollback_needed(mismatch, confirmed_state.value(), predicted_state.value());
+                needs_rollback(mismatch, confirmed_state.value(), predicted_state.value());
             confirmed.add_unchanged(confirmed_tick);
             if mispredicted {
                 scan.mismatch = Some(entity);

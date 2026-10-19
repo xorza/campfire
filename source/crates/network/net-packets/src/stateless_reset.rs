@@ -1,6 +1,6 @@
-//! A stateless reset: a datagram that looks like a session packet, whose last 16 bytes are the
-//! token the peer's endpoint gave in its handshake, so an endpoint that holds no session tells its
-//! peer at the peer's next packet (RFC 9000 §10.3).
+//! A stateless reset: a datagram that looks like a packet session packet, whose last 16 bytes are
+//! the token the peer's endpoint gave in its handshake, so an endpoint that holds no packet session
+//! tells its peer at the peer's next packet (RFC 9000 §10.3).
 
 /// The bytes of a reset's token.
 pub const TOKEN_LEN: usize = 16;

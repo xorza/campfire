@@ -54,7 +54,7 @@ fn a_perfect_link_delivers_at_once() {
     let mut run = LinkModelRun::new(0);
     assert_eq!(
         run.admit(&LinkModel::perfect(), 1200, now),
-        Some(Delivery {
+        Some(Arrival {
             at: now,
             copy_at: None
         })
@@ -68,7 +68,7 @@ fn the_rate_limit_queues_then_drops_at_the_tail() {
     // third finds 2000 B queued and is dropped.
     let model = LinkModel::perfect().with_rate(RateLimit::new(1000, 2000));
     let mut run = LinkModelRun::new(0);
-    let at = |delivery: Option<Delivery>| delivery.map(|delivery| delivery.at.elapsed());
+    let at = |delivery: Option<Arrival>| delivery.map(|delivery| delivery.at.elapsed());
     assert_eq!(
         at(run.admit(&model, 1000, Instant::ZERO)),
         Some(Duration::from_secs(1))
@@ -141,7 +141,7 @@ fn lifting_the_rate_limit_keeps_the_queue_in_order() {
     // waits for it, as a real queue drains in order.
     let limited = LinkModel::perfect().with_rate(RateLimit::new(1000, 2000));
     let mut run = LinkModelRun::new(0);
-    let at = |delivery: Option<Delivery>| delivery.map(|delivery| delivery.at.elapsed());
+    let at = |delivery: Option<Arrival>| delivery.map(|delivery| delivery.at.elapsed());
     assert_eq!(
         at(run.admit(&limited, 1000, Instant::ZERO)),
         Some(Duration::from_secs(1))

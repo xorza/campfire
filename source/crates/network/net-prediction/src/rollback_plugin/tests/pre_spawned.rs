@@ -11,7 +11,7 @@ use bevy_replicon::prelude::Signature;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_core::Ticked;
-use campfire_net_core::{NetTick, PositiveTickDelta};
+use campfire_net_core::{NetTick, PositiveTickSpan};
 use campfire_net_despawn::DespawnReplicated;
 use campfire_net_emulator::LinkModel;
 use campfire_net_interpolation::internals::CompFull;
@@ -23,14 +23,14 @@ use campfire_net_replication::internals::{CompMap, CompSimple};
 use campfire_net_replication::{PreSpawned, PredictionTarget, Replicate};
 use campfire_net_stepper::Init;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
-use campfire_net_sync::{InputTimelineConfig, SyncConfig};
+use campfire_net_stepper::StepperSetup;
+use campfire_net_sync::{InputTimelineSetup, SyncSetup};
 use campfire_net_timeline::LocalTimeline;
 use tracing::info;
 
 #[test]
 fn distinct_salts_give_distinct_hashes_on_one_tick() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     // check default compute hash, with multiple entities sharing the same tick
     // but using distinct salts to produce unique active pre-spawn hashes
@@ -86,7 +86,7 @@ fn distinct_salts_give_distinct_hashes_on_one_tick() {
 /// SignatureMap keeps the first matching candidate.
 #[test]
 fn a_duplicate_pre_spawn_hash_keeps_the_first_candidate() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let client_tick = stepper.client_tick(0).0 as usize;
     let server_tick = stepper.server_tick().0 as usize;
@@ -144,7 +144,7 @@ fn a_duplicate_pre_spawn_hash_keeps_the_first_candidate() {
 /// but Replicon should spawn it normally even if they have the same signature.
 #[test]
 fn a_link_scoped_signature_matches_only_on_that_link() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::with_plain_clients(2));
 
     let client_0_pre_spawn = stepper.client_fixed_update(0, |world| {
         world.spawn((PreSpawned::new(1), CompFull(1.0))).id()
@@ -203,7 +203,7 @@ fn a_link_scoped_signature_matches_only_on_that_link() {
 /// local entity and Replicon would spawn a duplicate predicted entity.
 #[test]
 fn a_pre_spawn_reuses_its_hash_after_an_unmatched_local_despawn() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let first_local = stepper.client_fixed_update(0, |world| {
         world.spawn((PreSpawned::new(1), CompFull(1.0))).id()
@@ -267,7 +267,7 @@ fn a_pre_spawn_reuses_its_hash_after_an_unmatched_local_despawn() {
 /// Server's should take over authority over the entity
 #[test]
 fn a_matched_pre_spawn_hands_authority_to_the_server() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let client_pre_spawn =
         stepper.client_fixed_update(0, |world| world.spawn(PreSpawned::new(1)).id());
@@ -330,7 +330,7 @@ fn replay_spawn_pre_spawn(
 /// matching entity instead of leaving a duplicate live entity behind.
 #[test]
 fn a_matched_pre_spawn_is_despawned_on_a_rollback_before_its_spawn_tick() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     stepper.frame_step(1);
     let client_pre_spawn = stepper.client_fixed_update(0, |world| {
@@ -419,7 +419,7 @@ fn a_matched_pre_spawn_is_despawned_on_a_rollback_before_its_spawn_tick() {
 /// not despawn it and expect a spawn system from an earlier tick to run again.
 #[test]
 fn a_matched_pre_spawn_is_kept_on_a_rollback_at_or_after_its_spawn_tick() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     stepper.frame_step(1);
     let client_pre_spawn = stepper.client_fixed_update(0, |world| {
@@ -496,7 +496,7 @@ fn a_matched_pre_spawn_is_kept_on_a_rollback_at_or_after_its_spawn_tick() {
 /// tick, but the client may already have simulated ahead locally.
 #[test]
 fn a_pre_spawn_init_goes_to_history_and_keeps_the_live_value() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let client_pre_spawn = stepper.client_fixed_update(0, |world| {
         world.spawn((PreSpawned::new(1), CompFull(1.0))).id()
@@ -564,7 +564,7 @@ fn a_pre_spawn_init_goes_to_history_and_keeps_the_live_value() {
 /// If the Confirmed entity is despawned, the Predicted entity should be despawned
 #[test]
 fn an_unmatched_server_entity_is_predicted_normally() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     // spawn extra entities to check that EntityMapping works correctly with pre-spawning
     let server_entity = stepper
@@ -626,7 +626,7 @@ fn an_unmatched_server_entity_is_predicted_normally() {
 /// The entity should be kept around in case of a match, and then cleanup via the cleanup system.
 #[test]
 fn a_local_despawn_before_a_match_keeps_the_pre_spawn_until_cleanup() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let client_pre_spawn = stepper.client_fixed_update(0, |world| {
         world
@@ -672,23 +672,23 @@ fn a_local_despawn_before_a_match_keeps_the_pre_spawn_until_cleanup() {
 /// before it gets matched to a server entity.
 /// The match causes no rollback of its own, since the server components on the PreSpawned entity
 /// match the client history when it was spawned. The server never despawns the entity, so the
-/// predicted despawn is a misprediction: once a completed checkpoint passes it, one rollback
+/// predicted despawn is a misprediction: once a completed confirmed tick passes it, one rollback
 /// brings the entity back.
 #[test]
 fn a_local_despawn_before_a_match_ends_on_the_match() {
-    let mut config = StepperConfig::single();
-    config.init = Init::Deferred;
+    let mut setup = StepperSetup::single();
+    setup.init = Init::Deferred;
     // Delay the server's packets so the client runs ahead of the server, and resyncs.
-    config.link.server_to_client = LinkModel::perfect().with_latency(2 * config.tick_rate.period());
-    let mut stepper = Stepper::new(PredictionStack, config);
-    let sync_config = SyncConfig {
-        max_error_margin: PositiveTickDelta::lit("0.5"),
-        ..SyncConfig::default()
+    setup.link.server_to_client = LinkModel::perfect().with_latency(2 * setup.tick_rate.period());
+    let mut stepper = Stepper::new(PredictionStack, setup);
+    let sync_setup = SyncSetup {
+        max_error_margin: PositiveTickSpan::lit("0.5"),
+        ..SyncSetup::default()
     };
     stepper
         .client_app_mut(0)
         .world_mut()
-        .insert_resource(InputTimelineConfig::default().with_sync_config(sync_config));
+        .insert_resource(InputTimelineSetup::default().with_sync_setup(sync_setup));
     stepper.init();
 
     let client_tick = stepper.client_tick(0).0 as usize;

@@ -14,7 +14,7 @@ pub(crate) const CONVERGED: f32 = 1.0 / 1024.0;
 /// The slot goes on with a corrected component's prediction history and stays, so a correction
 /// that starts or converges moves no entity between tables.
 #[derive(Component, Debug, Reflect)]
-pub struct VisualCorrection<D>(pub Option<VisualError<D>>);
+pub struct VisualCorrection<D>(pub Option<VisualOffset<D>>);
 
 impl<D> Default for VisualCorrection<D> {
     fn default() -> Self {
@@ -24,7 +24,7 @@ impl<D> Default for VisualCorrection<D> {
 
 /// One decaying correction.
 #[derive(Debug, Reflect)]
-pub struct VisualError<D> {
+pub struct VisualOffset<D> {
     /// The error between the original visual value and the new visual value.
     /// Will decay over time.
     ///
@@ -45,7 +45,7 @@ pub struct VisualError<D> {
     pub(crate) remaining: f32,
 }
 
-impl<D> VisualError<D> {
+impl<D> VisualOffset<D> {
     /// A correction decaying on the entity's `CorrectionPolicy`, starting now.
     pub const fn new(error: D, start: Duration) -> Self {
         Self {
@@ -65,6 +65,6 @@ impl<D> VisualError<D> {
 impl<D> VisualCorrection<D> {
     /// A slot that holds a correction of `error` from `start`.
     pub(crate) const fn active(error: D, start: Duration) -> Self {
-        Self(Some(VisualError::new(error, start)))
+        Self(Some(VisualOffset::new(error, start)))
     }
 }

@@ -1,10 +1,12 @@
 use bevy_ecs::prelude::*;
 use bytes::Bytes;
-use campfire_net_core::Direction;
+use campfire_net_core::LinkDirection;
 use campfire_net_core::NetId;
 use campfire_net_core::NetTick;
 
-/// Marker component inserted on a client that acts as a Host
+/// A client in its server's app, whose two sides hand each other messages past the transport
+/// (13-net-stack/api.md, A host client's messages take a remote link's path)
+/// (13-net-stack/layering.md, The host client's path stays in the glue).
 #[derive(Component, Debug)]
 pub struct HostClient {
     /// The messages its two sides sent each other, which skip the transport.
@@ -21,5 +23,5 @@ pub struct HostPayload {
     pub tick: NetTick,
     /// Toward the host client, from the server's link to it, or toward the server, from the
     /// host client.
-    pub direction: Direction,
+    pub direction: LinkDirection,
 }

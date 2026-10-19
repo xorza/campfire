@@ -1,14 +1,13 @@
 use crate::message::Message;
 use crate::message_error::MessageError;
-use crate::message_receive_context::MessageReceiveContext;
+use crate::message_receive_cx::MessageReceiveCx;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::event::{EntityEvent, Event};
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::PeerId;
 use tracing::trace;
 
-/// Bevy Event triggered when a remote event `M` is received.
-/// Contains the original trigger `M`, the `PeerId` of the sender, and the link it arrived on.
+/// The event a peer triggered, with the peer and the link it arrived on.
 #[derive(Event, Debug)]
 pub struct RemoteEvent<M: Event> {
     pub event: M,
@@ -31,9 +30,9 @@ impl<M: EntityEvent> EntityEvent for RemoteEvent<M> {
 ///
 /// `serialize_fns` must be the serialization fns registered for `M`.
 pub(crate) fn receive_event_typed<M: Message + Event>(
-    context: MessageReceiveContext<'_, '_, '_>,
+    cx: MessageReceiveCx<'_, '_, '_>,
 ) -> Result<(), MessageError> {
-    let MessageReceiveContext {
+    let MessageReceiveCx {
         commands,
         link,
         peer: from,
@@ -41,7 +40,7 @@ pub(crate) fn receive_event_typed<M: Message + Event>(
         serialize_fns,
         entity_map,
         ..
-    } = context;
+    } = cx;
     let trigger = serialize_fns.deserialize::<M>(reader, entity_map)?;
     trace!(
         "Received trigger message: {:?} from: {from:?}",

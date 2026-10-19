@@ -8,9 +8,9 @@ use super::*;
 fn an_address_takes_its_handshakes_each_back_after_its_share_of_the_refill() {
     // Two for each address over 60 s: each handshake comes back 30 s after the bucket was full
     // again.
-    let config = AdmissionConfig::new(NonZeroU32::new(2).unwrap(), Duration::from_secs(60));
+    let setup = AdmissionSetup::new(NonZeroU32::new(2).unwrap(), Duration::from_secs(60));
     let start = Instant::ZERO;
-    let mut admission = Admission::new(config, start);
+    let mut admission = Admission::new(setup, start);
     let ip = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7));
     let at = |seconds: u64, nanos: u32| start + Duration::new(seconds, nanos);
     let mut admit = |now: Instant| admission.admit(ip, now, |_| 0);
@@ -29,9 +29,9 @@ fn an_address_takes_its_handshakes_each_back_after_its_share_of_the_refill() {
 
 #[test]
 fn the_live_connections_of_an_address_refuse_a_handshake_and_each_address_counts_alone() {
-    let config = AdmissionConfig::new(NonZeroU32::new(3).unwrap(), Duration::from_secs(60));
+    let setup = AdmissionSetup::new(NonZeroU32::new(3).unwrap(), Duration::from_secs(60));
     let now = Instant::ZERO;
-    let mut admission = Admission::new(config, now);
+    let mut admission = Admission::new(setup, now);
     let ip = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7));
     // Three live connections of three allowed refuse a fourth, with handshakes in the bucket;
     // two let it in.
@@ -74,7 +74,7 @@ fn an_ipv6_address_counts_by_its_64_and_a_mapped_ipv4_one_as_its_ipv4() {
 /// tree and its queue of times.
 #[derive(Debug)]
 struct EveryBucket {
-    config: AdmissionConfig,
+    setup: AdmissionSetup,
     start: Instant,
     buckets: Vec<(AddressKey, u128)>,
 }
@@ -84,8 +84,8 @@ impl EveryBucket {
         let Some(key) = AddressKey::of(ip) else {
             return true;
         };
-        let per_address = self.config.per_address().get();
-        let share = self.config.refill().as_nanos();
+        let per_address = self.setup.per_address().get();
+        let share = self.setup.refill().as_nanos();
         let now = now.saturating_duration_since(self.start).as_nanos() * u128::from(per_address);
         self.buckets.retain(|&(_, full_at)| full_at > now);
         let at = self.buckets.iter().position(|&(held, _)| held == key);
@@ -107,11 +107,11 @@ impl EveryBucket {
 fn a_handshake_is_admitted_as_a_walk_of_every_bucket_admits_it() {
     // Three for each address over 3 s, 20,000 handshakes from 40 addresses, a loopback one among
     // them, at steps of 0 to 99 ms, each with 0 to 3 live connections: each answer the walk's.
-    let config = AdmissionConfig::new(NonZeroU32::new(3).unwrap(), Duration::from_secs(3));
+    let setup = AdmissionSetup::new(NonZeroU32::new(3).unwrap(), Duration::from_secs(3));
     let start = Instant::ZERO;
-    let mut admission = Admission::new(config, start);
+    let mut admission = Admission::new(setup, start);
     let mut every = EveryBucket {
-        config,
+        setup,
         start,
         buckets: Vec::new(),
     };

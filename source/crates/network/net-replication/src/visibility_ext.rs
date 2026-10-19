@@ -2,39 +2,10 @@ use crate::network_visibility_plugin::{VisibilityChange, VisibilityWrite};
 use crate::visibility_bits::VisibilityBits;
 use bevy_ecs::prelude::*;
 
-/// Extension trait for dynamically showing or hiding replicated entities.
-///
-/// Implemented for both [`World`] (immediate) and [`Commands`] (deferred).
-///
-/// Descendant entities in the same replication hierarchy (those with [`ReplicateLikeChildren`])
-/// follow each change, and so do descendants added to the hierarchy afterwards.
-///
-/// A hierarchy member with explicitly set visibility keeps it: the explicit write inserts
-/// [`Overridden<ManualVisibility>`](crate::overridden::Overridden) and later root changes no longer
-/// reach it. Remove the marker to follow the root's visibility again.
-///
-/// # Parameters
-///
-/// - `entity`: the replicated entity to show or hide.
-/// - `link`: the link entity (connection) for which visibility changes.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// // Hide an entity from a specific client
-/// commands.lose_visibility(server_entity, client_link_entity);
-///
-/// // Pause updates, retaining the entity if this client has already seen it
-/// commands.lose_visibility_retained(server_entity, client_link_entity);
-///
-/// // Ensure the remote entity exists, but pause updates after its initial state
-/// commands.lose_visibility_always_present(server_entity, client_link_entity);
-///
-/// // Make it visible again
-/// commands.gain_visibility(server_entity, client_link_entity);
-/// ```
-///
-/// [`ReplicateLikeChildren`]: crate::replicate_like::ReplicateLikeChildren
+/// Shows or hides a replicated entity for a link, at once on a [`World`] and deferred on
+/// [`Commands`]; each hierarchy member follows the change unless a write of its own overrides it
+/// (13-net-stack/replication.md, A member follows its root for each aspect, unless it overrides
+/// that aspect).
 pub trait VisibilityExt {
     /// Make `entity` (and its replication-hierarchy descendants) visible to `link`.
     ///

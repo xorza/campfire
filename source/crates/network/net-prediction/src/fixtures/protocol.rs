@@ -8,7 +8,7 @@ use campfire_net_interpolation::FrameInterpolationPlugin;
 use campfire_net_interpolation::InterpolationFns;
 use campfire_net_interpolation::InterpolationRegistrationExt;
 use campfire_net_interpolation::InterpolationRule;
-use campfire_net_interpolation::InterpolationSampleContext;
+use campfire_net_interpolation::InterpolationSampleCx;
 use campfire_net_interpolation::internals::CompFull;
 use campfire_net_replication::AppComponentExt;
 use campfire_net_replication::Diffable;
@@ -62,16 +62,12 @@ correction_component!(CompMixedCorrectionBundleB);
 pub fn correction_bundle_lerp(
     start: (&CompCorrectionBundleA, &CompCorrectionBundleB),
     end: (&CompCorrectionBundleA, &CompCorrectionBundleB),
-    context: InterpolationSampleContext,
+    cx: InterpolationSampleCx,
 ) -> (CompCorrectionBundleA, CompCorrectionBundleB) {
-    let sample_delta_secs = context.sample_delta_secs.unwrap_or_default();
+    let sample_delta_secs = cx.sample_delta_secs.unwrap_or_default();
     (
-        CompCorrectionBundleA(
-            100.0 + start.0.0 + (end.0.0 - start.0.0) * context.t + sample_delta_secs,
-        ),
-        CompCorrectionBundleB(
-            200.0 + start.1.0 + (end.1.0 - start.1.0) * context.t + sample_delta_secs,
-        ),
+        CompCorrectionBundleA(100.0 + start.0.0 + (end.0.0 - start.0.0) * cx.t + sample_delta_secs),
+        CompCorrectionBundleB(200.0 + start.1.0 + (end.1.0 - start.1.0) * cx.t + sample_delta_secs),
     )
 }
 
@@ -80,12 +76,12 @@ pub fn correction_bundle_lerp(
 pub fn mixed_correction_bundle_lerp(
     start: (&CompMixedCorrectionBundleA, &CompMixedCorrectionBundleB),
     end: (&CompMixedCorrectionBundleA, &CompMixedCorrectionBundleB),
-    context: InterpolationSampleContext,
+    cx: InterpolationSampleCx,
 ) -> (CompMixedCorrectionBundleA, CompMixedCorrectionBundleB) {
-    let a = start.0.0 + (end.0.0 - start.0.0) * context.t;
-    let b = start.1.0 + (end.1.0 - start.1.0) * context.t;
+    let a = start.0.0 + (end.0.0 - start.0.0) * cx.t;
+    let b = start.1.0 + (end.1.0 - start.1.0) * cx.t;
     (
-        CompMixedCorrectionBundleA(a + b + context.sample_delta_secs.unwrap_or_default()),
+        CompMixedCorrectionBundleA(a + b + cx.sample_delta_secs.unwrap_or_default()),
         CompMixedCorrectionBundleB(10_000.0),
     )
 }
@@ -124,7 +120,7 @@ impl Plugin for PredictionProtocolPlugin {
                 },
             ),
         ));
-        app.register_bundle_interpolation_rule::<(CompCorrectionBundleA, CompCorrectionBundleB), ()>(InterpolationRule::new(InterpolationFns::no_history_with_context(correction_bundle_lerp)));
+        app.register_bundle_interpolation_rule::<(CompCorrectionBundleA, CompCorrectionBundleB), ()>(InterpolationRule::new(InterpolationFns::no_history_with_cx(correction_bundle_lerp)));
         app.register_component::<CompMixedCorrectionBundleA>()
             .replicate()
             .predict()
@@ -146,7 +142,7 @@ impl Plugin for PredictionProtocolPlugin {
                 },
             ),
         ));
-        app.register_bundle_interpolation_rule::<(CompMixedCorrectionBundleA, CompMixedCorrectionBundleB), ()>(InterpolationRule::new(InterpolationFns::no_history_with_context(mixed_correction_bundle_lerp)));
+        app.register_bundle_interpolation_rule::<(CompMixedCorrectionBundleA, CompMixedCorrectionBundleB), ()>(InterpolationRule::new(InterpolationFns::no_history_with_cx(mixed_correction_bundle_lerp)));
         app.register_component::<CompCorr>()
             .replicate()
             .predict()

@@ -5,17 +5,7 @@ use crate::writer::WriteInteger;
 use bytes::Bytes;
 use smallvec::{Array, SmallVec};
 
-/// Trait for types that can be serialized to and deserialized from a byte stream.
-///
-/// This trait provides methods to:
-/// - Calculate the number of bytes required for serialization (`bytes_len`).
-/// - Serialize the type into a buffer (`to_bytes`).
-/// - Deserialize the type from a buffer (`from_bytes`).
-///
-/// It is implemented for various primitive types, collections, and [`Bytes`].
-///
-/// Every encoding takes at least one byte, which lets a decoder refuse a collection count that the
-/// bytes left can not hold ([`Reader::read_count`]).
+/// A value the stack's headers write to and read from bytes, whose write cannot fail.
 pub trait ToBytes {
     fn bytes_len(&self) -> usize;
     fn to_bytes(&self, buffer: &mut impl WriteInteger);
@@ -201,7 +191,7 @@ mod tests {
     use crate::writer::Writer;
 
     #[test]
-    fn bytes_round_trip() {
+    fn a_byte_string_reads_back_as_it_was_written() {
         let a: Bytes = vec![7; 100].into();
         let mut writer = Writer::with_capacity(5);
         a.to_bytes(&mut writer);
@@ -212,7 +202,7 @@ mod tests {
     }
 
     #[test]
-    fn truncated_bytes_fail_to_deserialize() {
+    fn a_truncated_value_fails_to_read() {
         let mut writer = Writer::default();
         writer.write_varint(10);
         writer.write_bytes(&[7]);
@@ -290,7 +280,7 @@ mod tests {
     }
 
     #[test]
-    fn smallvec_uses_vec_wire_format() {
+    fn a_smallvec_takes_the_wire_format_of_a_vec() {
         let vec = (0..6_u8).collect::<Vec<_>>();
         let small = SmallVec::<[u8; 4]>::from_vec(vec.clone());
 

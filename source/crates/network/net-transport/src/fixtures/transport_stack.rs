@@ -60,12 +60,12 @@ mod tests {
     use bytes::Bytes;
     use campfire_net_channels::ChannelReceiver;
     use campfire_net_stepper::Stepper;
-    use campfire_net_stepper::StepperConfig;
+    use campfire_net_stepper::StepperSetup;
 
     /// A raw message the server sends on the stack's channel reaches the client's transport.
     #[test]
     fn a_raw_message_reaches_the_client() {
-        let mut stepper = Stepper::new(TransportStack, StepperConfig::single());
+        let mut stepper = Stepper::new(TransportStack, StepperSetup::single());
         let channel_id = channel_id::<Channel1>(stepper.server_app());
         stepper
             .client_of_mut(0)

@@ -1,5 +1,5 @@
 use campfire_math::SplitMix64;
-use campfire_net_core::Direction;
+use campfire_net_core::LinkDirection;
 use campfire_net_emulator::{LinkModel, Phase, RateLimit};
 use core::time::Duration;
 
@@ -33,7 +33,7 @@ pub(crate) struct Latency {
 pub(crate) struct Outage {
     pub(crate) start: Duration,
     pub(crate) length: Duration,
-    pub(crate) direction: Option<Direction>,
+    pub(crate) direction: Option<LinkDirection>,
 }
 
 impl Faults {
@@ -60,8 +60,8 @@ impl Faults {
             start: millis(&mut rng, 200, 1200),
             length: millis(&mut rng, 100, 800),
             direction: match rng.below(3) {
-                0 => Some(Direction::ClientToServer),
-                1 => Some(Direction::ServerToClient),
+                0 => Some(LinkDirection::ClientToServer),
+                1 => Some(LinkDirection::ServerToClient),
                 _ => None,
             },
         });
@@ -101,7 +101,7 @@ impl Faults {
     /// The phases of `direction` from `start`, the moment the faults begin, to `heal`.
     pub(crate) fn phases(
         &self,
-        direction: Direction,
+        direction: LinkDirection,
         start: Duration,
         heal: Duration,
     ) -> Vec<Phase> {

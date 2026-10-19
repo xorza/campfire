@@ -5,7 +5,7 @@ use bevy_ecs::prelude::*;
 use campfire_net_connection::ClientOf;
 use campfire_net_connection::Connected;
 use campfire_net_connection::HostClient;
-use campfire_net_core::Direction;
+use campfire_net_core::LinkDirection;
 use campfire_net_core::RegistryHash;
 use campfire_net_link::Unlink;
 use campfire_net_messages::MessageRegistry;
@@ -29,6 +29,8 @@ pub(crate) struct ProtocolCheck {
 #[derive(Resource, Debug, Clone, Copy)]
 struct ProtocolHashes(ProtocolCheck);
 
+/// The server sends each client that connects its registries' hashes, and a client whose own differ
+/// unlinks (13-net-stack/transport.md, Both peers agree on the protocol before data flows).
 #[derive(Debug)]
 pub(crate) struct ProtocolCheckPlugin;
 
@@ -77,7 +79,7 @@ impl ProtocolCheckPlugin {
 impl Plugin for ProtocolCheckPlugin {
     fn build(&self, app: &mut App) {
         app.register_event::<ProtocolCheck>()
-            .add_direction(Direction::ServerToClient);
+            .add_direction(LinkDirection::ServerToClient);
     }
 
     /// Reads each registry's hash, which its own plugin's `finish` sealed before this one runs.

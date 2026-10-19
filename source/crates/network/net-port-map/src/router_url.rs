@@ -5,7 +5,7 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 /// scheme is none: a router on IPv4 names itself by its address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RouterUrl {
-    addr: SocketAddrV4,
+    address: SocketAddrV4,
     path: String,
 }
 
@@ -18,13 +18,13 @@ impl RouterUrl {
         }
         let rest = &text[7..];
         let (authority, path) = rest.find('/').map_or((rest, "/"), |at| rest.split_at(at));
-        let addr = match authority.rsplit_once(':') {
+        let address = match authority.rsplit_once(':') {
             Some((ip, port)) => SocketAddrV4::new(ip.parse().ok()?, port.parse().ok()?),
             None => SocketAddrV4::new(authority.parse::<Ipv4Addr>().ok()?, 80),
         };
         let path = path.split('#').next().unwrap_or("/");
-        (addr.port() != 0).then(|| Self {
-            addr,
+        (address.port() != 0).then(|| Self {
+            address,
             path: path.to_owned(),
         })
     }
@@ -38,7 +38,7 @@ impl RouterUrl {
         }
         if reference.starts_with('/') {
             return Some(Self {
-                addr: self.addr,
+                address: self.address,
                 path: reference.to_owned(),
             });
         }
@@ -47,18 +47,18 @@ impl RouterUrl {
         }
         let directory = self.path.rfind('/').map_or("/", |at| &self.path[..=at]);
         Some(Self {
-            addr: self.addr,
+            address: self.address,
             path: format!("{directory}{reference}"),
         })
     }
 
-    pub(crate) const fn addr(&self) -> SocketAddrV4 {
-        self.addr
+    pub(crate) const fn address(&self) -> SocketAddrV4 {
+        self.address
     }
 
     /// The URL whole, as an HTTP request names it.
     pub(crate) fn whole(&self) -> String {
-        format!("http://{}{}", self.addr, self.path)
+        format!("http://{}{}", self.address, self.path)
     }
 }
 
@@ -70,7 +70,7 @@ mod tests {
     fn a_router_url_reads_its_address_its_port_and_its_path_and_joins_a_reference() {
         let url = RouterUrl::parse("HTTP://192.168.0.1:1900/igd/desc.xml?v=1#top").unwrap();
         assert_eq!(
-            url.addr(),
+            url.address(),
             SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 1), 1900)
         );
         assert_eq!(url.whole(), "http://192.168.0.1:1900/igd/desc.xml?v=1");

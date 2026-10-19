@@ -8,7 +8,7 @@ use polling::{Event, Events};
 use tracing::{error, info, warn};
 
 use crate::port_mapper::{PortMapper, Routes};
-use crate::stop::Stop;
+use crate::thread_stop::ThreadStop;
 use campfire_store::SharedPort;
 
 /// The poller's key of the announcements' socket.
@@ -20,7 +20,7 @@ const DATAGRAM: usize = 1500;
 /// socket, when it opened.
 #[derive(Debug)]
 pub(crate) struct Listening {
-    stop: Arc<Stop>,
+    stop: Arc<ThreadStop>,
     announcements: Option<SharedPort>,
     events: Events,
     datagram: Box<[u8; DATAGRAM]>,
@@ -29,11 +29,12 @@ pub(crate) struct Listening {
 impl Listening {
     /// The wait of `stop`, and the announcements' socket of `routes`, non-blocking and watched;
     /// a socket that does not open is logged, and the map hears no announcement.
-    pub(crate) fn open(stop: Arc<Stop>, routes: Routes) -> io::Result<Self> {
+    pub(crate) fn open(stop: Arc<ThreadStop>, routes: Routes) -> io::Result<Self> {
         let announcements = match routes.announcements() {
             Ok(port) => {
                 port.socket().set_nonblocking(true)?;
-                // SAFETY: `Listening::drop` deletes the socket from this poller before it drops.
+                // SAFETY: `Listening::drop` deletes the socket from this poller before it drops
+                // (13-net-stack/api.md, No `unsafe` but what an outside API requires).
                 unsafe {
                     stop.poller
                         .add(port.socket(), Event::readable(ANNOUNCEMENTS))?;

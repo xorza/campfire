@@ -1,7 +1,7 @@
 use crate::network_topology_error::NetworkTopologyError;
 use bevy_ecs::prelude::*;
 
-/// The ready networking role of this Bevy application.
+/// The ready network side of this Bevy application.
 ///
 /// Clients are included after they are `Connected` and servers after they are `Started`.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]

@@ -10,7 +10,7 @@ use bevy_ecs::prelude::*;
 pub(crate) struct PendingSwitch {
     /// The timeline to move to, resolved against the entity's markers.
     pub(crate) direction: SwitchDirection,
-    /// Blend length in seconds, resolved against [`TimelineSwitchConfig`].
+    /// Blend length in seconds, resolved against [`TimelineSwitchSetup`].
     /// `<= 0` (or non-finite) snaps.
     pub(crate) total_secs: f32,
     /// Ease curve shaping the blend, resolved.

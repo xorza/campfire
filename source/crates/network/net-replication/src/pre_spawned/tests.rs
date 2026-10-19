@@ -61,7 +61,7 @@ fn pre_spawn_at(app: &mut App, ticks: u32, bundle: impl Bundle + Clone) -> Entit
 /// A receiver's pre-spawn made in `FixedMain` at tick 3 is listed at 3 for the rollback and for
 /// its expiry.
 #[test]
-fn client_pre_spawns_are_lifecycle_tracked() {
+fn a_client_pre_spawn_is_listed_for_its_life() {
     let mut app = app();
     connect_receiver(&mut app);
     let pre_spawned = pre_spawn_at(&mut app, 3, PreSpawned::new(1));

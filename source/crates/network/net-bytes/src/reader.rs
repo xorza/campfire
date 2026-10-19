@@ -4,7 +4,7 @@ use bytes::{Buf, Bytes};
 use std::io::{Error, ErrorKind, Read, Result};
 
 /// The unread bytes of a buffer: each read takes its bytes off the front, and a split shares the
-/// buffer's memory.
+/// buffer's memory (13-net-stack/transport.md, Decoders take only what the bytes hold).
 #[derive(Debug, Clone, Default)]
 pub struct Reader(Bytes);
 
@@ -54,7 +54,7 @@ impl Reader {
         Ok(self.0.split_to(len))
     }
 
-    /// Return the remaining length of the buffer as a separate Bytes.
+    /// The remaining length of the buffer as a separate Bytes.
     ///
     /// This doesn't allocate and just increases some reference counts. O(1) cost.
     pub fn take_remaining(&mut self) -> Bytes {
@@ -141,7 +141,7 @@ mod tests {
     use crate::writer::WriteInteger;
 
     #[test]
-    fn integers_read_back() {
+    fn an_integer_reads_back_as_it_was_written() {
         let mut writer = vec![];
         writer.write_u8(1);
         writer.write_u16(2);

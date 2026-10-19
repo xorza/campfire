@@ -1,29 +1,7 @@
-//! Client-side switching between the prediction and interpolation timelines.
-//!
-//! Gameplay code (proximity, pickup ownership, ...) inserts a [`TimelineSwitch`]
-//! component to move one entity between the prediction timeline (client-ahead
-//! simulation) and the interpolation timeline (delayed server presentation).
-//!
-//! This can be useful to temporarily predict remote players around you so that
-//! you can physically collide/interact with them, while keeping the rest of
-//! the world interpolated.
-//!
-//! To run, insert a [`TimelineSwitch`] on the entity.
-//!```rust,ignore
-//! // To a named timeline:
-//! commands.entity(entity).insert(TimelineSwitch::to_predicted());
-//! // ...or blend over an explicit window instead of the default:
-//! commands.entity(entity).insert(
-//!     TimelineSwitch::to_predicted().with_transition_secs(1.0),
-//! );
-//! // Or flip to whichever timeline the entity is not on:
-//! commands.entity(entity).insert(TimelineSwitch::default());
-//! ```
-//!
-//! [`TimelineSwitch`]: crate::timeline_switch::TimelineSwitch
+//! Moves one entity between the prediction timeline and the interpolation timeline when gameplay
+//! inserts a [`TimelineSwitch`](crate::timeline_switch::TimelineSwitch), so a remote player near
+//! enough to touch is predicted while the rest of the world is interpolated.
 
-// # Order of operations
-//
 // A request is handled over two frames. Say the request is inserted on frame F
 // (gameplay code usually inserts it from `Update`):
 //
@@ -78,7 +56,7 @@ use crate::rollback_systems::RollbackSystems;
 use crate::switch_blend::SwitchBlend;
 use crate::switch_direction::SwitchDirection;
 use crate::timeline_switch::TimelineSwitch;
-use crate::timeline_switch_config::TimelineSwitchConfig;
+use crate::timeline_switch_setup::TimelineSwitchSetup;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_time::{Time, Virtual};
@@ -98,7 +76,7 @@ pub(crate) struct TimelineSwitchPlugin;
 
 impl Plugin for TimelineSwitchPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<TimelineSwitchConfig>();
+        app.init_resource::<TimelineSwitchSetup>();
         app.add_systems(
             PreUpdate,
             Self::apply_saved_switches
@@ -132,8 +110,8 @@ impl Plugin for TimelineSwitchPlugin {
 }
 
 impl TimelineSwitchPlugin {
-    /// Resolves every switch requested this frame, which each correction's save then saves the value
-    /// on screen for.
+    /// Resolves every switch requested this frame, which each correction's save then saves the
+    /// value on screen for.
     ///
     /// Runs in `PostUpdate` after frame interpolation and after the correction
     /// apply, so what the saves read is what this frame renders, whatever point of the
@@ -142,7 +120,7 @@ impl TimelineSwitchPlugin {
     /// Requests for entities that are already blending, or that already have a
     /// committed switch waiting for its apply pass, are dropped.
     pub(crate) fn save_previous_visuals(
-        config: Res<'_, TimelineSwitchConfig>,
+        setup: Res<'_, TimelineSwitchSetup>,
         mut requests: Query<
             '_,
             '_,
@@ -170,7 +148,7 @@ impl TimelineSwitchPlugin {
                 commands.entity(entity).remove::<TimelineSwitch>();
                 continue;
             }
-            // A committed switch owns the entity until it is applied. Resolving a
+            // A committed switch holds the entity until it is applied. Resolving a
             // request on top of it would clobber the resolution the save pass already
             // recorded a value for, leaving that value to be measured as a jump that
             // never happened.
@@ -184,7 +162,7 @@ impl TimelineSwitchPlugin {
             }
             // A flip resolves against the markers the entity has now.
             let pending =
-                match switch.resolve(OnTimeline::of(is_predicted, is_interpolated), &config) {
+                match switch.resolve(OnTimeline::of(is_predicted, is_interpolated), &setup) {
                     Ok(pending) => pending,
                     Err(rejection) => {
                         warn!(?entity, %rejection, "dropping invalid timeline switch");
@@ -243,13 +221,14 @@ impl TimelineSwitchPlugin {
                     // Delayed interpolation writes the visual value directly every
                     // render frame, and frame interpolation would restore its stale
                     // history over that write and freeze the render, so the switch
-                    // owns this removal.
+                    // holds this removal.
                     deferred.remove::<FrameInterpolate>(entity);
                 }
             }
             // The frame histories belong to the era the entity leaves: they froze while it was
-            // interpolated, and once it is interpolated nothing reads them. Kept, the next predicted
-            // era would restore a stale value over the live one; dropped, they re-seed from it.
+            // interpolated, and once it is interpolated nothing reads them. Kept, the next
+            // predicted era would restore a stale value over the live one; dropped, they re-seed
+            // from it.
             let mut entity_commands = commands.entity(entity);
             for &history in interpolation_registry.frame_history_component_ids() {
                 entity_commands.remove_by_id(history);

@@ -43,7 +43,7 @@ mod tests {
     use campfire_net_messages::RemoteEvent;
     use campfire_net_messages::internals::MappedEntityEvent;
     use campfire_net_stepper::Stepper;
-    use campfire_net_stepper::StepperConfig;
+    use campfire_net_stepper::StepperSetup;
     use campfire_net_transport::internals::Channel1;
 
     /// The message receive drains every channel of a transport, replicon's too, so each app
@@ -51,7 +51,7 @@ mod tests {
     /// the packet read of each side comes first.
     #[test]
     fn replicon_reads_its_channels_before_the_message_receive() {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
         stepper.frame_step(1);
         let position = |app: &App, name: &str| {
             app.world()
@@ -92,7 +92,7 @@ mod tests {
     /// server keeps its entities.
     #[test]
     fn an_event_names_the_receivers_entities_each_way() {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
         let server_entity = stepper
             .server_app_mut()
             .world_mut()

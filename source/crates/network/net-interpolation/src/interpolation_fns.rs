@@ -1,5 +1,5 @@
 use crate::interpolation_fn::InterpolationFn;
-use crate::into_interpolation_fn::{IntoContextLerpFn, IntoLerpFn};
+use crate::into_interpolation_fn::{IntoCxLerpFn, IntoLerpFn};
 use crate::lerps::linear_lerp;
 use bevy_curve::Ease;
 use bevy_ecs::component::Component;
@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 
 /// Functions used by an interpolation rule.
 ///
-/// The constructors describe which work the stack owns:
+/// The constructors describe which work the stack holds:
 ///
 /// - [`Self::with`] stores received values in
 ///   [`ConfirmedHistory`](campfire_net_replication::ConfirmedHistory),
@@ -20,48 +20,12 @@ use core::marker::PhantomData;
 ///   system interpolates. You can still
 ///   specify a default interpolation fn that can be used for other purposes, such
 ///   as frame interpolation.
-/// - [`Self::no_history`] registers an interpolation function without owning
+/// - [`Self::no_history`] registers an interpolation function without holding
 ///   delayed interpolation history or delayed live-component presence. Frame
 ///   interpolation and correction can still reuse the same rule.
 /// - [`Self::disabled`] registers no history and no interpolation function. Use
 ///   it as a high-priority filtered rule to opt matching entities out of a
 ///   broader interpolation rule.
-///
-/// # Examples
-///
-/// Use the full delayed-interpolation pipeline:
-///
-/// ```rust,ignore
-/// use bevy_ecs::prelude::*;
-/// use campfire_net_interpolation::{AppInterpolationExt, InterpolationFns, InterpolationRegistrationExt};
-///
-/// #[derive(Component, Clone, PartialEq, Serialize, Deserialize)]
-/// struct Position(f32);
-///
-/// fn lerp_position(start: &Position, end: &Position, t: f32) -> Position {
-///     Position(start.0 + (end.0 - start.0) * t)
-/// }
-///
-/// app.register_component::<Position>()
-///     .replicate()
-///     .interpolate(InterpolationFns::with(lerp_position));
-/// ```
-///
-/// Keep histories but interpolate in your own system:
-///
-/// ```rust,ignore
-/// use bevy_ecs::prelude::*;
-/// use campfire_net_interpolation::{AppInterpolationExt, InterpolationFns, InterpolationRegistrationExt, InterpolationSystems};
-///
-/// #[derive(Component, Clone, PartialEq, Serialize, Deserialize)]
-/// struct Position(f32);
-///
-/// app.register_component::<Position>()
-///     .replicate()
-///     .interpolate(InterpolationFns::history_only());
-///
-/// app.add_systems(Update, custom_interpolation.in_set(InterpolationSystems::Interpolate));
-/// ```
 #[derive(Debug, Clone)]
 pub struct InterpolationFns<C> {
     pub(crate) interpolation: Option<InterpolationFn<C>>,
@@ -69,7 +33,7 @@ pub struct InterpolationFns<C> {
     _marker: PhantomData<fn(C)>,
 }
 
-/// Which pipeline stages a rule owns.
+/// Which pipeline stages a rule holds.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum InterpolationPipeline {
     Full,
@@ -79,11 +43,11 @@ pub(crate) enum InterpolationPipeline {
 }
 
 impl InterpolationPipeline {
-    pub(crate) const fn owns_interpolation_history(self) -> bool {
+    pub(crate) const fn holds_interpolation_history(self) -> bool {
         matches!(self, Self::Full | Self::HistoryOnly)
     }
 
-    pub(crate) const fn owns_frame_history(self) -> bool {
+    pub(crate) const fn holds_frame_history(self) -> bool {
         matches!(self, Self::Full | Self::HistoryOnly | Self::NoHistory)
     }
 }
@@ -95,22 +59,6 @@ impl<C> InterpolationFns<C> {
     /// [`ConfirmedHistory<C>`](campfire_net_replication::ConfirmedHistory),
     /// prepared every frame, and the provided interpolation function is used to
     /// apply the live component at the interpolation timeline.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// # use bevy_ecs::prelude::*;
-    /// # use campfire_net_interpolation::{AppInterpolationExt, InterpolationFns, InterpolationRegistrationExt};
-    /// # #[derive(Component, Clone, PartialEq, Serialize, Deserialize)]
-    /// # struct Position(f32);
-    /// fn lerp_position(start: &Position, end: &Position, t: f32) -> Position {
-    ///     Position(start.0 + (end.0 - start.0) * t)
-    /// }
-    ///
-    /// app.register_component::<Position>()
-    ///     .replicate()
-    ///     .interpolate(InterpolationFns::with(lerp_position));
-    /// ```
     pub fn with<M>(interpolation: impl IntoLerpFn<C, M>) -> Self {
         Self {
             interpolation: Some(interpolation.into_interpolation_fn()),
@@ -124,7 +72,7 @@ impl<C> InterpolationFns<C> {
     ///
     /// Use this for interpolation such as Hermite curves whose endpoint
     /// derivatives must be scaled by the duration between the sampled states.
-    pub fn with_context<M>(interpolation: impl IntoContextLerpFn<C, M>) -> Self {
+    pub fn with_cx<M>(interpolation: impl IntoCxLerpFn<C, M>) -> Self {
         Self {
             interpolation: Some(interpolation.into_interpolation_fn()),
             pipeline: InterpolationPipeline::Full,
@@ -138,18 +86,6 @@ impl<C> InterpolationFns<C> {
     /// [`ConfirmedHistory<C>`](campfire_net_replication::ConfirmedHistory), but visible
     /// interpolation is handled by a user system. For example, a system may sample several
     /// histories and write a render-only component.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// # use bevy_ecs::prelude::*;
-    /// # use campfire_net_interpolation::{AppInterpolationExt, InterpolationFns, InterpolationRegistrationExt};
-    /// # #[derive(Component, Clone, PartialEq, Serialize, Deserialize)]
-    /// # struct Position(f32);
-    /// app.register_component::<Position>()
-    ///     .replicate()
-    ///     .interpolate(InterpolationFns::history_only());
-    /// ```
     pub fn history_only() -> Self {
         Self {
             interpolation: None,
@@ -167,21 +103,6 @@ impl<C> InterpolationFns<C> {
     /// and correction. Unlike [`Self::disabled`], this still participates in
     /// frame interpolation and correction because it stores an interpolation
     /// function.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// # use bevy_ecs::prelude::*;
-    /// # use campfire_net_interpolation::{AppInterpolationExt, InterpolationFns, InterpolationRegistrationExt};
-    /// # #[derive(Component, Clone, PartialEq, Serialize, Deserialize)]
-    /// # struct Position(f32);
-    /// # fn lerp_position(start: &Position, end: &Position, t: f32) -> Position {
-    /// #     Position(start.0 + (end.0 - start.0) * t)
-    /// # }
-    /// app.register_component::<Position>()
-    ///     .replicate()
-    ///     .interpolate(InterpolationFns::no_history(lerp_position));
-    /// ```
     pub fn no_history<M>(interpolation: impl IntoLerpFn<C, M>) -> Self {
         Self {
             interpolation: Some(interpolation.into_interpolation_fn()),
@@ -192,7 +113,7 @@ impl<C> InterpolationFns<C> {
 
     /// Registers a context-aware interpolation function without delayed
     /// interpolation history.
-    pub fn no_history_with_context<M>(interpolation: impl IntoContextLerpFn<C, M>) -> Self {
+    pub fn no_history_with_cx<M>(interpolation: impl IntoCxLerpFn<C, M>) -> Self {
         Self {
             interpolation: Some(interpolation.into_interpolation_fn()),
             pipeline: InterpolationPipeline::NoHistory,
@@ -212,27 +133,6 @@ impl<C> InterpolationFns<C> {
     /// This is useful when most entities should interpolate but a marked subset
     /// should snap, be driven by a custom visual system, or temporarily opt out
     /// during a mode change.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// # use bevy_ecs::prelude::*;
-    /// # use campfire_net_interpolation::{AppInterpolationExt, InterpolationFns, InterpolationRegistrationExt, InterpolationRule};
-    /// # #[derive(Component, Clone, PartialEq, Serialize, Deserialize)]
-    /// # struct Position(f32);
-    /// #[derive(Component)]
-    /// struct SnapOnly;
-    ///
-    /// app.register_component::<Position>()
-    ///     .replicate()
-    ///     .interpolate(InterpolationFns::linear());
-    ///
-    /// // Entities with `SnapOnly` match both rules. This rule has higher
-    /// // priority, so it blocks the broader default `Position` interpolation.
-    /// app.register_interpolation_rule::<Position, With<SnapOnly>>(
-    ///     InterpolationRule::new(InterpolationFns::disabled()).priority(100),
-    /// );
-    /// ```
     pub fn disabled() -> Self {
         Self {
             interpolation: None,
@@ -245,8 +145,8 @@ impl<C> InterpolationFns<C> {
         self.pipeline
     }
 
-    pub(crate) const fn owns_interpolation_history(&self) -> bool {
-        self.pipeline.owns_interpolation_history()
+    pub(crate) const fn holds_interpolation_history(&self) -> bool {
+        self.pipeline.holds_interpolation_history()
     }
 
     pub(crate) const fn applies_interpolation_component(&self) -> bool {
@@ -254,7 +154,7 @@ impl<C> InterpolationFns<C> {
     }
 
     pub(crate) const fn applies_frame_component(&self) -> bool {
-        self.interpolation.is_some() && self.pipeline.owns_frame_history()
+        self.interpolation.is_some() && self.pipeline.holds_frame_history()
     }
 }
 
@@ -272,8 +172,8 @@ impl<C> InterpolationFns<C> {
     }
 
     /// Stores `interpolation` on this rule without changing which pipeline stages the rule
-    /// owns: most useful with [`Self::history_only`], where the stack owns history and presence
-    /// but a user system owns delayed interpolation, while frame interpolation and correction
+    /// holds: most useful with [`Self::history_only`], where the stack holds history and presence
+    /// but a user system holds delayed interpolation, while frame interpolation and correction
     /// can still reuse the interpolation function.
     pub fn interpolate<M>(mut self, interpolation: impl IntoLerpFn<C, M>) -> Self {
         self.interpolation = Some(interpolation.into_interpolation_fn());
@@ -281,11 +181,8 @@ impl<C> InterpolationFns<C> {
     }
 
     /// Stores a context-aware interpolation callback on this rule without changing which
-    /// pipeline stages the rule owns.
-    pub fn interpolate_with_context<M>(
-        mut self,
-        interpolation: impl IntoContextLerpFn<C, M>,
-    ) -> Self {
+    /// pipeline stages the rule holds.
+    pub fn interpolate_with_cx<M>(mut self, interpolation: impl IntoCxLerpFn<C, M>) -> Self {
         self.interpolation = Some(interpolation.into_interpolation_fn());
         self
     }

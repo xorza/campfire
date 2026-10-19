@@ -13,16 +13,6 @@ use core::fmt::Debug;
 
 /// Registration state returned after prediction has been enabled for a component.
 ///
-/// Use it as:
-///
-/// ```rust,ignore
-/// app.register_component::<Position>()
-///     .replicate()
-///     .predict()
-///     .mismatch_with(position_mismatch)
-///     .correct_linear::<Position>();
-/// ```
-///
 /// Rollback comparison and visual correction are only meaningful for a predicted component, so
 /// they are only on this state.
 ///

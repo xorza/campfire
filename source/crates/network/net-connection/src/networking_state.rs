@@ -7,7 +7,7 @@ use campfire_net_core::PeerId;
 
 /// The networking topology of this Bevy application, and the link entity of each remote peer.
 ///
-/// `ConnectionPlugins` maintain this resource from role and lifecycle components. Users
+/// `ConnectionPlugins` maintain this resource from side and lifecycle components. Users
 /// can read [`topology`](Self::topology) and [`peer_map`](Self::peer_map), but do not need to
 /// update them themselves.
 #[derive(Resource, Debug, Clone)]

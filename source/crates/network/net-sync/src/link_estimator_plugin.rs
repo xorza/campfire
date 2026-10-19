@@ -14,8 +14,8 @@ impl Plugin for LinkEstimatorPlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<Client, LinkEstimator>();
         app.register_required_components::<ClientOf, LinkEstimator>();
-        // The session hands its samples over in `LinkSystems::Receive`, and the remote timeline
-        // reads the estimate at each packet the transport reads.
+        // The packet session hands its samples over in `LinkSystems::Receive`, and the remote
+        // timeline reads the estimate at each packet the transport reads.
         app.add_systems(
             PreUpdate,
             LinkEstimator::sample

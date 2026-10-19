@@ -7,6 +7,6 @@ use bevy_ecs::prelude::*;
 /// [`Linked`](crate::link_state::Linked) when the connection progresses.
 #[derive(Debug, EntityEvent)]
 pub struct LinkStart {
-    /// Entity that owns the [`Link`](crate::link::Link) to start.
+    /// Entity that holds the [`Link`](crate::link::Link) to start.
     pub entity: Entity,
 }

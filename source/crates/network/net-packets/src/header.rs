@@ -1,13 +1,15 @@
-//! The header of a session packet: a byte of flags, the low 16 bits of its number, and, on the
-//! types that carry them, its acknowledgements. The header is the AEAD's associated data, so it is
-//! authenticated and not encrypted.
+//! The header of a packet session packet: a byte of flags, the low 16 bits of its number, and, on
+//! the types that carry them, its acknowledgements. The header is the AEAD's associated data, so it
+//! is authenticated and not encrypted (13-net-stack/packet-session.md, The header is the AEAD's
+//! associated data: authenticated, not encrypted).
 
 use campfire_net_payload::PayloadKind;
 use core::time::Duration;
 
 use crate::header_error::HeaderError;
 
-/// The first bit, which the session leaves 0 and its IO uses for packets of its own.
+/// The first bit, which the packet session leaves 0 and its IO uses for packets of its own
+/// (13-net-stack/packet-session.md, The first bit of each datagram is the IO's).
 pub(crate) const IO_BIT: u8 = 0x80;
 const TYPE_SHIFT: u8 = 4;
 const TYPE_MASK: u8 = 0x70;
@@ -16,10 +18,11 @@ const KIND_MASK: u8 = 0x0c;
 const ACKS_BIT: u8 = 0x02;
 const RESERVED_BIT: u8 = 0x01;
 
-/// The span of time one unit of the ACK delay field is.
+/// The span of time one unit of the ACK delay field is (13-net-stack/packet-session.md, Each ACK
+/// says how long its largest waited).
 const ACK_DELAY_UNIT: Duration = Duration::from_micros(250);
 
-/// What a session packet is, in the header's 3 type bits.
+/// What a packet session packet is, in the header's 3 type bits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PacketType {
     /// The frame's payload, of the kind the header names.
@@ -100,7 +103,7 @@ impl AckFields {
     }
 }
 
-/// A session packet's header.
+/// A packet session packet's header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Header {
     pub(crate) packet_type: PacketType,
@@ -123,7 +126,7 @@ impl Header {
         debug_assert_eq!(out.len(), self.len(), "a header fills its own bytes");
         debug_assert!(
             self.is_well_formed(),
-            "a session writes only headers it reads"
+            "a packet session writes only headers it reads"
         );
         let mut flags = (self.packet_type.bits() << TYPE_SHIFT) | (self.kind.bits() << KIND_SHIFT);
         if self.acks.is_some() {

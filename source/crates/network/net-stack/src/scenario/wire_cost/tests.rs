@@ -8,15 +8,15 @@ fn latency() -> LinkModel {
 }
 
 /// The cost of a direction that put `[datagrams, bytes]` on the wire, of which `[ack_only,
-/// session_pings]` were the session's own, and sent `resent_messages` again.
-const fn cost(wire: [u64; 2], session: [u64; 2], resent_messages: u64) -> DirectionCost {
+/// session_pings]` were the packet_session's own, and sent `resent_messages` again.
+const fn cost(wire: [u64; 2], packet_session: [u64; 2], resent_messages: u64) -> DirectionCost {
     let [datagrams, bytes] = wire;
-    let [ack_only, session_pings] = session;
+    let [ack_only, packet_session_pings] = packet_session;
     DirectionCost {
         datagrams,
         bytes,
         ack_only,
-        session_pings,
+        packet_session_pings,
         resent_messages,
     }
 }
@@ -24,26 +24,26 @@ const fn cost(wire: [u64; 2], session: [u64; 2], resent_messages: u64) -> Direct
 /// The counts of one second of each case, measured on the stack as it is. The stepper is
 /// deterministic, so each count is exact, and a change to the wire shows as a diff of them. An
 /// end whose frame is the tick sends one datagram a tick, 60 in the second, and each carries the
-/// ACK and the tick, so the sessions send no packet of their own and the transports no
-/// heartbeat. A sealed session adds 16 bytes of tag to
+/// ACK and the tick, so the packet sessions send no packet of their own and the transports no
+/// heartbeat. A sealed packet session adds 16 bytes of tag to
 /// each datagram, and 8 of connection ID to each of the client's: 60 · 24 = 1,440 bytes more
 /// from the client.
 #[test]
 fn each_case_puts_exact_counts_on_the_wire() {
     let unreliable = |name, client_frame, senders| WireCase {
         name,
-        kind: ClientKind::Raw,
+        kind: ClientKind::Plain,
         client_frame,
         senders,
-        delivery: Delivery::Unreliable,
+        delivery: Reliability::Unreliable,
         link: DuplexModel::symmetric(latency()),
     };
     let lossy = WireCase {
         name: "reliable under 10 ms of jitter and 2 % loss",
-        kind: ClientKind::Raw,
+        kind: ClientKind::Plain,
         client_frame: TICK,
         senders: Senders::Both,
-        delivery: Delivery::Reliable,
+        delivery: Reliability::Reliable,
         link: DuplexModel::symmetric(
             latency()
                 .with_jitter(Duration::from_millis(10))

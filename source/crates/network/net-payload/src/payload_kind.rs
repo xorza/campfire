@@ -1,5 +1,5 @@
-/// The 2 bits of a payload's kind, which the session carries in its packet's header and does not
-/// read: the layer above names its payload formats with them.
+/// The 2 bits of a payload's kind, which the packet session carries in its packet's header and does
+/// not read: the layer above names its payload formats with them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PayloadKind(u8);
 

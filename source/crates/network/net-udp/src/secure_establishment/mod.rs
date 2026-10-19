@@ -1,4 +1,4 @@
-//! Sealed sessions by a TLS 1.3 handshake in the IO's own packets (13-net-stack/udp.md, The
+//! Sealed packet sessions by a TLS 1.3 handshake in the IO's own packets (13-net-stack/udp.md, The
 //! handshake is TLS 1.3 by rustls's QUIC API).
 
 use campfire_net_packets::ChannelBinding;

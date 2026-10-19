@@ -11,9 +11,9 @@ use campfire_net_connection::HostClient;
 use campfire_net_transport::Transport;
 use campfire_net_transport::TransportSystems;
 
+use crate::confirmed_tick_map::ConfirmedTickMap;
 use crate::persistent::Persistent;
 use crate::remote_parent::RemoteParent;
-use crate::replication_checkpoint_map::ReplicationCheckpointMap;
 use crate::replication_receiver::ReplicationReceiver;
 use crate::replication_systems::ReplicationSystems;
 use crate::replicon_channel_map::RepliconChannelMap;
@@ -22,20 +22,15 @@ use campfire_net_messages::MessageSystems;
 use tracing::debug;
 use tracing::error;
 
-/// Adds the replicon client-side backend bridge for the stack.
-///
-/// Handles:
-/// - `ClientState` transitions (Connected when client connects)
-/// - Receiving `ClientMessages` (replication data from server) via transport
-/// - Sending `ClientMessages` (acks) via transport
-/// - Marking `Client` connections to resolve message entity mappings through
-///   replicon's `ServerEntityMap` (no per-connection copy is kept)
+/// Runs Replicon's client on the stack: its state follows the connection, its messages go through
+/// the transport, and a message names server entities through Replicon's `ServerEntityMap`, with no
+/// copy for each link (13-net-stack/api.md, Only a client maps the entities a message names).
 #[derive(Debug)]
 pub(crate) struct ClientRepliconPlugin;
 
 impl Plugin for ClientRepliconPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(ReplicationCheckpointMap::record_authoritative_tick);
+        app.add_observer(ConfirmedTickMap::record_authoritative_tick);
 
         // State management
         app.add_systems(
@@ -50,7 +45,7 @@ impl Plugin for ClientRepliconPlugin {
         );
         app.add_systems(
             PreUpdate,
-            Self::sync_last_confirmed_checkpoint
+            Self::sync_last_confirmed_tick
                 .after(ClientSystems::Receive)
                 .in_set(ReplicationSystems::Receive),
         );
@@ -83,9 +78,9 @@ impl Plugin for ClientRepliconPlugin {
 }
 
 impl ClientRepliconPlugin {
-    fn sync_last_confirmed_checkpoint(
+    fn sync_last_confirmed_tick(
         server_mutate_ticks: Res<'_, ServerMutateTicks>,
-        mut checkpoints: ResMut<'_, ReplicationCheckpointMap>,
+        mut confirmed_ticks: ResMut<'_, ConfirmedTickMap>,
         connected_receivers: Query<
             '_,
             '_,
@@ -98,8 +93,8 @@ impl ClientRepliconPlugin {
             ),
         >,
     ) {
-        // Receiver cleanup clears the checkpoint map before Replicon's state transition resets its
-        // mutate ticks. Do not compare those two resources during that short transition window.
+        // Receiver cleanup clears the confirmed tick map before Replicon's state transition resets
+        // its mutate ticks. Do not compare those two resources during that short transition window.
         if connected_receivers.is_empty() {
             return;
         }
@@ -107,13 +102,13 @@ impl ClientRepliconPlugin {
         let Some(replicon_tick) = server_mutate_ticks.last_confirmed_tick() else {
             return;
         };
-        if checkpoints
-            .record_last_confirmed_checkpoint(replicon_tick)
+        if confirmed_ticks
+            .record_last_confirmed_tick(replicon_tick)
             .is_none()
         {
             error!(
                 ?replicon_tick,
-                "missing authoritative checkpoint mapping for completed mutate tick"
+                "missing confirmed tick for completed mutate tick"
             );
         }
     }
@@ -122,9 +117,9 @@ impl ClientRepliconPlugin {
     ///
     /// Sets `Connected` only for real remote clients that can receive replication.
     ///
-    /// Host-clients intentionally keep Replicon's `ClientState` disconnected so the app behaves like
-    /// a listen server: replication receive stays disabled and host-local client behavior is emulated
-    /// directly in the shared world instead.
+    /// Host-clients intentionally keep Replicon's `ClientState` disconnected so the app behaves
+    /// like a listen server: replication receive stays disabled and host-local client behavior is
+    /// emulated directly in the shared world instead.
     fn sync_client_state(
         connected: Query<
             '_,
@@ -148,7 +143,8 @@ impl ClientRepliconPlugin {
         }
     }
 
-    /// Receive packets from transports and populate `ClientMessages` (replication data from server).
+    /// Receive packets from transports and populate `ClientMessages` (replication data from
+    /// server).
     ///
     /// Reads from server_channels (Updates, Mutations) on each transport.
     fn receive_client_packets(
@@ -192,9 +188,9 @@ impl ClientRepliconPlugin {
     /// `Remove` observers run before the components disappear, so receiver-local [`Persistent`] can
     /// still be read here.
     ///
-    /// Each received entity is despawned, except a [`Persistent`] one, which becomes a local entity:
-    /// its replication markers go, as replicon forgets which server entity it was. A reconnect then
-    /// replicates the server's entity anew, as a second entity.
+    /// Each received entity is despawned, except a [`Persistent`] one, which becomes a local
+    /// entity: its replication markers go, as replicon forgets which server entity it was. A
+    /// reconnect then replicates the server's entity anew, as a second entity.
     fn on_replication_disconnect(
         trigger: On<'_, '_, Remove<(Connected, ReplicationReceiver)>>,
         mut commands: Commands<'_, '_>,
@@ -210,7 +206,7 @@ impl ClientRepliconPlugin {
             ),
         >,
         replicated: Query<'_, '_, (Entity, Has<Persistent>), With<Remote>>,
-        mut checkpoints: ResMut<'_, ReplicationCheckpointMap>,
+        mut confirmed_ticks: ResMut<'_, ConfirmedTickMap>,
     ) {
         // The tuple observer runs when either component is removed. Only clean up a connection that
         // had both components immediately before this removal, and do not clean up twice if its
@@ -219,10 +215,10 @@ impl ClientRepliconPlugin {
             return;
         };
 
-        checkpoints.clear();
+        confirmed_ticks.clear();
 
-        // The despawns come first: each detaches its `Remote` children, a persistent one among them,
-        // which then becomes local with its parent gone.
+        // The despawns come first: each detaches its `Remote` children, a persistent one among
+        // them, which then becomes local with its parent gone.
         for (entity, is_persistent) in &replicated {
             if !(receiver_is_persistent || is_persistent) {
                 debug!("Despawning replicated entity {:?} on disconnect", entity);

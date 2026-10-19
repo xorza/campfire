@@ -1,7 +1,7 @@
 use bevy_ecs::prelude::*;
 use campfire_net_payload::AppCode;
 
-/// Trigger to disconnect a connection: a client, or a server's link to one.
+/// Disconnects a connection: a client, or a server's link to one.
 #[derive(Debug, EntityEvent)]
 pub struct Disconnect {
     pub entity: Entity,

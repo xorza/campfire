@@ -6,7 +6,7 @@ use core::fmt::Debug;
 
 /// Decay schedule for [`VisualCorrection`](crate::visual_correction::VisualCorrection) errors.
 ///
-/// The default schedule lives on the `PredictionManager` resource and applies
+/// The default schedule lives on the `PredictionSetup` resource and applies
 /// to every corrected entity. Inserting this component on an entity overrides
 /// the global schedule for that entity only — that is how one-off corrections can
 /// decay on their own tuning without retuning every other correction.
@@ -23,7 +23,7 @@ pub struct CorrectionPolicy {
     ///
     /// The default is the unbounded exponential, tuned in the two parameters
     /// below. A bounded curve ([`CorrectionEase::Smoothstep`] and friends) is
-    /// normalised over [`Self::duration`] instead, and reaches zero at its end.
+    /// normalised over `duration_secs` instead, and reaches zero at its end.
     ease: CorrectionEase,
     /// How long the curve takes, in seconds.
     ///
@@ -86,7 +86,7 @@ impl CorrectionPolicy {
         self.ease
     }
 
-    /// Returns the lerp constant to use for decaying the error in a framestep-insensitive way.
+    /// The lerp constant to use for decaying the error in a framestep-insensitive way.
     ///
     /// For an exponential this is constant, which is the classic framestep-insensitive
     /// exponential decay; see <https://www.youtube.com/watch?v=LSNQuFEDOyQ>.

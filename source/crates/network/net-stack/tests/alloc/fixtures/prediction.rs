@@ -10,9 +10,9 @@ use campfire_net_replication::PredictionTarget;
 use campfire_net_replication::Replicate;
 use campfire_net_stack::internals::FullStack;
 use campfire_net_stepper::ClientKind;
-use campfire_net_stepper::Order;
+use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 
 fn increment(mut components: Query<'_, '_, &mut CompFull>) {
     for mut component in &mut components {
@@ -38,19 +38,19 @@ const SETTLE: usize = 16;
 /// client records it in the prediction history. bevy_replicon grows its mutation message for the
 /// change (1).
 #[test]
-fn prediction_updates() {
-    audit_prediction(ClientKind::Raw);
+fn a_predicted_update_each_tick_stays_in_its_budget() {
+    audit_prediction(ClientKind::Plain);
 }
 
-/// The same in a sealed session of the UDP protocol.
+/// The same in a sealed packet session of the UDP protocol.
 #[test]
-fn sealed_prediction_updates() {
+fn a_sealed_predicted_update_each_tick_stays_in_its_budget() {
     audit_prediction(ClientKind::Udp);
 }
 
 #[track_caller]
 fn audit_prediction(kind: ClientKind) {
-    let mut stepper = Stepper::new(FullStack, StepperConfig::with_clients(vec![kind]));
+    let mut stepper = Stepper::new(FullStack, StepperSetup::with_clients(vec![kind]));
     stepper.server_app_mut().add_systems(FixedUpdate, increment);
     stepper
         .client_app_mut(0)
@@ -65,11 +65,11 @@ fn audit_prediction(kind: ClientKind) {
         ))
         .id();
     let client_entity = fixtures::replicate_to_client(&mut stepper, server_entity);
-    stepper.step(SETTLE, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(SETTLE, stepper.frame_interval(), StepOrder::ServerFirst);
     AUDIT.budget(LINK + 1).run(|| {
         let server = value(stepper.server_app_mut(), server_entity);
         let client = value(stepper.client_app_mut(0), client_entity);
-        stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
+        stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
         assert_eq!(value(stepper.server_app_mut(), server_entity), server + 1.0);
         assert_eq!(
             value(stepper.client_app_mut(0), client_entity),

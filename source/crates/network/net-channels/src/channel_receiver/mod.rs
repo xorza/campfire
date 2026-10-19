@@ -8,16 +8,16 @@ use core::time::Duration;
 use std::collections::VecDeque;
 
 use crate::bench_counter::BenchCounter;
-use crate::channel_config::ChannelConfig;
-use crate::channel_kind::ChannelKind;
 use crate::channel_mode::ChannelMode;
-use crate::message_data::MessageData;
+use crate::channel_setup::ChannelSetup;
+use crate::channel_type_id::ChannelTypeId;
+use crate::message_body::MessageBody;
 use crate::message_id::MessageId;
 use crate::receive_message::ReceiveMessage;
 
 use crate::channel_receive_error::ChannelReceiveError;
 use crate::fragment_receiver::{
-    FragmentContext, FragmentOutcome, FragmentReceiver, PartialExpiry, Reservation,
+    FragmentCx, FragmentOutcome, FragmentReceiver, PartialExpiry, Reservation,
 };
 use crate::receive_budget::ReceiveBudget;
 
@@ -31,10 +31,10 @@ const DISCARD_AFTER: Duration = Duration::from_millis(3000);
 /// for accepting and exposing completed messages varies through the private state enum.
 #[derive(Debug)]
 pub struct ChannelReceiver {
-    channel_kind: ChannelKind,
+    channel_type_id: ChannelTypeId,
     /// The channel's type name, for the traces of what it receives.
     name: &'static str,
-    config: ChannelConfig,
+    setup: ChannelSetup,
     fragments: FragmentReceiver,
     current_time: Instant,
     state: ReceiveState,
@@ -77,7 +77,7 @@ enum ReceiveState {
 
 /// Whether a received message was stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Receipt {
+pub(crate) enum BufferOutcome {
     /// Stored, or refused as a copy or as older than the channel delivers: either way the packet
     /// may be accepted.
     Stored,
@@ -87,7 +87,7 @@ pub(crate) enum Receipt {
 
 /// Whether a received message enters the channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Admission {
+enum MessageAdmission {
     Refuse,
     Admit,
     /// Admitted as the newest message of a sequenced channel, which supersedes every older one.
@@ -96,11 +96,11 @@ enum Admission {
 
 impl ChannelReceiver {
     pub(crate) fn new(
-        channel_kind: ChannelKind,
+        channel_type_id: ChannelTypeId,
         name: &'static str,
-        config: &ChannelConfig,
+        setup: &ChannelSetup,
     ) -> Self {
-        let state = match config.mode {
+        let state = match setup.mode {
             ChannelMode::UnorderedUnreliable => ReceiveState::UnreliableUnordered {
                 ready: VecDeque::new(),
             },
@@ -122,9 +122,9 @@ impl ChannelReceiver {
             },
         };
         Self {
-            channel_kind,
+            channel_type_id,
             name,
-            config: *config,
+            setup: *setup,
             fragments: FragmentReceiver::new(),
             current_time: Instant::ZERO,
             state,
@@ -133,15 +133,15 @@ impl ChannelReceiver {
         }
     }
 
-    /// Drops every partial and completed message, as a new receiver with the same config
+    /// Drops every partial and completed message, as a new receiver with the same setup
     /// starts.
     pub(crate) fn reset(&mut self) {
-        *self = Self::new(self.channel_kind, self.name, &self.config);
+        *self = Self::new(self.channel_type_id, self.name, &self.setup);
     }
 
     /// The type-level channel key associated with this channel.
-    pub const fn channel_kind(&self) -> ChannelKind {
-        self.channel_kind
+    pub const fn channel_type_id(&self) -> ChannelTypeId {
+        self.channel_type_id
     }
 
     /// The channel's type name.
@@ -159,12 +159,12 @@ impl ChannelReceiver {
 
     /// Whether each single message of this channel carries its id.
     pub(crate) const fn single_has_id(&self) -> bool {
-        self.config.mode.single_has_id()
+        self.setup.mode.single_has_id()
     }
 
     /// The largest message this channel receives, in uncompressed bytes.
-    pub(crate) const fn max_message_size(&self) -> usize {
-        self.config.max_message_size
+    pub(crate) const fn max_message_len(&self) -> usize {
+        self.setup.max_message_len
     }
 
     /// The bytes this channel holds against the receive budget.
@@ -178,26 +178,26 @@ impl ChannelReceiver {
         &mut self,
         message: ReceiveMessage,
         budget: &mut ReceiveBudget,
-    ) -> Result<Receipt> {
+    ) -> Result<BufferOutcome> {
         let message_id = message.data.message_id();
         match self.state.admit(message_id)? {
-            Admission::Refuse => return Ok(Receipt::Stored),
-            Admission::Admit => {}
-            Admission::AdmitNewest(newest) => self.fragments.discard_older_than(newest),
+            MessageAdmission::Refuse => return Ok(BufferOutcome::Stored),
+            MessageAdmission::Admit => {}
+            MessageAdmission::AdmitNewest(newest) => self.fragments.discard_older_than(newest),
         }
         let head = self.state.is_head(message_id);
 
         let (tick, bytes) = match message.data {
-            MessageData::Single(single) => (message.remote_sent_tick, single.bytes),
-            MessageData::Fragment(fragment) => {
-                let context = FragmentContext {
+            MessageBody::Single(single) => (message.remote_sent_tick, single.bytes),
+            MessageBody::Fragment(fragment) => {
+                let cx = FragmentCx {
                     expiry: if self.state.expires_fragments() {
                         PartialExpiry::Since(self.current_time)
                     } else {
                         PartialExpiry::Never
                     },
                     compression: message.compression,
-                    max_message_size: self.config.max_message_size,
+                    max_message_len: self.setup.max_message_len,
                     reservation: if head {
                         Reservation::Head
                     } else {
@@ -207,11 +207,11 @@ impl ChannelReceiver {
                 match self.fragments.receive_fragment(
                     fragment,
                     message.remote_sent_tick,
-                    &context,
+                    &cx,
                     budget,
                 )? {
-                    FragmentOutcome::Pending => return Ok(Receipt::Stored),
-                    FragmentOutcome::OverBudget => return Ok(Receipt::OverBudget),
+                    FragmentOutcome::Pending => return Ok(BufferOutcome::Stored),
+                    FragmentOutcome::OverBudget => return Ok(BufferOutcome::OverBudget),
                     // Its reassembly buffer was already charged: the message is kept whatever
                     // room is left.
                     FragmentOutcome::Complete { tick, bytes } => {
@@ -220,7 +220,7 @@ impl ChannelReceiver {
                             self.ready_held += bytes.len();
                         }
                         self.state.push_completed(message_id, tick, bytes);
-                        return Ok(Receipt::Stored);
+                        return Ok(BufferOutcome::Stored);
                     }
                 }
             }
@@ -229,12 +229,12 @@ impl ChannelReceiver {
             if head {
                 budget.charge(bytes.len());
             } else if !budget.try_charge(bytes.len()) {
-                return Ok(Receipt::OverBudget);
+                return Ok(BufferOutcome::OverBudget);
             }
             self.ready_held += bytes.len();
         }
         self.state.push_completed(message_id, tick, bytes);
-        Ok(Receipt::Stored)
+        Ok(BufferOutcome::Stored)
     }
 
     /// Removes and returns the next message accepted by the channel's delivery policy.
@@ -266,16 +266,16 @@ impl ReceiveState {
         matches!(self, Self::ReliableOrdered { pending, .. } if Some(*pending) == message_id)
     }
 
-    fn admit(&mut self, message_id: Option<MessageId>) -> Result<Admission> {
+    fn admit(&mut self, message_id: Option<MessageId>) -> Result<MessageAdmission> {
         let admitted = |admit: bool| {
             if admit {
-                Admission::Admit
+                MessageAdmission::Admit
             } else {
-                Admission::Refuse
+                MessageAdmission::Refuse
             }
         };
         match self {
-            Self::UnreliableUnordered { .. } => Ok(Admission::Admit),
+            Self::UnreliableUnordered { .. } => Ok(MessageAdmission::Admit),
             Self::ReliableUnordered {
                 pending, received, ..
             } => {
@@ -297,17 +297,17 @@ impl ReceiveState {
             } => {
                 let message_id = message_id.ok_or(ChannelReceiveError::MissingMessageId)?;
                 if *newest_completed == Some(message_id) {
-                    return Ok(Admission::Refuse);
+                    return Ok(MessageAdmission::Refuse);
                 }
                 match *newest_seen {
-                    Some(newest) if message_id - newest < 0 => Ok(Admission::Refuse),
-                    Some(newest) if message_id == newest => Ok(Admission::Admit),
+                    Some(newest) if message_id - newest < 0 => Ok(MessageAdmission::Refuse),
+                    Some(newest) if message_id == newest => Ok(MessageAdmission::Admit),
                     _ => {
                         *newest_seen = Some(message_id);
                         // A newer message supersedes an older completed one even if the
                         // application has not drained it yet.
                         *ready = None;
-                        Ok(Admission::AdmitNewest(message_id))
+                        Ok(MessageAdmission::AdmitNewest(message_id))
                     }
                 }
             }

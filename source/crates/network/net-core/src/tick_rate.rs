@@ -8,7 +8,8 @@ use fixed::types::U32F32;
 
 const NANOS_PER_SEC: u128 = 1_000_000_000;
 
-/// How many ticks the fixed schedule runs each second.
+/// How many ticks the fixed schedule runs each second (13-net-stack/time.md, The tick length is a
+/// rate in hertz, and the timestep is its period).
 ///
 /// A tick lasts `1/hz` s, which no `Duration` holds exactly at most rates: at 60 Hz it is
 /// 16,666,666.6… ns. The conversions compute with the rate and round once, so 3 ticks at 60 Hz
@@ -134,7 +135,7 @@ mod tests {
 
     /// 2^24 + 0.5 ticks at 1000 Hz: `f32` holds 2^24 + 0.5 as 2^24, losing the half tick.
     #[test]
-    fn conversions_stay_exact_past_f32_precision() {
+    fn a_conversion_stays_exact_past_the_precision_of_f32() {
         let thousand = rate(1000);
         let ticks = U32F32::from_num(16_777_216) + U32F32::lit("0.5");
         let duration = Duration::from_micros(16_777_216_500);
@@ -145,7 +146,7 @@ mod tests {
     /// The largest instant, 2^32 - 2^-32 ticks at 1 Hz, is 2^32 s less 0.23 ns, which rounds to
     /// 2^32 s. A duration past the largest instant saturates.
     #[test]
-    fn conversions_saturate() {
+    fn a_conversion_saturates() {
         assert_eq!(
             rate(1).duration_of(U32F32::MAX),
             Duration::from_secs(1 << 32)

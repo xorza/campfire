@@ -71,7 +71,7 @@ impl Default for CorrectionEase {
     /// A struct variant cannot carry `#[default]`, so this is written out rather
     /// than derived — which keeps it the single definition of the default, used
     /// by both `CorrectionPolicy` and
-    /// `TimelineSwitchConfig`.
+    /// `TimelineSwitchSetup`.
     fn default() -> Self {
         Self::Exponential {
             decay_ratio: Self::DEFAULT_DECAY_RATIO,

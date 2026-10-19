@@ -5,7 +5,8 @@ use bevy_reflect::Reflect;
 use core::ops::{Add, AddAssign, Sub};
 use core::time::Duration;
 
-/// A moment on an app's network clock: the time since the app's first update, in nanoseconds.
+/// A moment on an app's network clock: the time since the app's first update, in nanoseconds
+/// (13-net-stack/time.md, The stack's own `Instant`, a `Duration` since the app's first update).
 ///
 /// It counts from the origin of `Time<Real>::elapsed()`, so a driven clock reads the same values
 /// on every run of a test, and two instants of one app subtract to the time between them. A `u64`

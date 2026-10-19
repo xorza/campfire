@@ -1,9 +1,11 @@
-//! The vocabulary every stack layer shares, with no engine in it: the app's [`Instant`], a
-//! link's [`Direction`], ticks and their deltas and instants, peer and network ids, the maps
-//! from types to network ids and the registries' hashes, and a link's [`Random`] bytes.
+//! The vocabulary every stack layer shares, with no engine in it: the app's [`Instant`], a link's
+//! [`LinkDirection`], ticks and their deltas and instants, peer and network ids, the maps from
+//! types to network ids and the registries' hashes, and a link's [`Random`] bytes
+//! (13-net-stack/layering.md, The vocabulary is plain, and the clock and the timelines a glue crate
+//! of their own).
 
-mod direction;
 mod instant;
+mod link_direction;
 mod net_id;
 mod net_tick;
 mod overstep;
@@ -18,8 +20,8 @@ mod tick_time;
 mod ticked;
 mod type_mapper;
 
-pub use crate::direction::{Direction, Directions};
 pub use crate::instant::Instant;
+pub use crate::link_direction::{LinkDirection, LinkDirections};
 pub use crate::net_id::NetId;
 pub use crate::net_tick::NetTick;
 pub use crate::overstep::Overstep;
@@ -30,8 +32,8 @@ pub use crate::registry_seal::RegistrySeal;
 pub use crate::tick_buffer::{Drain, IntoIter, Iter, TickBuffer};
 pub use crate::tick_range_error::TickRangeError;
 pub use crate::tick_rate::TickRate;
-pub use crate::tick_time::PositiveTickDelta;
-pub use crate::tick_time::TickDelta;
+pub use crate::tick_time::PositiveTickSpan;
 pub use crate::tick_time::TickInstant;
+pub use crate::tick_time::TickSpan;
 pub use crate::ticked::Ticked;
-pub use crate::type_mapper::{TypeKind, TypeMapper};
+pub use crate::type_mapper::{RegisteredType, TypeMapper};

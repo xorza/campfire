@@ -1,4 +1,4 @@
-/// Why a datagram is not a session packet the receiver reads.
+/// Why a datagram is not a packet session packet the receiver reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum HeaderError {
     #[error("the datagram is shorter than its header")]

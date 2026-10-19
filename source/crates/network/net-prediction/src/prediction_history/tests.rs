@@ -12,13 +12,13 @@ use bevy_replicon::prelude::RepliconTick;
 
 use core::fmt::Debug;
 
-use campfire_net_sync::InputDelayConfig;
+use campfire_net_sync::InputDelaySetup;
 use campfire_net_sync::LocalTimelineSync;
 
 use crate::fixtures::prediction_stack::PredictionStack;
 use crate::fixtures::protocol::CompCorr;
 use crate::fixtures::steps::trigger_state_rollback;
-use crate::rollback_config::RollbackConfig;
+use crate::rollback_setup::RollbackSetup;
 use crate::rollback_systems::RollbackSystems;
 use bevy::prelude::*;
 use bevy_replicon::prelude::Remote;
@@ -28,13 +28,13 @@ use campfire_net_interpolation::internals::CompFull;
 use campfire_net_replication::internals::CompA;
 use campfire_net_replication::{PredictionTarget, Replicate};
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 
 #[derive(Component, Clone, PartialEq, Debug)]
 struct TestValue(f32);
 
 #[test]
-fn clear_after_tick_removes_newer_predictions() {
+fn a_clear_after_a_tick_removes_the_later_predictions() {
     let mut history = PredictionHistory::<TestValue>::default();
 
     history.add(NetTick(1), Some(TestValue(1.0)));
@@ -54,21 +54,21 @@ fn clear_after_tick_removes_newer_predictions() {
 
 fn prediction_history_test_app(
     max_rollback_ticks: u16,
-    input_delay_config: InputDelayConfig,
+    input_delay_setup: InputDelaySetup,
     tick: i32,
 ) -> App {
     let mut app = App::new();
     let mut timeline = LocalTimeline::default();
     timeline.shift(tick);
     app.insert_resource(timeline);
-    app.insert_resource(PredictionManager {
-        rollback_config: RollbackConfig {
+    app.insert_resource(PredictionSetup {
+        rollback_setup: RollbackSetup {
             max_rollback_ticks,
             ..Default::default()
         },
         ..Default::default()
     });
-    app.insert_resource(InputTimelineConfig::default().with_input_delay(input_delay_config));
+    app.insert_resource(InputTimelineSetup::default().with_input_delay(input_delay_setup));
     let mut sync = LocalTimelineSync::default();
     sync.set_synced(true);
     app.insert_resource(sync);
@@ -76,12 +76,12 @@ fn prediction_history_test_app(
 }
 
 #[test]
-fn prediction_history_is_not_recorded_until_timeline_sync() {
+fn a_prediction_history_records_nothing_before_the_timeline_syncs() {
     let mut app = App::new();
     app.init_resource::<LocalTimeline>();
     app.init_resource::<LocalTimelineSync>();
-    app.insert_resource(PredictionManager::default());
-    app.insert_resource(InputTimelineConfig::default());
+    app.insert_resource(PredictionSetup::default());
+    app.insert_resource(InputTimelineSetup::default());
     app.add_systems(Update, PredictionHistory::<TestValue>::update);
     app.add_observer(PredictionHistory::<TestValue>::record_removal);
 
@@ -122,8 +122,8 @@ fn prediction_history_is_not_recorded_until_timeline_sync() {
 }
 
 #[test]
-fn prediction_history_is_pruned_to_effective_rollback_horizon() {
-    let mut app = prediction_history_test_app(20, InputDelayConfig::balanced(), 100);
+fn a_prediction_history_is_pruned_to_its_rollback_horizon() {
+    let mut app = prediction_history_test_app(20, InputDelaySetup::balanced(), 100);
     app.insert_resource(confirmed_through(NetTick(100)));
     app.add_systems(
         Update,
@@ -165,19 +165,19 @@ fn prediction_history_is_pruned_to_effective_rollback_horizon() {
     assert_eq!(confirmed_history.len(), 3);
 }
 
-/// A checkpoint map whose latest completed checkpoint is `tick`.
-fn confirmed_through(tick: NetTick) -> ReplicationCheckpointMap {
-    let mut checkpoints = ReplicationCheckpointMap::default();
+/// A confirmed tick map whose latest completed confirmed tick is `tick`.
+fn confirmed_through(tick: NetTick) -> ConfirmedTickMap {
+    let mut confirmed_ticks = ConfirmedTickMap::default();
     let replicon_tick = RepliconTick::new(1);
-    checkpoints.record(replicon_tick, tick);
-    checkpoints.record_last_confirmed_checkpoint(replicon_tick);
-    checkpoints
+    confirmed_ticks.record(replicon_tick, tick);
+    confirmed_ticks.record_last_confirmed_tick(replicon_tick);
+    confirmed_ticks
 }
 
 #[test]
-fn confirmed_history_is_not_pruned_past_the_latest_completed_checkpoint() {
+fn confirmed_history_is_not_pruned_past_the_latest_confirmed_tick() {
     // Local tick 200, horizon 7, confirmed up to 100: the cut stops at 100, not 193.
-    let mut app = prediction_history_test_app(20, InputDelayConfig::balanced(), 200);
+    let mut app = prediction_history_test_app(20, InputDelaySetup::balanced(), 200);
     app.insert_resource(confirmed_through(NetTick(100)));
     app.add_systems(Update, PredictionHistory::<TestValue>::prune_confirmed);
     let mut confirmed_history = ConfirmedHistory::default();
@@ -233,9 +233,9 @@ fn confirmed_history_is_not_pruned_past_the_latest_completed_checkpoint() {
     );
     assert_eq!(ticks(&app), [NetTick(100), NetTick(120)]);
 
-    // No completed checkpoint: nothing is pruned.
-    let mut app = prediction_history_test_app(20, InputDelayConfig::balanced(), 200);
-    app.insert_resource(ReplicationCheckpointMap::default());
+    // No completed confirmed tick: nothing is pruned.
+    let mut app = prediction_history_test_app(20, InputDelaySetup::balanced(), 200);
+    app.insert_resource(ConfirmedTickMap::default());
     app.add_systems(Update, PredictionHistory::<TestValue>::prune_confirmed);
     let mut confirmed_history = ConfirmedHistory::default();
     confirmed_history.insert_present(NetTick(80), TestValue(80.0));
@@ -259,20 +259,20 @@ fn confirmed_history_is_not_pruned_past_the_latest_completed_checkpoint() {
 }
 
 /// A late `Predicted` on an entity whose latest confirmation, replicon tick 4, is older than every
-/// retained checkpoint (10, 11 and 12, at ticks 100, 110 and 120) backfills its value at the
-/// oldest retained tick, 100: nothing for the entity arrived through those checkpoints, so the
+/// retained confirmed tick (10, 11 and 12, at ticks 100, 110 and 120) backfills its value at the
+/// oldest retained tick, 100: nothing for the entity arrived through those confirmed ticks, so the
 /// value held then.
 #[test]
 fn a_late_predicted_marker_backfills_a_confirmation_older_than_the_window() {
     let mut world = World::new();
-    let mut checkpoints = ReplicationCheckpointMap::default();
+    let mut confirmed_ticks = ConfirmedTickMap::default();
     for replicon_tick in 10..=12 {
-        checkpoints.record(
+        confirmed_ticks.record(
             RepliconTick::new(replicon_tick),
             NetTick(replicon_tick * 10),
         );
     }
-    world.insert_resource(checkpoints);
+    world.insert_resource(confirmed_ticks);
     world.add_observer(PredictionHistory::<TestValue>::backfill_confirmed);
     let entity = world
         .spawn((TestValue(5.0), ConfirmHistory::new(RepliconTick::new(4))))
@@ -289,7 +289,7 @@ fn a_late_predicted_marker_backfills_a_confirmation_older_than_the_window() {
 }
 
 #[test]
-fn snap_to_confirmed_matches_typed_query_behavior() {
+fn a_snap_to_the_confirmed_value_matches_the_typed_query() {
     const TICK: NetTick = NetTick(10);
 
     let mut app = App::new();
@@ -398,7 +398,7 @@ fn snap_to_confirmed_matches_typed_query_behavior() {
 
 #[test]
 fn a_pre_spawned_entity_gets_a_history() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     let predicted = stepper
         .client_app_mut(0)
         .world_mut()
@@ -456,7 +456,7 @@ fn observe_initial_prediction(
 /// confirmed history before observers run.
 #[test]
 fn an_initial_marker_seeds_live_and_confirmed_history() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     stepper
         .client_app_mut(0)
         .add_observer(observe_initial_prediction);
@@ -536,10 +536,10 @@ fn an_initial_marker_seeds_live_and_confirmed_history() {
     let confirm = world
         .get::<ConfirmHistory>(predicted_entity)
         .expect("client entity should have ConfirmHistory");
-    let checkpoints = world.resource::<ReplicationCheckpointMap>();
-    let s_tick = checkpoints
+    let confirmed_ticks = world.resource::<ConfirmedTickMap>();
+    let s_tick = confirmed_ticks
         .confirmed_state_tick(confirm)
-        .expect("checkpoint map should resolve the last confirm tick");
+        .expect("confirmed tick map should resolve the last confirm tick");
 
     // Core assertion: the confirmed history should contain an entry at tick S
     // with the value received from the server (CompFull(42.0)).
@@ -570,7 +570,7 @@ fn an_initial_marker_seeds_live_and_confirmed_history() {
 
 #[test]
 fn a_manual_predicted_marker_backfills_an_existing_replicated_component() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     let server_entity = stepper
         .server_app_mut()
         .world_mut()
@@ -605,7 +605,7 @@ fn a_manual_predicted_marker_backfills_an_existing_replicated_component() {
         .get::<ConfirmHistory>(client_entity)
         .expect("replicated entity should have ConfirmHistory");
     let server_tick = world
-        .resource::<ReplicationCheckpointMap>()
+        .resource::<ConfirmedTickMap>()
         .confirmed_state_tick(confirm_history)
         .expect("confirmation tick should resolve to a server tick");
     assert!(
@@ -627,7 +627,7 @@ fn a_manual_predicted_marker_backfills_an_existing_replicated_component() {
 
 #[test]
 fn a_manual_predicted_marker_with_its_component_seeds_no_confirmed_history() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     let server_entity = stepper
         .server_app_mut()
         .world_mut()
@@ -670,8 +670,8 @@ fn observe_rollback(
 /// A Full-mode component inserted by the server after the predicted entity was
 /// spawned should be detected as a mismatch and applied through rollback.
 #[test]
-fn server_insert_on_existing_predicted_entity_triggers_rollback() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+fn a_server_insert_on_a_predicted_entity_starts_a_rollback() {
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     stepper
         .client_app_mut(0)
         .init_resource::<RollbackObserved>();
@@ -717,7 +717,7 @@ fn server_insert_on_existing_predicted_entity_triggers_rollback() {
     let world = stepper.client_app(0).world();
     assert!(
         world.resource::<RollbackObserved>().0,
-        "the completed-checkpoint full scan should detect the authoritative insert"
+        "the confirmed-tick full scan should detect the authoritative insert"
     );
     assert_eq!(
         world
@@ -746,7 +746,7 @@ fn server_insert_on_existing_predicted_entity_triggers_rollback() {
 /// restores both components.
 #[test]
 fn two_server_inserts_are_both_applied_by_one_rollback() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     stepper
         .client_app_mut(0)
         .init_resource::<RollbackObserved>();
@@ -825,14 +825,14 @@ fn check_history_ticks_ascend(stepper: &Stepper<PredictionStack>, entity: Entity
     );
 }
 
-/// Test that the history gets updated correctly
+/// The history gets updated correctly
 /// 1. Updating the predicted component for Comp::Full
 /// 2. Removing the predicted component
 /// 3. Updating the predicted component during rollback
 /// 4. Removing the predicted component during rollback
 #[test]
-fn history_follows_updates_and_removals_in_and_out_of_rollback() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+fn a_history_follows_each_update_and_removal_in_and_out_of_a_rollback() {
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     // add predicted, component
     let _tick = stepper.client_tick(0);

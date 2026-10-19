@@ -1,54 +1,9 @@
-//! This module is not related to the interpolating between server updates.
-//! Instead, it is responsible for interpolating between FixedUpdate ticks during the Update state.
-//!
-//! Usually, the simulation is run during the FixedUpdate schedule so that it doesn't depend on
-//! frame rate. This can cause some visual inconsistencies (jitter) because the frames (Update
-//! schedule) don't correspond exactly to the FixedUpdate schedule: there can be frames with several
-//! fixed-update ticks, and some frames with no fixed-update ticks.
-//!
-//! To solve this, we visually display the state of the game with 1 tick of delay.
-//! For example if on the Update state we have an overstep of 0.7 and the current tick is 10,
-//! we display the state of the game interpolated at 0.7 between tick 9 and tick 10.
-//!
-//! Another way to solve this would be to run an extra 'partial' simulation step with 0.7 dt and use
-//! this for the visual state.
-//!
-//! To enable FrameInterpolation:
-//! - register an interpolation rule for the component or bundle. Existing
-//!   interpolation rules are reused by default; if the component should not use
-//!   delayed interpolation history, register it with
-//!   [`InterpolationFns::no_history`](crate::interpolation_fns::InterpolationFns::no_history).
-//! - add [`FrameInterpolationPlugin`]: the prediction plugin adds it, for its correction
-//! - To enable FrameInterpolation on a given entity, add the [`FrameInterpolate`](crate::frame_interpolate::FrameInterpolate) marker to it manually
-//!
-//! Frame interpolation writes through Bevy's change-detection-aware component
-//! access. Systems ordered after [`FrameInterpolationSystems::Interpolate`] can
-//! therefore use `Changed<C>` to react to the visual value.
-//! ```rust,ignore
-//! # use campfire_net_interpolation::{//! #     AppInterpolationExt, FrameInterpolate, FrameInterpolationPlugin, InterpolationFns, //! #     InterpolationRegistryPlugin, InterpolationRule, //! #};
-//! # use bevy_app::App;
-//! # use bevy_ecs::prelude::*;
-//!
-//! # #[derive(Component, PartialEq, Clone, Debug)]
-//! # struct Component1(f32);
-//! # fn lerp_component(start: &Component1, end: &Component1, t: f32) -> Component1 {
-//! #     Component1(start.0 + (end.0 - start.0) * t)
-//! # }
-//!
-//! let mut app = App::new();
-//! app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
-//! app.register_interpolation_rule::<Component1, ()>(InterpolationRule::new(
-//!     InterpolationFns::no_history(lerp_component),
-//! ));
-//!
-//! fn spawn_entity(mut commands: Commands) {
-//!     commands.spawn(FrameInterpolate);
-//! }
-//! ```
+//! Frame interpolation: the fixed ticks run at their own rate, so a frame shows each component one
+//! tick late, between its last two ticks at the fixed overstep, rather than step a partial tick.
 
 use crate::frame_interpolation_systems::FrameInterpolationSystems;
 use crate::frame_stage::FrameStage;
-use crate::interpolation_owners::InterpolationOwners;
+use crate::interpolation_holders::InterpolationHolders;
 use crate::interpolation_registry::InterpolationRegistry;
 use crate::pipelines::Pipelines;
 use bevy_app::prelude::*;
@@ -58,36 +13,9 @@ use bevy_ecs::prelude::*;
 use campfire_net_replication::ReplicationSystems;
 use campfire_net_timeline::Rollback;
 
-/// Bevy plugin that enables frame interpolation.
-///
-/// This plugin adds systems to store fixed-update component values and then
-/// interpolate between the previous and current fixed tick during `PostUpdate`,
-/// using [`Time<Fixed>`](bevy_time::Time)'s overstep. This helps smooth visuals when the
-/// rendering framerate doesn't align perfectly with the fixed simulation rate.
-///
-/// To use this, register an interpolation rule in the
-/// [`InterpolationRegistry`](crate::interpolation_registry::InterpolationRegistry) and add
-/// [`FrameInterpolate`](crate::frame_interpolate::FrameInterpolate) to entities for which you want
-/// visual interpolation.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// use bevy_app::App;
-/// use bevy_ecs::prelude::*;
-/// use campfire_net_interpolation::{///     AppInterpolationExt, FrameInterpolationPlugin, InterpolationFns, InterpolationRegistryPlugin, ///     InterpolationRule, ///};
-///
-/// #[derive(Component, Clone, PartialEq)]
-/// struct Position(f32);
-///
-/// fn lerp_position(start: &Position, end: &Position, t: f32) -> Position {
-///     Position(start.0 + (end.0 - start.0) * t)
-/// }
-///
-/// let mut app = App::new();
-/// app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
-/// app.register_interpolation_rule::<Position, ()>(InterpolationRule::new(InterpolationFns::no_history(lerp_position)));
-/// ```
+/// Frame interpolation of each entity with
+/// [`FrameInterpolate`](crate::frame_interpolate::FrameInterpolate), written in `PostUpdate`
+/// through change detection, so a later system reads `Changed<C>`.
 #[derive(Debug, Default)]
 pub struct FrameInterpolationPlugin;
 
@@ -113,8 +41,8 @@ impl Plugin for FrameInterpolationPlugin {
         );
 
         // Each rule and component installs its typed systems in these stages once the registry
-        // builds it; the owners resolve the archetypes before each.
-        app.init_resource::<InterpolationOwners>();
+        // builds it; the holders resolve the archetypes before each.
+        app.init_resource::<InterpolationHolders>();
         app.configure_sets(
             RunFixedMainLoop,
             (FrameStage::Refresh, FrameStage::Run)
@@ -135,28 +63,28 @@ impl Plugin for FrameInterpolationPlugin {
         );
         app.add_systems(
             RunFixedMainLoop,
-            Self::refresh_frame_owners.in_set(FrameStage::Refresh),
+            Self::refresh_frame_holders.in_set(FrameStage::Refresh),
         );
         app.add_systems(
             FixedPostUpdate,
-            Self::refresh_frame_owners.in_set(FrameStage::Refresh),
+            Self::refresh_frame_holders.in_set(FrameStage::Refresh),
         );
         app.add_systems(
             PostUpdate,
-            Self::refresh_frame_owners.in_set(FrameStage::Refresh),
+            Self::refresh_frame_holders.in_set(FrameStage::Refresh),
         );
     }
 }
 
 impl FrameInterpolationPlugin {
     /// Resolves the frame interpolation of the archetypes created since the last refresh.
-    fn refresh_frame_owners(
-        mut owners: ResMut<'_, InterpolationOwners>,
+    fn refresh_frame_holders(
+        mut holders: ResMut<'_, InterpolationHolders>,
         archetypes: &Archetypes,
         components: &Components,
         registry: Res<'_, InterpolationRegistry>,
     ) {
-        registry.refresh_owners(&mut owners.frame, archetypes, components);
+        registry.refresh_holders(&mut holders.frame, archetypes, components);
     }
 }
 

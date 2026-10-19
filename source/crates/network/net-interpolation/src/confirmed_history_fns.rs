@@ -1,10 +1,10 @@
 use crate::history_component::HistoryComponent;
 use crate::history_seed::{insert_confirmed_history, insert_confirmed_history_diff};
 use crate::interpolate::{drain_old_history, queue_history_presence, update_history_inner};
-use crate::interpolation_owners::InterpolationOwners;
+use crate::interpolation_holders::InterpolationHolders;
 use crate::interpolation_stage::InterpolationStage;
 use crate::interpolation_timeline::InterpolationTimeline;
-use crate::update_history_context::UpdateHistoryContext;
+use crate::update_history_cx::UpdateHistoryCx;
 use bevy_app::{App, Update};
 use bevy_ecs::entity::EntityLocation;
 use bevy_ecs::prelude::*;
@@ -12,22 +12,22 @@ use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::NetTick;
-use campfire_net_replication::ComponentKind;
+use campfire_net_replication::ComponentTypeId;
 use campfire_net_replication::ConfirmedHistory;
+use campfire_net_replication::ConfirmedTickMap;
 use campfire_net_replication::DeferredEntityCommands;
 use campfire_net_replication::HistoryDiffReceiver;
 use campfire_net_replication::Interpolated;
-use campfire_net_replication::Replication;
-use campfire_net_replication::ReplicationCheckpointMap;
+use campfire_net_replication::ReplicationKind;
 use campfire_net_timeline::NetworkTimeline;
 use tracing::trace;
 
-/// What a member that owns its confirmed history installs, once for its component: the system
+/// What a member that holds its confirmed history installs, once for its component: the system
 /// that maintains it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ConfirmedHistoryFns {
     /// How the component replicates, which one component does one way.
-    pub(crate) replication: Replication,
+    pub(crate) replication: ReplicationKind,
     pub(crate) install: fn(&mut App),
 }
 
@@ -35,7 +35,7 @@ impl ConfirmedHistoryFns {
     /// From whole replicated values.
     pub(crate) fn full<C: HistoryComponent>() -> Self {
         Self {
-            replication: Replication::Full,
+            replication: ReplicationKind::Full,
             install: |app| {
                 app.add_systems(
                     Update,
@@ -48,7 +48,7 @@ impl ConfirmedHistoryFns {
     /// From replicated diffs.
     pub(crate) fn diff<C: HistoryComponent + RepliconDiffable>() -> Self {
         Self {
-            replication: Replication::Diff,
+            replication: ReplicationKind::Diff,
             install: |app| {
                 app.add_systems(
                     Update,
@@ -58,7 +58,7 @@ impl ConfirmedHistoryFns {
         }
     }
 
-    /// Maintains the `ConfirmedHistory<C>` of each entity where a rule that owns `C`'s history
+    /// Maintains the `ConfirmedHistory<C>` of each entity where a rule that holds `C`'s history
     /// keeps it, and seeds one where it is missing.
     ///
     /// It records completed server ticks as unchanged when appropriate, prunes old
@@ -68,8 +68,8 @@ impl ConfirmedHistoryFns {
     /// Neither change marks the history changed, as [`ConfirmedHistory`] defines.
     pub(crate) fn update_confirmed_history<C: HistoryComponent>(
         timeline: Res<'_, InterpolationTimeline>,
-        checkpoints: Res<'_, ReplicationCheckpointMap>,
-        owners: Res<'_, InterpolationOwners>,
+        confirmed_ticks: Res<'_, ConfirmedTickMap>,
+        holders: Res<'_, InterpolationHolders>,
         mut histories: Query<
             '_,
             '_,
@@ -84,11 +84,11 @@ impl ConfirmedHistoryFns {
         mut commands: Commands<'_, '_>,
         mut deferred_apply: Deferred<'_, DeferredEntityCommands>,
     ) {
-        let ctx = UpdateHistoryContext {
-            server_complete_tick: checkpoints.last_confirmed_tick(),
+        let ctx = UpdateHistoryCx {
+            server_complete_tick: confirmed_ticks.last_confirmed_tick(),
             current_interpolate_tick: timeline.now().tick(),
         };
-        let maintained = owners.delayed.history(ComponentKind::of::<C>());
+        let maintained = holders.delayed.history(ComponentTypeId::of::<C>());
         for (entity, location, present, history) in &mut histories {
             if !maintained.contains(location.archetype_id) {
                 continue;
@@ -106,14 +106,14 @@ impl ConfirmedHistoryFns {
 
     /// [`Self::update_confirmed_history`] for a component that replicates as diffs.
     ///
-    /// It waits for pending diffs in `ReplicationStorage` before advancing unchanged state or pruning
-    /// history past them. An entity with no [`HistoryDiffReceiver<C>`] has no pending diff. It also
-    /// queues live `C` insertion or removal at interpolation-time presence boundaries, whatever the
-    /// diffs' state.
+    /// It waits for pending diffs in `ReplicationStorage` before advancing unchanged state or
+    /// pruning history past them. An entity with no [`HistoryDiffReceiver<C>`] has no pending diff.
+    /// It also queues live `C` insertion or removal at interpolation-time presence boundaries,
+    /// whatever the diffs' state.
     pub(crate) fn update_confirmed_history_diff<C: HistoryComponent + RepliconDiffable>(
         timeline: Res<'_, InterpolationTimeline>,
-        checkpoints: Res<'_, ReplicationCheckpointMap>,
-        owners: Res<'_, InterpolationOwners>,
+        confirmed_ticks: Res<'_, ConfirmedTickMap>,
+        holders: Res<'_, InterpolationHolders>,
         storage: Option<Res<'_, ReplicationStorage>>,
         mut histories: Query<
             '_,
@@ -129,12 +129,12 @@ impl ConfirmedHistoryFns {
         mut commands: Commands<'_, '_>,
         mut deferred_apply: Deferred<'_, DeferredEntityCommands>,
     ) {
-        let ctx = UpdateHistoryContext {
-            server_complete_tick: checkpoints.last_confirmed_tick(),
+        let ctx = UpdateHistoryCx {
+            server_complete_tick: confirmed_ticks.last_confirmed_tick(),
             current_interpolate_tick: timeline.now().tick(),
         };
         let storage = storage.as_deref();
-        let maintained = owners.delayed.history(ComponentKind::of::<C>());
+        let maintained = holders.delayed.history(ComponentTypeId::of::<C>());
         for (entity_id, location, present, history) in &mut histories {
             if !maintained.contains(location.archetype_id) {
                 continue;
@@ -153,12 +153,12 @@ impl ConfirmedHistoryFns {
                     .is_some_and(|receiver| receiver.has_pending_diff_at_or_before(tick))
             };
 
-            // At a completed checkpoint C, a diff component has exactly one of three outcomes:
+            // At a completed confirmed tick C, a diff component has exactly one of three outcomes:
             // 1. The component changed at C and the diff was materialized, so the write callback
-            //    already inserted its authoritative state at C. Check ConfirmedHistory first and avoid
-            //    consulting pending diff storage in this case.
-            // 2. An update at or before C is still pending, so its concrete state at C is unresolved
-            //    and ConfirmedHistory must not receive an entry at C yet.
+            //    already inserted its authoritative state at C. Check ConfirmedHistory first and
+            //    avoid consulting pending diff storage in this case.
+            // 2. An update at or before C is still pending, so its concrete state at C is
+            //    unresolved and ConfirmedHistory must not receive an entry at C yet.
             // 3. All diffs through C are materialized and there was no update at C, so inserting
             //    SameAsPrecedent records the final authoritative value carried forward to C.
             if let Some(server_complete_tick) = ctx.server_complete_tick

@@ -38,7 +38,7 @@ use crate::fixtures::protocol::{
 };
 use crate::fixtures::steps::trigger_state_rollback;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
@@ -165,7 +165,7 @@ fn correct_with_decays_the_error_by_its_function() {
         .replicate()
         .predict()
         .correct_with::<CorrectionA>(halve_error);
-    app.insert_resource(PredictionManager::default());
+    app.insert_resource(PredictionSetup::default());
     let entity = app
         .world_mut()
         .spawn((
@@ -206,7 +206,7 @@ fn a_component_takes_one_correction() {
 }
 
 #[test]
-fn entity_correction_policy_overrides_global() {
+fn an_entity_correction_policy_overrides_the_global_one() {
     let mut app = app_with_replication_markers();
     app.init_resource::<PredictionRegistry>();
     app.insert_resource(Time::<Virtual>::default());
@@ -214,7 +214,7 @@ fn entity_correction_policy_overrides_global() {
         .replicate()
         .predict()
         .correct_linear::<CorrectionA>();
-    app.insert_resource(PredictionManager::default());
+    app.insert_resource(PredictionSetup::default());
     // Same unit error, but this entity decays on a 50 ms half schedule
     // instead of the global 200 ms one.
     let overridden = app
@@ -320,7 +320,7 @@ fn correction_policy_can_run_a_bounded_curve() {
         .replicate()
         .predict()
         .correct_linear::<CorrectionA>();
-    app.insert_resource(PredictionManager::default());
+    app.insert_resource(PredictionSetup::default());
     // Half a second linear ramp.
     let duration = 0.5;
     let dt = 16.0 / 1000.0;
@@ -411,7 +411,7 @@ fn correction_policy_can_run_a_bounded_curve() {
 }
 
 #[test]
-fn visual_correction_marks_component_changed() {
+fn a_visual_correction_marks_its_component_changed() {
     let mut app = app_with_replication_markers();
     app.init_resource::<PredictionRegistry>();
     app.insert_resource(Time::<Virtual>::default());
@@ -419,7 +419,7 @@ fn visual_correction_marks_component_changed() {
         .replicate()
         .predict()
         .correct_linear::<CorrectionA>();
-    app.insert_resource(PredictionManager::default());
+    app.insert_resource(PredictionSetup::default());
     let entity = app
         .world_mut()
         .spawn((
@@ -453,7 +453,7 @@ fn visual_correction_marks_component_changed() {
 // not replicated yet) carries nothing correctable and must be skipped,
 // not crash rule resolution.
 #[test]
-fn post_rollback_correction_skips_capture_without_live_value() {
+fn a_correction_after_a_rollback_measures_nothing_with_no_live_value() {
     let mut app = app_with_replication_markers();
     app.init_resource::<PredictionRegistry>();
     app.init_resource::<InterpolationRegistry>();
@@ -602,7 +602,7 @@ fn finish_frame_with_correction(stepper: &mut Stepper<PredictionStack>) {
 /// history on the entity still holds.
 #[test]
 fn frame_interpolation_reads_the_replayed_prediction_history() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     stepper
         .client_app_mut(0)
         .add_systems(FixedUpdate, replay_prediction_only);
@@ -645,7 +645,7 @@ fn frame_interpolation_reads_the_replayed_prediction_history() {
 /// exactly the pre-rollback render.
 #[test]
 fn post_rollback_correction_uses_the_frame_interpolated_value() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     set_correction_sampling_time(&mut stepper);
     stepper
         .client_app_mut(0)
@@ -753,8 +753,8 @@ fn post_rollback_correction_uses_the_frame_interpolated_value() {
 /// sampled value to another member's correction without receiving correction
 /// state of its own.
 #[test]
-fn post_rollback_bundle_uses_member_without_previous_visual() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+fn a_bundle_after_a_rollback_samples_a_member_with_no_previous_visual() {
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     set_correction_sampling_time(&mut stepper);
     stepper
         .client_app_mut(0)
@@ -840,7 +840,7 @@ fn an_exponential_correction_ends_at_its_window() {
         .replicate()
         .predict()
         .correct_linear::<CorrectionA>();
-    app.insert_resource(PredictionManager::default());
+    app.insert_resource(PredictionSetup::default());
     let dt = Duration::from_millis(30);
     app.world_mut()
         .resource_mut::<Time<Virtual>>()
@@ -883,7 +883,7 @@ fn an_exponential_correction_ends_at_its_window() {
 /// ambiguous with another on `PostUpdate`.
 #[test]
 fn the_correction_systems_have_one_order() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     stepper.frame_step(1);
     let app = stepper.client_app(0);
     let schedules = app.world().resource::<Schedules>();

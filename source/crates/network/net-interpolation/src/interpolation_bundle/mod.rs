@@ -1,7 +1,5 @@
-//! Bundle interpolation support for tuple rules.
-//!
-//! This module contains the tuple trait and macro-generated implementations
-//! for `(C1, C2, ...)` rules, each of which installs its own typed systems.
+//! The rules of a tuple of components, `(C1, C2, ...)`, each of which installs its own typed
+//! systems.
 
 use crate::frame_interpolate::FrameInterpolate;
 use crate::frame_interpolation_history::FrameInterpolationHistory;
@@ -13,15 +11,15 @@ use crate::history_component::HistoryComponent;
 use crate::interpolate::{history_bracket, set_if_neq};
 use crate::interpolation_fn::InterpolationFn;
 use crate::interpolation_fns::{InterpolationFns, InterpolationPipeline};
-use crate::interpolation_owners::InterpolationOwners;
+use crate::interpolation_holders::InterpolationHolders;
 use crate::interpolation_registry;
 use crate::interpolation_rule::InterpolationRule;
 use crate::interpolation_rule_component::InterpolationRuleComponent;
 use crate::interpolation_rule_id::InterpolationRuleId;
-use crate::interpolation_sample_context::InterpolationSampleContext;
+use crate::interpolation_sample_cx::InterpolationSampleCx;
 use crate::interpolation_stage::InterpolationStage;
 use crate::interpolation_timeline::InterpolationTimeline;
-use crate::into_interpolation_fn::{IntoContextLerpFn, IntoLerpFn};
+use crate::into_interpolation_fn::{IntoCxLerpFn, IntoLerpFn};
 use crate::pipelines::Pipelines;
 use crate::rule_building::{insert_rule, resolve_member};
 use crate::skip_frame_interpolation::SkipFrameInterpolation;
@@ -37,7 +35,7 @@ use bevy_time::{Fixed, Time};
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::NetTick;
 use campfire_net_core::TickRate;
-use campfire_net_replication::ComponentKind;
+use campfire_net_replication::ComponentTypeId;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::HistoryState;
 use campfire_net_replication::Interpolated;
@@ -55,35 +53,6 @@ use tracing::trace;
 ///
 /// The stack implements this trait for tuples of 2 to 8 distinct
 /// [`HistoryComponent`] types.
-///
-/// # Examples
-///
-/// Register interpolation for `Position` and `Rotation` together:
-///
-/// ```rust,ignore
-/// use bevy_ecs::prelude::*;
-/// use campfire_net_interpolation::{AppInterpolationExt, InterpolationFns, InterpolationRegistrationExt, InterpolationRule};
-///
-/// #[derive(Component, Clone, PartialEq)]
-/// struct Position(f32);
-/// #[derive(Component, Clone, PartialEq)]
-/// struct Rotation(f32);
-///
-/// fn interpolate_transform(
-///     start: (&Position, &Rotation),
-///     end: (&Position, &Rotation),
-///     t: f32,
-/// ) -> (Position, Rotation) {
-///     (
-///         Position(start.0.0 + (end.0.0 - start.0.0) * t),
-///         Rotation(start.1.0 + (end.1.0 - start.1.0) * t),
-///     )
-/// }
-///
-/// app.register_bundle_interpolation_rule::<(Position, Rotation), ()>(InterpolationRule::new(
-///     InterpolationFns::with(interpolate_transform),
-/// ));
-/// ```
 pub trait InterpolationBundle: private::Sealed + 'static {
     /// Number of components in the interpolation target.
     ///
@@ -142,7 +111,7 @@ fn present_history_bracket<C>(
     })
 }
 
-/// Returns a present bundle endpoint value at `tick`.
+/// A present bundle endpoint value at `tick`.
 ///
 /// If `tick` is a removal boundary, the preceding value is returned so the
 /// bundle remains continuous until the presence pass removes the component.
@@ -156,7 +125,7 @@ fn present_history_value_at<C>(history: &ConfirmedHistory<C>, tick: NetTick) -> 
 
 pub(crate) trait TupleInterpolationBundle: InterpolationBundle {
     /// Installs the system that applies the bundle rule `rule_id`, with `interpolation`, to the
-    /// live members of each entity whose delayed apply the rule owns.
+    /// live members of each entity whose delayed apply the rule holds.
     fn install_interpolation(
         app: &mut App,
         rule_id: InterpolationRuleId,
@@ -183,10 +152,10 @@ pub(crate) trait TupleInterpolationBundle: InterpolationBundle {
 
 /// The frame source of the member `C` among `members`.
 fn source_of<C: 'static>(members: &[InterpolationRuleComponent]) -> Option<FrameSource> {
-    let kind = ComponentKind::of::<C>();
+    let type_id = ComponentTypeId::of::<C>();
     members
         .iter()
-        .find(|member| member.kind == kind)
+        .find(|member| member.type_id == type_id)
         .expect("a bundle rule's members are its own types")
         .frame_source
         .clone()
@@ -292,22 +261,22 @@ macro_rules! impl_interpolation_bundle {
         {
             fn into_interpolation_fn(self) -> InterpolationFn<($C0, $($C,)+)> {
                 let interpolation: Box<
-                    dyn Fn((&$C0, $(&$C,)+), (&$C0, $(&$C,)+), InterpolationSampleContext)
+                    dyn Fn((&$C0, $(&$C,)+), (&$C0, $(&$C,)+), InterpolationSampleCx)
                             -> ($C0, $($C,)+)
                         + Send
                         + Sync,
-                > = Box::new(move |start, end, context: InterpolationSampleContext| {
-                    self(start, end, context.t)
+                > = Box::new(move |start, end, cx: InterpolationSampleCx| {
+                    self(start, end, cx.t)
                 });
                 InterpolationFn::erase(interpolation)
             }
         }
 
-        impl<$C0, $($C),+, F> IntoContextLerpFn<($C0, $($C,)+), BundleShape> for F
+        impl<$C0, $($C),+, F> IntoCxLerpFn<($C0, $($C,)+), BundleShape> for F
         where
             $C0: HistoryComponent,
             $($C: HistoryComponent,)+
-            F: Fn((&$C0, $(&$C,)+), (&$C0, $(&$C,)+), InterpolationSampleContext)
+            F: Fn((&$C0, $(&$C,)+), (&$C0, $(&$C,)+), InterpolationSampleCx)
                     -> ($C0, $($C,)+)
                 + Send
                 + Sync
@@ -315,7 +284,7 @@ macro_rules! impl_interpolation_bundle {
         {
             fn into_interpolation_fn(self) -> InterpolationFn<($C0, $($C,)+)> {
                 let interpolation: Box<
-                    dyn Fn((&$C0, $(&$C,)+), (&$C0, $(&$C,)+), InterpolationSampleContext)
+                    dyn Fn((&$C0, $(&$C,)+), (&$C0, $(&$C,)+), InterpolationSampleCx)
                             -> ($C0, $($C,)+)
                         + Send
                         + Sync,
@@ -336,7 +305,7 @@ macro_rules! impl_interpolation_bundle {
             ) {
                 let system = move |timeline: Res<'_, InterpolationTimeline>,
                                    tick_rate: Option<Res<'_, TickRate>>,
-                                   owners: Res<'_, InterpolationOwners>,
+                                   holders: Res<'_, InterpolationHolders>,
                                    mut query: Query<
                     '_,
                     '_,
@@ -350,14 +319,14 @@ macro_rules! impl_interpolation_bundle {
                     let interpolation_tick = timeline.now().tick();
                     let interpolation_overstep = timeline.overstep().to_f32();
                     let tick_rate = tick_rate.as_deref().copied();
-                    let owned = owners.delayed.apply(rule_id);
+                    let held = holders.delayed.apply(rule_id);
                     let interpolation = interpolation
-                        .typed::<dyn Fn((&$C0, $(&$C,)+), (&$C0, $(&$C,)+), InterpolationSampleContext)
+                        .typed::<dyn Fn((&$C0, $(&$C,)+), (&$C0, $(&$C,)+), InterpolationSampleCx)
                                 -> ($C0, $($C,)+)
                             + Send
                             + Sync>();
                     for (location, ($live0, $($live,)+), ($history0, $($history,)+)) in &mut query {
-                        if !owned.contains(location.archetype_id) {
+                        if !held.contains(location.archetype_id) {
                             continue;
                         }
                         let Some(mut shared_bracket) =
@@ -413,7 +382,7 @@ macro_rules! impl_interpolation_bundle {
                             let ($output0, $($output,)+) = interpolation(
                                 ($start0, $($start,)+),
                                 ($end_value0, $($end_value,)+),
-                                InterpolationSampleContext::from_ticks(
+                                InterpolationSampleCx::from_ticks(
                                     shared_bracket.start_tick,
                                     shared_end_tick,
                                     interpolation_tick,
@@ -451,7 +420,7 @@ macro_rules! impl_interpolation_bundle {
                     .collect();
                 let system = move |time: Res<'_, Time<Fixed>>,
                                    timeline: Option<Res<'_, LocalTimeline>>,
-                                   owners: Res<'_, InterpolationOwners>,
+                                   holders: Res<'_, InterpolationHolders>,
                                    mut query: Query<
                     '_,
                     '_,
@@ -470,18 +439,18 @@ macro_rules! impl_interpolation_bundle {
                 >| {
                     let sample = frame_sample(&time);
                     let tick = timeline.map(|timeline| timeline.tick());
-                    let owned = owners.frame.apply(rule_id);
-                    let $sourced0 = owners.frame.sourced($sampler0.kind);
+                    let held = holders.frame.apply(rule_id);
+                    let $sourced0 = holders.frame.sourced($sampler0.type_id);
                     $(
-                        let $sourced = owners.frame.sourced($sampler.kind);
+                        let $sourced = holders.frame.sourced($sampler.type_id);
                     )+
                     let interpolation = interpolation
-                        .typed::<dyn Fn((&$C0, $(&$C,)+), (&$C0, $(&$C,)+), InterpolationSampleContext)
+                        .typed::<dyn Fn((&$C0, $(&$C,)+), (&$C0, $(&$C,)+), InterpolationSampleCx)
                                 -> ($C0, $($C,)+)
                             + Send
                             + Sync>();
                     for (entity, location, ($live0, $($live,)+), (mut $history0, $(mut $history,)+), skip, source) in &mut query {
-                        if !owned.contains(location.archetype_id) {
+                        if !held.contains(location.archetype_id) {
                             continue;
                         }
                         let archetype = location.archetype_id;

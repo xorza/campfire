@@ -16,11 +16,6 @@
 //! Every correction is one measurement of one jump: the value that was on screen
 //! before it, against the value that is on screen now.
 //!
-//! ```text
-//! rendered = live + error        (the apply adds the error every frame)
-//! error    = previous - live     (recorded once, per jump)
-//! ```
-//!
 //! The value before the jump is saved as [`PreviousVisual`], and the value now is
 //! whatever the live component holds when the correction is recorded. Recording
 //! happens in `PostUpdate`, after [`FrameInterpolationSystems::Interpolate`] has
@@ -29,20 +24,18 @@
 //! that value was produced: the frame-interpolation rules, including bundle
 //! rules and the fixed overstep, have already run.
 //!
-//! That is also why there is no correction-time sampling of its own. Correction
-//! used to re-run the frame-interpolation rules at `EndRollback` to synthesize
-//! the value frame interpolation was about to write; now it simply runs after the
-//! real thing. A timeline switch is the same measurement with a different value
-//! before the jump (see [`crate::timeline_switch_plugin`]), so it goes through this same system.
+//! So a correction samples nothing of its own: it runs after the frame interpolation it would
+//! otherwise repeat. A timeline switch is the same measurement with a different value before the
+//! jump (see [`crate::timeline_switch_plugin`]), so it goes through this same system.
 //!
 //! # How the error is given up
 //!
 //! [`VisualCorrection`] holds the error and the clock reading it was recorded at.
 //! `CorrectionFn::update_visual_correction` multiplies the error by a keep ratio each frame:
 //!
-//! - on the entity's [`CorrectionPolicy`], or the global one on
-//!   [`PredictionManager`], which defaults to an unbounded exponential and can
-//!   be set to any [`CorrectionEase`](crate::correction_ease::CorrectionEase) with its own duration;
+//! - on the entity's [`CorrectionPolicy`], or the global one on [`PredictionSetup`], which defaults
+//!   to an unbounded exponential and can be set to any
+//!   [`CorrectionEase`](crate::correction_ease::CorrectionEase) with its own duration;
 //! - on a live [`SwitchBlend`] window's curve instead, when the entity has one.
 //!
 //! The two combine by taking whichever gives the error up more slowly at that
@@ -79,14 +72,14 @@
 use crate::correction_policy::CorrectionPolicy;
 use crate::pending_switch::PendingSwitch;
 use crate::prediction_history::PredictionHistory;
-use crate::prediction_manager::PredictionManager;
+use crate::prediction_setup::PredictionSetup;
 use crate::prediction_systems::PredictionSystems;
 use crate::previous_visual::PreviousVisual;
 use crate::rollback_systems::RollbackSystems;
 use crate::switch_blend::SwitchBlend;
 use crate::switch_direction::SwitchDirection;
 use crate::timeline_switch_plugin::TimelineSwitchPlugin;
-use crate::visual_correction::{CONVERGED, VisualCorrection, VisualError};
+use crate::visual_correction::{CONVERGED, VisualCorrection, VisualOffset};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_time::{Time, Virtual};
@@ -120,7 +113,8 @@ impl<C, D> CorrectionFn<C, D> {
     ///
     /// A switch to the prediction timeline saves nothing: the forced rollback that it asks for
     /// captures the same value from the same live component in `PreUpdate` of the next frame, and
-    /// nothing writes the live value in between, so saving it here would write the same thing twice.
+    /// nothing writes the live value in between, so saving it here would write the same thing
+    /// twice.
     pub(crate) fn save_switch_visual(
         switches: Query<'_, '_, (Entity, &PendingSwitch, &C), Added<PendingSwitch>>,
         mut deferred: Deferred<'_, DeferredEntityCommands>,
@@ -151,7 +145,7 @@ impl<C, D> CorrectionFn<C, D> {
     ///
     /// A saved value that is still there when the window ends belongs to a component
     /// the destination timeline never presented, and nothing will use it now; a
-    /// correction still there is converging, and the apply owns it.
+    /// correction still there is converging, and the apply holds it.
     pub(crate) fn clear_expired_switch_state(
         time: Res<'_, Time<Virtual>>,
         mut blends: Query<'_, '_, (&SwitchBlend, &mut PreviousVisual<C>)>,
@@ -237,8 +231,9 @@ impl<C, D> CorrectionFn<C, D> {
                 error = ?error,
                 "created visual correction"
             );
-            let new_correction = VisualCorrection(Some(VisualError::<D>::new(error, start)));
-            // An entity whose saved value came from a switch, not with a history, may lack the slot.
+            let new_correction = VisualCorrection(Some(VisualOffset::<D>::new(error, start)));
+            // An entity whose saved value came from a switch, not with a history, may lack the
+            // slot.
             if let Some(mut correction) = correction {
                 *correction = new_correction;
             } else {
@@ -330,7 +325,7 @@ impl<C: HistoryComponent + Diffable<D>, D: Default + Clone + Debug + Send + Sync
     pub(crate) fn update_visual_correction(
         time: Res<'_, Time<Virtual>>,
         correction: Res<'_, Self>,
-        manager: Res<'_, PredictionManager>,
+        setup: Res<'_, PredictionSetup>,
         mut query: Query<
             '_,
             '_,
@@ -345,7 +340,7 @@ impl<C: HistoryComponent + Diffable<D>, D: Default + Clone + Debug + Send + Sync
     ) {
         let dt = time.delta();
         let now = time.elapsed();
-        let global = &manager.correction_policy;
+        let global = &setup.correction_policy;
         query.iter_mut().for_each(
             |(entity, mut component, mut slot, override_policy, blend_marker)| {
                 // An idle slot is only read, so its change tick stays.
@@ -371,9 +366,9 @@ impl<C: HistoryComponent + Diffable<D>, D: Default + Clone + Debug + Send + Sync
                     .filter(|marker| !marker.is_expired(now))
                     .and_then(|marker| marker.curve_keep(now, dt_secs))
                     .map_or(policy_ratio, |curve_ratio| curve_ratio.max(policy_ratio));
-                // The correction converges on its own rule, whatever the error's type: once it keeps
-                // under `CONVERGED` of its recorded jump, or its window ends, nothing is left to carry
-                // and the next jump will record a fresh one.
+                // The correction converges on its own rule, whatever the error's type: once it
+                // keeps under `CONVERGED` of its recorded jump, or its window ends, nothing is left
+                // to carry and the next jump will record a fresh one.
                 let remaining = visual_correction.remaining * r;
                 if remaining <= CONVERGED {
                     trace!(

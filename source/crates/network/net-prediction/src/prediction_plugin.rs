@@ -1,12 +1,12 @@
 use crate::locally_predicted::LocallyPredicted;
 use crate::prediction_history::PredictionHistory;
-use crate::prediction_manager::PredictionManager;
+use crate::prediction_setup::PredictionSetup;
 use crate::rollback_plugin::RollbackPlugin;
 use crate::rollback_scan::RollbackScan;
 use bevy_ecs::error;
 use campfire_net_despawn::DespawnReplicated;
 use campfire_net_replication::PreSpawnedReceiver;
-use campfire_net_sync::InputTimelineConfig;
+use campfire_net_sync::InputTimelineSetup;
 use campfire_net_timeline::LocalTimeline;
 
 use crate::disabled_during_rollback::DisabledDuringRollback;
@@ -27,14 +27,10 @@ use campfire_net_interpolation::HistoryComponent;
 use campfire_net_replication::ReplicationSystems;
 use campfire_net_timeline::Rollback;
 
-/// Plugin that installs client-side prediction systems.
-///
-/// The systems run when the application contains a
-/// [`PredictionManager`](crate::prediction_manager::PredictionManager) resource and its cached
-/// network topology is a client. Prediction-history writers also require a synchronized timeline
-/// and therefore never record values under pre-sync tick labels. Insert a `PredictionManager`
-/// resource to opt the application into one global prediction and rollback pipeline. Host-client
-/// and server topologies remain authoritative and do not run it.
+/// A client's prediction and rollback, which run while the app holds a
+/// [`PredictionSetup`](crate::prediction_setup::PredictionSetup) and its topology is a client; a
+/// history writer also waits for a synced timeline, so it records no value under a tick before the
+/// sync. A host client and a server stay authoritative and run none of it.
 #[derive(Debug, Default)]
 pub(crate) struct PredictionPlugin;
 
@@ -55,7 +51,7 @@ pub(crate) fn add_non_networked_rollback_systems<C: Component<Mutability = Mutab
     app.add_observer(PredictionHistory::<C>::add_on_prediction);
     // This also supports explicit resynchronization after prediction has begun. Do not shift
     // `ConfirmedHistory<C>` here: confirmed samples are resolved
-    // through `ReplicationCheckpointMap` and are already in authoritative
+    // through `ConfirmedTickMap` and are already in authoritative
     // server tick space. Shifting them can move authoritative state into the
     // future and make rollback prefer it over later server updates.
     app.add_observer(PredictionHistory::<C>::shift_with_local_timeline);
@@ -133,7 +129,8 @@ impl Plugin for PredictionPlugin {
         // PreUpdate systems:
         // 1. Receive confirmed entities, add Confirmed and Predicted components
         // 2. (in prediction_systems) add ComponentHistory
-        // 3. (in prediction_systems) Check if we should do rollback, clear histories and snap prediction's history to server-state
+        // 3. (in prediction_systems) Check if we should do rollback, clear histories and snap
+        //    prediction's history to server-state
         // 4. Potentially do rollback
         app.configure_sets(
             PreUpdate,
@@ -145,7 +142,7 @@ impl Plugin for PredictionPlugin {
         );
         app.configure_sets(
             PreUpdate,
-            PredictionSystems::All.run_if(PredictionManager::should_run),
+            PredictionSystems::All.run_if(PredictionSetup::should_run),
         );
 
         // FixedPreUpdate systems
@@ -158,7 +155,7 @@ impl Plugin for PredictionPlugin {
         );
         app.configure_sets(
             FixedPreUpdate,
-            PredictionSystems::All.run_if(PredictionManager::should_run),
+            PredictionSystems::All.run_if(PredictionSetup::should_run),
         );
 
         // FixedPostUpdate systems
@@ -179,7 +176,7 @@ impl Plugin for PredictionPlugin {
         );
         app.configure_sets(
             FixedPostUpdate,
-            PredictionSystems::All.run_if(PredictionManager::should_run),
+            PredictionSystems::All.run_if(PredictionSetup::should_run),
         );
         app.add_systems(
             FixedPostUpdate,
@@ -192,7 +189,7 @@ impl Plugin for PredictionPlugin {
 
         app.configure_sets(
             PostUpdate,
-            PredictionSystems::All.run_if(PredictionManager::should_run),
+            PredictionSystems::All.run_if(PredictionSetup::should_run),
         );
 
         // Timeline switch between predicted and interpolated (client-local).
@@ -200,13 +197,13 @@ impl Plugin for PredictionPlugin {
 }
 
 impl PredictionPlugin {
-    /// Permanently remove locally predicted entities once their despawn tick is outside the rollback
-    /// window.
+    /// Permanently remove locally predicted entities once their despawn tick is outside the
+    /// rollback window.
     pub(crate) fn finalize_local_despawns(
         mut commands: Commands<'_, '_>,
         timeline: Res<'_, LocalTimeline>,
-        prediction_manager: Res<'_, PredictionManager>,
-        input_config: Res<'_, InputTimelineConfig>,
+        prediction_setup: Res<'_, PredictionSetup>,
+        input_setup: Res<'_, InputTimelineSetup>,
         query: Query<
             '_,
             '_,
@@ -214,11 +211,11 @@ impl PredictionPlugin {
             (With<LocallyPredicted>, Allow<PredictionDespawned>),
         >,
     ) {
-        let oldest = prediction_manager.oldest_rollback_tick(timeline.tick(), &input_config);
+        let oldest = prediction_setup.oldest_rollback_tick(timeline.tick(), &input_setup);
         for (entity, disabled) in &query {
             // Keep the entity while its disable tick can still be reached by an accepted rollback.
-            // Once it is older than the same effective bound enforced by `RollbackPlugin::check_rollback`, no later
-            // reconciliation can restore it.
+            // Once it is older than the same effective bound enforced by
+            // `RollbackPlugin::check_rollback`, no later reconciliation can restore it.
             if disabled.tick < oldest {
                 commands
                     .entity(entity)
@@ -227,16 +224,16 @@ impl PredictionPlugin {
         }
     }
 
-    /// Forgets the pre-spawned entities no rollback can reach, so the list a rollback walks holds only
-    /// those its window covers.
+    /// Forgets the pre-spawned entities no rollback can reach, so the list a rollback walks holds
+    /// only those its window covers.
     pub(crate) fn forget_unreachable_pre_spawns(
         mut receiver: ResMut<'_, PreSpawnedReceiver>,
         timeline: Res<'_, LocalTimeline>,
-        prediction_manager: Res<'_, PredictionManager>,
-        input_config: Res<'_, InputTimelineConfig>,
+        prediction_setup: Res<'_, PredictionSetup>,
+        input_setup: Res<'_, InputTimelineSetup>,
     ) {
         receiver.forget_rollback_through(
-            prediction_manager.oldest_rollback_tick(timeline.tick(), &input_config),
+            prediction_setup.oldest_rollback_tick(timeline.tick(), &input_setup),
         );
     }
 }
@@ -251,7 +248,7 @@ mod tests {
     use crate::fixtures::prediction_stack::PredictionStack;
     use campfire_net_core::NetTick;
     use campfire_net_replication::ComponentRegistry;
-    use campfire_net_stepper::{Stepper, StepperConfig};
+    use campfire_net_stepper::{Stepper, StepperSetup};
 
     use crate::prediction_plugins::PredictionPlugins;
     use crate::prediction_registry_plugin::PredictionRegistryPlugin;
@@ -266,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn snap_to_confirmed_set_only_runs_during_rollback() {
+    fn the_snap_to_the_confirmed_value_runs_only_in_a_rollback() {
         let mut app = App::new();
         // The resources the connection and replication layers provide.
         app.init_resource::<NetworkingState>();
@@ -276,7 +273,7 @@ mod tests {
             PredictionRegistryPlugin,
             PredictionPlugins,
         ));
-        app.insert_resource(PredictionManager::default());
+        app.insert_resource(PredictionSetup::default());
         app.init_resource::<SnapRuns>();
         let client = app.world_mut().spawn_empty().id();
         app.world_mut().resource_mut::<NetworkingState>().topology =
@@ -298,10 +295,10 @@ mod tests {
     /// follows the front the cut leaves in the same frame.
     #[test]
     fn the_diff_receiver_prune_follows_the_history_cut() {
-        let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+        let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
         stepper.frame_step(1);
         let app = stepper.client_app(0);
-        let position = |owner: &str, system_fn: &str| {
+        let position = |system_type: &str, system_fn: &str| {
             app.world()
                 .resource::<Schedules>()
                 .get(PostUpdate)
@@ -310,11 +307,11 @@ mod tests {
                 .unwrap()
                 .position(|(_, system)| {
                     let name = system.name().to_string();
-                    name.contains(owner)
+                    name.contains(system_type)
                         && name.ends_with(system_fn)
                         && name.contains("CompRepliconDiff")
                 })
-                .unwrap_or_else(|| panic!("{owner}{system_fn} runs in PostUpdate"))
+                .unwrap_or_else(|| panic!("{system_type}{system_fn} runs in PostUpdate"))
         };
         assert!(
             position("PredictionHistory<", ">::prune_confirmed")
@@ -329,15 +326,15 @@ mod tests {
     #[test]
     fn a_local_despawn_ends_once_it_leaves_the_rollback_window() {
         let mut world = World::new();
-        world.init_resource::<PredictionManager>();
-        world.init_resource::<InputTimelineConfig>();
+        world.init_resource::<PredictionSetup>();
+        world.init_resource::<InputTimelineSetup>();
         let mut timeline = LocalTimeline::default();
         timeline.shift(100);
         world.insert_resource(timeline);
         let window = u32::from(
             world
-                .resource::<PredictionManager>()
-                .max_rollback_ticks(world.resource::<InputTimelineConfig>()),
+                .resource::<PredictionSetup>()
+                .max_rollback_ticks(world.resource::<InputTimelineSetup>()),
         );
         let mut disabled_at = |tick| {
             world

@@ -7,7 +7,7 @@ use crate::interpolate::install_component_interpolation;
 use crate::interpolation_fns::{InterpolationFns, InterpolationPipeline};
 use crate::interpolation_registry::{self, InterpolationRegistry};
 use crate::interpolation_rule::InterpolationRule;
-use crate::interpolation_rule_component::{InterpolationRuleComponent, MemberSpec};
+use crate::interpolation_rule_component::{InterpolationRuleComponent, MemberShare};
 use crate::interpolation_rule_id::InterpolationRuleId;
 use crate::member_mode::MemberMode;
 use crate::pipelines::Pipelines;
@@ -16,36 +16,36 @@ use bevy_app::App;
 use bevy_ecs::archetype::Archetype;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::ArchetypeFilter;
-use campfire_net_replication::ComponentKind;
 use campfire_net_replication::ComponentRegistry;
-use campfire_net_replication::Replication;
+use campfire_net_replication::ComponentTypeId;
+use campfire_net_replication::ReplicationKind;
 
 pub(crate) const SINGLE_COMPONENT_RULE_PRIORITY: usize = 1;
 
 /// What a rule member's confirmed history is written with, as its mode says: `None` when the rule
-/// owns no history, which a rule that does needs a replicated component for.
+/// holds no history, which a rule that does needs a replicated component for.
 ///
 /// # Panics
 ///
-/// When `C` replicates as diffs but recorded no mode, or the rule owns history of a component no
+/// When `C` replicates as diffs but recorded no mode, or the rule holds history of a component no
 /// network replicates.
 fn resolve_confirmed<C: HistoryComponent>(
     app: &mut App,
     pipeline: InterpolationPipeline,
 ) -> Option<ConfirmedHistoryFns> {
-    let kind = ComponentKind::of::<C>();
+    let type_id = ComponentTypeId::of::<C>();
     let recorded = app
         .world()
         .resource::<InterpolationRegistry>()
-        .member_mode(&kind);
+        .member_mode(&type_id);
     let mode = recorded.unwrap_or_else(|| {
         let replication = app
             .world()
             .get_resource::<ComponentRegistry>()
-            .and_then(|registry| registry.replication(&kind));
+            .and_then(|registry| registry.replication(&type_id));
         match replication {
-            Some(Replication::Full) => MemberMode::full::<C>(),
-            Some(Replication::Diff) => panic!(
+            Some(ReplicationKind::Full) => MemberMode::full::<C>(),
+            Some(ReplicationKind::Diff) => panic!(
                 "{} replicates as diffs and takes part in an interpolation rule: its registration \
                  records its mode with `.interpolate(..)`",
                 core::any::type_name::<C>()
@@ -53,10 +53,10 @@ fn resolve_confirmed<C: HistoryComponent>(
             None => MemberMode::Local,
         }
     });
-    pipeline.owns_interpolation_history().then(|| {
+    pipeline.holds_interpolation_history().then(|| {
         let MemberMode::Replicated(fns) = mode else {
             panic!(
-                "an interpolation rule owns the history of {}, which no network replicates",
+                "an interpolation rule holds the history of {}, which no network replicates",
                 core::any::type_name::<C>()
             );
         };
@@ -83,9 +83,9 @@ fn member<C: HistoryComponent>(
     let frame_source = app
         .world()
         .resource::<InterpolationRegistry>()
-        .frame_source(&ComponentKind::of::<C>())
+        .frame_source(&ComponentTypeId::of::<C>())
         .cloned();
-    let spec = MemberSpec {
+    let spec = MemberShare {
         confirmed,
         pipeline,
         frame_source,
@@ -105,11 +105,11 @@ pub(crate) fn insert_rule<F: ArchetypeFilter + 'static>(
         let mut registry = app.world_mut().resource_mut::<InterpolationRegistry>();
         let installs_history = pipelines.delayed
             && member.confirmed.is_some_and(|confirmed| {
-                registry.install_history_once(member.kind, confirmed.replication)
+                registry.install_history_once(member.type_id, confirmed.replication)
             });
         let installs_frame_history = pipelines.frame
             && member.frame.is_some()
-            && registry.install_frame_history_once(member.kind);
+            && registry.install_frame_history_once(member.type_id);
         if installs_history && let Some(confirmed) = member.confirmed {
             (confirmed.install)(app);
         }
@@ -124,7 +124,7 @@ pub(crate) fn insert_rule<F: ArchetypeFilter + 'static>(
 }
 
 /// Builds the rule of one component and installs its systems, whose history `confirmed` writes
-/// when the rule owns it.
+/// when the rule holds it.
 pub(crate) fn install_component_rule<C, F>(
     app: &mut App,
     fns: InterpolationFns<C>,
@@ -135,7 +135,7 @@ where
     C: HistoryComponent,
     F: ArchetypeFilter + 'static,
 {
-    debug_assert_eq!(confirmed.is_some(), fns.owns_interpolation_history());
+    debug_assert_eq!(confirmed.is_some(), fns.holds_interpolation_history());
     let member = member::<C>(app, confirmed, fns.pipeline());
     let source = member.frame_source.clone();
     let rule_id = insert_rule::<F>(app, std::vec![member], priority);

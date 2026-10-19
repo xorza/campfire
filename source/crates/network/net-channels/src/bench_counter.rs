@@ -3,7 +3,7 @@
 //! The cell holds its value only in `internals` builds and is zero-sized otherwise. Its mutators
 //! are unconditional, so call sites need no `#[cfg]`, and a shipping build stores and computes
 //! nothing for it. It never allocates, so the allocation suite, which builds with `internals`,
-//! still measures the frame alone. A counter accumulates for the life of its owner, and readers
+//! still measures the frame alone. A counter accumulates for the life of its holder, and readers
 //! subtract two readings.
 
 use core::ops::AddAssign;

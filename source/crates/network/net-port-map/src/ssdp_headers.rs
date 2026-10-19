@@ -34,6 +34,6 @@ impl<'a> SsdpHeaders<'a> {
     /// announcement).
     pub(crate) fn location_of(&self, from: SocketAddr) -> Option<RouterUrl> {
         let location = RouterUrl::parse(self.get("LOCATION")?)?;
-        (from.ip() == IpAddr::V4(*location.addr().ip())).then_some(location)
+        (from.ip() == IpAddr::V4(*location.address().ip())).then_some(location)
     }
 }

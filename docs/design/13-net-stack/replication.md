@@ -22,12 +22,12 @@ visibility.
   root's overrides, and an equal one follows. Manual visibility is an exception. Its write API
   tells user writes from the hierarchy's, so a direct write on a member overrides without a
   comparison across every sender.
-- **An entity joins with what it holds.** At its first link, a component that differs from the
+- **An entity joins with what it holds.** At its first attachment, a component that differs from the
   root's, or manual visibility that hides it from a sender differently than the root, is an
-  override. Everything else follows. A relink follows the new root and keeps the overrides. The
-  hierarchy walk links the shallowest roots first, so no child joins an intermediate root for
+  override. Everything else follows. A reattachment follows the new root and keeps the overrides.
+  The hierarchy walk attaches the shallowest roots first, so no child joins an intermediate root for
   one flush and follows a value that was its own.
-- **Unlinking never widens what an entity replicates.** An entity that leaves its root drops the
+- **Detaching never widens what an entity replicates.** An entity that leaves its root drops the
   copies that let it replicate (`Replicate` and the two targets) and keeps the copies that limit
   where it replicates (`Rooms` and manual visibility) as its own. Refused: one rule for all
   aspects. Dropping the filters makes an entity with its own `Replicate` public when it leaves
@@ -45,8 +45,8 @@ visibility.
   hierarchy inheritance compares and would rewrite.
 - **Each frame prunes every diff receiver to its history's front.** The prune drops a late pending
   diff below the front; such a diff would hold interpolation's floor, and so the front, for good.
-  Refused: a prune only on a checkpoint change or a moved front, which then never runs; a late
-  diff refused at the receive with the prune moved into the owners, a change of two owners to
+  Refused: a prune only on a confirmed tick change or a moved front, which then never runs; a late
+  diff refused at the receive with the prune moved into the holders, a change of two holders to
   spare one storage lookup for each entity.
 - **The server alone ends a replicated entity's life on the receiver.** The server sends a despawn
   for each entity it despawns or hides, so the receiver's despawn of an entity detaches each
@@ -69,16 +69,16 @@ visibility.
   hook (`bevy_ecs` 0.20, `relationship/mod.rs`); the rule in documentation alone, which a new
   despawn bypasses unseen; a workspace-wide entry, which would send every crate's despawns through
   the network stack.
-- **A pre-spawn's tick is the simulated one, and the receiver makes its pre-spawns in
-  `FixedMain`.** Only the simulation of a tick gives the client and the server one tick for a
+- **A pre-spawn's tick is the simulated one, and the receiver makes its pre-spawns in `FixedMain`.**
+  Only the simulation of a tick gives the client and the server one tick for a
   spawn, and only a spawn in `FixedMain` is made again by a rollback's replay, so a default hash
   or a receiver's pre-spawn outside it panics. Refused: the last simulated tick outside
   `FixedMain`, whose offset from the server's tick depends on the schedule. Source: Netcode for
   Entities 1.6.1 moved its predicted spawns into the prediction loop for the same reason.
 - **An unmatched pre-spawn expires when the server's applied state reaches its tick.** Replicon
   applies a mutate message only after its update tick, and sends one on each send, so the latest
-  completed checkpoint means that each entity the server spawned through its tick is here.
+  completed confirmed tick means that each entity the server spawned through its tick is here.
   Refused: a timer, which despawns too early under a long send interval and RTT, and so makes a
   duplicate. Source: Netcode for Entities destroys an unclassified predicted spawn when the
   client's interpolation tick reaches its spawn tick, and its `ClientTickRate` docs note that
-  snapshot congestion can make that too early, which a completed checkpoint is not.
+  snapshot congestion can make that too early, which a completed confirmed tick is not.

@@ -9,7 +9,8 @@ use bevy_ecs::world::unsafe_world_cell::UnsafeWorldCell;
 use campfire_net_timeline::LocalTimeline;
 use core::marker::PhantomData;
 
-/// Read-only access to the application-global [`LocalTimeline`] after it has synchronized.
+/// Read-only access to the application-global [`LocalTimeline`] after it has synchronized
+/// (13-net-stack/api.md, No `unsafe` but what an outside API requires).
 ///
 /// This parameter combines the canonical simulation clock with its [`LocalTimelineSync`]
 /// controller. Systems using it are skipped until synchronization is ready, and can read both the
@@ -30,7 +31,7 @@ impl core::ops::Deref for SyncedLocalTimeline<'_, '_> {
 }
 
 impl SyncedLocalTimeline<'_, '_> {
-    /// Return the number of ticks added when assigning local inputs to the simulation timeline.
+    /// The number of ticks added when assigning local inputs to the simulation timeline.
     pub fn input_delay(&self) -> u16 {
         self.sync.input_delay()
     }

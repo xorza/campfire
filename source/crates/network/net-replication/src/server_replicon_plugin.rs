@@ -1,4 +1,4 @@
-use crate::checkpoint::encode_authoritative_tick;
+use crate::authoritative_tick::encode_authoritative_tick;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_replicon::server::ReplicationUserdata;
@@ -21,12 +21,8 @@ use crate::replicon_channel_map::RepliconChannelMap;
 use campfire_net_messages::MessageSystems;
 use tracing::{error, trace};
 
-/// Adds the replicon server-side backend bridge for the stack.
-///
-/// Handles:
-/// - `ServerState` transitions when `Started` is added or removed
-/// - `ConnectedClient` insertion for replicon visibility
-/// - Sending `ServerMessages` (replication) and receiving `ClientMessages` (acks) via transport
+/// Runs Replicon's server on the stack: its state follows `Started`, each connected link is a
+/// Replicon client, and its messages go through the transport.
 #[derive(Debug)]
 pub(crate) struct ServerRepliconPlugin;
 
@@ -87,16 +83,15 @@ impl ServerRepliconPlugin {
     }
 
     /// When `Connected` is added to a remote client link entity, insert replicon's
-    /// `ConnectedClient`, whose largest message is the transport's fragment size, and `NetworkId` so
-    /// replicon's packet path can target it. They go with the
-    /// link entity, which the connection layer despawns once it is disconnected, as replicon's
-    /// backend contract asks.
+    /// `ConnectedClient`, whose largest message is the transport's fragment size, and `NetworkId`
+    /// so replicon's packet path can target it. They go with the link entity, which the connection
+    /// layer despawns once it is disconnected, as replicon's backend contract asks.
     ///
     /// Host-clients intentionally do not become replicon `ConnectedClient`s because they share the
     /// same world as the server.
     ///
-    /// Each link's `NetworkId` is the next of a count, unique for the app's life: a peer id does not
-    /// fit 64 bits injectively, and a reconnect is a new client to replicon.
+    /// Each link's `NetworkId` is the next of a count, unique for the app's life: a peer id does
+    /// not fit 64 bits injectively, and a reconnect is a new client to replicon.
     fn on_client_connected(
         trigger: On<'_, '_, Add<Connected>>,
         remotes: Query<'_, '_, &Transport, (With<ClientOf>, Without<HostClient>)>,
@@ -107,7 +102,7 @@ impl ServerRepliconPlugin {
         let Ok(transport) = remotes.get(entity) else {
             return;
         };
-        let max_size = transport.fragment_size();
+        let max_size = transport.fragment_len();
         let network_id = NetworkId::new(*next_network_id);
         *next_network_id = next_network_id
             .checked_add(1)
@@ -117,8 +112,8 @@ impl ServerRepliconPlugin {
             .try_insert((ConnectedClient { max_size }, network_id));
     }
 
-    /// A host client needs only `ClientVisibility`, for the stack's same-app visibility hooks, while
-    /// it is a host client.
+    /// A host client needs only `ClientVisibility`, for the stack's same-app visibility hooks,
+    /// while it is a host client.
     fn on_host_client_added(
         trigger: On<'_, '_, Add<HostClient>>,
         visibilities: Query<'_, '_, (), With<ClientVisibility>>,
@@ -143,13 +138,13 @@ impl ServerRepliconPlugin {
         }
     }
 
-    /// Only links with [`ReplicationSender`](crate::replication_sender::ReplicationSender) participate
-    /// in replication.
+    /// Only links with [`ReplicationSender`](crate::replication_sender::ReplicationSender)
+    /// participate in replication.
     ///
-    /// `ClientVisibility` is what admits a link into replicon's send loop, so it is
-    /// kept exactly on connected server-side links that also have `ReplicationSender`.
-    /// Links without it stay connected (messages still flow) but receive no replication.
-    /// Host links keep their existing manual insert in [`ServerRepliconPlugin::on_client_connected`].
+    /// `ClientVisibility` is what admits a link into replicon's send loop, so it is kept exactly on
+    /// connected server-side links that also have `ReplicationSender`. Links without it stay
+    /// connected (messages still flow) but receive no replication. Host links keep their existing
+    /// manual insert in [`ServerRepliconPlugin::on_client_connected`].
     fn strip_client_visibility_without_sender(
         trigger: On<'_, '_, Add<ClientVisibility>>,
         links: Query<
@@ -197,8 +192,9 @@ impl ServerRepliconPlugin {
 
     /// A server-side link that loses
     /// [`ReplicationSender`](crate::replication_sender::ReplicationSender) while it replicates is
-    /// detached: every replicated entity is hidden from it through the [`DetachedBit`], so its client
-    /// despawns them, and the link keeps the rest of its Replicon state, manual visibility included.
+    /// detached: every replicated entity is hidden from it through the [`DetachedBit`], so its
+    /// client despawns them, and the link keeps the rest of its Replicon state, manual visibility
+    /// included.
     fn detach_link_with_sender_removed(
         trigger: On<'_, '_, Remove<ReplicationSender>>,
         detached_bit: Res<'_, DetachedBit>,
@@ -215,8 +211,9 @@ impl ServerRepliconPlugin {
         }
     }
 
-    /// A detached link that gains [`ReplicationSender`](crate::replication_sender::ReplicationSender)
-    /// again sees every entity its other filters let through, each spawned anew.
+    /// A detached link that gains
+    /// [`ReplicationSender`](crate::replication_sender::ReplicationSender) again sees every entity
+    /// its other filters let through, each spawned anew.
     fn attach_detached_link_with_sender_added(
         trigger: On<'_, '_, Add<ReplicationSender>>,
         detached_bit: Res<'_, DetachedBit>,
@@ -258,7 +255,8 @@ impl ServerRepliconPlugin {
         next_state.set_if_different(ServerState::Running);
     }
 
-    /// Set replicon's `ServerState` to `Stopped` when the last started server stops or is despawned.
+    /// Set replicon's `ServerState` to `Stopped` when the last started server stops or is
+    /// despawned.
     ///
     /// Bevy emits `Remove` when an entity is despawned, so this also handles teardown that bypasses
     /// the `Stopped` marker entirely.
@@ -327,7 +325,7 @@ mod tests {
     use bevy_ecs::error;
     use bevy_replicon::shared::backend::connected_client::NetworkIdMap;
     use bevy_state::app::StatesPlugin;
-    use campfire_net_channels::fragment_size_for_max_payload;
+    use campfire_net_channels::fragment_len_for_max_payload;
     use campfire_net_connection::NetworkingState;
     use campfire_net_connection::RemoteId;
     use campfire_net_connection::Stopped;
@@ -336,17 +334,17 @@ mod tests {
     use campfire_net_link::{Link, Linked, Server};
     use campfire_net_transport::TransportPlugin;
 
-    /// A link whose session carries payloads of at most `max_payload` bytes.
+    /// A link whose packet session carries payloads of at most `max_payload` bytes.
     fn link(max_payload: usize) -> Link {
         let mut link = Link::default();
-        link.session.set_max_payload(max_payload);
+        link.packet_session.set_max_payload(max_payload);
         link
     }
 
     /// The largest message is the fragment size the transport took at the link: 256 and 200
     /// bytes of payload give two sizes, and each client takes its own.
     #[test]
-    fn connected_client_max_size_is_the_transports_fragment_size() {
+    fn a_connected_clients_max_len_is_the_transports_fragment_len() {
         let mut app = App::new();
         app.add_plugins(TransportPlugin);
         app.add_observer(ServerRepliconPlugin::on_client_connected);
@@ -366,13 +364,13 @@ mod tests {
             app.world_mut().entity_mut(entity).insert(Connected);
             assert_eq!(
                 app.world().get::<ConnectedClient>(entity).unwrap().max_size,
-                fragment_size_for_max_payload(max_payload).unwrap(),
+                fragment_len_for_max_payload(max_payload).unwrap(),
                 "{max_payload}"
             );
         }
         assert_ne!(
-            fragment_size_for_max_payload(256),
-            fragment_size_for_max_payload(200)
+            fragment_len_for_max_payload(256),
+            fragment_len_for_max_payload(200)
         );
     }
 
@@ -412,7 +410,7 @@ mod tests {
     }
 
     #[test]
-    fn started_lifecycle_transitions_server_state() {
+    fn the_started_marker_moves_the_server_state() {
         let mut app = app_with_server_state(ServerState::Stopped);
         let server = app.world_mut().spawn((Server::default(), Started)).id();
 
@@ -436,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    fn despawned_started_entity_transitions_server_state_to_stopped() {
+    fn a_despawned_started_entity_stops_the_server_state() {
         let mut app = app_with_server_state(ServerState::Stopped);
         let server = app.world_mut().spawn((Server::default(), Started)).id();
 
@@ -457,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn started_and_despawned_in_same_flush_remains_stopped() {
+    fn an_entity_started_and_despawned_in_one_flush_stays_stopped() {
         let mut app = app_with_server_state(ServerState::Stopped);
         let server = app.world_mut().spawn(Server::default()).id();
         app.world_mut()
@@ -495,7 +493,7 @@ mod tests {
         assert_eq!(state(&app), ServerState::Stopped);
     }
 
-    /// A host client gets same-app visibility once connected, and loses it with its host role.
+    /// A host client gets same-app visibility once connected, and loses it with its host side.
     #[test]
     fn a_host_client_has_visibility_while_it_is_one() {
         let mut app = App::new();

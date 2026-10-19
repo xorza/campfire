@@ -1,6 +1,6 @@
 use bevy_ecs::prelude::*;
 
-/// Trigger to start the server
+/// Starts a server.
 #[derive(Debug, EntityEvent)]
 pub struct Start {
     pub entity: Entity,

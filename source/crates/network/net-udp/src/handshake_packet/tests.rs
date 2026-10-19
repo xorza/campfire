@@ -85,16 +85,16 @@ fn a_handshake_packet_opens_with_the_peers_key_alone() {
     );
 }
 
-/// A datagram of another version, a session's first byte, a type past the five, or one cut short
-/// is no handshake packet.
+/// A datagram of another version, a packet session's first byte, a type past the five, or one cut
+/// short is no handshake packet.
 #[test]
 fn a_datagram_that_is_no_handshake_packet_is_refused() {
     let mut other_version = BytesMut::from(&*refuse(ID));
     other_version[1] = VERSION + 1;
     assert_eq!(HandshakePacket::read(other_version), None);
-    let mut session = BytesMut::from(&*refuse(ID));
-    session[0] = 0x00;
-    assert_eq!(HandshakePacket::read(session), None);
+    let mut packet_session = BytesMut::from(&*refuse(ID));
+    packet_session[0] = 0x00;
+    assert_eq!(HandshakePacket::read(packet_session), None);
     let mut unknown = BytesMut::from(&*refuse(ID));
     unknown[0] = 0x80 | (5 << 4);
     assert_eq!(HandshakePacket::read(unknown), None);

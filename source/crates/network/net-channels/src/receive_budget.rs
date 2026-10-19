@@ -1,4 +1,5 @@
-/// The room left in one transport's receive budget while it reads a packet.
+/// The room left in one transport's receive budget while it reads a packet
+/// (13-net-stack/transport.md, Each link's `Channels` has one receive budget).
 ///
 /// The budget bounds the bytes a transport's receive side holds for messages it can not deliver
 /// yet: reassembly buffers, and ordered messages waiting behind a gap. Each channel counts what
@@ -10,7 +11,7 @@ pub(crate) struct ReceiveBudget {
     left: usize,
 }
 
-/// The default receive budget, 1 MiB: twice the default `max_message_size`, which admits the
+/// The default receive budget, 1 MiB: twice the default `max_message_len`, which admits the
 /// largest reassembly buffer a peer can describe.
 pub(crate) const DEFAULT_RECEIVE_BUDGET: usize = 1024 * 1024;
 

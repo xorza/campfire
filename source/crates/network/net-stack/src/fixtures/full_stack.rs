@@ -12,7 +12,8 @@ use crate::client_plugins::ClientPlugins;
 use crate::layers;
 use crate::server_plugins::ServerPlugins;
 
-/// Every layer through the stack's plugin groups, with every layer's test protocol.
+/// Every layer through the stack's plugin groups, with every layer's test protocol
+/// (13-net-stack/testing.md, The full stack's home is `net-stack`).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FullStack;
 
@@ -64,39 +65,39 @@ mod tests {
     use campfire_net_connection::Connected;
     use campfire_net_stepper::AppId;
     use campfire_net_stepper::Stepper;
-    use campfire_net_stepper::StepperConfig;
+    use campfire_net_stepper::StepperSetup;
     use campfire_net_sync::internals::input_timeline_is_synced;
     use core::time::Duration;
 
-    fn synced_and_connected(stepper: &Stepper<FullStack>) -> bool {
+    fn is_synced_and_connected(stepper: &Stepper<FullStack>) -> bool {
         input_timeline_is_synced(stepper.client_app(0).world())
             && stepper.client(0).contains::<Connected>()
     }
 
     #[test]
     fn a_client_on_a_faster_frame_rate_stays_synced() {
-        let mut stepper = Stepper::new(FullStack, StepperConfig::single());
+        let mut stepper = Stepper::new(FullStack, StepperSetup::single());
         // About 144 Hz on the client against the server's 100 Hz ticks.
         stepper.set_frame_interval(AppId::Client(0), Duration::from_millis(7));
         let start_tick = stepper.server_tick();
         stepper.run_for(Duration::from_secs(2));
-        assert!(synced_and_connected(&stepper));
+        assert!(is_synced_and_connected(&stepper));
         // 2 s at the 10 ms tick is 200 server ticks.
         assert_eq!(stepper.server_tick() - start_tick, 200);
     }
 
     #[test]
     fn a_client_whose_clock_drifts_stays_synced() {
-        let mut stepper = Stepper::new(FullStack, StepperConfig::single());
+        let mut stepper = Stepper::new(FullStack, StepperSetup::single());
         // 0.1 % fast: 4 ms over the 4 s run.
         stepper.set_clock_drift(AppId::Client(0), 1000);
         stepper.run_for(Duration::from_secs(4));
-        assert!(synced_and_connected(&stepper));
+        assert!(is_synced_and_connected(&stepper));
     }
 
     #[test]
     fn a_stalled_client_syncs_again() {
-        let mut stepper = Stepper::new(FullStack, StepperConfig::single());
+        let mut stepper = Stepper::new(FullStack, StepperSetup::single());
         let frames_before = stepper.client_tick(0);
         // A 2 s stall: Bevy advances the client's virtual time by at most 250 ms on the frame it
         // resumes, so its ticks fall behind the server's and the sync must bring them back.
@@ -108,7 +109,7 @@ mod tests {
             "a stalled client runs no frame"
         );
         stepper.run_for(Duration::from_secs(3));
-        assert!(synced_and_connected(&stepper));
+        assert!(is_synced_and_connected(&stepper));
         // The synced client leads the server, which ran on through the stall.
         assert!(stepper.client_tick(0) >= stepper.server_tick());
     }

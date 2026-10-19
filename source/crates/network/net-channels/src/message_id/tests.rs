@@ -1,16 +1,16 @@
 use super::*;
 
+use crate::fragment_body::FragmentBody;
 use crate::fragment_compression::FragmentCompression;
 use crate::fragment_count::FragmentCount;
-use crate::fragment_data::FragmentData;
 use crate::fragment_index::FragmentIndex;
-use crate::single_data::SingleData;
+use crate::single_body::SingleBody;
 use bytes::Bytes;
 
 use campfire_net_bytes::ToBytes;
 
 #[test]
-fn message_id_arithmetic_wraps_at_u16_max() {
+fn a_message_id_wraps_at_u16_max() {
     let last = MessageId(u16::MAX);
     let first = MessageId(0);
     let mut next = last;
@@ -27,25 +27,25 @@ fn message_id_arithmetic_wraps_at_u16_max() {
 /// A message with no id takes its length and bytes: 1 + 10; one with an id takes 2 more, with no
 /// tag before them. Each reads back with its channel's rule.
 #[test]
-fn single_data_round_trips_in_its_bytes_len() {
+fn a_single_body_reads_back_in_its_bytes_len() {
     for (id, len) in [(None, 11), (Some(MessageId(1)), 13)] {
-        let data = SingleData::new(id, vec![7u8; 10].into());
+        let data = SingleBody::new(id, vec![7u8; 10].into());
         let mut writer = vec![];
         data.write(&mut writer);
         assert_eq!([writer.len(), data.bytes_len()], [len, len]);
         let mut reader = writer.into();
-        let decoded = SingleData::read(&mut reader, id.is_some()).unwrap();
+        let decoded = SingleBody::read(&mut reader, id.is_some()).unwrap();
         assert_eq!(decoded, data);
     }
 }
 
 #[test]
-fn fragment_data_round_trips_in_its_bytes_len() {
+fn a_fragment_body_reads_back_in_its_bytes_len() {
     let bytes = Bytes::from(vec![0; 10]);
-    let data = FragmentData {
+    let data = FragmentBody {
         message_id: MessageId(0),
         fragment_index: FragmentIndex(2),
-        num_fragments: FragmentCount(3),
+        fragments: FragmentCount(3),
         compression: None,
         bytes: bytes.clone(),
     };
@@ -55,13 +55,13 @@ fn fragment_data_round_trips_in_its_bytes_len() {
     assert_eq!(writer.len(), data.bytes_len());
 
     let mut reader = writer.into();
-    let decoded = FragmentData::from_bytes(&mut reader).unwrap();
+    let decoded = FragmentBody::from_bytes(&mut reader).unwrap();
     assert_eq!(decoded, data);
 
-    let initial_data = FragmentData {
+    let initial_data = FragmentBody {
         message_id: MessageId(0),
         fragment_index: FragmentIndex(0),
-        num_fragments: FragmentCount(3),
+        fragments: FragmentCount(3),
         compression: Some(FragmentCompression::Lz4),
         bytes,
     };
@@ -72,6 +72,6 @@ fn fragment_data_round_trips_in_its_bytes_len() {
     assert_eq!(initial_data.bytes_len(), data.bytes_len() + 1);
 
     let mut reader = writer.into();
-    let decoded = FragmentData::from_bytes(&mut reader).unwrap();
+    let decoded = FragmentBody::from_bytes(&mut reader).unwrap();
     assert_eq!(decoded, initial_data);
 }

@@ -1,7 +1,7 @@
 //! What the entity views of a link's sides read.
 //!
 //! Only a client maps, as in Replicon: through replicon's [`ServerEntityMap`] first, then the
-//! link's own pairs in the [`MessageManager`](crate::message_manager::MessageManager), which
+//! link's own pairs in the [`LinkMessages`](crate::link_messages::LinkMessages), which
 //! replicon never sees. A server keeps the entities it sends, and accepts from a client only one
 //! it replicates or one of the link's own. A host client shares its server's world.
 

@@ -1,11 +1,11 @@
-//! The stack's own UDP protocol: sealed sessions over an OS socket or the simulated network, made
-//! by a TLS 1.3 handshake in the protocol's own packets, with a Retry for each new address, an
+//! The stack's own UDP protocol: sealed packet sessions over an OS socket or the emulated network,
+//! made by a TLS 1.3 handshake in the protocol's own packets, with a Retry for each new address, an
 //! admission for each address, connection IDs and stateless resets. The decisions are in
 //! (13-net-stack/udp.md).
 
 mod address_token;
 mod admission;
-mod admission_config;
+mod admission_setup;
 mod alert;
 mod bind_error;
 mod certificate_chain;
@@ -28,12 +28,12 @@ mod sockets;
 mod spki;
 mod tls_provider;
 mod transport_params;
-mod udp_config;
 mod udp_io;
 mod udp_port;
+mod udp_setup;
 mod used_tokens;
 
-pub use crate::admission_config::AdmissionConfig;
+pub use crate::admission_setup::AdmissionSetup;
 pub use crate::bind_error::BindError;
 pub use crate::certificate_chain::CertificateChain;
 pub use crate::certificate_error::CertificateError;
@@ -43,8 +43,8 @@ pub use crate::server_key::ServerKey;
 pub use crate::server_secret::ServerSecret;
 pub use crate::server_trust::ServerTrust;
 pub use crate::sockets::{ClientSocket, EmulatedServer, ServerSocket, emulated_client};
-pub use crate::udp_config::UdpConfig;
 pub use crate::udp_io::UdpIo;
+pub use crate::udp_setup::UdpSetup;
 
 /// The crate's criterion cases, which `benches/net-udp.rs` runs.
 #[cfg(feature = "internals")]

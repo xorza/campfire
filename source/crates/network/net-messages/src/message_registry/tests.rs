@@ -69,7 +69,7 @@ impl MapEntities for Message3 {
 
 #[test]
 #[should_panic(expected = "is already registered")]
-fn message_and_event_registration_are_mutually_exclusive() {
+fn a_type_registers_as_a_message_or_as_an_event_and_not_both() {
     let mut app = App::new();
     app.register_message::<EventMessage>();
     app.register_event::<EventMessage>();
@@ -170,16 +170,16 @@ fn directions_and_entity_mapping_enter_the_hash() {
     });
     let to_client = sealed_hash(|app| {
         app.register_message::<Message3>()
-            .add_direction(Direction::ServerToClient);
+            .add_direction(LinkDirection::ServerToClient);
     });
     let both = sealed_hash(|app| {
         app.register_message::<Message3>()
-            .add_direction(Directions::BOTH);
+            .add_direction(LinkDirections::BOTH);
     });
     let both_in_two = sealed_hash(|app| {
         app.register_message::<Message3>()
-            .add_direction(Direction::ServerToClient)
-            .add_direction(Direction::ClientToServer);
+            .add_direction(LinkDirection::ServerToClient)
+            .add_direction(LinkDirection::ClientToServer);
     });
     let mapped = sealed_hash(|app| {
         app.register_message::<Message3>().add_map_entities();
@@ -213,7 +213,7 @@ fn a_direction_after_the_message_plugin_finished_panics() {
     app.finish();
     app.world_mut()
         .resource_mut::<MessageRegistry>()
-        .add_direction::<Message1>(Directions::BOTH);
+        .add_direction::<Message1>(LinkDirections::BOTH);
 }
 
 /// A message whose clones a counter counts.
@@ -239,13 +239,13 @@ fn only_a_mapping_view_clones_the_message() {
     let message = Counted(&clones);
     let mut writer = Writer::default();
     let serialize: SerializeFn<Counted<'_>> = |_, _| {};
-    mapped_context_serialize(&SendMapView::AsIs, &message, &mut writer, serialize);
+    mapped_cx_serialize(&SendMapView::AsIs, &message, &mut writer, serialize);
     assert_eq!(clones.get(), 0);
     let local = SendEntityMap::default();
     let lookup = SendMapView::Lookup {
         shared: None,
         local: &local,
     };
-    mapped_context_serialize(&lookup, &message, &mut writer, serialize);
+    mapped_cx_serialize(&lookup, &message, &mut writer, serialize);
     assert_eq!(clones.get(), 1);
 }

@@ -2,7 +2,7 @@ use crate::interpolation_rule_component::InterpolationRuleComponent;
 use bevy_ecs::archetype::Archetype;
 use bevy_ecs::component::Components;
 use bevy_ecs::query::ArchetypeFilter;
-use campfire_net_replication::ComponentKind;
+use campfire_net_replication::ComponentTypeId;
 
 /// Returns whether a rule's filter matches an archetype.
 pub(crate) type MatchesArchetypeFn = fn(&Components, &Archetype) -> bool;
@@ -11,12 +11,12 @@ pub(crate) type MatchesArchetypeFn = fn(&Components, &Archetype) -> bool;
 /// as the registry resolves it against each archetype: its typed systems were installed when it
 /// was built.
 ///
-/// A rule has a list of real component `members` it owns or writes, and an archetype filter.
+/// A rule has a list of real component `members` it holds or writes, and an archetype filter.
 /// Matching rules are sorted by priority before the registry resolves overlap between component
 /// and bundle candidates.
 #[derive(Debug)]
 pub(crate) struct RegisteredRule {
-    /// Components owned by this rule, including their history behavior.
+    /// The components this rule holds, with the history it keeps of each.
     /// Bundle rules have more than one member.
     pub(crate) members: Vec<InterpolationRuleComponent>,
     /// Higher-priority rules are selected before lower-priority rules.
@@ -42,8 +42,8 @@ impl RegisteredRule {
         }
     }
 
-    pub(crate) fn members(&self) -> impl Iterator<Item = ComponentKind> + '_ {
-        self.members.iter().map(|member| member.kind)
+    pub(crate) fn members(&self) -> impl Iterator<Item = ComponentTypeId> + '_ {
+        self.members.iter().map(|member| member.type_id)
     }
 }
 

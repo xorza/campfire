@@ -1,12 +1,10 @@
-use crate::endpoint_side::EndpointSide;
+use crate::endpoint_user::EndpointUser;
 use crate::event_sender::EventSender;
-use crate::message_kind::MessageKind;
-use crate::message_manager::{Endpoint, MessageManager};
+use crate::link_messages::{EndpointList, LinkMessages, ListedEndpoint};
+use crate::message_type_id::MessageTypeId;
 use crate::send_queue::{QueuedSender, SendQueue};
 use bevy_ecs::component::Component;
 use bevy_ecs::event::Event;
-use bevy_ecs::lifecycle::HookContext;
-use bevy_ecs::world::DeferredWorld;
 use core::ops::{Deref, DerefMut};
 
 /// The event sender of a host client's own side: what the host client triggers on its server.
@@ -15,8 +13,8 @@ use core::ops::{Deref, DerefMut};
 /// host client, so the host client's systems trigger through this one. It has the API of
 /// [`EventSender<M>`].
 #[derive(Debug, Component)]
-#[require(MessageManager)]
-#[component(on_add = HostEventSender::<M>::on_add_hook, on_remove = HostEventSender::<M>::on_remove_hook)]
+#[require(LinkMessages)]
+#[component(on_add = LinkMessages::list::<HostEventSender<M>>, on_remove = LinkMessages::unlist::<HostEventSender<M>>)]
 pub struct HostEventSender<M: Event>(EventSender<M>);
 
 impl<M: Event> Default for HostEventSender<M> {
@@ -45,22 +43,12 @@ impl<M: Event> QueuedSender<M> for HostEventSender<M> {
     }
 }
 
-impl<M: Event> HostEventSender<M> {
-    fn on_add_hook(world: DeferredWorld<'_>, context: HookContext) {
-        MessageManager::on_endpoint_add(
-            world,
-            context,
-            Endpoint::Send(EndpointSide::HostClient),
-            MessageKind::of::<M>(),
-        );
-    }
+impl<M: Event> HostEventSender<M> {}
 
-    fn on_remove_hook(world: DeferredWorld<'_>, context: HookContext) {
-        MessageManager::on_endpoint_remove(
-            world,
-            context,
-            Endpoint::Send(EndpointSide::HostClient),
-            MessageKind::of::<M>(),
-        );
+impl<M: Event> ListedEndpoint for HostEventSender<M> {
+    const LIST: EndpointList = EndpointList::Send(EndpointUser::HostClient);
+
+    fn message_type_id() -> MessageTypeId {
+        MessageTypeId::of::<M>()
     }
 }

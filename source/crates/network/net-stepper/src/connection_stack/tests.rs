@@ -4,29 +4,29 @@ use bevy_ecs::query::With;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_net_connection::RemoteId;
 use campfire_net_connection::{
-    ClientOf, Connect, Connected, Connecting, Disconnected, DisconnectedReason, HostClient,
-    RawClient, RawServer, Start, Started,
+    Client, ClientOf, Connect, Connected, Connecting, Disconnected, DisconnectedReason, HostClient,
+    Start, Started,
 };
 use campfire_net_core::PeerId;
 use campfire_net_emulator::{DuplexModel, EmulatedNetwork, WireClock};
 use campfire_net_endpoint::Endpoint;
-use campfire_net_link::{Link, LinkOf, Linked, PeerAddr};
-use campfire_net_packets::{EndpointConfig, EndpointParts};
+use campfire_net_link::{Link, LinkOf, Linked, RemoteAddress, Server};
+use campfire_net_packets::{EndpointPieces, EndpointSetup};
 use campfire_net_payload::{AppCode, UnlinkReason};
 use campfire_net_timeline::{Clock, ClockSource};
 use core::time::Duration;
 
 use crate::client_kind::ClientKind;
 use crate::stepper::Stepper;
-use crate::stepper_config::{Init, StepperConfig};
+use crate::stepper_setup::{Init, StepperSetup};
 
-/// A raw server only becomes `Started` after its IO becomes `Linked`. If the host-client requests
+/// A server only becomes `Started` after its IO becomes `Linked`. If the host-client requests
 /// a connection first, that request should remain pending and be retried when the server starts.
 #[test]
-fn a_raw_host_connects_once_its_server_is_linked() {
-    let mut config = StepperConfig::with_clients(vec![ClientKind::Host]);
-    config.init = Init::Deferred;
-    let mut stepper = Stepper::new(ConnectionStack, config);
+fn a_host_client_connects_once_its_server_is_linked() {
+    let mut setup = StepperSetup::with_clients(vec![ClientKind::Host]);
+    setup.init = Init::Deferred;
+    let mut stepper = Stepper::new(ConnectionStack, setup);
     let server = stepper.server_entity();
     let host_client = stepper.host_client_entity();
     // The server's IO completes its `LinkStart` only when the test does.
@@ -44,7 +44,7 @@ fn a_raw_host_connects_once_its_server_is_linked() {
     assert!(!stepper.server().contains::<Started>());
     assert!(stepper.host_client().contains::<Connecting>());
 
-    // An asynchronous raw server IO completes its `LinkStart` request.
+    // An asynchronous server IO completes its `LinkStart` request.
     stepper.server_mut().insert(Linked);
     stepper.server_app_mut().world_mut().flush();
 
@@ -54,7 +54,7 @@ fn a_raw_host_connects_once_its_server_is_linked() {
     assert!(!stepper.host_client().contains::<Connecting>());
 }
 
-/// One app with a raw server's plain endpoint and its raw clients', stepped by hand on the
+/// One app with a server's plain endpoint and its clients', stepped by hand on the
 /// network's wire time.
 struct Harness {
     app: App,
@@ -77,13 +77,12 @@ impl Harness {
             EndpointPlugin::<EmulatedWires>::default(),
             ConnectionPlugins,
             ServerConnectionPlugins,
-            RawClientPlugin,
         ));
         let server = app
             .world_mut()
             .spawn((
-                RawServer,
-                Endpoint::from(EndpointParts::plain_server(EndpointConfig::default())),
+                Server::default(),
+                Endpoint::from(EndpointPieces::plain_server(EndpointSetup::default())),
             ))
             .id();
         app.world_mut().trigger(Start { entity: server });
@@ -95,7 +94,7 @@ impl Harness {
         }
     }
 
-    /// A raw client on a wire of its own to the server, which connects.
+    /// A client on a wire of its own to the server, which connects.
     fn connect_client(&mut self) -> Entity {
         let pair = self.network.pair(DuplexModel::default());
         self.app
@@ -108,11 +107,11 @@ impl Harness {
             .app
             .world_mut()
             .spawn((
-                RawClient,
+                Client,
                 Link::default(),
-                Endpoint::from(EndpointParts::plain_client(
+                Endpoint::from(EndpointPieces::plain_client(
                     pair.client,
-                    EndpointConfig::default(),
+                    EndpointSetup::default(),
                 )),
             ))
             .id();
@@ -129,10 +128,10 @@ impl Harness {
     }
 }
 
-/// A raw client observes its server's close, as the server's endpoint goes, through the regular
+/// A client observes its server's close, as the server's endpoint goes, through the regular
 /// Link -> Connection lifecycle and becomes Disconnected with the endpoint's code.
 #[test]
-fn peer_disconnect_disconnects_raw_client() {
+fn a_peer_disconnect_disconnects_the_client() {
     let mut harness = Harness::new();
     let client = harness.connect_client();
     harness.frames(3);
@@ -162,7 +161,7 @@ fn peer_disconnect_disconnects_raw_client() {
 /// `Linked + Connected + ClientOf`, so downstream `On<Insert<(Transport, ClientOf)>>` channel
 /// observers fire, and the two clients have distinct `PeerId`s, their own addresses.
 #[test]
-fn server_links_reach_connected_with_distinct_peers() {
+fn each_server_link_reaches_connected_with_a_peer_of_its_own() {
     let mut harness = Harness::new();
     harness.connect_client();
     harness.connect_client();
@@ -178,10 +177,10 @@ fn server_links_reach_connected_with_distinct_peers() {
         assert!(world.get::<Linked>(link).is_some(), "Linked");
         assert!(world.get::<Connected>(link).is_some(), "Connected");
         assert!(world.get::<ClientOf>(link).is_some(), "ClientOf");
-        let peer = world.get::<PeerAddr>(link).unwrap().0;
+        let peer = world.get::<RemoteAddress>(link).unwrap().0;
         assert_eq!(
             world.get::<RemoteId>(link),
-            Some(&RemoteId(PeerId::Raw(peer)))
+            Some(&RemoteId(PeerId::Address(peer)))
         );
         peer
     });

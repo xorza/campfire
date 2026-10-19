@@ -1,7 +1,7 @@
 use crate::fragmented_message::{FragmentedMessage, PartState};
 use crate::message_id::MessageId;
 use crate::message_ref::MessageRef;
-use crate::single_data::SingleData;
+use crate::single_body::SingleBody;
 
 /// A message a channel holds until it is sent, or on a reliable channel acknowledged, as a run of
 /// parts: one that fits a packet is one part, a fragmented one a part for each fragment, and each
@@ -9,12 +9,12 @@ use crate::single_data::SingleData;
 /// message lacks (14-workspace-alignment.md, A state the code cannot reach is a type).
 #[derive(Debug)]
 pub(crate) enum QueuedMessage {
-    Whole { data: SingleData, state: PartState },
+    Whole { data: SingleBody, state: PartState },
     Fragmented(FragmentedMessage),
 }
 
 impl QueuedMessage {
-    pub(crate) const fn whole(data: SingleData) -> Self {
+    pub(crate) const fn whole(data: SingleBody) -> Self {
         Self::Whole {
             data,
             state: PartState::Unsent,

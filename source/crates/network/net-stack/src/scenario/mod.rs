@@ -1,4 +1,5 @@
-//! Seeded network scenarios and the invariants every run must keep.
+//! Seeded network scenarios and the invariants every run must keep (13-net-stack/testing.md,
+//! Invariants, not traces).
 //!
 //! A scenario connects and syncs its clients on a perfect link, then runs a workload under its
 //! faults: numbered messages on every channel mode both ways, and replicated entities spawned,
@@ -18,7 +19,7 @@ mod tests;
 
 use bevy::prelude::*;
 use campfire_net_connection::Connected;
-use campfire_net_core::Direction;
+use campfire_net_core::LinkDirection;
 use campfire_net_transport::Transport;
 use core::hash::{Hash, Hasher};
 use core::time::Duration;
@@ -33,16 +34,17 @@ use crate::scenario::replication_workload::ReplicationWorkload;
 use campfire_log::internals::{LogCheck, Scoped};
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::internals::input_timeline_is_synced;
 
-/// One seeded run: its clients and their session, its faults, how long they hold, and how long
-/// the healed network gets to deliver what is still owed.
+/// One seeded run: its clients and their packet session, its faults, how long they hold, and how
+/// long the healed network gets to deliver what is still owed (13-net-stack/testing.md,
+/// Deterministic simulation from one seed).
 #[derive(Debug, Clone)]
 pub(crate) struct Scenario {
     pub(crate) seed: u64,
     pub(crate) clients: usize,
-    /// A plain session or a sealed one of the UDP protocol, for every client.
+    /// A plain packet session or a sealed one of the UDP protocol, for every client.
     pub(crate) kind: ClientKind,
     pub(crate) faults: Faults,
     pub(crate) faulty: Duration,
@@ -51,13 +53,13 @@ pub(crate) struct Scenario {
 
 impl Scenario {
     /// The swarm's scenario of `seed`: one or two clients, plain or sealed, and faults the seed
-    /// picks.
+    /// picks (13-net-stack/testing.md, Swarm runs leave features out).
     pub(crate) fn swarm(seed: u64) -> Self {
         Self {
             seed,
             clients: 1 + usize::try_from(seed % 2).unwrap(),
             kind: if (seed / 2).is_multiple_of(2) {
-                ClientKind::Raw
+                ClientKind::Plain
             } else {
                 ClientKind::Udp
             },
@@ -81,16 +83,16 @@ impl Scenario {
     }
 
     fn run_unchecked(&self) -> Outcome {
-        let mut config = StepperConfig::with_clients(vec![self.kind; self.clients]);
-        config.seed = self.seed;
-        let mut stepper = Stepper::new(FullStack, config);
+        let mut setup = StepperSetup::with_clients(vec![self.kind; self.clients]);
+        setup.seed = self.seed;
+        let mut stepper = Stepper::new(FullStack, setup);
         self.start_workload(&mut stepper);
 
         let start = stepper.now();
         let heal = start + self.faulty;
         for client in 0..self.clients {
             let link = stepper.client_link(client);
-            for direction in [Direction::ClientToServer, Direction::ServerToClient] {
+            for direction in [LinkDirection::ClientToServer, LinkDirection::ServerToClient] {
                 for phase in self.faults.phases(direction, start, heal) {
                     stepper.network().add_phase(link, direction, phase);
                 }
@@ -186,7 +188,7 @@ impl Scenario {
             }
             stepper.client_tick(client).0.hash(&mut digest);
             let link = stepper.client_link(client);
-            for direction in [Direction::ClientToServer, Direction::ServerToClient] {
+            for direction in [LinkDirection::ClientToServer, LinkDirection::ServerToClient] {
                 let counts = stepper.network().counts(link, direction);
                 counts.hash(&mut digest);
                 dropped += counts.dropped;
@@ -208,7 +210,7 @@ impl Scenario {
             [
                 (
                     "client",
-                    Direction::ClientToServer,
+                    LinkDirection::ClientToServer,
                     stepper
                         .client(client)
                         .get::<Transport>()
@@ -217,7 +219,7 @@ impl Scenario {
                 ),
                 (
                     "server",
-                    Direction::ServerToClient,
+                    LinkDirection::ServerToClient,
                     stepper
                         .client_of(client)
                         .get::<Transport>()
@@ -229,18 +231,18 @@ impl Scenario {
         let owed: Vec<_> = (0..self.clients)
             .map(|client| ends(stepper, client))
             .collect();
-        // The packets each end's transport gave its session, as the session sends packets of its
-        // own.
+        // The packets each end's transport gave its packet session, as the packet session sends
+        // packets of its own.
         let sent = |stepper: &Stepper<FullStack>, client: usize, direction| {
             let end = match direction {
-                Direction::ClientToServer => stepper.client(client),
-                Direction::ServerToClient => stepper.client_of(client),
+                LinkDirection::ClientToServer => stepper.client(client),
+                LinkDirection::ServerToClient => stepper.client_of(client),
             };
             end.get::<Transport>().unwrap().counts().sent_packets
         };
         let sent_before: Vec<_> = (0..self.clients)
             .map(|client| {
-                [Direction::ClientToServer, Direction::ServerToClient]
+                [LinkDirection::ClientToServer, LinkDirection::ServerToClient]
                     .map(|direction| sent(stepper, client, direction))
             })
             .collect();

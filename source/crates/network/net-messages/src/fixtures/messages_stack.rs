@@ -5,7 +5,7 @@ use campfire_net_stepper::Stack;
 use campfire_net_transport::internals::TransportStack;
 
 use crate::fixtures::protocol::MessagesProtocolPlugin;
-use crate::message_manager::MessageManager;
+use crate::link_messages::LinkMessages;
 use crate::message_plugin::MessagePlugin;
 
 /// The transport layer with messages and events on each link, and the test messages.
@@ -40,12 +40,12 @@ impl Stack for MessagesStack {
 
     fn client_link(&self, link: &mut EntityWorldMut<'_>) {
         TransportStack.client_link(link);
-        link.insert_if_new(MessageManager::default());
+        link.insert_if_new(LinkMessages::default());
     }
 
     fn server_link(&self, link: &mut EntityWorldMut<'_>) {
         TransportStack.server_link(link);
-        link.insert_if_new(MessageManager::default());
+        link.insert_if_new(LinkMessages::default());
     }
 
     fn is_ready(&self, world: &World) -> bool {
@@ -62,7 +62,7 @@ mod tests {
     use bevy_app::Update;
     use bevy_ecs::prelude::{Query, ResMut, Resource};
     use campfire_net_stepper::Stepper;
-    use campfire_net_stepper::StepperConfig;
+    use campfire_net_stepper::StepperSetup;
     use campfire_net_transport::internals::Channel1;
 
     #[derive(Resource, Default)]
@@ -82,7 +82,7 @@ mod tests {
     /// app.
     #[test]
     fn a_message_reaches_the_client() {
-        let mut stepper = Stepper::new(MessagesStack, StepperConfig::host_server());
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::host_server());
         stepper
             .client_app_mut(0)
             .init_resource::<Received>()

@@ -2,26 +2,23 @@
 pub enum ChannelReceiveError {
     #[error("A message was received without a message ID")]
     MissingMessageId,
-    #[error("fragmented message declared an invalid fragment count: {num_fragments}")]
-    InvalidFragmentCount { num_fragments: u64 },
-    #[error("fragment index {fragment_index} is outside fragment count {num_fragments}")]
-    InvalidFragmentIndex {
-        fragment_index: u64,
-        num_fragments: u64,
-    },
+    #[error("fragmented message declared an invalid fragment count: {fragments}")]
+    InvalidFragmentCount { fragments: u64 },
+    #[error("fragment index {fragment_index} is outside fragment count {fragments}")]
+    InvalidFragmentIndex { fragment_index: u64, fragments: u64 },
     #[error("fragment count changed while reassembling message: expected {expected}, got {actual}")]
     FragmentCountMismatch { expected: usize, actual: usize },
-    #[error("{num_fragments} fragments can not fit a message of at most {max_message_size} bytes")]
+    #[error("{fragments} fragments can not fit a message of at most {max_message_len} bytes")]
     FragmentCountTooLarge {
-        num_fragments: u64,
-        max_message_size: usize,
+        fragments: u64,
+        max_message_len: usize,
     },
     #[error(
-        "fragments describe a message of at least {min_size} bytes, above the channel's {max_message_size}"
+        "fragments describe a message of at least {min_len} bytes, above the channel's {max_message_len}"
     )]
     MessageTooLarge {
-        min_size: usize,
-        max_message_size: usize,
+        min_len: usize,
+        max_message_len: usize,
     },
     #[error(
         "fragment compression changed while reassembling message: expected {expected}, got {actual}"
@@ -41,7 +38,7 @@ pub enum ChannelReceiveError {
     #[error("non-final fragment is empty")]
     EmptyNonFinalFragment,
     #[error("non-final fragment has size {actual}, expected {expected}")]
-    InvalidNonFinalFragmentSize { actual: usize, expected: usize },
+    InvalidNonFinalFragmentLen { actual: usize, expected: usize },
     #[error("final fragment has size {actual}, maximum {max}")]
-    InvalidFinalFragmentSize { actual: usize, max: usize },
+    InvalidFinalFragmentLen { actual: usize, max: usize },
 }

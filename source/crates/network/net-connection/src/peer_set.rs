@@ -4,7 +4,8 @@ use core::ops::Deref;
 use std::sync::Arc;
 
 /// A set of peers: sorted, each once, and shared, so a clone of a target that holds it is a count
-/// and not a copy of the list.
+/// and not a copy of the list (13-net-stack/transport.md, A network target holds its peers in one
+/// sorted, shared list).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Reflect)]
 #[reflect(opaque)]
 #[reflect(Clone, Debug, PartialEq, Hash)]

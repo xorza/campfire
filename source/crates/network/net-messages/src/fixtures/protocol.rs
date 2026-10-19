@@ -2,7 +2,7 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::entity::{Entity, MapEntities};
 use bevy_ecs::event::{EntityEvent, Event};
 use bevy_reflect::Reflect;
-use campfire_net_core::{Direction, Directions};
+use campfire_net_core::{LinkDirection, LinkDirections};
 use serde::{Deserialize, Serialize};
 
 use crate::app_event_ext::AppEventExt;
@@ -46,18 +46,18 @@ pub struct MessagesProtocolPlugin;
 impl Plugin for MessagesProtocolPlugin {
     fn build(&self, app: &mut App) {
         app.register_message::<StringMessage>()
-            .add_direction(Directions::BOTH);
+            .add_direction(LinkDirections::BOTH);
         app.register_message::<ClientMessage>()
-            .add_direction(Direction::ClientToServer);
+            .add_direction(LinkDirection::ClientToServer);
         app.register_message::<SeqMessage>()
-            .add_direction(Directions::BOTH);
+            .add_direction(LinkDirections::BOTH);
         app.register_message::<EntityMessage>()
             .add_map_entities()
-            .add_direction(Directions::BOTH);
+            .add_direction(LinkDirections::BOTH);
         app.register_event::<StringEvent>()
-            .add_direction(Directions::BOTH);
+            .add_direction(LinkDirections::BOTH);
         app.register_event::<MappedEntityEvent>()
             .add_map_entities()
-            .add_direction(Directions::BOTH);
+            .add_direction(LinkDirections::BOTH);
     }
 }

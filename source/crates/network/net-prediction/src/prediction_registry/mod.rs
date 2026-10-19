@@ -2,7 +2,7 @@ use crate::mismatch_fn::MismatchFn;
 use bevy_app::App;
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::prelude::*;
-use campfire_net_replication::ComponentKind;
+use campfire_net_replication::ComponentTypeId;
 use core::any::Any;
 use std::sync::Arc;
 
@@ -40,8 +40,8 @@ impl PredictionFns {
 
 #[derive(Resource, Default, Debug)]
 pub struct PredictionRegistry {
-    /// The components that roll back, by kind.
-    components: Vec<(ComponentKind, ComponentFns)>,
+    /// The components that roll back, by type_id.
+    components: Vec<(ComponentTypeId, ComponentFns)>,
     /// What each registration adds to a predicting app once every plugin is in, as its receive
     /// fns need the markers' plugins: run by [`install`].
     installs: Vec<fn(&mut App)>,
@@ -82,18 +82,18 @@ pub(crate) fn install(app: &mut App) {
 }
 
 impl PredictionRegistry {
-    fn fns(&self, kind: ComponentKind) -> Option<&ComponentFns> {
+    fn fns(&self, type_id: ComponentTypeId) -> Option<&ComponentFns> {
         let at = self
             .components
-            .binary_search_by_key(&kind, |&(kind, _)| kind)
+            .binary_search_by_key(&type_id, |&(type_id, _)| type_id)
             .ok()?;
         Some(&self.components[at].1)
     }
 
-    fn fns_mut(&mut self, kind: ComponentKind) -> Option<&mut ComponentFns> {
+    fn fns_mut(&mut self, type_id: ComponentTypeId) -> Option<&mut ComponentFns> {
         let at = self
             .components
-            .binary_search_by_key(&kind, |&(kind, _)| kind)
+            .binary_search_by_key(&type_id, |&(type_id, _)| type_id)
             .ok()?;
         Some(&mut self.components[at].1)
     }
@@ -105,7 +105,7 @@ impl PredictionRegistry {
 
     /// Adds the prediction of `C`, whose rollback [`Self::register_rollback`] registered.
     pub(crate) fn register<C: PartialEq + 'static>(&mut self) {
-        self.fns_mut(ComponentKind::of::<C>())
+        self.fns_mut(ComponentTypeId::of::<C>())
             .expect("rollback metadata should be registered before prediction metadata")
             .prediction
             .get_or_insert_with(PredictionFns::new::<C>);
@@ -113,16 +113,16 @@ impl PredictionRegistry {
 
     /// Adds the rollback of `C`, whose prediction history is the component of this id.
     pub(crate) fn register_rollback<C: 'static>(&mut self, prediction_history_id: ComponentId) {
-        let kind = ComponentKind::of::<C>();
+        let type_id = ComponentTypeId::of::<C>();
         if let Err(at) = self
             .components
-            .binary_search_by_key(&kind, |&(kind, _)| kind)
+            .binary_search_by_key(&type_id, |&(type_id, _)| type_id)
         {
             let fns = ComponentFns {
                 prediction_history_id,
                 prediction: None,
             };
-            self.components.insert(at, (kind, fns));
+            self.components.insert(at, (type_id, fns));
         }
     }
 
@@ -137,14 +137,14 @@ impl PredictionRegistry {
     }
 
     fn prediction<C: 'static>(&self) -> Option<&PredictionFns> {
-        self.fns(ComponentKind::of::<C>())?.prediction.as_ref()
+        self.fns(ComponentTypeId::of::<C>())?.prediction.as_ref()
     }
 
     /// # Panics
     ///
     /// When `C` is not registered for prediction.
     fn prediction_mut<C: 'static>(&mut self) -> &mut PredictionFns {
-        self.fns_mut(ComponentKind::of::<C>())
+        self.fns_mut(ComponentTypeId::of::<C>())
             .and_then(|fns| fns.prediction.as_mut())
             .expect(
                 "The component has not been registered for prediction. Did you call `.predict()`?",

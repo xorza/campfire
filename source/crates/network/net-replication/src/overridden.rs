@@ -3,7 +3,7 @@ use core::any::type_name;
 use core::fmt;
 use core::marker::PhantomData;
 
-/// Marks a hierarchy member that owns its `A`: the member no longer follows the `A` of its
+/// Marks a hierarchy member that holds its `A`: the member no longer follows the `A` of its
 /// [`ReplicateLike`](crate::replicate_like::ReplicateLike) root.
 ///
 /// `A` is [`Replicate`](crate::replication_target::Replicate),

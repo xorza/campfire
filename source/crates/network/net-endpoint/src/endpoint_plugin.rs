@@ -6,7 +6,7 @@ use campfire_net_packets::DatagramIo;
 use core::marker::PhantomData;
 
 use crate::endpoint::Endpoint;
-use crate::session_link::SessionLink;
+use crate::packet_session_link::PacketSessionLink;
 
 /// The systems of the endpoints of one IO: the frame's two steps and their lifecycle.
 #[derive(Debug)]
@@ -27,14 +27,14 @@ impl<Io: DatagramIo> Plugin for EndpointPlugin<Io> {
             Endpoint::<Io>::receive.in_set(LinkSystems::Receive),
         );
         app.add_systems(PostUpdate, Endpoint::<Io>::send.in_set(LinkSystems::Send));
-        if !app.world().contains_resource::<SessionLinkObserver>() {
-            app.insert_resource(SessionLinkObserver);
-            app.add_observer(SessionLink::unlink);
+        if !app.world().contains_resource::<PacketSessionLinkObserver>() {
+            app.insert_resource(PacketSessionLinkObserver);
+            app.add_observer(PacketSessionLink::unlink);
         }
     }
 }
 
-/// Marks an app whose `SessionLink` observer one endpoint plugin already added, as every IO's
+/// Marks an app whose `PacketSessionLink` observer one endpoint plugin already added, as every IO's
 /// links share it.
 #[derive(Resource, Debug)]
-struct SessionLinkObserver;
+struct PacketSessionLinkObserver;

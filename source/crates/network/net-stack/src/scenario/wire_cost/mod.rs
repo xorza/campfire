@@ -1,11 +1,12 @@
-//! What one link puts on the simulated network for a fixed workload: exact counts for each
-//! direction, so a change to the wire shows as a diff of them.
+//! What one link puts on the emulated network for a fixed workload: exact counts for each
+//! direction, so a change to the wire shows as a diff of them (13-net-stack/testing.md, Bytes are
+//! golden tests, not benches).
 
 use bevy::prelude::*;
 
 use campfire_net_channels::{Channel, Channels};
 use campfire_net_connection::Connected;
-use campfire_net_core::Direction;
+use campfire_net_core::LinkDirection;
 use campfire_net_core::TickRate;
 use campfire_net_emulator::DuplexModel;
 use campfire_net_endpoint::Endpoint;
@@ -15,7 +16,7 @@ use campfire_net_packets::EmulatedWires;
 use campfire_net_stepper::AppId;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::LinkEstimator;
 use campfire_net_transport::Transport;
 use campfire_net_transport::internals::{Channel1, ChannelOrderedReliable};
@@ -50,10 +51,10 @@ pub(crate) struct DirectionCost {
     pub(crate) datagrams: u64,
     /// Bytes of those datagrams.
     pub(crate) bytes: u64,
-    /// Of `datagrams`, the session's packets that carry only an ACK.
+    /// Of `datagrams`, the packet session's packets that carry only an ACK.
     pub(crate) ack_only: u64,
-    /// Of `datagrams`, the session's `Ping`s: its keep-alives and probes.
-    pub(crate) session_pings: u64,
+    /// Of `datagrams`, the packet session's `Ping`s: its keep-alives and probes.
+    pub(crate) packet_session_pings: u64,
     /// Messages and fragments sent again.
     pub(crate) resent_messages: u64,
 }
@@ -66,7 +67,7 @@ impl Sub for DirectionCost {
             datagrams: self.datagrams - base.datagrams,
             bytes: self.bytes - base.bytes,
             ack_only: self.ack_only - base.ack_only,
-            session_pings: self.session_pings - base.session_pings,
+            packet_session_pings: self.packet_session_pings - base.packet_session_pings,
             resent_messages: self.resent_messages - base.resent_messages,
         }
     }
@@ -92,7 +93,7 @@ impl Sub for WireCost {
 
 /// The channel each sending end puts one message on at each tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Delivery {
+pub(crate) enum Reliability {
     Unreliable,
     Reliable,
 }
@@ -108,11 +109,11 @@ pub(crate) enum Senders {
 #[derive(Debug, Clone)]
 pub(crate) struct WireCase {
     pub(crate) name: &'static str,
-    /// A plain session or a sealed one of the UDP protocol.
+    /// A plain packet session or a sealed one of the UDP protocol.
     pub(crate) kind: ClientKind,
     pub(crate) client_frame: Duration,
     pub(crate) senders: Senders,
-    pub(crate) delivery: Delivery,
+    pub(crate) delivery: Reliability,
     pub(crate) link: DuplexModel,
 }
 
@@ -125,11 +126,11 @@ impl WireCase {
     /// Each end takes its RTT samples and sends its heartbeat at the default interval, not in
     /// each frame as the sync stack does for its tests.
     pub(crate) fn measure(&self) -> WireCost {
-        let mut config = StepperConfig::with_clients(vec![self.kind]);
-        config.tick_rate = TICK_RATE;
-        config.frame_interval = TICK;
-        config.link = self.link.clone();
-        let mut stepper = Stepper::new(FullStack, config);
+        let mut setup = StepperSetup::with_clients(vec![self.kind]);
+        setup.tick_rate = TICK_RATE;
+        setup.frame_interval = TICK;
+        setup.link = self.link.clone();
+        let mut stepper = Stepper::new(FullStack, setup);
         stepper.set_frame_interval(AppId::Client(0), self.client_frame);
         let defaults = |mut end: EntityWorldMut<'_>| {
             end.insert(LinkEstimator::default());
@@ -140,8 +141,8 @@ impl WireCase {
         defaults(stepper.client_mut(0));
         defaults(stepper.client_of_mut(0));
         let send = match self.delivery {
-            Delivery::Unreliable => send_each_tick::<Channel1>,
-            Delivery::Reliable => send_each_tick::<ChannelOrderedReliable>,
+            Reliability::Unreliable => send_each_tick::<Channel1>,
+            Reliability::Reliable => send_each_tick::<ChannelOrderedReliable>,
         };
         stepper.server_app_mut().add_systems(FixedUpdate, send);
         stepper.client_app_mut(0).add_systems(FixedUpdate, send);
@@ -169,26 +170,26 @@ fn read(stepper: &Stepper<FullStack>) -> WireCost {
     let direction = |direction| {
         let network = stepper.network().counts(stepper.client_link(0), direction);
         let (end, endpoint) = match direction {
-            Direction::ClientToServer => (stepper.client(0), stepper.client(0)),
-            Direction::ServerToClient => (stepper.client_of(0), stepper.server()),
+            LinkDirection::ClientToServer => (stepper.client(0), stepper.client(0)),
+            LinkDirection::ServerToClient => (stepper.client_of(0), stepper.server()),
         };
-        let session = endpoint
+        let packet_session = endpoint
             .get::<Endpoint<EmulatedWires>>()
             .unwrap()
-            .session_counts(end.id())
+            .packet_session_counts(end.id())
             .unwrap();
         let transport = end.get::<Transport>().unwrap();
         let counts = transport.counts();
         DirectionCost {
             datagrams: network.sent,
             bytes: network.sent_bytes,
-            ack_only: session.ack_only,
-            session_pings: session.pings,
+            ack_only: packet_session.ack_only,
+            packet_session_pings: packet_session.pings,
             resent_messages: counts.resent_messages,
         }
     };
     WireCost {
-        client_to_server: direction(Direction::ClientToServer),
-        server_to_client: direction(Direction::ServerToClient),
+        client_to_server: direction(LinkDirection::ClientToServer),
+        server_to_client: direction(LinkDirection::ServerToClient),
     }
 }

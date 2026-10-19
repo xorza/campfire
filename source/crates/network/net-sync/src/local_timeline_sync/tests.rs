@@ -1,10 +1,10 @@
 use super::*;
 use crate::fixtures::sync_stack::SyncStack;
-use crate::input_delay_config::InputDelayConfig;
+use crate::input_delay_setup::InputDelaySetup;
 use crate::remote_timeline::RemoteTimeline;
-use campfire_net_core::{NetTick, PositiveTickDelta};
+use campfire_net_core::{NetTick, PositiveTickSpan};
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 use campfire_net_timeline::LocalTimeline;
 use core::time::Duration;
 
@@ -19,7 +19,7 @@ use campfire_net_timeline::NetworkTimeline;
 struct SyncedParamRuns(u8);
 
 #[test]
-fn synced_local_timeline_checks_local_sync_readiness() {
+fn the_synced_local_timeline_waits_for_its_sync() {
     fn require_synced_timeline(
         timeline: SyncedLocalTimeline<'_, '_>,
         mut runs: ResMut<'_, SyncedParamRuns>,
@@ -48,21 +48,21 @@ fn synced_local_timeline_checks_local_sync_readiness() {
 }
 
 #[test]
-fn local_timeline_objective_preserves_margin_after_sync_deadband() {
+fn the_local_objective_keeps_its_margin_past_the_sync_deadband() {
     let tick_rate = TickRate::try_from(100).unwrap();
     let mut remote = RemoteTimeline::default();
     remote.set_now(TickInstant::from(NetTick(100)));
 
     let estimate = LinkEstimate::new(Duration::from_millis(40), Duration::from_millis(5));
 
-    let mut config = InputTimelineConfig::default();
-    config.sync.jitter_multiple = 2;
-    config.sync.jitter_margin = PositiveTickDelta::lit("1");
-    config.sync.error_margin = PositiveTickDelta::lit("0.75");
+    let mut setup = InputTimelineSetup::default();
+    setup.sync.jitter_multiple = 2;
+    setup.sync.jitter_margin = PositiveTickSpan::lit("1");
+    setup.sync.error_margin = PositiveTickSpan::lit("0.75");
 
     let objective = LocalTimelineSync::default().sync_objective(&SyncSample {
         remote: &remote,
-        config: &config,
+        setup: &setup,
         estimate,
         tick_rate,
     });
@@ -71,7 +71,7 @@ fn local_timeline_objective_preserves_margin_after_sync_deadband() {
     // + server input pipeline 1 tick + controller deadband 0.75 ticks.
     assert_eq!(objective, TickInstant::lit("105.75"));
 
-    let earliest_uncorrected_timeline = objective - TickDelta::lit("0.75");
+    let earliest_uncorrected_timeline = objective - TickSpan::lit("0.75");
     // Even if the sync controller chooses not to correct a -0.75 tick error,
     // the client is still at the delivery objective that includes RTT/2 and
     // jitter margin plus the server's one-tick input pipeline delay.
@@ -79,18 +79,18 @@ fn local_timeline_objective_preserves_margin_after_sync_deadband() {
 }
 
 #[test]
-fn input_delay_still_offsets_local_timeline_objective() {
+fn the_input_delay_still_offsets_the_local_objective() {
     let tick_rate = TickRate::try_from(100).unwrap();
     let mut remote = RemoteTimeline::default();
     remote.set_now(TickInstant::from(NetTick(100)));
 
     let estimate = LinkEstimate::new(Duration::from_millis(40), Duration::from_millis(5));
 
-    let mut config =
-        InputTimelineConfig::default().with_input_delay(InputDelayConfig::fixed_input_delay(2));
-    config.sync.jitter_multiple = 2;
-    config.sync.jitter_margin = PositiveTickDelta::lit("1");
-    config.sync.error_margin = PositiveTickDelta::lit("0.75");
+    let mut setup =
+        InputTimelineSetup::default().with_input_delay(InputDelaySetup::fixed_input_delay(2));
+    setup.sync.jitter_multiple = 2;
+    setup.sync.jitter_margin = PositiveTickSpan::lit("1");
+    setup.sync.error_margin = PositiveTickSpan::lit("0.75");
 
     let timeline = LocalTimelineSync {
         input_delay_ticks: 2,
@@ -99,7 +99,7 @@ fn input_delay_still_offsets_local_timeline_objective() {
 
     let objective = timeline.sync_objective(&SyncSample {
         remote: &remote,
-        config: &config,
+        setup: &setup,
         estimate,
         tick_rate,
     });
@@ -117,7 +117,7 @@ fn input_delay_still_offsets_local_timeline_objective() {
 /// margin riding on the explicit one-tick server input pipeline margin
 /// plus `network_delay + jitter_margin`.
 #[test]
-fn sync_objective_keeps_sent_input_tick_ahead_under_worst_case_drift() {
+fn the_sync_objective_keeps_a_sent_input_ahead_under_the_worst_drift() {
     let tick_rate = TickRate::try_from(100).unwrap();
     let mut remote = RemoteTimeline::default();
     remote.set_now(TickInstant::from(NetTick(100)));
@@ -128,11 +128,11 @@ fn sync_objective_keeps_sent_input_tick_ahead_under_worst_case_drift() {
     // User tightens `jitter_margin` below 1.0 for snappier sync, while
     // still using input delay. The local tick itself can be behind
     // `remote + 1`; the sent input tick must not be.
-    let mut config =
-        InputTimelineConfig::default().with_input_delay(InputDelayConfig::fixed_input_delay(2));
-    config.sync.jitter_margin = PositiveTickDelta::lit("0.5");
+    let mut setup =
+        InputTimelineSetup::default().with_input_delay(InputDelaySetup::fixed_input_delay(2));
+    setup.sync.jitter_margin = PositiveTickSpan::lit("0.5");
     assert!(
-        config.sync.error_margin >= PositiveTickDelta::lit("1"),
+        setup.sync.error_margin >= PositiveTickSpan::lit("1"),
         "test premise: error_margin is at least 1 tick"
     );
 
@@ -142,16 +142,16 @@ fn sync_objective_keeps_sent_input_tick_ahead_under_worst_case_drift() {
     };
     let objective = timeline.sync_objective(&SyncSample {
         remote: &remote,
-        config: &config,
+        setup: &setup,
         estimate,
         tick_rate,
     });
 
     // Controller may legitimately let `local - objective` reach
     // `-error_margin` without correcting (see `SyncHysteresis::speed_adjustment`).
-    let worst_case_drift = TickDelta::try_from(config.sync.error_margin).unwrap();
+    let worst_case_drift = TickSpan::try_from(setup.sync.error_margin).unwrap();
     let worst_case_local = objective - worst_case_drift;
-    let sent_input_tick = worst_case_local + TickDelta::from(2);
+    let sent_input_tick = worst_case_local + TickSpan::from(2);
 
     let required_input_tick = TickInstant::from(NetTick(101));
     assert!(
@@ -167,13 +167,13 @@ fn sync_objective_keeps_sent_input_tick_ahead_under_worst_case_drift() {
 /// covers `⌈(rtt + 20 ms) / 20 ms⌉` ticks within the bounds 2, 3 and 7.
 #[test]
 fn the_input_delay_follows_the_rtt_within_its_bounds() {
-    let sync_config = SyncConfig::default();
-    let config_1 = InputDelayConfig::new(2, 3, 7);
+    let sync_setup = SyncSetup::default();
+    let config_1 = InputDelaySetup::new(2, 3, 7);
     let rate = TickRate::try_from(50).unwrap();
-    let delay = |config: InputDelayConfig, rtt| {
-        config.input_delay_ticks(
+    let delay = |setup: InputDelaySetup, rtt| {
+        setup.input_delay_ticks(
             Some(LinkEstimate::new(rtt, Duration::ZERO)),
-            &sync_config,
+            &sync_setup,
             rate,
         )
     };
@@ -186,15 +186,15 @@ fn the_input_delay_follows_the_rtt_within_its_bounds() {
     assert_eq!(delay(config_1, Duration::from_millis(300)), 9);
     // An RTT past `u16::MAX` ticks saturates there, and no prediction covers any of it.
     assert_eq!(
-        delay(InputDelayConfig::new(0, 0, 0), Duration::from_secs(10_000)),
+        delay(InputDelaySetup::new(0, 0, 0), Duration::from_secs(10_000)),
         u16::MAX
     );
 }
 
 #[test]
 #[should_panic(expected = "the minimum input delay exceeds the maximum before prediction")]
-fn input_delay_config_rejects_a_minimum_past_the_maximum() {
-    InputDelayConfig::new(3, 2, 7);
+fn an_input_delay_setup_refuses_a_min_above_its_max() {
+    InputDelaySetup::new(3, 2, 7);
 }
 
 const TICK_RATE: TickRate = TickRate::new(core::num::NonZeroU16::new(100).unwrap());
@@ -209,33 +209,33 @@ fn remote_timeline_at(tick: u32) -> RemoteTimeline {
 const LOCALHOST: LinkEstimate = LinkEstimate::new(Duration::ZERO, Duration::ZERO);
 
 #[test]
-fn input_timeline_initial_sync_resyncs_to_objective() {
+fn the_first_sync_of_the_input_timeline_jumps_to_its_objective() {
     let remote = remote_timeline_at(100);
-    let config = InputTimelineConfig::default();
+    let setup = InputTimelineSetup::default();
     let mut sync = LocalTimelineSync::default();
 
-    let tick_delta = sync.sync(
+    let tick_span = sync.sync(
         TickInstant::zero(),
         &SyncSample {
             remote: &remote,
-            config: &config,
+            setup: &setup,
             estimate: LOCALHOST,
             tick_rate: TICK_RATE,
         },
     );
 
     // remote 100 + no tail margin + server input pipeline 1 tick + deadband 1 tick.
-    assert_eq!(tick_delta, Some(102));
+    assert_eq!(tick_span, Some(102));
     assert!(sync.is_synced());
     assert_eq!(sync.relative_speed(), 1.0);
 }
 
 #[test]
-fn input_timeline_adjusts_speed_after_repeated_error() {
+fn the_input_timeline_changes_its_speed_after_a_repeated_error() {
     let remote = remote_timeline_at(100);
-    let config = InputTimelineConfig::default().with_sync_config(SyncConfig {
-        error_margin: PositiveTickDelta::lit("0.5"),
-        max_error_margin: PositiveTickDelta::lit("10"),
+    let setup = InputTimelineSetup::default().with_sync_setup(SyncSetup {
+        error_margin: PositiveTickSpan::lit("0.5"),
+        max_error_margin: PositiveTickSpan::lit("10"),
         consecutive_errors_threshold: 2,
         speedup_factor: 1.1,
         ..default()
@@ -249,7 +249,7 @@ fn input_timeline_adjusts_speed_after_repeated_error() {
             TickInstant::zero(),
             &SyncSample {
                 remote: &remote,
-                config: &config,
+                setup: &setup,
                 estimate: LOCALHOST,
                 tick_rate: TICK_RATE,
             },
@@ -265,7 +265,7 @@ fn input_timeline_adjusts_speed_after_repeated_error() {
             local_now,
             &SyncSample {
                 remote: &remote,
-                config: &config,
+                setup: &setup,
                 estimate: LOCALHOST,
                 tick_rate: TICK_RATE,
             },
@@ -278,7 +278,7 @@ fn input_timeline_adjusts_speed_after_repeated_error() {
             local_now,
             &SyncSample {
                 remote: &remote,
-                config: &config,
+                setup: &setup,
                 estimate: LOCALHOST,
                 tick_rate: TICK_RATE,
             },
@@ -295,7 +295,7 @@ fn input_timeline_adjusts_speed_after_repeated_error() {
             TickInstant::lit("102.5"),
             &SyncSample {
                 remote: &remote,
-                config: &config,
+                setup: &setup,
                 estimate: LOCALHOST,
                 tick_rate: TICK_RATE,
             },
@@ -307,12 +307,12 @@ fn input_timeline_adjusts_speed_after_repeated_error() {
 
 /// The first resync applies the delay the link calls for in the same step as its objective:
 /// at delay 0 the objective is 102.5, so at delay 2 it is 100.5, and from 0.5 the shift is 100.
-/// A reset clears the delay with the session.
+/// A reset clears the delay with the link.
 #[test]
 fn a_resync_applies_the_link_input_delay_with_its_objective() {
     let remote = remote_timeline_at(100);
-    let config = InputTimelineConfig::default().with_sync_config(SyncConfig {
-        error_margin: PositiveTickDelta::lit("0.5"),
+    let setup = InputTimelineSetup::default().with_sync_setup(SyncSetup {
+        error_margin: PositiveTickSpan::lit("0.5"),
         ..default()
     });
     let mut sync = LocalTimelineSync {
@@ -325,7 +325,7 @@ fn a_resync_applies_the_link_input_delay_with_its_objective() {
             TickInstant::lit("0.5"),
             &SyncSample {
                 remote: &remote,
-                config: &config,
+                setup: &setup,
                 estimate: LOCALHOST,
                 tick_rate: TICK_RATE,
             },
@@ -340,10 +340,10 @@ fn a_resync_applies_the_link_input_delay_with_its_objective() {
 }
 
 #[test]
-fn input_delay_config_update_recomputes_public_delay() {
-    let mut stepper = Stepper::new(SyncStack, StepperConfig::single());
+fn a_change_of_the_input_delay_setup_computes_the_delay_again() {
+    let mut stepper = Stepper::new(SyncStack, StepperSetup::single());
     stepper.client_app_mut(0).world_mut().insert_resource(
-        InputTimelineConfig::default().with_input_delay(InputDelayConfig::fixed_input_delay(3)),
+        InputTimelineSetup::default().with_input_delay(InputDelaySetup::fixed_input_delay(3)),
     );
 
     stepper.frame_step(1);

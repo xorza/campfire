@@ -19,7 +19,7 @@ use bevy_reflect::Reflect;
 use campfire_net_payload::UnlinkReason;
 use tracing::trace;
 
-/// Relationship target for a server endpoint that owns multiple link entities.
+/// Relationship target for a server endpoint that holds multiple link entities.
 ///
 /// `Server` is inserted on the entity that represents the listening or hosting endpoint. Entities
 /// with [`LinkOf`] are collected under this component, allowing systems to find and unlink all
@@ -73,10 +73,10 @@ impl Server {
 /// Bevy's relationship hook adds each link to the [`Server`] collection; the custom removal hook
 /// takes it out without removing the `Server` component when its last link goes.
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug, Reflect)]
-#[component(on_insert = LinkOf::on_insert_hook)]
+#[component(on_insert = <LinkOf as Relationship>::on_insert)]
 #[component(on_discard = LinkOf::on_discard)]
 pub struct LinkOf {
-    /// Server endpoint that owns this link entity.
+    /// Server endpoint that holds this link entity.
     pub server: Entity,
 }
 
@@ -97,10 +97,6 @@ impl Relationship for LinkOf {
 }
 
 impl LinkOf {
-    fn on_insert_hook(world: DeferredWorld<'_>, context: HookContext) {
-        <Self as Relationship>::on_insert(world, context);
-    }
-
     fn on_discard(
         mut world: DeferredWorld<'_>,
         HookContext {
@@ -146,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn server_unlinked_triggers_unlink_for_child_links() {
+    fn an_unlinked_server_unlinks_each_of_its_links() {
         let mut app = App::new();
         app.add_plugins((LinkPlugin, ServerLinkPlugin));
         app.init_resource::<UnlinkedChildren>();

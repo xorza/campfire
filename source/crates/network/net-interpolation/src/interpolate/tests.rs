@@ -1,7 +1,7 @@
 use super::*;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
+use campfire_net_replication::ConfirmedTickMap;
 use campfire_net_replication::HistoryDiffReceiver;
-use campfire_net_replication::ReplicationCheckpointMap;
 use core::time::Duration;
 
 use crate::app_interpolation_ext::AppInterpolationExt;
@@ -84,7 +84,7 @@ fn lerp2(start: &TestComp2, end: &TestComp2, t: f32) -> TestComp2 {
     TestComp2(start.0 + (end.0 - start.0) * t)
 }
 
-fn context_lerp(_start: &TestComp, _end: &TestComp, ctx: InterpolationSampleContext) -> TestComp {
+fn cx_lerp(_start: &TestComp, _end: &TestComp, ctx: InterpolationSampleCx) -> TestComp {
     TestComp(ctx.t + ctx.sample_delta_secs.unwrap_or_default())
 }
 
@@ -103,10 +103,10 @@ fn bundle_lerp(
     )
 }
 
-fn bundle_context_lerp(
+fn bundle_cx_lerp(
     _start: (&TestComp, &TestComp2),
     _end: (&TestComp, &TestComp2),
-    ctx: InterpolationSampleContext,
+    ctx: InterpolationSampleCx,
 ) -> (TestComp, TestComp2) {
     (
         TestComp(ctx.t),
@@ -203,8 +203,7 @@ fn setup_app_without_rule(current_tick: NetTick, send_interval_ms: u64) -> App {
         RepliconSharedPlugin::default(),
         InterpolationMarkerPlugin,
     ));
-    app.world_mut()
-        .insert_resource(ReplicationCheckpointMap::default());
+    app.world_mut().insert_resource(ConfirmedTickMap::default());
     app.world_mut()
         .insert_resource(ReplicationStorage::default());
     app.init_resource::<InterpolationRegistry>();
@@ -244,7 +243,7 @@ impl InterpolationTestAppBuilder {
             RepliconPlugins,
             InterpolationMarkerPlugin,
         ));
-        app.insert_resource(ReplicationCheckpointMap::default());
+        app.insert_resource(ConfirmedTickMap::default());
         app.configure_sets(
             Update,
             (
@@ -269,9 +268,9 @@ impl InterpolationTestAppBuilder {
 
 fn confirm_server_tick(app: &mut App, replicon_tick: u32, server_tick: NetTick) {
     let replicon_tick = RepliconTick::new(replicon_tick);
-    let mut checkpoints = app.world_mut().resource_mut::<ReplicationCheckpointMap>();
-    checkpoints.record(replicon_tick, server_tick);
-    checkpoints.record_last_confirmed_checkpoint(replicon_tick);
+    let mut confirmed_ticks = app.world_mut().resource_mut::<ConfirmedTickMap>();
+    confirmed_ticks.record(replicon_tick, server_tick);
+    confirmed_ticks.record_last_confirmed_tick(replicon_tick);
 }
 
 fn set_interpolation_tick(app: &mut App, tick: NetTick) {
@@ -329,7 +328,7 @@ where
     F: ArchetypeFilter + 'static,
 {
     let confirmed = fns
-        .owns_interpolation_history()
+        .holds_interpolation_history()
         .then(ConfirmedHistoryFns::full::<C>);
     install_component_rule::<C, F>(app, fns, confirmed, priority);
 }
@@ -360,7 +359,7 @@ fn an_unchanged_sample_is_not_a_change() {
 }
 
 #[test]
-fn filtered_interpolation_rule_overrides_default_for_matching_archetype() {
+fn a_filtered_rule_overrides_the_default_on_an_archetype_it_matches() {
     let mut app = setup_app(NetTick(15), 40);
     add_interpolation_test_systems(&mut app);
     QueryState::<&Archetype, With<SmoothRule>>::new(app.world_mut());
@@ -385,7 +384,7 @@ fn filtered_interpolation_rule_overrides_default_for_matching_archetype() {
 }
 
 #[test]
-fn disabled_filtered_rule_blocks_broader_default_rule() {
+fn a_disabled_filtered_rule_blocks_the_broader_default_rule() {
     let mut app = setup_app(NetTick(15), 40);
     add_interpolation_test_systems(&mut app);
     QueryState::<&Archetype, With<DisabledRule>>::new(app.world_mut());
@@ -409,9 +408,9 @@ fn disabled_filtered_rule_blocks_broader_default_rule() {
     );
 }
 
-/// Checks that a disabled bundle blocks lower-priority rules for every member.
+/// A disabled bundle blocks lower-priority rules for every member.
 #[test]
-fn disabled_bundle_blocks_overlapping_component_rules() {
+fn a_disabled_bundle_blocks_the_rules_of_its_members() {
     let mut app = setup_app(NetTick(15), 40);
     app.register_component::<TestComp2>()
         .replicate()
@@ -435,15 +434,14 @@ fn disabled_bundle_blocks_overlapping_component_rules() {
 }
 
 #[test]
-fn app_linear_interpolate_registers_ease_rule() {
+fn a_linear_interpolate_registers_an_ease_rule() {
     let mut app = App::new();
     app.add_plugins((
         StatesPlugin,
         RepliconSharedPlugin::default(),
         InterpolationMarkerPlugin,
     ));
-    app.world_mut()
-        .insert_resource(ReplicationCheckpointMap::default());
+    app.world_mut().insert_resource(ConfirmedTickMap::default());
     app.register_component::<TestComp>()
         .replicate()
         .interpolate(InterpolationFns::linear());
@@ -464,11 +462,11 @@ fn app_linear_interpolate_registers_ease_rule() {
 }
 
 #[test]
-fn contextual_interpolation_receives_sample_delta() {
+fn a_contextual_interpolation_gets_the_sample_interval() {
     let mut app = setup_app(NetTick(15), 40);
     app.world_mut()
         .insert_resource(TickRate::try_from(20).unwrap());
-    insert_rule::<TestComp, ()>(&mut app, InterpolationFns::with_context(context_lerp), 100);
+    insert_rule::<TestComp, ()>(&mut app, InterpolationFns::with_cx(cx_lerp), 100);
     add_interpolation_test_systems(&mut app);
 
     let entity = app.world_mut().spawn(TestComp(0.0)).id();
@@ -481,7 +479,7 @@ fn contextual_interpolation_receives_sample_delta() {
 }
 
 #[test]
-fn selected_history_only_rule_suppresses_default_apply() {
+fn a_selected_history_only_rule_stops_the_default_apply() {
     let mut app = setup_app(NetTick(15), 40);
     add_interpolation_test_systems(&mut app);
     confirm_server_tick(&mut app, 1, NetTick(30));
@@ -506,7 +504,7 @@ fn selected_history_only_rule_suppresses_default_apply() {
     assert_eq!(history.get_nth_tick(history.len() - 1), Some(NetTick(30)));
 }
 
-/// Checks that a winning no-history rule blocks default history and apply work.
+/// A winning no-history rule blocks default history and apply work.
 #[test]
 fn selected_no_history_rule_suppresses_default_history_and_apply() {
     let mut app = setup_app(NetTick(15), 40);
@@ -533,7 +531,7 @@ fn selected_no_history_rule_suppresses_default_history_and_apply() {
     assert_eq!(history.get_nth_tick(history.len() - 1), Some(NetTick(20)));
 }
 
-/// Checks that history-only presence does not make a lower history rule win.
+/// History-only presence does not make a lower history rule win.
 #[test]
 fn no_history_rule_can_win_when_only_confirmed_history_is_present() {
     let mut app = setup_app(NetTick(15), 40);
@@ -561,7 +559,7 @@ fn no_history_rule_can_win_when_only_confirmed_history_is_present() {
 }
 
 #[test]
-fn bundle_interpolation_uses_tuple_interpolation_fn() {
+fn a_bundle_interpolates_by_its_tuple_fn() {
     let mut app = InterpolationTestAppBuilder::new(NetTick(15))
         .tick_rate(TickRate::try_from(10).unwrap())
         .build();
@@ -626,9 +624,9 @@ fn bundle_interpolation_uses_tuple_interpolation_fn() {
     );
 }
 
-/// Checks that a missing live bundle member lets its standalone member rule apply.
+/// A missing live bundle member lets its standalone member rule apply.
 #[test]
-fn missing_bundle_member_falls_back_to_standalone_component_rule() {
+fn a_missing_bundle_member_lets_the_rule_of_the_other_member_apply() {
     let mut app = InterpolationTestAppBuilder::new(NetTick(15)).build();
     app.register_component::<TestComp>().replicate();
     app.register_component::<TestComp2>()
@@ -650,9 +648,9 @@ fn missing_bundle_member_falls_back_to_standalone_component_rule() {
     assert!(!app.world().entity(entity).contains::<TestComp>());
 }
 
-/// Checks that a selected bundle does not fall back when one owned history is missing.
+/// A selected bundle does not fall back when one history it holds is missing.
 #[test]
-fn bundle_rule_does_not_fall_back_when_one_owned_history_is_missing() {
+fn a_bundle_rule_does_not_fall_back_when_one_history_it_holds_is_missing() {
     let mut app = InterpolationTestAppBuilder::new(NetTick(15)).build();
     app.register_component::<TestComp>().replicate();
     app.register_component::<TestComp2>()
@@ -677,16 +675,16 @@ fn bundle_rule_does_not_fall_back_when_one_owned_history_is_missing() {
     app.configure_sets(Update, InterpolationStage::History.run_if(|| false));
     app.world_mut().run_schedule(Update);
 
-    // The bundle owns both history initialization and application. Its
+    // The bundle holds both history initialization and application. Its
     // missing TestComp history prevents it from producing a sample, but
     // the lower-priority TestComp2 rule must not run in its place.
     assert_eq!(app.world().get::<TestComp2>(entity), Some(&TestComp2(-1.0)));
     assert_eq!(app.world().get::<TestComp>(entity), Some(&TestComp(-1.0)));
 }
 
-/// Checks independent history and apply ownership across delayed bundle-member removal.
+/// Independent history and apply holding across delayed bundle-member removal.
 #[test]
-fn bundle_maintains_history_while_component_rule_applies_after_member_removal() {
+fn a_bundle_keeps_the_histories_while_a_component_rule_applies_after_a_member_goes() {
     let mut app = InterpolationTestAppBuilder::new(NetTick(15)).build();
     app.register_component::<TestComp>().replicate();
     app.register_component::<TestComp2>().replicate();
@@ -720,16 +718,16 @@ fn bundle_maintains_history_while_component_rule_applies_after_member_removal() 
     set_interpolation_tick(&mut app, NetTick(20));
     app.update();
 
-    // The bundle keeps maintaining both histories, but it no longer owns
+    // The bundle keeps maintaining both histories, but it no longer holds
     // apply once TestComp2 is absent. The standalone TestComp rule takes
     // over immediately at the removal boundary.
     assert_eq!(app.world().get::<TestComp>(entity), Some(&TestComp(10.0)));
     assert!(!app.world().entity(entity).contains::<TestComp2>());
 }
 
-/// Checks independent history and apply ownership across delayed bundle-member insertion.
+/// Independent history and apply holding across delayed bundle-member insertion.
 #[test]
-fn bundle_maintains_history_while_component_rule_applies_before_delayed_insert() {
+fn a_bundle_keeps_the_histories_while_a_component_rule_applies_before_a_delayed_insert() {
     let mut app = InterpolationTestAppBuilder::new(NetTick(15)).build();
     app.register_component::<TestComp>().replicate();
     app.register_component::<TestComp2>().replicate();
@@ -772,14 +770,14 @@ fn bundle_maintains_history_while_component_rule_applies_before_delayed_insert()
 }
 
 #[test]
-fn bundle_contextual_interpolation_receives_sample_delta() {
+fn a_contextual_bundle_interpolation_gets_the_sample_interval() {
     let mut app = InterpolationTestAppBuilder::new(NetTick(15))
         .tick_rate(TickRate::try_from(10).unwrap())
         .build();
     app.register_component::<TestComp>().replicate();
     app.register_component::<TestComp2>().replicate();
     app.register_bundle_interpolation_rule::<(TestComp, TestComp2), ()>(InterpolationRule::new(
-        InterpolationFns::with_context(bundle_context_lerp),
+        InterpolationFns::with_cx(bundle_cx_lerp),
     ));
     interpolation_registry::finish(&mut app);
 
@@ -801,7 +799,7 @@ fn bundle_contextual_interpolation_receives_sample_delta() {
 }
 
 #[test]
-fn bundle_interpolation_inserts_tuple_interpolated_components() {
+fn a_bundle_interpolation_inserts_each_member() {
     let mut app = InterpolationTestAppBuilder::new(NetTick(15)).build();
     app.register_component::<TestComp>().replicate();
     app.register_component::<TestComp2>().replicate();
@@ -825,7 +823,7 @@ fn bundle_interpolation_inserts_tuple_interpolated_components() {
 }
 
 #[test]
-fn larger_default_bundle_priority_suppresses_smaller_overlapping_bundle() {
+fn a_larger_default_bundle_stops_a_smaller_bundle_it_overlaps() {
     BUNDLE2_PRIORITY_CALLS.store(0, Ordering::SeqCst);
     BUNDLE3_PRIORITY_CALLS.store(0, Ordering::SeqCst);
 
@@ -870,7 +868,7 @@ fn larger_default_bundle_priority_suppresses_smaller_overlapping_bundle() {
 }
 
 #[test]
-fn earlier_non_apply_member_rule_suppresses_same_priority_bundle_apply() {
+fn an_earlier_member_rule_with_no_apply_stops_the_apply_of_a_bundle_of_its_priority() {
     let mut app = InterpolationTestAppBuilder::new(NetTick(15)).build();
     app.register_component::<TestComp>().replicate();
     app.register_component::<TestComp2>().replicate();
@@ -917,7 +915,7 @@ fn earlier_non_apply_member_rule_suppresses_same_priority_bundle_apply() {
 }
 
 #[test]
-fn bundle_interpolation_supports_eight_component_tuple_api() {
+fn a_bundle_of_eight_components_interpolates() {
     type Bundle8 = (
         TestBundleComp<1>,
         TestBundleComp<2>,
@@ -1005,7 +1003,7 @@ fn bundle_interpolation_supports_eight_component_tuple_api() {
 }
 
 #[test]
-fn update_confirmed_history_advances_to_latest_empty_mutate_tick_when_idle() {
+fn an_idle_confirmed_history_advances_to_the_latest_empty_mutate_tick() {
     let mut app = setup_app(NetTick(30), 40);
     add_interpolation_test_systems(&mut app);
     confirm_server_tick(&mut app, 1, NetTick(30));
@@ -1041,7 +1039,7 @@ fn update_confirmed_history_advances_to_latest_empty_mutate_tick_when_idle() {
 }
 
 #[test]
-fn diff_history_waits_when_completed_tick_diff_is_pending() {
+fn a_diff_history_waits_while_the_diff_of_its_completed_tick_is_pending() {
     let mut app = setup_app_without_rule(NetTick(5), 40);
     use_diff_history_rule(&mut app);
     add_interpolation_test_systems(&mut app);
@@ -1085,18 +1083,18 @@ fn diff_history_waits_when_completed_tick_diff_is_pending() {
 }
 
 /// The history seeds once from the live value, at the tick its confirmation resolves to: a
-/// confirmation older than every retained checkpoint (5, below 10 and 11) resolves to the oldest
-/// retained tick 10, and one within the range that nothing maps (12) leaves the history empty
-/// until the next update.
+/// confirmation older than every retained confirmed tick (5, below 10 and 11) resolves to the
+/// oldest retained tick 10, and one within the range that nothing maps (12) leaves the history
+/// empty until the next update.
 #[test]
 fn history_seeds_at_the_resolved_confirmation_tick() {
     let mut app = setup_app(NetTick(15), 40);
     add_interpolation_test_systems(&mut app);
     {
-        let mut checkpoints = app.world_mut().resource_mut::<ReplicationCheckpointMap>();
-        checkpoints.record(RepliconTick::new(10), NetTick(10));
-        checkpoints.record(RepliconTick::new(11), NetTick(11));
-        checkpoints.record(RepliconTick::new(13), NetTick(13));
+        let mut confirmed_ticks = app.world_mut().resource_mut::<ConfirmedTickMap>();
+        confirmed_ticks.record(RepliconTick::new(10), NetTick(10));
+        confirmed_ticks.record(RepliconTick::new(11), NetTick(11));
+        confirmed_ticks.record(RepliconTick::new(13), NetTick(13));
     }
     let evicted = app
         .world_mut()
@@ -1236,7 +1234,7 @@ fn diff_history_drains_below_a_later_pending_diff() {
 }
 
 #[test]
-fn update_confirmed_history_diff_waits_for_older_pending_diff() {
+fn a_confirmed_diff_history_waits_for_an_older_pending_diff() {
     let mut app = setup_app_without_rule(NetTick(6), 40);
     use_diff_history_rule(&mut app);
     add_interpolation_test_systems(&mut app);
@@ -1280,7 +1278,7 @@ fn update_confirmed_history_diff_waits_for_older_pending_diff() {
     assert_eq!(receiver.tick_for_cursor(Some(idx(0))), Some(NetTick(0)));
 
     // Materialize the missing S0 -> S3 base and the buffered S3 -> S5 diff. The next update
-    // revisits the still-latest completed checkpoint and can now add its unchanged anchor.
+    // revisits the still-latest completed confirmed tick and can now add its unchanged anchor.
     let mut receiver = app
         .world_mut()
         .resource_mut::<ReplicationStorage>()
@@ -1316,7 +1314,7 @@ fn update_confirmed_history_diff_waits_for_older_pending_diff() {
 }
 
 #[test]
-fn update_confirmed_history_does_not_move_history_backwards() {
+fn a_confirmed_history_never_moves_back() {
     let mut app = setup_app(NetTick(30), 40);
     add_interpolation_test_systems(&mut app);
     confirm_server_tick(&mut app, 1, NetTick(100));
@@ -1343,7 +1341,7 @@ fn update_confirmed_history_does_not_move_history_backwards() {
 }
 
 #[test]
-fn update_confirmed_history_keeps_bracketing_pair_during_loss_gap() {
+fn a_confirmed_history_keeps_its_bracketing_pair_through_a_gap_of_losses() {
     let mut app = setup_app(NetTick(25), 40);
     add_interpolation_test_systems(&mut app);
 
@@ -1379,7 +1377,7 @@ fn update_confirmed_history_keeps_bracketing_pair_during_loss_gap() {
 }
 
 #[test]
-fn update_confirmed_history_waits_to_insert_component_until_start_tick() {
+fn a_confirmed_history_inserts_its_component_at_its_start_tick() {
     let mut app = setup_app(NetTick(9), 40);
     add_interpolation_test_systems(&mut app);
 
@@ -1396,7 +1394,7 @@ fn update_confirmed_history_waits_to_insert_component_until_start_tick() {
 }
 
 #[test]
-fn update_confirmed_history_removes_component_until_start_tick() {
+fn a_confirmed_history_removes_its_component_until_its_start_tick() {
     let mut app = setup_app(NetTick(9), 40);
     add_interpolation_test_systems(&mut app);
 
@@ -1413,7 +1411,7 @@ fn update_confirmed_history_removes_component_until_start_tick() {
 }
 
 #[test]
-fn update_confirmed_history_inserts_and_interpolates_when_start_tick_is_reached() {
+fn a_confirmed_history_inserts_and_interpolates_at_its_start_tick() {
     let mut app = setup_app(NetTick(15), 40);
     add_interpolation_test_systems(&mut app);
 
@@ -1430,7 +1428,7 @@ fn update_confirmed_history_inserts_and_interpolates_when_start_tick_is_reached(
 }
 
 #[test]
-fn component_removal_waits_until_interpolation_tick_reaches_remove_tick() {
+fn a_removal_waits_for_the_interpolation_tick_to_reach_it() {
     let mut app = setup_app(NetTick(15), 40);
     add_interpolation_test_systems(&mut app);
 
@@ -1450,7 +1448,7 @@ fn component_removal_waits_until_interpolation_tick_reaches_remove_tick() {
 }
 
 #[test]
-fn component_reinsert_after_removal_waits_until_insert_tick() {
+fn an_insert_after_a_removal_waits_for_its_tick() {
     let mut app = setup_app(NetTick(15), 40);
     add_interpolation_test_systems(&mut app);
 

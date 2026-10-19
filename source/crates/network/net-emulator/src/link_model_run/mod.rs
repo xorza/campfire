@@ -10,7 +10,7 @@ use campfire_math::SplitMix64;
 
 /// When the model delivers one packet, and when its duplicate arrives, if it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Delivery {
+pub(crate) struct Arrival {
     pub(crate) at: Instant,
     pub(crate) copy_at: Option<Instant>,
 }
@@ -47,7 +47,7 @@ impl LinkModelRun {
         model: &LinkModel,
         bytes: usize,
         now: Instant,
-    ) -> Option<Delivery> {
+    ) -> Option<Arrival> {
         let (loss, transition) = match self.loss_state {
             LossState::Good => (model.good_loss, model.good_to_bad),
             LossState::Bad => (model.bad_loss, model.bad_to_good),
@@ -75,7 +75,7 @@ impl LinkModelRun {
         } else {
             None
         };
-        Some(Delivery { at, copy_at })
+        Some(Arrival { at, copy_at })
     }
 
     /// Queues `bytes` sent at `now` behind the rate limit, and returns when they have left, or

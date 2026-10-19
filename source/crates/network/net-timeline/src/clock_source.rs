@@ -1,6 +1,8 @@
 use bevy_reflect::Reflect;
 
-/// Where a `Clock` reads the time.
+/// Where a `Clock` reads the time (13-net-stack/time.md, An external driver drives Bevy's time, and
+/// the `Frame` source follows it) (13-net-stack/time.md, The default source follows how the app's
+/// time runs).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Reflect)]
 pub enum ClockSource {
     /// [`Os`](Self::Os) while the app's `TimeUpdateStrategy` is `Automatic`, and

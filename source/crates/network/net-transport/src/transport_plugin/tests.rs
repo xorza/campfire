@@ -32,7 +32,7 @@ fn a_protocol_violation_unlinks_the_link_once() {
         },
     );
     let mut link = Link::default();
-    link.session.push_opened(OpenedPayload {
+    link.packet_session.push_opened(OpenedPayload {
         number: PacketNumber(0),
         kind: PacketKind::Data.into(),
         payload: ReceivePayload::Mutable(BytesMut::from(&[0_u8, 1][..])),
@@ -46,23 +46,23 @@ fn a_protocol_violation_unlinks_the_link_once() {
     assert_eq!(outcomes.received, 0);
 }
 
-/// Stopping a raw server unlinks its IO.
+/// Stopping a server unlinks its IO.
 #[test]
 fn stopping_the_server_unlinks_it() {
     use crate::fixtures::transport_stack::TransportStack;
     use campfire_net_connection::Stop;
     use campfire_net_connection::Stopped;
     use campfire_net_link::Unlinked;
-    use campfire_net_stepper::StepperConfig;
-    use campfire_net_stepper::{Order, Stepper};
+    use campfire_net_stepper::StepperSetup;
+    use campfire_net_stepper::{StepOrder, Stepper};
 
-    let mut stepper = Stepper::new(TransportStack, StepperConfig::single());
+    let mut stepper = Stepper::new(TransportStack, StepperSetup::single());
     let server = stepper.server_entity();
     stepper
         .server_app_mut()
         .world_mut()
         .trigger(Stop::from(server));
-    stepper.step(10, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(10, stepper.frame_interval(), StepOrder::ServerFirst);
 
     let server = stepper.server();
     assert!(server.contains::<Stopped>());

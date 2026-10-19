@@ -17,27 +17,6 @@ use core::any::{Any, TypeId};
 /// nothing once the buffers have grown. When the system's buffers apply, the changes of each entity
 /// flush through one Replicon [`DeferredEntity`]: its removals as one bundle, then its insertions
 /// as one bundle, so an entity takes at most one insertion of a component in each apply.
-///
-/// ```
-/// use bevy_ecs::prelude::*;
-/// use bevy_ecs::system::Deferred;
-/// use campfire_net_replication::DeferredEntityCommands;
-///
-/// #[derive(Component)]
-/// struct Position(f32);
-///
-/// #[derive(Component)]
-/// struct NeedsPosition;
-///
-/// fn add_positions(
-///     entities: Query<Entity, With<NeedsPosition>>,
-///     mut deferred: Deferred<DeferredEntityCommands>,
-/// ) {
-///     for entity in &entities {
-///         deferred.insert(entity, Position(1.0));
-///     }
-/// }
-/// ```
 #[derive(Default)]
 pub struct DeferredEntityCommands {
     ops: Vec<DeferredOp>,
@@ -208,7 +187,7 @@ impl<C: Component> ErasedValues for Values<C> {
 
 /// The applied buffers of observers, empty with their capacity kept, which the next observer run
 /// that queues changes takes in place of its own. Each observer run queues its changes as one
-/// command that owns them, so without these every run would grow its buffers again. It keeps as
+/// command that holds them, so without these every run would grow its buffers again. It keeps as
 /// many as the most runs that queued before one flush, as Bevy's command queue keeps its peak
 /// capacity. The cell makes the resource `Sync`, as Replicon's scratch is not.
 #[derive(Resource)]

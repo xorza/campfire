@@ -5,7 +5,7 @@ use campfire_net_connection::Connected;
 use campfire_net_connection::Disconnected;
 use campfire_net_connection::DisconnectedReason;
 use campfire_net_connection::NetworkingState;
-use campfire_net_core::Direction;
+use campfire_net_core::LinkDirection;
 use campfire_net_emulator::{Phase, RateLimit};
 use campfire_net_link::{Link, Server, Unlink};
 use campfire_net_payload::{
@@ -21,7 +21,7 @@ use crate::scenario::faults::{Faults, Latency, Loss, Outage};
 use campfire_log::internals::LogCheck;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::internals::input_timeline_is_synced;
 
 /// Runs the swarm scenario of each seed and fails with every broken seed, its faults, what it
@@ -84,7 +84,7 @@ fn swarm_seeds(first: u64, count: u64) -> Vec<u64> {
 }
 
 #[test]
-fn swarm() {
+fn each_seed_of_the_swarm_keeps_every_invariant() {
     run_swarm(swarm_seeds(0, 12));
 }
 
@@ -110,12 +110,12 @@ fn every_fault() -> Faults {
     }
 }
 
-/// Two runs of one seed under every fault, in a plain session and in a sealed one, keep every
-/// invariant and repeat each other's digest: the sealed bytes differ by TLS's key shares, which
-/// TLS draws from the OS, and nothing of what the digest reads.
+/// Two runs of one seed under every fault, in a plain packet session and in a sealed one, keep
+/// every invariant and repeat each other's digest: the sealed bytes differ by TLS's key shares,
+/// which TLS draws from the OS, and nothing of what the digest reads.
 #[test]
 fn one_seed_repeats_exactly_under_every_fault() {
-    let scenarios = [ClientKind::Raw, ClientKind::Udp].map(|kind| Scenario {
+    let scenarios = [ClientKind::Plain, ClientKind::Udp].map(|kind| Scenario {
         faults: every_fault(),
         kind,
         ..Scenario::swarm(7)
@@ -145,20 +145,20 @@ fn a_full_outage_times_out_and_the_client_connects_again_over_a_new_link() {
 }
 
 fn full_outage_then_reconnect() {
-    let mut config = StepperConfig::single();
-    config.session.keep_alive = Duration::from_millis(250);
-    config.session.idle_timeout = Duration::from_secs(1);
-    let mut stepper = Stepper::new(FullStack, config);
+    let mut setup = StepperSetup::single();
+    setup.packet_session.keep_alive = Duration::from_millis(250);
+    setup.packet_session.idle_timeout = Duration::from_secs(1);
+    let mut stepper = Stepper::new(FullStack, setup);
     let link = stepper.client_link(0);
     let old_client_of = stepper.client_of_entity(0);
     let start = stepper.now();
-    for direction in [Direction::ClientToServer, Direction::ServerToClient] {
+    for direction in [LinkDirection::ClientToServer, LinkDirection::ServerToClient] {
         stepper
             .network()
             .add_phase(link, direction, Phase::outage(start));
     }
-    // Nothing arrives after `start`: the silence passes the session's 1 s timeout on the first
-    // frame after 1 s.
+    // Nothing arrives after `start`: the silence passes the packet session's 1 s timeout on the
+    // first frame after 1 s.
     stepper.run_for(Duration::from_millis(1100));
     assert_eq!(
         stepper
@@ -201,11 +201,11 @@ struct Unlinks(Vec<(Entity, UnlinkReason)>);
 
 /// A peer that sends a packet no honest peer sends, here one of the fourth payload kind, is
 /// unlinked as a protocol violation, without an `error!`, and the client sees the server close
-/// its session and disconnects.
+/// its packet session and disconnects.
 #[test]
 fn a_protocol_violation_unlinks_the_peer() {
     drop(LogCheck::scoped(|| {
-        let mut stepper = Stepper::new(FullStack, StepperConfig::single());
+        let mut stepper = Stepper::new(FullStack, StepperSetup::single());
         stepper.server_app_mut().init_resource::<Unlinks>();
         stepper.server_app_mut().add_observer(
             |unlink: On<'_, '_, Unlink>, mut unlinks: ResMut<'_, Unlinks>| {
@@ -217,7 +217,7 @@ fn a_protocol_violation_unlinks_the_peer() {
             .client_of_mut(0)
             .get_mut::<Link>()
             .unwrap()
-            .session
+            .packet_session
             .push_opened(OpenedPayload {
                 number: PacketNumber(u64::MAX),
                 kind: PayloadKind::new(3),

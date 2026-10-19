@@ -49,7 +49,7 @@ fn effective_value_at(history: &ConfirmedHistory<TestValue>, tick: NetTick) -> O
 }
 
 #[test]
-fn insert_supports_out_of_order_exact_samples() {
+fn an_insert_takes_exact_samples_out_of_order() {
     let mut history = ConfirmedHistory::<TestValue>::default();
     history.insert_present(NetTick(5), TestValue(5.0));
     history.insert_present(NetTick(1), TestValue(1.0));
@@ -73,7 +73,7 @@ fn insert_supports_out_of_order_exact_samples() {
     assert_eq!(effective_value_at(&history, NetTick(5)), Some(5.0));
 }
 
-/// Checks that strict-before lookup excludes the entry at the requested tick.
+/// Strict-before lookup excludes the entry at the requested tick.
 #[test]
 fn get_state_before_excludes_the_requested_tick() {
     let mut history = ConfirmedHistory::<TestValue>::default();
@@ -95,7 +95,7 @@ fn get_state_before_excludes_the_requested_tick() {
 }
 
 #[test]
-fn add_unchanged_preserves_future_samples() {
+fn an_unchanged_mark_keeps_the_later_samples() {
     let mut history = ConfirmedHistory::<TestValue>::default();
     history.insert_present(NetTick(2), TestValue(2.0));
     history.insert_present(NetTick(10), TestValue(10.0));
@@ -115,7 +115,7 @@ fn add_unchanged_preserves_future_samples() {
 }
 
 #[test]
-fn unchanged_in_middle_tracks_late_preceding_insert() {
+fn an_unchanged_mark_follows_a_late_insert_before_it() {
     let mut history = ConfirmedHistory::<TestValue>::default();
     history.insert_present(NetTick(1), TestValue(1.0));
     history.insert_present(NetTick(3), TestValue(2.0));
@@ -140,7 +140,7 @@ fn unchanged_in_middle_tracks_late_preceding_insert() {
 }
 
 #[test]
-fn explicit_same_value_after_unchanged_is_stored_as_unchanged() {
+fn an_equal_value_after_an_unchanged_mark_is_stored_unchanged() {
     let mut history = ConfirmedHistory::<TestValue>::default();
     history.insert_present(NetTick(1), TestValue(1.0));
     history.insert_present(NetTick(3), TestValue(2.0));
@@ -161,7 +161,7 @@ fn explicit_same_value_after_unchanged_is_stored_as_unchanged() {
 }
 
 #[test]
-fn explicit_different_value_after_unchanged_is_stored_explicitly() {
+fn a_different_value_after_an_unchanged_mark_is_stored_as_it_is() {
     let mut history = ConfirmedHistory::<TestValue>::default();
     history.insert_present(NetTick(1), TestValue(1.0));
     history.insert_present(NetTick(3), TestValue(2.0));
@@ -183,7 +183,7 @@ fn explicit_different_value_after_unchanged_is_stored_explicitly() {
 }
 
 #[test]
-fn out_of_order_same_value_is_stored_as_unchanged() {
+fn an_equal_value_out_of_order_is_stored_unchanged() {
     let mut history = ConfirmedHistory::<TestValue>::default();
     history.insert_present(NetTick(1), TestValue(1.0));
     history.insert_present(NetTick(3), TestValue(2.0));
@@ -205,7 +205,7 @@ fn out_of_order_same_value_is_stored_as_unchanged() {
 }
 
 #[test]
-fn push_unchanged_appends_newest_anchor() {
+fn a_pushed_unchanged_mark_is_the_newest_anchor() {
     let mut history = ConfirmedHistory::<TestValue>::default();
     history.insert_present(NetTick(2), TestValue(2.0));
 
@@ -223,7 +223,7 @@ fn push_unchanged_appends_newest_anchor() {
 }
 
 #[test]
-fn out_of_order_insert_before_unchanged_anchor_preserves_effective_value() {
+fn an_insert_out_of_order_before_an_unchanged_anchor_keeps_its_value() {
     let mut history = ConfirmedHistory::<TestValue>::default();
     history.insert_present(NetTick(2), TestValue(2.0));
 
@@ -254,7 +254,7 @@ fn out_of_order_insert_before_unchanged_anchor_preserves_effective_value() {
 }
 
 #[test]
-fn out_of_order_insert_before_unchanged_tick_updates_effective_value() {
+fn an_insert_out_of_order_before_an_unchanged_tick_changes_its_value() {
     let mut history = ConfirmedHistory::<TestValue>::default();
     history.insert_present(NetTick(2), TestValue(2.0));
 
@@ -285,7 +285,7 @@ fn out_of_order_insert_before_unchanged_tick_updates_effective_value() {
 }
 
 #[test]
-fn explicit_insert_at_unchanged_tick_replaces_raw_marker() {
+fn an_insert_at_an_unchanged_tick_replaces_the_mark() {
     let mut history = ConfirmedHistory::<TestValue>::default();
     history.insert_present(NetTick(2), TestValue(2.0));
 
@@ -310,7 +310,7 @@ fn explicit_insert_at_unchanged_tick_replaces_raw_marker() {
 }
 
 #[test]
-fn clear_until_tick_materializes_unchanged_front() {
+fn a_clear_until_a_tick_writes_the_value_of_an_unchanged_front() {
     let mut history = ConfirmedHistory::<TestValue>::default();
     history.insert_present(NetTick(1), TestValue(1.0));
     assert!(history.add_unchanged(NetTick(3)));

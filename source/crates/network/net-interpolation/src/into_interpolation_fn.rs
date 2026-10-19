@@ -2,11 +2,12 @@
 //! as Bevy's `IntoSystem<In, Out, Marker>` keeps its fn shapes apart.
 
 use crate::interpolation_fn::{ComponentInterpolation, InterpolationFn};
-use crate::interpolation_sample_context::InterpolationSampleContext;
+use crate::interpolation_sample_cx::InterpolationSampleCx;
 use bevy_ecs::component::Component;
 
 /// A fn of a fraction that interpolates the rule's target `S`: `Fn(&C, &C, f32) -> C` for a
-/// component, `Fn((&A, &B), (&A, &B), f32) -> (A, B)` for a bundle.
+/// component, `Fn((&A, &B), (&A, &B), f32) -> (A, B)` for a bundle (13-net-stack/api.md, A rule's
+/// fn goes through one generic constructor for each shape).
 ///
 /// `M` tells the shapes apart, so a fn item, a fn pointer or a closure with typed parameters
 /// infers it; a closure whose parameters are untyped needs their types.
@@ -15,9 +16,9 @@ pub trait IntoLerpFn<S, M>: Send + Sync + 'static {
 }
 
 /// A fn of the sample's context that interpolates the rule's target `S`:
-/// `Fn(&C, &C, InterpolationSampleContext) -> C` for a component, with a tuple of references for
+/// `Fn(&C, &C, InterpolationSampleCx) -> C` for a component, with a tuple of references for
 /// a bundle, as [`IntoLerpFn`] takes them.
-pub trait IntoContextLerpFn<S, M>: Send + Sync + 'static {
+pub trait IntoCxLerpFn<S, M>: Send + Sync + 'static {
     fn into_interpolation_fn(self) -> InterpolationFn<S>;
 }
 
@@ -30,18 +31,17 @@ where
     F: Fn(&C, &C, f32) -> C + Send + Sync + 'static,
 {
     fn into_interpolation_fn(self) -> InterpolationFn<C> {
-        let interpolation: Box<ComponentInterpolation<C>> = Box::new(
-            move |start: &C, other: &C, context: InterpolationSampleContext| {
-                self(start, other, context.t)
-            },
-        );
+        let interpolation: Box<ComponentInterpolation<C>> =
+            Box::new(move |start: &C, other: &C, cx: InterpolationSampleCx| {
+                self(start, other, cx.t)
+            });
         InterpolationFn::erase(interpolation)
     }
 }
 
-impl<C: Component, F> IntoContextLerpFn<C, ComponentShape> for F
+impl<C: Component, F> IntoCxLerpFn<C, ComponentShape> for F
 where
-    F: Fn(&C, &C, InterpolationSampleContext) -> C + Send + Sync + 'static,
+    F: Fn(&C, &C, InterpolationSampleCx) -> C + Send + Sync + 'static,
 {
     fn into_interpolation_fn(self) -> InterpolationFn<C> {
         let interpolation: Box<ComponentInterpolation<C>> = Box::new(self);
@@ -60,7 +60,7 @@ mod tests {
     #[derive(bevy_ecs::component::Component, Clone, Debug, PartialEq)]
     struct B(f32);
 
-    type Members = dyn Fn((&A, &B), (&A, &B), InterpolationSampleContext) -> (A, B) + Send + Sync;
+    type Members = dyn Fn((&A, &B), (&A, &B), InterpolationSampleCx) -> (A, B) + Send + Sync;
 
     fn lerp(start: &A, end: &A, t: f32) -> A {
         A(start.0 + (end.0 - start.0) * t)
@@ -73,8 +73,8 @@ mod tests {
         )
     }
 
-    fn context_pair(_: (&A, &B), _: (&A, &B), context: InterpolationSampleContext) -> (A, B) {
-        (A(context.t), B(context.sample_delta_secs.unwrap()))
+    fn cx_pair(_: (&A, &B), _: (&A, &B), cx: InterpolationSampleCx) -> (A, B) {
+        (A(cx.t), B(cx.sample_delta_secs.unwrap()))
     }
 
     /// Each shape infers its target from the fn: a component's fn at a quarter from 0 to 4 gives
@@ -82,21 +82,19 @@ mod tests {
     /// a fn of the context reads its fraction and its interval.
     #[test]
     fn each_fn_shape_infers_its_target() {
-        let context = InterpolationSampleContext::new(0.25, Some(0.5));
+        let cx = InterpolationSampleCx::new(0.25, Some(0.5));
 
         let component = InterpolationFns::with(lerp).interpolation.unwrap();
-        assert_eq!(component.interpolate(&A(0.0), &A(4.0), context), A(1.0));
+        assert_eq!(component.interpolate(&A(0.0), &A(4.0), cx), A(1.0));
 
         let bundle = InterpolationFns::with(pair).interpolation.unwrap();
         assert_eq!(
-            bundle.typed::<Members>()((&A(0.0), &B(0.0)), (&A(4.0), &B(8.0)), context),
+            bundle.typed::<Members>()((&A(0.0), &B(0.0)), (&A(4.0), &B(8.0)), cx),
             (A(1.0), B(2.0))
         );
-        let contextual = InterpolationFns::with_context(context_pair)
-            .interpolation
-            .unwrap();
+        let contextual = InterpolationFns::with_cx(cx_pair).interpolation.unwrap();
         assert_eq!(
-            contextual.typed::<Members>()((&A(0.0), &B(0.0)), (&A(4.0), &B(8.0)), context),
+            contextual.typed::<Members>()((&A(0.0), &B(0.0)), (&A(4.0), &B(8.0)), cx),
             (A(0.25), B(0.5))
         );
     }

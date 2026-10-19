@@ -3,16 +3,9 @@ use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::VisibilityFilter;
 use smallvec::SmallVec;
 
-/// A [`Rooms`] is a component that represents the list of rooms that the entity or client belongs
-/// to.
-///
-/// It is used to manage interest management via rooms.
-/// The entity will be replicated to all clients that share at least one room with the entity.
-///
-/// The room ids must be allocated via the [`RoomAllocator`](crate::room_allocator::RoomAllocator)
-/// resource.
-///
-/// The rooms are kept sorted, each once, inline up to eight.
+/// The rooms of an entity or a link, sorted, each once, inline up to eight: an entity replicates to
+/// each link that shares a room with it, by ids from the
+/// [`RoomAllocator`](crate::room_allocator::RoomAllocator).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Component)]
 #[component(immutable)]
 pub struct Rooms {
@@ -98,7 +91,7 @@ mod tests {
     /// Sets of the same rooms are equal however they were built: one that held room 9 and lost
     /// it again equals one that never did, and the order and repeats of a list do not count.
     #[test]
-    fn equal_rooms_compare_equal_however_built() {
+    fn a_room_set_equals_another_of_its_rooms_however_built() {
         let mut grown = Rooms::from([RoomId(1), RoomId(9)]);
         grown.remove_room(RoomId(9));
         assert_eq!(grown, Rooms::single(RoomId(1)));

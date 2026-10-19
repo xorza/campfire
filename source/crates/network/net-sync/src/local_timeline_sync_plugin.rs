@@ -1,4 +1,4 @@
-use crate::input_timeline_config::InputTimelineConfig;
+use crate::input_timeline_setup::InputTimelineSetup;
 use crate::link_estimator::LinkEstimator;
 use crate::local_timeline_sync::LocalTimelineSync;
 use crate::remote_timeline::RemoteTimeline;
@@ -32,7 +32,7 @@ struct ComposedSpeed {
 pub(crate) struct LocalTimelineSyncPlugin;
 
 impl LocalTimelineSyncPlugin {
-    /// Reset synchronization controller state when a client session connects.
+    /// Reset synchronization controller state when a client connects.
     fn handle_connect(
         trigger: On<'_, '_, Add<Connected>>,
         clients: Query<'_, '_, (), With<Client>>,
@@ -43,7 +43,7 @@ impl LocalTimelineSyncPlugin {
         }
     }
 
-    /// Clear client readiness when its session disconnects.
+    /// Clear client readiness when it disconnects.
     fn handle_disconnect(
         trigger: On<'_, '_, Add<Disconnected>>,
         clients: Query<'_, '_, (), With<Client>>,
@@ -57,7 +57,7 @@ impl LocalTimelineSyncPlugin {
     /// Paces `Time<Virtual>` by the controller's factor while a client or host client is
     /// synchronized, else by 1.
     ///
-    /// The application owns the base speed, as a game speed: the written speed is the base times
+    /// The application holds the base speed, as a game speed: the written speed is the base times
     /// the factor. A speed that differs from the one written last frame is the application's new
     /// base.
     fn update_virtual_time(
@@ -108,7 +108,7 @@ impl LocalTimelineSyncPlugin {
         tick_rate: Res<'_, TickRate>,
         fixed_time: Res<'_, Time<Fixed>>,
         networking: Res<'_, NetworkingState>,
-        config: Res<'_, InputTimelineConfig>,
+        setup: Res<'_, InputTimelineSetup>,
         local_timeline: Res<'_, LocalTimeline>,
         mut sync: ResMut<'_, LocalTimelineSync>,
         remotes: Query<
@@ -133,22 +133,22 @@ impl LocalTimelineSyncPlugin {
                 let Ok((remote, estimator)) = remotes.get(*client) else {
                     return;
                 };
-                if !remote.received_packet() {
+                if !remote.has_received_packet() {
                     return;
                 }
                 let Some(estimate) = estimator.estimate() else {
                     return;
                 };
-                sync.set_link_input_delay(&config, Some(estimate), *tick_rate);
+                sync.set_link_input_delay(&setup, Some(estimate), *tick_rate);
                 let remote_estimate = remote.current_estimate();
                 let before_speed = sync.relative_speed();
                 let sample = SyncSample {
                     remote,
-                    config: &*config,
+                    setup: &*setup,
                     estimate,
                     tick_rate: *tick_rate,
                 };
-                if let Some(tick_delta) = sync.sync(local_now, &sample) {
+                if let Some(tick_span) = sync.sync(local_now, &sample) {
                     trace!(
                         target: "campfire_net_debug::sync",
                         kind = "sync_adjustment",
@@ -159,12 +159,12 @@ impl LocalTimelineSyncPlugin {
                         local_tick = local_now.tick().0,
                         remote_tick = remote.tick().0,
                         remote_estimate = ?remote_estimate,
-                        tick_delta,
+                        tick_span,
                         relative_speed = sync.relative_speed(),
                         ?estimate,
                         "local timeline sync emitted LocalTimelineShift"
                     );
-                    commands.trigger(LocalTimelineShift { delta: tick_delta });
+                    commands.trigger(LocalTimelineShift { delta: tick_span });
                 } else {
                     trace!(
                         target: "campfire_net_debug::sync",
@@ -187,7 +187,7 @@ impl LocalTimelineSyncPlugin {
             // remote-clock correction: it is synchronized at once, at the input delay of a link
             // with no latency.
             NetworkTopology::HostClient { .. } if !is_synced => {
-                sync.apply_link_input_delay(&config, None, *tick_rate);
+                sync.apply_link_input_delay(&setup, None, *tick_rate);
                 sync.set_synced(true);
             }
             _ => {}
@@ -209,7 +209,7 @@ impl LocalTimelineSyncPlugin {
             schedule = "PostUpdate",
             sample_point = "PostUpdate",
             timeline = "LocalTimeline",
-            tick_delta = trigger.delta,
+            tick_span = trigger.delta,
             local_tick = local_timeline.tick().0,
             "applied LocalTimelineShift to LocalTimeline"
         );
@@ -219,7 +219,7 @@ impl LocalTimelineSyncPlugin {
 impl Plugin for LocalTimelineSyncPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LocalTimelineSync>();
-        app.init_resource::<InputTimelineConfig>();
+        app.init_resource::<InputTimelineSetup>();
 
         app.add_observer(Self::handle_connect);
         app.add_observer(Self::handle_disconnect);
@@ -232,8 +232,8 @@ impl Plugin for LocalTimelineSyncPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::input_delay_config::InputDelayConfig;
-    use crate::sync_config::SyncConfig;
+    use crate::input_delay_setup::InputDelaySetup;
+    use crate::sync_setup::SyncSetup;
     use bevy_ecs::system::RunSystemOnce;
 
     /// The pass that sees a host client's topology change resets the controller, and syncs the
@@ -246,9 +246,9 @@ mod tests {
         app.init_resource::<Time<Fixed>>();
         app.init_resource::<LocalTimeline>();
         app.init_resource::<LocalTimelineSync>();
-        app.insert_resource(InputTimelineConfig::new(
-            SyncConfig::default(),
-            InputDelayConfig::fixed_input_delay(3),
+        app.insert_resource(InputTimelineSetup::new(
+            SyncSetup::default(),
+            InputDelaySetup::fixed_input_delay(3),
         ));
         let server = app.world_mut().spawn_empty().id();
         let client = app.world_mut().spawn_empty().id();

@@ -6,10 +6,10 @@ use bytes::Bytes;
 use campfire_common::ErrorReport;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::Writer;
-use campfire_net_channels::ChannelKind;
+use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::TransportError;
 use campfire_net_connection::HostPayload;
-use campfire_net_core::Direction;
+use campfire_net_core::LinkDirection;
 use campfire_net_core::NetId;
 use campfire_net_core::NetTick;
 use campfire_net_transport::ChannelRegistry;
@@ -29,7 +29,7 @@ pub(crate) struct SendQueue<M> {
 #[derive(Debug)]
 struct Queued<M> {
     value: M,
-    channel: ChannelKind,
+    channel: ChannelTypeId,
     priority: Priority,
 }
 
@@ -52,14 +52,14 @@ pub(crate) struct SendLink<'a, 'm> {
 /// What a link's serialized values go to.
 #[derive(Debug)]
 pub(crate) enum SendTarget<'a> {
-    /// A remote link's transport, which packs them for its session.
+    /// A remote link's transport, which packs them for its packet session.
     Transport(&'a mut Transport),
     /// A host client's buffer, which the other side of its entity reads from in the next
     /// receive, at the app's `tick`.
     Host {
         buffer: &'a mut Vec<HostPayload>,
         tick: NetTick,
-        direction: Direction,
+        direction: LinkDirection,
     },
 }
 
@@ -102,7 +102,7 @@ pub(crate) type SendFn = fn(
 /// and returns how many it dropped.
 pub(crate) type DiscardSendFn = fn(senders: &mut FilteredEntityMut<'_, '_>) -> usize;
 
-/// Why a link holds each sender its `MessageManager`
+/// Why a link holds each sender its `LinkMessages`
 /// lists: the sender's hooks keep the list.
 const LISTED_SENDER: &str = "a link holds each sender it lists";
 
@@ -112,7 +112,7 @@ pub(crate) trait QueuedSender<M>: Component<Mutability = Mutable> {
 }
 
 impl<M: 'static> SendQueue<M> {
-    pub(crate) fn push(&mut self, value: M, channel: ChannelKind, priority: Priority) {
+    pub(crate) fn push(&mut self, value: M, channel: ChannelTypeId, priority: Priority) {
         self.queued.push(Queued {
             value,
             channel,

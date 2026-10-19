@@ -11,8 +11,8 @@ pub enum TransportError {
     PacketError(#[from] PacketError),
     #[error("this transport sends on no channel {0:?}")]
     ChannelNotFound(NetId),
-    #[error("a message of {size} bytes is above its channel's {max}")]
-    MessageTooLarge { size: usize, max: usize },
+    #[error("a message of {len} bytes is above its channel's {max_len}")]
+    MessageTooLarge { len: usize, max_len: usize },
     #[error("receiver channel error: {0}")]
     ChannelReceiveError(#[from] ChannelReceiveError),
 }

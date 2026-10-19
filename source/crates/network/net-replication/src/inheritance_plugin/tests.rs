@@ -16,7 +16,7 @@ fn value<T: Aspect>(app: &App, entity: Entity) -> Option<T> {
     app.world().get::<T>(entity).cloned()
 }
 
-fn overridden<A: 'static>(app: &App, entity: Entity) -> bool {
+fn is_overridden<A: 'static>(app: &App, entity: Entity) -> bool {
     app.world().get::<Overridden<A>>(entity).is_some()
 }
 
@@ -104,13 +104,13 @@ fn join<T: Aspect>(mut app: App, [a, b, _]: [T; 3]) {
     );
 
     assert_eq!(value::<T>(&app, plain), Some(a.clone()));
-    assert!(!overridden::<T>(&app, plain));
+    assert!(!is_overridden::<T>(&app, plain));
     assert_eq!(value::<T>(&app, equal), Some(a));
-    assert!(!overridden::<T>(&app, equal));
+    assert!(!is_overridden::<T>(&app, equal));
     assert_eq!(value::<T>(&app, own), Some(b));
-    assert!(overridden::<T>(&app, own));
+    assert!(is_overridden::<T>(&app, own));
     assert_eq!(value::<T>(&app, marked), None);
-    assert!(overridden::<T>(&app, marked));
+    assert!(is_overridden::<T>(&app, marked));
 }
 
 #[test]
@@ -131,13 +131,13 @@ fn root_writes<T: Aspect>(mut app: App, [a, b, c]: [T; 3]) {
 
     remove::<T>(&mut app, root);
     assert_eq!(value::<T>(&app, plain), None);
-    assert!(!overridden::<T>(&app, plain));
+    assert!(!is_overridden::<T>(&app, plain));
     assert_eq!(value::<T>(&app, own), Some(c.clone()));
 
     insert(&mut app, root, a.clone());
     assert_eq!(value::<T>(&app, plain), Some(a));
     assert_eq!(value::<T>(&app, own), Some(c));
-    assert!(overridden::<T>(&app, own));
+    assert!(is_overridden::<T>(&app, own));
 }
 
 #[test]
@@ -152,23 +152,23 @@ fn member_writes<T: Aspect>(mut app: App, [a, b, c]: [T; 3]) {
     let member = spawn(&mut app, ReplicateLike { root });
 
     insert(&mut app, member, b.clone());
-    assert!(overridden::<T>(&app, member));
+    assert!(is_overridden::<T>(&app, member));
     insert(&mut app, root, c.clone());
     assert_eq!(value::<T>(&app, member), Some(b.clone()));
 
     insert(&mut app, member, c);
-    assert!(!overridden::<T>(&app, member));
+    assert!(!is_overridden::<T>(&app, member));
     insert(&mut app, root, a.clone());
     assert_eq!(value::<T>(&app, member), Some(a));
 
     remove::<T>(&mut app, member);
-    assert!(overridden::<T>(&app, member));
+    assert!(is_overridden::<T>(&app, member));
     insert(&mut app, root, b.clone());
     assert_eq!(value::<T>(&app, member), None);
 
     remove::<Overridden<T>>(&mut app, member);
     assert_eq!(value::<T>(&app, member), Some(b));
-    assert!(!overridden::<T>(&app, member));
+    assert!(!is_overridden::<T>(&app, member));
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn a_member_write_overrides_when_it_differs_from_the_root() {
 
 /// A member moved to another root follows the new root's value, or its absence, and an override
 /// moves unchanged.
-fn relink<T: Aspect>(mut app: App, [a, b, c]: [T; 3]) {
+fn reattach<T: Aspect>(mut app: App, [a, b, c]: [T; 3]) {
     let root_a = spawn(&mut app, a);
     let root_b = spawn(&mut app, b.clone());
     let root_none = spawn(&mut app, ());
@@ -188,49 +188,49 @@ fn relink<T: Aspect>(mut app: App, [a, b, c]: [T; 3]) {
     insert(&mut app, plain, ReplicateLike { root: root_b });
     insert(&mut app, own, ReplicateLike { root: root_b });
     assert_eq!(value::<T>(&app, plain), Some(b));
-    assert!(!overridden::<T>(&app, plain));
+    assert!(!is_overridden::<T>(&app, plain));
     assert_eq!(value::<T>(&app, own), Some(c.clone()));
-    assert!(overridden::<T>(&app, own));
+    assert!(is_overridden::<T>(&app, own));
 
     insert(&mut app, plain, ReplicateLike { root: root_none });
     insert(&mut app, own, ReplicateLike { root: root_none });
     assert_eq!(value::<T>(&app, plain), None);
-    assert!(!overridden::<T>(&app, plain));
+    assert!(!is_overridden::<T>(&app, plain));
     assert_eq!(value::<T>(&app, own), Some(c));
 }
 
 #[test]
 fn a_relinked_member_follows_its_new_root() {
-    for_each_aspect(relink, relink, relink, relink);
+    for_each_aspect(reattach, reattach, reattach, reattach);
 }
 
 /// An entity that leaves its root keeps its overrides, which lose their marker, and drops or
-/// keeps each copy it followed as `T::UNLINKED` says.
-fn unlink<T: Aspect>(mut app: App, [a, b, _]: [T; 3]) {
+/// keeps each copy it followed as `T::ON_DETACH` says.
+fn detach<T: Aspect>(mut app: App, [a, b, _]: [T; 3]) {
     let root = spawn(&mut app, a.clone());
     let plain = spawn(&mut app, ReplicateLike { root });
     let own = spawn(&mut app, (b.clone(), ReplicateLike { root }));
 
     remove::<ReplicateLike>(&mut app, plain);
     remove::<ReplicateLike>(&mut app, own);
-    let kept = match T::UNLINKED {
-        Unlinked::Drop => None,
-        Unlinked::Keep => Some(a),
+    let kept = match T::ON_DETACH {
+        OnDetach::Drop => None,
+        OnDetach::Keep => Some(a),
     };
     assert_eq!(value::<T>(&app, plain), kept);
     assert_eq!(value::<T>(&app, own), Some(b));
-    assert!(!overridden::<T>(&app, own));
+    assert!(!is_overridden::<T>(&app, own));
 }
 
-/// Unlinking never widens what an entity replicates: the copies that let it replicate go, the
+/// Detaching never widens what an entity replicates: the copies that let it replicate go, the
 /// copies that limit where it replicates stay.
 #[test]
-fn an_unlinked_entity_keeps_only_the_copies_that_limit_it() {
-    assert_eq!(Replicate::UNLINKED, Unlinked::Drop);
-    assert_eq!(PredictionTarget::UNLINKED, Unlinked::Drop);
-    assert_eq!(InterpolationTarget::UNLINKED, Unlinked::Drop);
-    assert_eq!(Rooms::UNLINKED, Unlinked::Keep);
-    for_each_aspect(unlink, unlink, unlink, unlink);
+fn a_detached_entity_keeps_only_the_copies_that_limit_it() {
+    assert_eq!(Replicate::ON_DETACH, OnDetach::Drop);
+    assert_eq!(PredictionTarget::ON_DETACH, OnDetach::Drop);
+    assert_eq!(InterpolationTarget::ON_DETACH, OnDetach::Drop);
+    assert_eq!(Rooms::ON_DETACH, OnDetach::Keep);
+    for_each_aspect(detach, detach, detach, detach);
 }
 
 /// App with visibility inheritance and one fake sender, without networking.
@@ -260,13 +260,13 @@ fn a_joiner_keeps_a_differing_manual_visibility_and_follows_otherwise() {
 
     let plain = spawn(&mut app, ReplicateLike { root });
     assert_eq!(hidden_by(&app, sender, plain), Some(bits.while_visible));
-    assert!(!overridden::<ManualVisibility>(&app, plain));
+    assert!(!is_overridden::<ManualVisibility>(&app, plain));
 
     let equal = spawn(&mut app, ());
     app.world_mut().lose_visibility(equal, sender);
     insert(&mut app, equal, ReplicateLike { root });
     assert_eq!(hidden_by(&app, sender, equal), Some(bits.while_visible));
-    assert!(!overridden::<ManualVisibility>(&app, equal));
+    assert!(!is_overridden::<ManualVisibility>(&app, equal));
 
     let own = spawn(&mut app, ());
     app.world_mut().lose_visibility_retained(own, sender);
@@ -275,7 +275,7 @@ fn a_joiner_keeps_a_differing_manual_visibility_and_follows_otherwise() {
         hidden_by(&app, sender, own),
         Some(bits.after_first_visibility)
     );
-    assert!(overridden::<ManualVisibility>(&app, own));
+    assert!(is_overridden::<ManualVisibility>(&app, own));
 
     let marked = spawn(
         &mut app,
@@ -302,7 +302,7 @@ fn a_relinked_member_follows_its_new_root_manual_visibility() {
     insert(&mut app, plain, ReplicateLike { root: root_b });
     insert(&mut app, own, ReplicateLike { root: root_b });
     assert_eq!(hidden_by(&app, sender, plain), None);
-    assert!(overridden::<ManualVisibility>(&app, own));
+    assert!(is_overridden::<ManualVisibility>(&app, own));
 
     app.world_mut().lose_visibility_retained(root_b, sender);
     assert_eq!(
@@ -312,10 +312,10 @@ fn a_relinked_member_follows_its_new_root_manual_visibility() {
     assert_eq!(hidden_by(&app, sender, own), None);
 }
 
-/// Manual visibility limits where an entity replicates, so an unlinked entity keeps the state it
+/// Manual visibility limits where an entity replicates, so a detached entity keeps the state it
 /// followed.
 #[test]
-fn an_unlinked_entity_keeps_its_manual_visibility() {
+fn a_detached_entity_keeps_its_manual_visibility() {
     let (mut app, sender) = visibility_app();
     let bits = *app.world().resource::<VisibilityBits>();
     let root = spawn(&mut app, ());
@@ -328,5 +328,5 @@ fn an_unlinked_entity_keeps_its_manual_visibility() {
     remove::<ReplicateLike>(&mut app, own);
     assert_eq!(hidden_by(&app, sender, plain), Some(bits.while_visible));
     assert_eq!(hidden_by(&app, sender, own), Some(bits.always_present));
-    assert!(!overridden::<ManualVisibility>(&app, own));
+    assert!(!is_overridden::<ManualVisibility>(&app, own));
 }

@@ -17,7 +17,7 @@ send costs.
   completed messages that wait behind an ordering gap. Practice: ENet's `maximumWaitingData`,
   GameNetworkingSockets' `RecvBufferSize`, QUIC's connection window. Refused: renet's per-channel
   budget, which multiplies by the channel count.
-- **A received packet ends one of three ways:** admitted, and accepted, so its session
+- **A received packet ends one of three ways.** It is admitted, and accepted, so its packet session
   acknowledges it; refused when the budget is full, so it gets no ACK and its sender finds it lost
   and sends its reliable messages again (GameNetworkingSockets' "do not ack", ENet); or a protocol
   violation, which unlinks the peer with `UnlinkReason::ProtocolViolation`. A violation is a claim
@@ -26,13 +26,13 @@ send costs.
   message against its registered direction, a decompressed size over the limit (renet, yojimbo,
   QUIC). No packet's outcome ends the pass for the packets behind it or for other links. Refused:
   drop-only, which keeps an attacker connected and loses reliable data already acknowledged.
-- **Decoders take only what the bytes hold:** a capacity is bounded by what the reader has left,
+- **Decoders take only what the bytes hold.** A capacity is bounded by what the reader has left,
   every narrowing of a peer value goes through `TryFrom`, and a peer's tick count reads as the
   unsigned delta it is.
-- **A receiver learns each message's fragment size from its fragments.** The sender splits by
-  its own session's largest payload, so the two peers' sizes may differ, as a client's packets
-  carry a connection ID that a server's do not. Refused: one fragment size both peers must agree
-  on, which no handshake checks.
+- **A receiver learns each message's fragment size from its fragments.** The sender splits by its
+  own packet session's largest payload, so the two peers' sizes may differ, as a client's packets
+  carry a connection ID that a server's do not. Refused: one fragment size both peers must agree on,
+  which no handshake checks.
 
 ## Protocol agreement
 
@@ -51,14 +51,14 @@ send costs.
   its capacity kept, and a producer takes `&mut Transport`, as replicon's `ResMut<ServerMessages>`
   and renet do.
   Refused: a bounded channel, which drops reliable messages or deadlocks; a `Mutex<Vec>`.
-- **A flush stops at the session's budget,** the smaller of its congestion window's room and the
-  app's rate, so congestion holds back the lowest priorities, which the flush orders by priority
-  each time. Refused: the IO dropping what it cannot send, by age and not by priority; an order
-  only under a rate limit, as the budget always holds.
-- **A reliable message goes again when the session finds its packet lost,** and waits while the
-  packet is in flight, so it costs no timer of its own and no resend that an ACK would have made
+- **A flush stops at the packet session's budget,** the smaller of its congestion window's room and
+  the app's rate, so congestion holds back the lowest priorities, which the flush orders by priority
+  each time. Refused: the IO dropping what it cannot send, by age and not by priority; an order only
+  under a rate limit, as the budget always holds.
+- **A reliable message goes again when the packet session finds its packet lost,** and waits while
+  the packet is in flight, so it costs no timer of its own and no resend that an ACK would have made
   needless. Refused: a resend delay of a multiple of the RTT, which sends again before a late ACK
-  and after a loss the session already found. Source: RFC 9002 §6.
+  and after a loss the packet session already found. Source: RFC 9002 §6.
 - **A packet's tick goes in 2 bytes once the peer surely reads it whole,** and in 5 before: the
   sender writes the short form while the tick is within 2^14 of the largest tick of a packet the
   peer accepted and of the largest it sent, so the receiver's nearest tick to its own largest is
@@ -74,12 +74,12 @@ send costs.
   shares it, and a lookup is a binary search. The resolver scans a small target and hashes a
   large one, as the connected clients come in link order. Refused: a merge of sorted lists,
   which needs a second index of the clients in peer order, kept on each connect and disconnect.
-- **A message's id goes with no tag:** the channel's mode tells whether one follows, and both
+- **A message's id goes with no tag.** The channel's mode tells whether one follows, and both
   peers register the same modes.
 - **An idle transport sends its tick.** A flush with no message, 100 ms or more after the last
   packet, sends a packet of the tick alone. The peer's timeline reads the tick of each packet,
   and the link's RTT samples come from its ACK, so an idle peer would give neither. Refused: ping
-  messages, which cost bytes on a busy link too; the session's keep-alive, which carries no
+  messages, which cost bytes on a busy link too; the packet session's keep-alive, which carries no
   tick.
 - **A send candidate holds a key, and the packet builder reads the bytes from the channel,** so
   no `Bytes` is cloned for each candidate: the first clone of a `Vec`-backed `Bytes` allocates its

@@ -80,7 +80,7 @@ mod tests {
     /// Peer 2 maps to an entity that is not a connected client, and peer 3 to none: each variant
     /// resolves to the connected clients it names.
     #[test]
-    fn resolver_reuses_storage_and_filters_to_connected_clients() {
+    fn the_resolver_reuses_its_storage_and_keeps_only_connected_clients() {
         let clients = [Entity::from_bits(1), Entity::from_bits(2)];
         let mapping = HashMap::from_iter([
             (peer(0), clients[0]),

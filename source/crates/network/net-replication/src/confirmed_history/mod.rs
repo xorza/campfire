@@ -60,12 +60,12 @@ impl<C> ConfirmedHistory<C> {
         self.entries.count_at_or_before(tick)
     }
 
-    /// Get the n-th oldest tick in the history.
+    /// The n-th oldest tick in the history.
     pub fn get_nth_tick(&self, n: usize) -> Option<NetTick> {
         self.entries.tick(n)
     }
 
-    /// Get the n-th oldest resolved state in the history.
+    /// The n-th oldest resolved state in the history.
     pub fn get_nth_state(&self, n: usize) -> Option<Ticked<&HistoryState<C>>> {
         let tick = self.entries.tick(n)?;
         Some(Ticked::new(tick, self.get_state_at_or_before(tick)?))
@@ -81,19 +81,19 @@ impl<C> ConfirmedHistory<C> {
         self.get_nth_present(self.len().checked_sub(1)?)
     }
 
-    /// Get the n-th oldest entry if it is a present value.
+    /// The n-th oldest entry if it is a present value.
     pub fn get_nth_present(&self, n: usize) -> Option<Ticked<&C>> {
         let state = self.get_nth_state(n)?;
         Some(Ticked::new(state.tick, state.value.value()?))
     }
 
-    /// Get the latest authoritative state at or before `tick`.
+    /// The latest authoritative state at or before `tick`.
     pub fn get_state_at_or_before(&self, tick: NetTick) -> Option<&HistoryState<C>> {
         let index = self.explicit.index_at_or_before(tick)?;
         self.explicit.get(index).map(|state| state.value)
     }
 
-    /// Get the latest authoritative state strictly before `tick`.
+    /// The latest authoritative state strictly before `tick`.
     pub fn get_state_before(&self, tick: NetTick) -> Option<&HistoryState<C>> {
         let index = self.explicit.index_before(tick)?;
         self.explicit.get(index).map(|state| state.value)
@@ -109,7 +109,7 @@ impl<C> ConfirmedHistory<C> {
             .any(|state| matches!(state.value, HistoryState::Removed))
     }
 
-    /// Get the authoritative state exactly at `tick`.
+    /// The authoritative state exactly at `tick`.
     pub fn get_state_at(&self, tick: NetTick) -> Option<&HistoryState<C>> {
         self.entries.index_at(tick)?;
         self.get_state_at_or_before(tick)

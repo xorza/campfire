@@ -33,12 +33,12 @@ pub(crate) struct ClientSide {
     patience: Duration,
     /// The tokens the server's last handshakes gave, for the next connections.
     tokens: Vec<[u8; TOKEN_LEN]>,
-    /// The OS's on a socket and a seed's on the simulated network, so a run of a seed repeats;
+    /// The OS's on a socket and a seed's on the emulated network, so a run of a seed repeats;
     /// TLS draws its own from the OS in both.
     random: Random,
     attempt: Option<Attempt>,
     /// The end of the last handshake, which the client sends again while the server sends its
-    /// flight again, until it hears the session.
+    /// flight again, until it hears the packet session.
     finished: Option<Finished>,
 }
 

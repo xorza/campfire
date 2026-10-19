@@ -9,7 +9,7 @@ use crate::header::{Header, PacketType};
 use crate::protection::Protection;
 
 impl<C: Carrier> EndpointCore<C> {
-    /// The address of session `key`'s peer.
+    /// The address of packet session `key`'s peer.
     fn address(&mut self, key: PeerKey) -> Option<SocketAddr> {
         self.peer(key).map(|peer| peer.address)
     }
@@ -26,7 +26,7 @@ fn address(port: u16) -> SocketAddr {
 }
 
 /// A server's establishment that routes by a connection ID, and takes each unknown peer as the
-/// session of `ID`.
+/// packet session of `ID`.
 #[derive(Debug)]
 struct RoutedEstablishment;
 
@@ -65,9 +65,10 @@ impl ServerEstablish for RoutedEstablishment {
     fn set_accepting(&mut self, _: bool) {}
 }
 
-/// The client's session, whose datagrams start with the server's ID 7, and one payload of it.
+/// The client's packet session, whose datagrams start with the server's ID 7, and one payload of
+/// it.
 fn client_payload(client: &mut PacketSession, now: Instant) -> BytesMut {
-    let mut queues = SessionQueues::default();
+    let mut queues = PacketSessionQueues::default();
     let mut payload = BytesMut::zeroed(OutgoingPayload::HEADROOM);
     payload.extend_from_slice(b"data");
     queues.send(PayloadToken(0), PayloadKind::new(0), payload);
@@ -76,22 +77,26 @@ fn client_payload(client: &mut PacketSession, now: Instant) -> BytesMut {
     out.pop().unwrap().datagram
 }
 
-/// A hand-over sizes the payload by the MTU the carry named, less the session's overhead: a plain
-/// server session's datagrams carry no prefix and no tag, only a header of at most
+/// A hand-over sizes the payload by the MTU the carry named, less the packet session's overhead: a
+/// plain server packet session's datagrams carry no prefix and no tag, only a header of at most
 /// `Header::MAX_LEN`, so an MTU of 600 holds a payload of `600 − Header::MAX_LEN`, and one of 900
 /// one of `900 − Header::MAX_LEN`.
 #[test]
 fn a_hand_over_sizes_its_payload_by_the_carried_mtu() {
     for mtu in [600, 900] {
         let mut core = EndpointCore::<u32>::new(
-            SessionConfig::default(),
+            PacketSessionSetup::default(),
             EndpointSide::Server {
                 establish: Box::new(RoutedEstablishment),
             },
             None,
         );
-        let mut client =
-            PacketSession::new(Protection::Plain, Some(ID), SessionConfig::default(), at(0));
+        let mut client = PacketSession::new(
+            Protection::Plain,
+            Some(ID),
+            PacketSessionSetup::default(),
+            at(0),
+        );
         let payload = client_payload(&mut client, at(0));
         core.set_time(EndpointTime::Driven(at(0)));
         core.pass(
@@ -102,10 +107,10 @@ fn a_hand_over_sizes_its_payload_by_the_carried_mtu() {
             &mut Vec::new(),
         );
         let Some(News::Linked { key, .. }) = core.next_news() else {
-            panic!("the first packet opens a session");
+            panic!("the first packet opens a packet session");
         };
         core.carry(key, 1, mtu);
-        let mut queues = SessionQueues::default();
+        let mut queues = PacketSessionQueues::default();
         core.hand_over(key, &mut queues);
         assert_eq!(queues.max_payload(), mtu - Header::MAX_LEN);
     }
@@ -117,14 +122,18 @@ fn a_hand_over_sizes_its_payload_by_the_carried_mtu() {
 #[test]
 fn a_peer_that_moves_is_checked_at_its_new_address_and_then_followed() {
     let mut core = EndpointCore::<u32>::new(
-        SessionConfig::default(),
+        PacketSessionSetup::default(),
         EndpointSide::Server {
             establish: Box::new(RoutedEstablishment),
         },
         None,
     );
-    let mut client =
-        PacketSession::new(Protection::Plain, Some(ID), SessionConfig::default(), at(0));
+    let mut client = PacketSession::new(
+        Protection::Plain,
+        Some(ID),
+        PacketSessionSetup::default(),
+        at(0),
+    );
     let mut out = Vec::new();
     let first = client_payload(&mut client, at(0));
     core.set_time(EndpointTime::Driven(at(0)));
@@ -142,7 +151,7 @@ fn a_peer_that_moves_is_checked_at_its_new_address_and_then_followed() {
             assert_eq!(from, address(1));
             key
         }
-        news => panic!("the first packet opens a session: {news:?}"),
+        news => panic!("the first packet opens a packet session: {news:?}"),
     };
 
     let moved = client_payload(&mut client, at(10));
@@ -180,7 +189,7 @@ fn a_peer_that_moves_is_checked_at_its_new_address_and_then_followed() {
         "the answer moved the peer"
     );
 
-    let mut queues = SessionQueues::default();
+    let mut queues = PacketSessionQueues::default();
     queues.send(
         PayloadToken(1),
         PayloadKind::new(0),
@@ -192,8 +201,8 @@ fn a_peer_that_moves_is_checked_at_its_new_address_and_then_followed() {
     assert_eq!(out.pop().unwrap().to, address(2));
 }
 
-/// A client's establishment that opens a plain session at its connect, whose server's resets end
-/// in `TOKEN`.
+/// A client's establishment that opens a plain packet session at its connect, whose server's resets
+/// end in `TOKEN`.
 #[derive(Debug)]
 struct ResetEstablishment;
 
@@ -232,14 +241,15 @@ impl ClientEstablish for ResetEstablishment {
     }
 }
 
-/// A datagram from the client's server that ends in the reset token ends its session as `Reset`,
-/// and its carrier learns it; one a byte shorter than a reset is read as a session's.
+/// A datagram from the client's server that ends in the reset token ends its packet session as
+/// `Reset`, and its carrier learns it; one a byte shorter than a reset is read as a packet
+/// session's.
 #[test]
-fn a_reset_of_its_token_ends_a_clients_session() {
+fn a_reset_of_its_token_ends_a_clients_packet_session() {
     let server = address(1);
     let carrier = 4_u32;
     let mut core = EndpointCore::<u32>::new(
-        SessionConfig::default(),
+        PacketSessionSetup::default(),
         EndpointSide::Client {
             server,
             establish: Box::new(ResetEstablishment),
@@ -272,12 +282,12 @@ fn a_reset_of_its_token_ends_a_clients_session() {
     );
 }
 
-/// An IO that failed ends each carried session as `SocketFailed`, and the pass ends.
+/// An IO that failed ends each carried packet session as `SocketFailed`, and the pass ends.
 #[test]
-fn an_io_failure_ends_each_session_and_the_pass() {
+fn an_io_failure_ends_each_packet_session_and_the_pass() {
     let carrier = 4_u32;
     let mut core = EndpointCore::<u32>::new(
-        SessionConfig::default(),
+        PacketSessionSetup::default(),
         EndpointSide::Client {
             server: address(1),
             establish: Box::new(ResetEstablishment),
@@ -287,9 +297,9 @@ fn an_io_failure_ends_each_session_and_the_pass() {
     core.set_time(EndpointTime::Driven(at(0)));
     core.start(carrier, &mut Vec::new());
     assert!(matches!(core.next_news(), Some(News::Linked { .. })));
-    assert!(!core.ended());
+    assert!(!core.is_ended());
     core.fail();
-    assert!(core.ended());
+    assert!(core.is_ended());
     assert_eq!(
         core.next_news(),
         Some(News::Ended {
@@ -343,14 +353,18 @@ impl FaultyWire {
 fn a_moved_peer_is_checked_under_loss_reorder_and_duplicates() {
     for seed in 0..32 {
         let mut core = EndpointCore::<u32>::new(
-            SessionConfig::default(),
+            PacketSessionSetup::default(),
             EndpointSide::Server {
                 establish: Box::new(RoutedEstablishment),
             },
             None,
         );
-        let mut client =
-            PacketSession::new(Protection::Plain, Some(ID), SessionConfig::default(), at(0));
+        let mut client = PacketSession::new(
+            Protection::Plain,
+            Some(ID),
+            PacketSessionSetup::default(),
+            at(0),
+        );
         let mut out = Vec::new();
         let first = client_payload(&mut client, at(0));
         core.set_time(EndpointTime::Driven(at(0)));
@@ -362,7 +376,7 @@ fn a_moved_peer_is_checked_under_loss_reorder_and_duplicates() {
             &mut out,
         );
         let Some(News::Linked { key, .. }) = core.next_news() else {
-            panic!("seed {seed}: the first packet opens a session");
+            panic!("seed {seed}: the first packet opens a packet session");
         };
         let mut wire = FaultyWire {
             random: SplitMix64::new(seed),
@@ -396,7 +410,7 @@ fn a_moved_peer_is_checked_under_loss_reorder_and_duplicates() {
             out.clear();
             core.set_time(EndpointTime::Driven(now));
             core.pass(&mut to_server, &mut out);
-            let mut queues = SessionQueues::default();
+            let mut queues = PacketSessionQueues::default();
             queues.send(
                 PayloadToken(frame),
                 PayloadKind::new(0),
@@ -443,17 +457,17 @@ fn a_moved_peer_is_checked_under_loss_reorder_and_duplicates() {
 /// Where the test's client sends: its server.
 const SERVER: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1);
 
-/// A keep-alive as long as the idle timeout lets a quiet session time out, so the endpoint
-/// refuses it when it is made, not at its first session.
+/// A keep-alive as long as the idle timeout lets a quiet packet session time out, so the endpoint
+/// refuses it when it is made, not at its first packet session.
 #[test]
 #[should_panic(expected = "a keep-alive less often than the idle timeout")]
 fn an_endpoint_refuses_a_keep_alive_as_long_as_its_idle_timeout() {
-    let config = SessionConfig {
+    let setup = PacketSessionSetup {
         keep_alive: Duration::from_secs(5),
-        ..SessionConfig::default()
+        ..PacketSessionSetup::default()
     };
     let _ = EndpointCore::<u32>::new(
-        config,
+        setup,
         EndpointSide::Client {
             server: address(1),
             establish: Box::new(ResetEstablishment),
@@ -462,14 +476,14 @@ fn an_endpoint_refuses_a_keep_alive_as_long_as_its_idle_timeout() {
     );
 }
 
-/// A pass polls a session only once its timer is due. A client's session pings at its open at
-/// 0, so its first deadline is the keep-alive at 1 s, before the probe at 1,024 ms: a pass at
-/// 999 ms sends nothing, one at 1 s sends the keep-alive, and the next deadline is the
+/// A pass polls a packet session only once its timer is due. A client's packet session pings at its
+/// open at 0, so its first deadline is the keep-alive at 1 s, before the probe at 1,024 ms: a pass
+/// at 999 ms sends nothing, one at 1 s sends the keep-alive, and the next deadline is the
 /// keep-alive at 2 s, with one entry left in the timers.
 #[test]
-fn a_pass_polls_a_session_once_its_timer_is_due() {
+fn a_pass_polls_a_packet_session_once_its_timer_is_due() {
     let mut core = EndpointCore::<u32>::new(
-        SessionConfig::default(),
+        PacketSessionSetup::default(),
         EndpointSide::Client {
             server: address(1),
             establish: Box::new(ResetEstablishment),

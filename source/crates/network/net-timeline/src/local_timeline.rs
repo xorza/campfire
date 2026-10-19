@@ -8,8 +8,9 @@ use bevy_reflect::Reflect;
 use bevy_time::{Fixed, Time};
 use tracing::trace;
 
-/// The local simulation timeline: its tick advances each `FixedUpdate`, rollback replays
-/// included, and its fraction is the overstep of [`Time<Fixed>`].
+/// The local simulation timeline: its tick advances each `FixedUpdate`, rollback replays included,
+/// and its fraction is the overstep of [`Time<Fixed>`] (13-net-stack/time.md, Ticks stay on Bevy's
+/// clocks).
 #[derive(Debug, Resource, Default, Clone, Reflect)]
 pub struct LocalTimeline {
     tick: NetTick,
@@ -19,7 +20,7 @@ pub struct LocalTimeline {
 }
 
 impl LocalTimeline {
-    /// Get the current tick
+    /// The current tick.
     pub const fn tick(&self) -> NetTick {
         self.tick
     }
@@ -35,10 +36,10 @@ impl LocalTimeline {
         }
     }
 
-    /// Return the current fractional simulation instant.
+    /// The current fractional simulation instant.
     ///
-    /// [`LocalTimeline`] owns the whole simulation tick while Bevy's [`Time<Fixed>`]
-    /// owns the fractional progress towards the next fixed update. Constructing the
+    /// [`LocalTimeline`] holds the whole simulation tick while Bevy's [`Time<Fixed>`]
+    /// holds the fractional progress towards the next fixed update. Constructing the
     /// instant on demand avoids maintaining a second, potentially stale clock.
     pub fn now(&self, fixed_time: &Time<Fixed>) -> TickInstant {
         TickInstant::from_tick_and_overstep(

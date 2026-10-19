@@ -1,7 +1,7 @@
 use crate::fixtures::stepper_counts::summed_transport_counts;
 use bytes::Bytes;
-use campfire_net_stepper::StepperConfig;
-use campfire_net_stepper::{Order, Stepper};
+use campfire_net_stepper::StepperSetup;
+use campfire_net_stepper::{StepOrder, Stepper};
 
 use crate::fixtures::protocol::{Channel1, channel_id};
 use crate::fixtures::transport_stack::TransportStack;
@@ -54,18 +54,18 @@ impl CompressionCase {
 
     /// Queues the case's messages on a fresh stepper whose transports use `mode`.
     pub fn prepare(self, mode: CompressionMode) -> CompressionRun {
-        let mut stepper = Stepper::new(TransportStack, StepperConfig::single());
+        let mut stepper = Stepper::new(TransportStack, StepperSetup::single());
         for client in 0..stepper.client_count() {
             stepper
                 .client_mut(client)
                 .get_mut::<Transport>()
                 .unwrap()
-                .set_compression(mode.config());
+                .set_compression(mode.setup());
             stepper
                 .client_of_mut(client)
                 .get_mut::<Transport>()
                 .unwrap()
-                .set_compression(mode.config());
+                .set_compression(mode.setup());
         }
         let channel_id = channel_id::<Channel1>(stepper.server_app());
         for message_index in 0..self.messages {
@@ -98,7 +98,7 @@ impl CompressionRun {
     /// Runs one server-first frame.
     pub fn frame(&mut self) {
         let interval = self.stepper.frame_interval();
-        self.stepper.step(1, interval, Order::ServerFirst);
+        self.stepper.step(1, interval, StepOrder::ServerFirst);
     }
 }
 
@@ -133,12 +133,12 @@ mod tests {
     /// messages on the transport stack, in its one frame. The stepper is deterministic, so a byte
     /// count is exact, and a change to the codec or to the packing shows as a diff of these values.
     ///
-    /// The plain session carries 1,190 bytes a packet, and its initial window of 12,000 bytes takes
-    /// 10 packets of 1,177 and 10 of their session's bytes, or 11 of 1,033. A packet starts with a
-    /// long tick of 5 and a batch's channel id and count; a message of 64 bytes takes 66 with its
-    /// length, one of 128 takes 130, and one of 1,024 takes 1,026. So 128 messages of 64 are 7
-    /// packets of 17 and one of 9: 7 · (7 + 17 · 66) + 7 + 9 · 66 = 8,504. The server reads 5 bytes
-    /// more: the client's heartbeat of the frame before, a long tick.
+    /// The plain packet session carries 1,190 bytes a packet, and its initial window of 12,000
+    /// bytes takes 10 packets of 1,177 and 10 of their packet session's bytes, or 11 of 1,033. A
+    /// packet starts with a long tick of 5 and a batch's channel id and count; a message of 64
+    /// bytes takes 66 with its length, one of 128 takes 130, and one of 1,024 takes 1,026. So 128
+    /// messages of 64 are 7 packets of 17 and one of 9: 7 · (7 + 17 · 66) + 7 + 9 · 66 = 8,504. The
+    /// server reads 5 bytes more: the client's heartbeat of the frame before, a long tick.
     #[test]
     fn each_case_sends_exact_bytes_in_each_mode() {
         // One row a case, in `CompressionCase::ALL`'s order: disabled, then lz4.

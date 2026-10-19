@@ -1,7 +1,7 @@
 use crate::component_registry::ComponentRegistry;
+use crate::confirmed_tick_map::ConfirmedTickMap;
 use crate::controlled_send::ControlledSend;
 use crate::hierarchy;
-use crate::replication_checkpoint_map::ReplicationCheckpointMap;
 use crate::replication_target::InterpolatedSend;
 use crate::replication_target::PredictedSend;
 use crate::sent_marker::SentMarker;
@@ -10,11 +10,9 @@ use bevy_ecs::prelude::ChildOf;
 use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
 use bevy_replicon::prelude::{AppMarkerExt, AppRuleExt, RuleFns};
 
-/// Plugin that registers sender-side marker components (`PredictedSend`,
-/// `InterpolatedSend`, `ControlledSend`) with Replicon on both client and
-/// server. Their custom receive functions materialize the corresponding
-/// receiver-local markers without putting those markers on authoritative
-/// send-side entities.
+/// Registers the sender-side markers `PredictedSend`, `InterpolatedSend` and `ControlledSend` with
+/// Replicon, whose receive makes each receiver's own marker, so no authoritative entity holds a
+/// receiver's marker.
 #[derive(Debug)]
 pub(crate) struct SharedComponentRegistrationPlugin;
 
@@ -37,7 +35,7 @@ impl Plugin for SharedComponentRegistrationPlugin {
         // but prediction systems on server-only builds also reference it. Init it here
         // so it's always available (defaults to empty/harmless state).
         app.init_resource::<ServerMutateTicks>();
-        app.init_resource::<ReplicationCheckpointMap>();
+        app.init_resource::<ConfirmedTickMap>();
     }
 
     fn finish(&self, app: &mut App) {

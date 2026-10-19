@@ -1,5 +1,5 @@
 //! The typed frame-interpolation systems of the interpolation rules, which run on the entities
-//! with `FrameInterpolate` that the owners give each rule and component.
+//! with `FrameInterpolate` that the holders give each rule and component.
 
 use crate::frame_interpolate::FrameInterpolate;
 use crate::frame_interpolation_history::FrameInterpolationHistory;
@@ -9,9 +9,9 @@ use crate::frame_stage::FrameStage;
 use crate::history_component::HistoryComponent;
 use crate::interpolate::set_if_neq;
 use crate::interpolation_fn::InterpolationFn;
-use crate::interpolation_owners::InterpolationOwners;
+use crate::interpolation_holders::InterpolationHolders;
 use crate::interpolation_rule_id::InterpolationRuleId;
-use crate::interpolation_sample_context::InterpolationSampleContext;
+use crate::interpolation_sample_cx::InterpolationSampleCx;
 use crate::skip_frame_interpolation::SkipFrameInterpolation;
 use bevy_app::prelude::*;
 use bevy_ecs::entity::EntityLocation;
@@ -21,7 +21,7 @@ use bevy_ecs::world::FilteredEntityRef;
 use bevy_time::{Fixed, Time};
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::NetTick;
-use campfire_net_replication::ComponentKind;
+use campfire_net_replication::ComponentTypeId;
 use campfire_net_timeline::LocalTimeline;
 use std::borrow::Cow;
 use tracing::trace;
@@ -30,7 +30,7 @@ use tracing::trace;
 /// holds the member's frame source, the source's fn at the app's tick.
 #[derive(Debug)]
 pub(crate) struct FrameSampler<C> {
-    pub(crate) kind: ComponentKind,
+    pub(crate) type_id: ComponentTypeId,
     source: Option<FrameSamplesFn<C>>,
 }
 
@@ -45,7 +45,7 @@ impl<C> Copy for FrameSampler<C> {}
 impl<C: Component> FrameSampler<C> {
     pub(crate) fn new(source: Option<&FrameSource>) -> Self {
         Self {
-            kind: ComponentKind::of::<C>(),
+            type_id: ComponentTypeId::of::<C>(),
             source: source.map(FrameSource::samples::<C>),
         }
     }
@@ -71,7 +71,7 @@ impl<C: Component> FrameSampler<C> {
 }
 
 /// Installs the systems that keep and restore `C`'s frame history, once for each component a
-/// rule owns the frame history of. The restore writes live `C` from its newest frame sample, the
+/// rule holds the frame history of. The restore writes live `C` from its newest frame sample, the
 /// current value of its frame history or its source's at the app's tick: frame interpolation
 /// writes visual values during `PostUpdate`, and the fixed loop must not read them.
 pub(crate) fn install_frame_history<C: HistoryComponent>(
@@ -86,7 +86,7 @@ pub(crate) fn install_frame_history<C: HistoryComponent>(
     );
     let sampler = FrameSampler::<C>::new(source.as_ref());
     let restore = move |timeline: Option<Res<'_, LocalTimeline>>,
-                        owners: Res<'_, InterpolationOwners>,
+                        holders: Res<'_, InterpolationHolders>,
                         mut query: Query<
         '_,
         '_,
@@ -100,8 +100,8 @@ pub(crate) fn install_frame_history<C: HistoryComponent>(
         With<FrameInterpolate>,
     >| {
         let tick = timeline.map(|timeline| timeline.tick());
-        let maintained = owners.frame.history(sampler.kind);
-        let sourced = owners.frame.sourced(sampler.kind);
+        let maintained = holders.frame.history(sampler.type_id);
+        let sourced = holders.frame.sourced(sampler.type_id);
         for (entity, location, live, history, source) in &mut query {
             if !maintained.contains(location.archetype_id) {
                 continue;
@@ -155,7 +155,7 @@ pub(crate) fn install_frame_history<C: HistoryComponent>(
 
 /// Installs the system that applies the component rule `rule_id` of `C` to the frame, with
 /// `interpolation`, reading `C`'s samples from its frame history or from `source`, on each entity
-/// whose frame apply the rule owns. An entity with [`SkipFrameInterpolation`] takes its newest
+/// whose frame apply the rule holds. An entity with [`SkipFrameInterpolation`] takes its newest
 /// value, and its frame history then holds it as its previous one too, so the frames after the
 /// skip do not blend across it; a source holds no frame state.
 pub(crate) fn install_component_frame_interpolation<C: HistoryComponent>(
@@ -167,7 +167,7 @@ pub(crate) fn install_component_frame_interpolation<C: HistoryComponent>(
     let sampler = FrameSampler::<C>::new(source.as_ref());
     let system = move |time: Res<'_, Time<Fixed>>,
                        timeline: Option<Res<'_, LocalTimeline>>,
-                       owners: Res<'_, InterpolationOwners>,
+                       holders: Res<'_, InterpolationHolders>,
                        mut query: Query<
         '_,
         '_,
@@ -183,11 +183,11 @@ pub(crate) fn install_component_frame_interpolation<C: HistoryComponent>(
     >| {
         let sample = frame_sample(&time);
         let tick = timeline.map(|timeline| timeline.tick());
-        let owned = owners.frame.apply(rule_id);
-        let sourced = owners.frame.sourced(sampler.kind);
+        let held = holders.frame.apply(rule_id);
+        let sourced = holders.frame.sourced(sampler.type_id);
         let interpolation = interpolation.component();
         for (entity, location, live, mut history, skip, source) in &mut query {
-            if !owned.contains(location.archetype_id) {
+            if !held.contains(location.archetype_id) {
                 continue;
             }
             let Some(FrameSamples {
@@ -264,8 +264,8 @@ pub(crate) fn install_component_frame_interpolation<C: HistoryComponent>(
 }
 
 /// The context a frame's blend reads: the fixed overstep and the fixed timestep.
-pub(crate) fn frame_sample(time: &Time<Fixed>) -> InterpolationSampleContext {
-    InterpolationSampleContext::new(
+pub(crate) fn frame_sample(time: &Time<Fixed>) -> InterpolationSampleCx {
+    InterpolationSampleCx::new(
         time.overstep_fraction().clamp(0.0, 1.0),
         Some(time.timestep().as_secs_f32()),
     )

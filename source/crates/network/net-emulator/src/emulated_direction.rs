@@ -5,11 +5,11 @@ use core::time::Duration;
 
 use crate::direction_counts::DirectionCounts;
 use crate::link_model::LinkModel;
-use crate::link_model_run::{Delivery, LinkModelRun};
+use crate::link_model_run::{Arrival, LinkModelRun};
 use crate::phase::Phase;
 use crate::phase_mode::PhaseMode;
 
-/// One direction of a simulated link: its model, its timeline of phases, and the packets on it.
+/// One direction of an emulated link: its model, its timeline of phases, and the packets on it.
 #[derive(Debug)]
 pub(crate) struct EmulatedDirection {
     base: LinkModel,
@@ -71,7 +71,7 @@ impl EmulatedDirection {
 
     /// When a packet of `bytes` sent at wire time `now` arrives, under the phase that holds then,
     /// or `None` when it is lost.
-    fn admit(&mut self, bytes: usize, now: Duration) -> Option<Delivery> {
+    fn admit(&mut self, bytes: usize, now: Duration) -> Option<Arrival> {
         let current = self.phases.partition_point(|phase| phase.start <= now);
         let (model, hold_until) = match current.checked_sub(1).map(|i| &self.phases[i]) {
             None => (&self.base, None),
@@ -86,7 +86,7 @@ impl EmulatedDirection {
         let delivery = self.run.admit(model, bytes, Instant::from_elapsed(now))?;
         let held =
             |at: Instant| hold_until.map_or(at, |until| at.max(Instant::from_elapsed(until)));
-        Some(Delivery {
+        Some(Arrival {
             at: held(delivery.at),
             copy_at: delivery.copy_at.map(held),
         })

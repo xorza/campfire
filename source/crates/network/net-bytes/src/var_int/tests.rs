@@ -100,7 +100,7 @@ fn an_eight_byte_varint_round_trips() {
 /// refuses each such encoding, the largest value of each length one length longer among them,
 /// and reads the smallest value of each length.
 #[test]
-fn encodings_match_rfc_9000() {
+fn each_encoding_matches_the_one_of_rfc_9000() {
     let samples: [(&[u8], u64); 4] = [
         (&[0x25], 37),
         (&[0x7b, 0xbd], 15_293),

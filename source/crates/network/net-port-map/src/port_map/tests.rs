@@ -60,7 +60,7 @@ fn a_router_forwards_to_a_socket_bound_to_ipv4_and_not_loopback() {
         ),
     ] {
         assert_eq!(
-            PortMap::forwardable(SocketAddr::new(ip, 4433)),
+            PortMap::is_forwardable(SocketAddr::new(ip, 4433)),
             forwardable,
             "{ip}"
         );

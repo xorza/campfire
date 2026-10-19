@@ -6,8 +6,8 @@ use crate::datagram_io::Datagram;
 use crate::establish::{ClientEstablish, Establish, Established, Establishing, ServerEstablish};
 use crate::protection::Protection;
 
-/// Plain sessions with no handshake, for an IO in one process: a client's session opens at its
-/// connect, and a server takes each peer by its first datagram while it accepts.
+/// Plain packet sessions with no handshake, for an IO in one process: a client's packet session
+/// opens at its connect, and a server takes each peer by its first datagram while it accepts.
 #[derive(Debug, Default)]
 pub(crate) struct PlainEstablishment {
     accepting: bool,
@@ -39,9 +39,9 @@ impl Establish for PlainEstablishment {
         false
     }
 
-    /// Never asked: a plain session routes by address, so its peer never moves.
+    /// Never asked: a plain packet session routes by address, so its peer never moves.
     fn challenge(&mut self) -> [u8; 8] {
-        unreachable!("a session routed by address has no candidate path")
+        unreachable!("a packet session routed by address has no candidate path")
     }
 
     fn ended(&mut self, _: Option<ConnectionId>) {}

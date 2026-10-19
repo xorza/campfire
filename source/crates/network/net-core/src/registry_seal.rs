@@ -1,8 +1,8 @@
 use crate::registry_hasher::RegistryHash;
 
-/// Whether a protocol registry takes registrations, or is sealed with the hash its peers compare:
-/// a registration changes the protocol and the systems built from it, so none comes after the
-/// seal.
+/// Whether a protocol registry takes registrations, or is sealed with the hash its peers compare: a
+/// registration changes the protocol and the systems built from it, so none comes after the seal
+/// (13-net-stack/api.md, Registration is order-independent and ends at `finish`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum RegistrySeal {
     #[default]

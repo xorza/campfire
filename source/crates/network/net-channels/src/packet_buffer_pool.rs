@@ -1,10 +1,10 @@
 use crate::packet::Packet;
 use crate::packet_message::PacketMessage;
 use bytes::BytesMut;
-use campfire_net_bytes::Arena;
+use campfire_net_bytes::ByteArena;
 
 /// The packets of a payload chunk: a pass of a full window fills about one, and the arena keeps
-/// three more while the session holds their datagrams, 64 payloads in all.
+/// three more while the packet session holds their datagrams, 64 payloads in all.
 const PACKETS_PER_CHUNK: usize = 16;
 
 /// The chunks besides the current one the payload arena keeps for reuse.
@@ -12,14 +12,15 @@ const SPARE_CHUNKS: usize = 3;
 
 /// Reusable packet-builder storage.
 ///
-/// The payloads are views of an [`Arena`], so a flush's packets share a few allocations, each
-/// reused once the session dropped the datagrams of its views. This also keeps the list of a
+/// The payloads are views of an [`ByteArena`], so a flush's packets share a few allocations, each
+/// reused once the packet session dropped the datagrams of its views. This also keeps the list of a
 /// packet's messages: a flush commits each packet before it builds the next, so one list serves
 /// every packet and keeps the capacity the largest one gave it.
 #[derive(Debug)]
 pub(crate) struct PacketBufferPool {
-    pub(crate) payloads: Arena,
-    /// The bytes of a payload: the session's headroom, the largest payload, and its tailroom.
+    pub(crate) payloads: ByteArena,
+    /// The bytes of a payload: the packet session's headroom, the largest payload, and its
+    /// tailroom.
     payload_capacity: usize,
     packet_messages: Vec<PacketMessage>,
 }
@@ -27,7 +28,7 @@ pub(crate) struct PacketBufferPool {
 impl PacketBufferPool {
     pub(crate) fn new(payload_capacity: usize) -> Self {
         Self {
-            payloads: Arena::new(payload_capacity * PACKETS_PER_CHUNK, SPARE_CHUNKS),
+            payloads: ByteArena::new(payload_capacity * PACKETS_PER_CHUNK, SPARE_CHUNKS),
             payload_capacity,
             packet_messages: Vec::new(),
         }

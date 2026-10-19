@@ -8,7 +8,8 @@ use bevy_ecs::world::unsafe_world_cell::UnsafeWorldCell;
 use campfire_net_sync::TimelineSync;
 use core::marker::PhantomData;
 
-/// Read-only access to the application-global [`InterpolationTimeline`] after it has synchronized.
+/// Read-only access to the application-global [`InterpolationTimeline`] after it has synchronized
+/// (13-net-stack/api.md, No `unsafe` but what an outside API requires).
 ///
 /// Systems using this parameter are skipped until [`InterpolationTimeline::is_synced`] returns
 /// true. The parameter dereferences directly to the presentation timeline.

@@ -17,7 +17,7 @@ pub struct DiffReplicated;
 /// How a registered component replicates, as the registry records it for a layer that reads it
 /// at run time: the value of [`FullReplicated`] or [`DiffReplicated`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Replication {
+pub enum ReplicationKind {
     Full,
     Diff,
 }

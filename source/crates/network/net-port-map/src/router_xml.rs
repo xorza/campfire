@@ -20,7 +20,7 @@ pub(crate) fn children<'e>(
 
 /// The XML document `body` holds, when it reads and nests no deeper than `MAX_DEPTH`.
 pub(crate) fn parse(body: &[u8]) -> Option<Element> {
-    within_depth(body)
+    is_within_depth(body)
         .then(|| Element::parse(body).ok())
         .flatten()
 }
@@ -28,7 +28,7 @@ pub(crate) fn parse(body: &[u8]) -> Option<Element> {
 /// Whether the elements of `body` nest no deeper than `MAX_DEPTH`, read before `xmltree`
 /// recurses into them: a comment, a CDATA section, a declaration and a processing
 /// instruction open none, and a tag ends at its first `>` out of its quotes.
-fn within_depth(body: &[u8]) -> bool {
+fn is_within_depth(body: &[u8]) -> bool {
     let mut depth = 0_usize;
     let mut at = 0;
     while let Some(open) = body[at..].iter().position(|&byte| byte == b'<') {

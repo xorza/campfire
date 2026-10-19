@@ -1,4 +1,4 @@
-use crate::component_kind::ComponentKind;
+use crate::component_type_id::ComponentTypeId;
 use bevy_ecs::archetype::Archetype;
 use bevy_ecs::component::Components;
 use campfire_common::{DomainHasher, HashDomain, HashOutput};
@@ -24,20 +24,6 @@ use tracing::debug;
 /// Pre-spawned entities must be spawned in the `FixedMain` schedule, where the tick is the one
 /// the client and the server agree on: a default hash, and any pre-spawn on a receiver, panic
 /// outside it. A sender's pre-spawn with a hash of its own may be spawned anywhere.
-///
-/// ```rust
-/// # use campfire_net_replication::{AppComponentExt, PreSpawned, VisibilityExt};
-/// // Default hashing implementation: (tick + components)
-/// PreSpawned::default();
-///
-/// // Default hashing implementation with additional user-provided salt:
-/// let client_id: u64 = 12345;
-/// PreSpawned::default_with_salt(client_id);
-///
-/// // User-provided custom hash
-/// let custom_hash: u64 = 1;
-/// PreSpawned::new(1);
-/// ```
 #[derive(Component)]
 #[component(on_add = PreSpawned::on_add)]
 #[reflect(Component, Default)]
@@ -101,10 +87,11 @@ impl PreSpawned {
     }
 }
 
-/// Hook calculates the hash (if missing), and updates the PreSpawned component.
-/// Since this is a hook, it will calculate based on components inserted before or alongside the
-/// PreSpawned component, on the same tick that PreSpawned was inserted.
 impl PreSpawned {
+    /// Hashes the entity, unless its `PreSpawned` holds a hash, from the components inserted
+    /// before or with it and the tick `FixedMain` simulates (13-net-stack/replication.md, A
+    /// pre-spawn's tick is the simulated one, and the receiver makes its pre-spawns in
+    /// `FixedMain`).
     fn on_add(mut deferred_world: DeferredWorld<'_>, context: HookContext) {
         let entity = context.entity;
         let salt = match deferred_world.entity(entity).get::<Self>().unwrap().hash {
@@ -178,8 +165,8 @@ pub(crate) fn compute_default_hash(
         .filter_map(|component_id| {
             let type_id = components.get_info(component_id)?.type_id()?;
             component_registry
-                .kind_map
-                .net_id(&ComponentKind::from(type_id))
+                .type_map
+                .net_id(&ComponentTypeId::from(type_id))
                 .copied()
         })
         .collect::<SmallVec<[NetId; 16]>>();

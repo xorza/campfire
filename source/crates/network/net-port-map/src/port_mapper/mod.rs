@@ -74,7 +74,9 @@ pub(crate) struct PortMapper {
     heard: Option<SsdpAnnouncement>,
     /// Whether the host was told that no router maps the port, since the last mapping.
     told: bool,
-    /// Where each mapping's PCP nonce, each renewal's time and each UPnP port are drawn from.
+    /// Where each mapping's PCP nonce, each renewal's time and each UPnP port are drawn from
+    /// (13-net-stack/port-map.md, The draws come from the mapper's `Random`, the clock from the
+    /// OS).
     random: Random,
 }
 
@@ -241,7 +243,7 @@ impl PortMapper {
         let Some(announcement) = SsdpAnnouncement::parse(datagram, from) else {
             return false;
         };
-        let ip = |heard: &SsdpAnnouncement| *heard.location().addr().ip();
+        let ip = |heard: &SsdpAnnouncement| *heard.location().address().ip();
         let new = self
             .heard
             .as_ref()
@@ -325,12 +327,13 @@ impl PortMapper {
     }
 
     /// Logs where a player outside joins through `mapping`, or that another NAT stands before the
-    /// router, whose own address is then private.
+    /// router, whose own address is then private (13-net-stack/port-map.md, The address outside is
+    /// logged, and a private one warns).
     fn announce(mapping: &Mapping) {
         let Some(external) = mapping.external() else {
             return;
         };
-        if Self::public(*external.ip()) {
+        if Self::is_public(*external.ip()) {
             info!(%external, by = ?mapping.by, "the router forwards the server's port; a player outside joins at this address");
         } else {
             warn!(%external, by = ?mapping.by, "the router forwards the server's port, but its own address is private: another NAT stands before it, and a player outside joins only if that NAT forwards the port to the router");
@@ -340,7 +343,7 @@ impl PortMapper {
     /// Whether a router's external address is one the internet routes to: none of the private
     /// ranges of RFC 1918, carrier-grade NAT's 100.64.0.0/10 of RFC 6598, link-local, loopback or
     /// unspecified.
-    const fn public(address: Ipv4Addr) -> bool {
+    const fn is_public(address: Ipv4Addr) -> bool {
         let [first, second, ..] = address.octets();
         let carrier_grade = first == 100 && second & 0xc0 == 64;
         !(address.is_private()

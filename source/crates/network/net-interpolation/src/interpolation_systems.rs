@@ -2,7 +2,7 @@ use bevy_ecs::schedule::SystemSet;
 
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub enum InterpolationSystems {
-    /// Update component histories and apply stack-owned interpolation.
+    /// Update component histories and apply stack-held interpolation.
     ///
     /// This runs in two ordered phases. The first phase updates histories and
     /// applies pending component insertions/removals at the interpolation

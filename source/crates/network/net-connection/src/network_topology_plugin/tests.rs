@@ -29,7 +29,7 @@ fn mode(app: &App) -> &NetworkTopology {
 }
 
 #[test]
-fn only_ready_client_and_server_entities_are_cached() {
+fn only_a_ready_client_or_server_is_cached() {
     let mut app = app();
     let client = app.world_mut().spawn(Client).id();
     app.update();
@@ -92,7 +92,7 @@ fn host_client_requires_a_connected_client_and_its_started_server() {
 }
 
 #[test]
-fn unsupported_ready_role_combinations_are_invalid() {
+fn an_unsupported_mix_of_ready_sides_is_invalid() {
     let mut app = app();
     let first = connect_client(&mut app, 1);
     let second = connect_client(&mut app, 2);
@@ -127,7 +127,7 @@ fn unsupported_ready_role_combinations_are_invalid() {
 }
 
 #[test]
-fn connected_host_without_link_relationship_is_invalid() {
+fn a_connected_host_client_without_its_server_link_is_invalid() {
     let mut app = app();
     let client = app
         .world_mut()
@@ -147,7 +147,7 @@ fn connected_host_without_link_relationship_is_invalid() {
 }
 
 #[test]
-fn unchanged_invalidation_does_not_mark_networking_state_changed() {
+fn an_unchanged_invalid_topology_leaves_the_networking_state_unchanged() {
     let mut app = app();
     let last_changed = app.world().resource_ref::<NetworkingState>().last_changed();
 

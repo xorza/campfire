@@ -1,7 +1,7 @@
 use super::*;
 use crate::link_model::LinkModel;
 
-/// One simulated link, its wire time moved by hand.
+/// One emulated link, its wire time moved by hand.
 struct Harness {
     network: EmulatedNetwork,
     pair: EmulatedPair,
@@ -74,7 +74,7 @@ fn latency_holds_a_packet_until_it_is_due() {
 fn an_outage_loses_packets_until_the_recovery() {
     let harness = Harness::new(DuplexModel::default());
     let link = harness.emulated_link();
-    let up = Direction::ClientToServer;
+    let up = LinkDirection::ClientToServer;
     harness.network.add_phase(link, up, Phase::outage(ms(100)));
     harness
         .network
@@ -95,7 +95,7 @@ fn an_outage_loses_packets_until_the_recovery() {
 fn a_stall_releases_what_it_held_at_its_end() {
     let harness = Harness::new(DuplexModel::default());
     let link = harness.emulated_link();
-    let up = Direction::ClientToServer;
+    let up = LinkDirection::ClientToServer;
     harness
         .network
         .add_phase(link, up, Phase::stall(ms(0), LinkModel::perfect()));
@@ -115,8 +115,8 @@ fn a_stall_releases_what_it_held_at_its_end() {
     );
 }
 
-/// Each end's MTU is the link's, and none without one. A phase replaces the conditions and not
-/// the MTU: under a phase, a packet within the 1300 bytes the session was told arrives, and one
+/// Each end's MTU is the link's, and none without one. A phase replaces the conditions and not the
+/// MTU: under a phase, a packet within the 1300 bytes the packet session was told arrives, and one
 /// past them is dropped.
 #[test]
 fn the_link_mtu_is_each_ends_in_every_phase() {
@@ -125,7 +125,7 @@ fn the_link_mtu_is_each_ends_in_every_phase() {
     assert_eq!(harness.pair.client.mtu(), Some(1300));
     assert_eq!(Harness::new(DuplexModel::default()).pair.client.mtu(), None);
 
-    let up = Direction::ClientToServer;
+    let up = LinkDirection::ClientToServer;
     harness.network.add_phase(
         harness.emulated_link(),
         up,
@@ -151,9 +151,9 @@ fn each_link_names_its_client_end_by_its_own_address() {
     let network = EmulatedNetwork::new(WireClock::Driven);
     let addresses = [(); 2].map(|()| {
         let pair = network.pair(DuplexModel::default());
-        let address = pair.client.client_addr();
-        assert_eq!(pair.server.peer_addr(), address);
-        assert_eq!(pair.client.peer_addr(), EmulatedIo::SERVER_ADDR);
+        let address = pair.client.client_address();
+        assert_eq!(pair.server.remote_address(), address);
+        assert_eq!(pair.client.remote_address(), EmulatedIo::SERVER_ADDR);
         address
     });
     assert_ne!(addresses[0], addresses[1]);
@@ -255,7 +255,7 @@ fn counts_follow_each_packets_fate() {
     assert_eq!(
         harness
             .network
-            .counts(harness.emulated_link(), Direction::ClientToServer),
+            .counts(harness.emulated_link(), LinkDirection::ClientToServer),
         DirectionCounts {
             sent: 2,
             sent_bytes: 1 + u64::try_from(MTU + 1).unwrap(),

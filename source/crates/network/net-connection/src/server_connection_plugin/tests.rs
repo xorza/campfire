@@ -5,14 +5,8 @@
 
 use super::*;
 use crate::client_connection_plugin::ClientConnectionPlugin;
-use crate::connection_state::Connected;
 use crate::networking_state::NetworkingState;
-use crate::remote_id::RemoteId;
-use crate::server_state::Started;
 use crate::server_state::StopReason;
-use crate::server_state::Stopping;
-use campfire_net_core::PeerId;
-use campfire_net_link::Linked;
 use campfire_net_link::ServerLinkPlugin;
 use campfire_net_payload::AppCode;
 
@@ -217,7 +211,7 @@ fn a_reconnect_keeps_its_new_mapping() {
 
 /// `peer_map` names the server while it is `Started`: going down already unmaps it.
 #[test]
-fn server_mapping_lasts_while_started() {
+fn a_server_stays_in_the_peer_map_while_it_is_started() {
     let mut app = App::new();
     app.init_resource::<NetworkingState>();
     let server = app.world_mut().spawn((Server::default(), Started)).id();
@@ -241,7 +235,7 @@ fn server_mapping_lasts_while_started() {
 }
 
 #[test]
-fn despawned_server_clears_peer_map() {
+fn a_despawned_server_leaves_the_peer_map() {
     let mut app = App::new();
     app.init_resource::<NetworkingState>();
     let server = app.world_mut().spawn((Server::default(), Started)).id();
@@ -287,5 +281,108 @@ fn an_io_that_despawns_its_own_link_is_tolerated() {
             .resource::<NetworkingState>()
             .peer_map
             .contains_key(&PeerId::Local(1))
+    );
+}
+
+/// A `Stop` stops the server with its code, and each link of the server disconnects as its
+/// server stopped, then goes at the end of the frame.
+#[test]
+fn a_stop_reports_its_code_and_ends_each_link_of_the_server() {
+    let mut app = App::new();
+    app.add_plugins((
+        campfire_net_link::LinkPlugin,
+        ServerLinkPlugin,
+        ClientConnectionPlugin,
+        ServerConnectionPlugin,
+    ));
+    let server = app.world_mut().spawn((Server::default(), Linked)).id();
+    let client = app
+        .world_mut()
+        .spawn((
+            LinkOf { server },
+            RemoteAddress("127.0.0.1:5000".parse().unwrap()),
+            Linked,
+        ))
+        .id();
+    app.world_mut().flush();
+    assert!(app.world().entity(server).contains::<Started>());
+    assert!(app.world().entity(client).contains::<Connected>());
+
+    let code = AppCode::new(AppCode::FIRST + 3);
+    app.world_mut().trigger(Stop {
+        entity: server,
+        reason: code,
+    });
+    app.world_mut().flush();
+
+    assert_eq!(
+        app.world()
+            .get::<Stopped>(server)
+            .map(|stopped| stopped.reason),
+        Some(StopReason::UserRequested(code))
+    );
+    assert_eq!(
+        app.world()
+            .get::<Disconnected>(client)
+            .map(|disconnected| disconnected.reason),
+        Some(DisconnectedReason::LinkFailed(UnlinkReason::ServerStopped))
+    );
+    app.update();
+    assert!(app.world().get_entity(client).is_err());
+    assert!(app.world().get_entity(server).is_ok());
+}
+
+/// A server starts stopped unless it spawns in another state, which its link's state backs.
+#[test]
+fn a_server_starts_stopped_unless_it_spawns_linked_and_started() {
+    let mut app = App::new();
+    app.init_resource::<NetworkingState>();
+    app.add_plugins(ServerConnectionPlugin);
+    let fresh = app.world_mut().spawn(Server::default()).id();
+    let started = app
+        .world_mut()
+        .spawn((Server::default(), Linked, Started))
+        .id();
+    app.world_mut().flush();
+
+    assert_eq!(
+        app.world()
+            .get::<Stopped>(fresh)
+            .map(|stopped| stopped.reason),
+        Some(StopReason::Initial)
+    );
+    let started = app.world().entity(started);
+    assert!(started.contains::<Started>());
+    assert!(!started.contains::<Stopped>());
+}
+
+#[test]
+fn a_server_link_keeps_the_remote_id_its_io_layer_set() {
+    let mut app = App::new();
+    app.add_plugins((ClientConnectionPlugin, ServerConnectionPlugin));
+    let server = app.world_mut().spawn(Server::default()).id();
+    let address = "127.0.0.1:5000".parse().unwrap();
+    let named = RemoteId(PeerId::Entity(7));
+    let named_link = app
+        .world_mut()
+        .spawn((LinkOf { server }, RemoteAddress(address), named))
+        .id();
+    let addressed_link = app
+        .world_mut()
+        .spawn((LinkOf { server }, RemoteAddress(address)))
+        .id();
+
+    app.world_mut().entity_mut(named_link).insert(Linked);
+    app.world_mut().entity_mut(addressed_link).insert(Linked);
+    app.world_mut().flush();
+
+    let named_link = app.world().entity(named_link);
+    assert!(named_link.contains::<Connected>());
+    assert_eq!(named_link.get::<RemoteId>(), Some(&named));
+    let addressed_link = app.world().entity(addressed_link);
+    assert!(addressed_link.contains::<Connected>());
+    assert_eq!(
+        addressed_link.get::<RemoteId>(),
+        Some(&RemoteId(PeerId::Address(address)))
     );
 }

@@ -8,32 +8,6 @@ use crate::interpolation_fns::InterpolationFns;
 /// Histories can represent temporarily absent members, while apply requires every live member.
 /// A bundle may therefore maintain `(A, B)` histories while a standalone rule applies `A` until
 /// `B` becomes live again.
-///
-/// # Examples
-///
-/// Give a marker-filtered rule priority over the default rule:
-///
-/// ```rust,ignore
-/// use bevy_ecs::prelude::*;
-/// use campfire_net_interpolation::{AppInterpolationExt, InterpolationFns, InterpolationRegistrationExt, InterpolationRule};
-///
-/// #[derive(Component, Clone, PartialEq)]
-/// struct Position(f32);
-///
-/// #[derive(Component)]
-/// struct SmoothVisuals;
-///
-/// fn smooth_lerp(start: &Position, end: &Position, t: f32) -> Position {
-///     Position(start.0 + (end.0 - start.0) * t)
-/// }
-///
-/// app.register_component::<Position>()
-///     .replicate()
-///     .interpolate(InterpolationFns::with(smooth_lerp));
-/// app.register_interpolation_rule::<Position, With<SmoothVisuals>>(
-///     InterpolationRule::new(InterpolationFns::with(smooth_lerp)).priority(100),
-/// );
-/// ```
 #[derive(Debug, Clone)]
 pub struct InterpolationRule<S> {
     pub(crate) fns: InterpolationFns<S>,

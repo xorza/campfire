@@ -17,7 +17,7 @@ impl<R> HistoryState<R> {
         matches!(self, Self::Updated(_))
     }
 
-    /// Get the inner value if present.
+    /// The inner value if present.
     pub const fn value(&self) -> Option<&R> {
         match self {
             Self::Updated(value) => Some(value),
@@ -25,7 +25,7 @@ impl<R> HistoryState<R> {
         }
     }
 
-    /// Get the inner value if present.
+    /// The inner value if present.
     pub const fn value_mut(&mut self) -> Option<&mut R> {
         match self {
             Self::Updated(value) => Some(value),
@@ -33,7 +33,7 @@ impl<R> HistoryState<R> {
         }
     }
 
-    /// Get the inner value if present.
+    /// The inner value if present.
     pub fn into_value(self) -> Option<R> {
         match self {
             Self::Updated(value) => Some(value),

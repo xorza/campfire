@@ -1,8 +1,9 @@
-//! Module to take a buffer of messages to send and build packets
+//! The packing of a link's due messages into packets, to the packet session's budget
+//! (13-net-stack/transport.md, A flush stops at the packet session's budget).
 use crate::bench_counter::BenchCounter;
 use crate::compression::{CompressionOutcome, PacketCompression};
-use crate::compression_config::CompressionConfig;
 use crate::compression_scratch::CompressionScratch;
+use crate::compression_setup::CompressionSetup;
 use crate::message_ref::MessageRef;
 use crate::packet::{DEFAULT_MAX_PAYLOAD, Packet, PacketCompressionInfo};
 use crate::packet_buffer_pool::PacketBufferPool;
@@ -12,7 +13,7 @@ use crate::packet_message::PacketMessage;
 use crate::packet_message::SendCommit;
 use crate::send_candidate::{CandidateMessages, SendCandidate};
 use crate::send_message_key::SendMessageKey;
-use crate::single_data::SingleData;
+use crate::single_body::SingleBody;
 use crate::tick_encoder::EncodedTick;
 use bytes::BytesMut;
 use campfire_net_bytes::ToBytes;
@@ -26,7 +27,7 @@ const MAX_MESSAGES_PER_CHANNEL_BATCH: u8 = u8::MAX;
 /// Builder-local state for the currently open batch of single messages.
 ///
 /// A batch is encoded as a channel ID, a one-byte message count, and that many consecutive
-/// [`SingleData`](crate::single_data::SingleData) values. Grouping messages this way avoids
+/// [`SingleBody`](crate::single_body::SingleBody) values. Grouping messages this way avoids
 /// repeating the channel ID for every message. This state is not serialized as a struct: `count`
 /// mirrors the serialized count byte at `count_offset` so the builder can update it in place.
 /// Once `count` reaches [`u8::MAX`], another batch is started, even for the same channel.
@@ -47,7 +48,7 @@ struct OpenPacket {
     batch: Option<SingleBatchState>,
     /// The last state known to fit: its payload within the limit, or its body compressed into
     /// [`PacketFit::kept`] within the room.
-    verified: Checkpoint,
+    verified: Mark,
     /// The compression of the verified body, once a body passed the limit.
     kept: Option<KeptCompression>,
     /// The payload length past which an append compresses the body again: the limit, then where
@@ -57,7 +58,7 @@ struct OpenPacket {
 
 /// A state of an [`OpenPacket`] that an append can roll back to.
 #[derive(Debug, Clone, Copy)]
-struct Checkpoint {
+struct Mark {
     payload_len: usize,
     messages_len: usize,
     batch: Option<SingleBatchState>,
@@ -94,8 +95,8 @@ pub(crate) struct PacketSource<'a, M> {
     /// The candidates in priority and packing order.
     pub(crate) candidates: &'a [SendCandidate],
     pub(crate) messages: &'a M,
-    pub(crate) compression: CompressionConfig,
-    /// The largest payload one packet carries, after the session's headroom.
+    pub(crate) compression: CompressionSetup,
+    /// The largest payload one packet carries, after the packet session's headroom.
     pub(crate) max_payload: usize,
 }
 
@@ -123,9 +124,9 @@ impl Default for PacketBuilder {
 }
 
 impl PacketBuilder {
-    /// The buffer of a packet of at most `max_payload` bytes: the session's headroom before it,
-    /// where the session writes its header in place, and its tailroom after, where the seal
-    /// appends its tag.
+    /// The buffer of a packet of at most `max_payload` bytes: the packet session's headroom before
+    /// it, where the packet session writes its header in place, and its tailroom after, where the
+    /// seal appends its tag.
     const fn buffer_capacity(max_payload: usize) -> usize {
         OutgoingPayload::HEADROOM + max_payload + OutgoingPayload::TAILROOM
     }
@@ -145,11 +146,11 @@ impl PacketBuilder {
             .set_payload_capacity(Self::buffer_capacity(max_payload));
     }
 
-    /// Stage the next packet from globally ordered, channel-owned candidates.
+    /// Stage the next packet from globally ordered, channel-held candidates.
     ///
     /// This method only reads the candidates and their messages. It deliberately does not mutate
-    /// channel queues, reliable send state or the session's budget. The caller commits those
-    /// transitions after the returned packet goes to the session.
+    /// channel queues, reliable send state or the packet session's budget. The caller commits those
+    /// transitions after the returned packet goes to the packet session.
     pub(crate) fn build_next_packet<M: CandidateMessages>(
         &mut self,
         source: &PacketSource<'_, M>,
@@ -196,7 +197,7 @@ impl PacketBuilder {
                         channel_id: first.channel_id,
                         key,
                     },
-                    num_bytes: BenchCounter::new(fragment.payload().len()),
+                    len: BenchCounter::new(fragment.payload().len()),
                 });
                 cursor.fragment = messages.next_due(first.channel_id, key);
                 if cursor.fragment.is_none() {
@@ -210,7 +211,7 @@ impl PacketBuilder {
                 if fragment.is_last() {
                     let mut fit = PacketFit {
                         compression: PacketCompression {
-                            config: CompressionConfig::DISABLED,
+                            setup: CompressionSetup::DISABLED,
                             room,
                         },
                         limit,
@@ -273,7 +274,7 @@ impl PacketBuilder {
                 );
                 let mut fit = PacketFit {
                     compression: PacketCompression {
-                        config: compression,
+                        setup: compression,
                         room,
                     },
                     limit,
@@ -354,7 +355,7 @@ impl PacketBuilder {
 
 impl OpenPacket {
     fn new(packet: Packet, limit: usize) -> Self {
-        let verified = Checkpoint {
+        let verified = Mark {
             payload_len: 0,
             messages_len: 0,
             batch: None,
@@ -366,19 +367,19 @@ impl OpenPacket {
             kept: None,
             bound: limit,
         };
-        open.verified = open.checkpoint();
+        open.verified = open.mark();
         open
     }
 
-    fn checkpoint(&self) -> Checkpoint {
-        Checkpoint {
+    fn mark(&self) -> Mark {
+        Mark {
             payload_len: self.packet.payload.len(),
             messages_len: self.packet.messages.len(),
             batch: self.batch,
         }
     }
 
-    fn roll_back(&mut self, to: Checkpoint) {
+    fn roll_back(&mut self, to: Mark) {
         if let Some(batch) = to.batch {
             self.packet.payload.as_mut()[batch.count_offset] = batch.count;
         }
@@ -397,7 +398,7 @@ impl OpenPacket {
     fn try_append_single(
         &mut self,
         candidate: &SendCandidate,
-        message: &SingleData,
+        message: &SingleBody,
         fit: &mut PacketFit<'_>,
     ) -> Result<bool, PacketError> {
         let opens_batch = !self.batch.is_some_and(|state| {
@@ -408,12 +409,12 @@ impl OpenPacket {
         } else {
             0
         } + message.bytes_len();
-        let compressing = fit.compression.config.is_enabled();
+        let compressing = fit.compression.setup.is_enabled();
         if !compressing && self.packet.payload.len() + append_len > fit.limit {
             return Ok(false);
         }
 
-        let before = self.checkpoint();
+        let before = self.mark();
         let packet = &mut self.packet;
         match &mut self.batch {
             Some(state) if !opens_batch => {
@@ -437,12 +438,12 @@ impl OpenPacket {
                 channel_id: candidate.channel_id,
                 key: candidate.key,
             },
-            num_bytes: BenchCounter::new(message.bytes.len()),
+            len: BenchCounter::new(message.bytes.len()),
         });
 
         let len = packet.payload.len();
         if len <= fit.limit {
-            self.verified = self.checkpoint();
+            self.verified = self.mark();
             return Ok(true);
         }
         if len <= self.bound {
@@ -463,7 +464,7 @@ impl OpenPacket {
             original_len,
             compressed_len,
         });
-        self.verified = self.checkpoint();
+        self.verified = self.mark();
         self.bound = fit.header_len + original_len * fit.compression.room / compressed_len;
         Ok(true)
     }
@@ -510,7 +511,7 @@ impl OpenPacket {
                 kind = "packet_compression",
                 ?outcome,
                 bytes = staging.len(),
-                num_messages = self.packet.messages.len(),
+                messages = self.packet.messages.len(),
                 "transport packet compression outcome"
             );
             Packet {

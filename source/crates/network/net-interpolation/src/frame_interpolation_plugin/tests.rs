@@ -19,7 +19,7 @@ use campfire_net_replication::AppComponentExt;
 use serde::{Deserialize, Serialize};
 
 use crate::frame_source::{FrameSamples, FrameSource};
-use crate::interpolation_sample_context::InterpolationSampleContext;
+use crate::interpolation_sample_cx::InterpolationSampleCx;
 use bevy_ecs::world::FilteredEntityRef;
 use bevy_time::{Fixed, Time};
 use campfire_net_core::NetTick;
@@ -60,23 +60,23 @@ fn bundle_lerp(start: (&FrameA, &FrameB), end: (&FrameA, &FrameB), t: f32) -> (F
     )
 }
 
-fn bundle_context_lerp(
+fn bundle_cx_lerp(
     _start: (&FrameA, &FrameB),
     _end: (&FrameA, &FrameB),
-    context: InterpolationSampleContext,
+    cx: InterpolationSampleCx,
 ) -> (FrameA, FrameB) {
     (
-        FrameA(context.t),
-        FrameB(context.sample_delta_secs.unwrap_or_default()),
+        FrameA(cx.t),
+        FrameB(cx.sample_delta_secs.unwrap_or_default()),
     )
 }
 
-/// Checks that rule registration is rejected after the frame plugin finalizes the registry.
+/// Rule registration is rejected after the frame plugin finalizes the registry.
 #[test]
 #[should_panic(
     expected = "cannot register interpolation rules after InterpolationRegistry has been finalized"
 )]
-fn frame_plugin_rejects_late_rule_registration() {
+fn the_frame_plugin_refuses_a_rule_registered_late() {
     let mut app = App::new();
     app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.finish();
@@ -86,9 +86,9 @@ fn frame_plugin_rejects_late_rule_registration() {
     ));
 }
 
-/// Checks that adding `FrameInterpolate` later initializes existing component history.
+/// Adding `FrameInterpolate` later initializes existing component history.
 #[test]
-fn frame_update_inserts_history_when_frame_interpolate_is_added() {
+fn a_later_frame_interpolate_inserts_the_frame_history() {
     let mut app = App::new();
     app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
@@ -115,9 +115,9 @@ fn frame_update_inserts_history_when_frame_interpolate_is_added() {
     );
 }
 
-/// Checks that adding a registered component later initializes its frame history.
+/// Adding a registered component later initializes its frame history.
 #[test]
-fn frame_update_inserts_history_when_component_is_added() {
+fn a_later_component_inserts_its_frame_history() {
     let mut app = App::new();
     app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
@@ -144,7 +144,7 @@ fn frame_update_inserts_history_when_component_is_added() {
     );
 }
 
-/// Checks that spawning the marker and component together initializes frame history.
+/// Spawning the marker and component together initializes frame history.
 #[test]
 fn frame_update_inserts_history_when_both_are_spawned() {
     let mut app = App::new();
@@ -166,9 +166,9 @@ fn frame_update_inserts_history_when_both_are_spawned() {
     );
 }
 
-/// Checks that a winning disabled rule blocks lower-priority frame-history creation.
+/// A winning disabled rule blocks lower-priority frame-history creation.
 #[test]
-fn disabled_winner_does_not_insert_lower_rule_frame_history() {
+fn a_winning_disabled_rule_inserts_no_frame_history_of_a_lower_rule() {
     let mut app = App::new();
     app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
@@ -194,7 +194,7 @@ fn disabled_winner_does_not_insert_lower_rule_frame_history() {
     );
 }
 
-/// Checks that every component owned by winning rules receives frame history.
+/// Every component a winning rule holds gets its frame history.
 #[test]
 fn frame_update_initializes_all_histories_for_the_winning_rules() {
     let mut app = App::new();
@@ -230,7 +230,7 @@ fn frame_update_initializes_all_histories_for_the_winning_rules() {
 }
 
 #[test]
-fn frame_bundle_interpolation_uses_tuple_rule() {
+fn a_frame_bundle_interpolates_by_its_tuple_rule() {
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs(1)));
     app.world_mut()
@@ -294,9 +294,9 @@ fn frame_bundle_interpolation_uses_tuple_rule() {
     );
 }
 
-/// Checks that a bundle can own histories while a component rule applies the live member.
+/// A bundle can hold the histories while a component rule applies the live member.
 #[test]
-fn frame_bundle_maintains_history_while_component_rule_applies_to_live_member() {
+fn a_frame_bundle_keeps_the_histories_while_a_component_rule_applies_the_live_member() {
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs(1)));
     app.world_mut()
@@ -336,7 +336,7 @@ fn frame_bundle_maintains_history_while_component_rule_applies_to_live_member() 
 }
 
 #[test]
-fn frame_bundle_interpolation_receives_fixed_timestep() {
+fn a_frame_bundle_interpolation_gets_the_fixed_timestep() {
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs(2)));
     app.world_mut()
@@ -344,7 +344,7 @@ fn frame_bundle_interpolation_receives_fixed_timestep() {
         .accumulate_overstep(Duration::from_millis(500));
     app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_bundle_interpolation_rule::<(FrameA, FrameB), ()>(InterpolationRule::new(
-        InterpolationFns::no_history_with_context(bundle_context_lerp),
+        InterpolationFns::no_history_with_cx(bundle_cx_lerp),
     ));
     app.finish();
 
@@ -426,7 +426,7 @@ fn frame_interpolation_reuses_no_history_interpolation_rule() {
 }
 
 #[test]
-fn frame_interpolation_reuses_history_only_interpolation_rule() {
+fn a_frame_interpolation_takes_a_history_only_rule() {
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs(1)));
     app.world_mut()
@@ -471,7 +471,7 @@ fn frame_interpolation_reuses_history_only_interpolation_rule() {
 }
 
 #[test]
-fn frame_interpolation_uses_filtered_rule_for_frame_interpolate_marker() {
+fn a_frame_interpolation_takes_the_rule_filtered_by_its_marker() {
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs(1)));
     app.world_mut()
@@ -509,7 +509,7 @@ fn frame_interpolation_uses_filtered_rule_for_frame_interpolate_marker() {
 }
 
 #[test]
-fn frame_interpolation_supports_sparse_set_live_component() {
+fn a_frame_interpolation_writes_a_sparse_set_component() {
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs(1)));
     app.world_mut()
@@ -574,7 +574,7 @@ fn frame_interpolation_supports_sparse_set_live_component() {
 }
 
 #[test]
-fn frame_interpolation_updates_change_detection_for_table_and_sparse_set_components() {
+fn a_frame_interpolation_marks_a_table_and_a_sparse_set_component_changed() {
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs(1)));
     app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));

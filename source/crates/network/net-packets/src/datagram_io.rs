@@ -4,7 +4,6 @@ use core::time::Duration;
 
 use crate::io_failed::IoFailed;
 
-/// A datagram an IO received, and the address it came from.
 /// A datagram to send, and where.
 #[derive(Debug)]
 pub struct Outbound {
@@ -12,15 +11,16 @@ pub struct Outbound {
     pub datagram: Bytes,
 }
 
+/// A datagram an IO received, and the address it came from.
 #[derive(Debug, Clone)]
 pub struct Datagram {
     pub from: SocketAddr,
     pub payload: BytesMut,
 }
 
-/// The datagram IO an endpoint drives: the simulated network's wires, or a socket. Its methods
-/// take `&self`, as the IO thread reads and waits outside the endpoint's lock while the frame
-/// sends.
+/// The datagram IO an endpoint drives: the emulated network's wires, or a socket. Its methods take
+/// `&self`, as the IO thread reads and waits outside the endpoint's lock while the frame sends
+/// (13-net-stack/packet-session.md, Two IO kinds: the socket and the emulated network).
 pub trait DatagramIo: Send + Sync + core::fmt::Debug + 'static {
     /// Appends the datagrams that arrived to `out`, or fails for good: at least `max` of them
     /// when as many wait, and at most one read of the IO beyond `max`, so a caller that finds

@@ -1,6 +1,7 @@
 use core::num::NonZeroU32;
 
-/// A link's speed and the queue in front of it.
+/// A link's speed and the queue in front of it (13-net-stack/testing.md, A link's queue drains in
+/// order across phase changes).
 ///
 /// A packet leaves once the link has sent every packet queued before it, which takes its size over
 /// the speed; one that would make the queue hold more than `queue_bytes` is dropped at the queue's

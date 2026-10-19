@@ -1,9 +1,9 @@
-//! A packet: the transport's payload of one session packet, filled with the messages of its
+//! A packet: the transport's payload of one packet session packet, filled with the messages of its
 //! channels in priority order.
 //!
-//! Its bytes start after the session's headroom, where the session writes its header in place,
-//! with the tick; the messages follow in batches, or one fragment and then batches. A message
-//! larger than a packet's payload is split into `FragmentData`.
+//! Its bytes start after the packet session's headroom, where the packet session writes its header
+//! in place, with the tick; the messages follow in batches, or one fragment and then batches. A
+//! message larger than a packet's payload is split into `FragmentBody`.
 
 use crate::packet_kind::PacketKind;
 use crate::packet_message::PacketMessage;
@@ -35,42 +35,42 @@ pub(crate) const MIN_FRAGMENT_PAYLOAD: usize = FIXED_FRAGMENT_PACKET_BYTES
     + 1 // encoded fragment byte length
     + 1; // payload
 
-/// Returns the fragment size a sender uses on a link whose packets carry at most `max_payload`
+/// The fragment size a sender uses on a link whose packets carry at most `max_payload`
 /// bytes.
 ///
 /// Only the sender's own link sets it: the receiver takes each message's fragment size from that
 /// message's fragments, so the two peers' links do not have to agree. Reserving the long tick and
 /// the largest identifier encodings ensures every fragment produced at this size fits even for
-/// long-running sessions and very large logical messages.
-pub const fn fragment_size_for_max_payload(max_payload: usize) -> Option<usize> {
+/// long-running packet sessions and very large logical messages.
+pub const fn fragment_len_for_max_payload(max_payload: usize) -> Option<usize> {
     let Some(available) = max_payload.checked_sub(FIXED_FRAGMENT_PACKET_BYTES) else {
         return None;
     };
 
     // `Bytes` encodes its payload length as a varint. Start at all remaining space and find the
     // largest payload whose own length prefix plus bytes fit in that space.
-    let mut fragment_size = available;
-    while fragment_size > 0 {
-        let length_prefix_bytes = VarInt::new(fragment_size as u64).encoded_len();
-        if fragment_size <= available.saturating_sub(length_prefix_bytes) {
-            return Some(fragment_size);
+    let mut fragment_len = available;
+    while fragment_len > 0 {
+        let length_prefix_bytes = VarInt::new(fragment_len as u64).encoded_len();
+        if fragment_len <= available.saturating_sub(length_prefix_bytes) {
+            return Some(fragment_len);
         }
-        fragment_size -= 1;
+        fragment_len -= 1;
     }
     None
 }
 
-/// The largest payload of a datagram of [`DEFAULT_MTU`] bytes under the session's longest header
-/// and its tag, which a transport assumes until its link names its own.
+/// The largest payload of a datagram of [`DEFAULT_MTU`] bytes under the packet session's longest
+/// header and its tag, which a transport assumes until its link names its own.
 pub(crate) const DEFAULT_MAX_PAYLOAD: usize = OutgoingPayload::max_payload(DEFAULT_MTU);
 
 /// The fragment size of a link of [`DEFAULT_MAX_PAYLOAD`], until the link names its own.
-pub(crate) const FRAGMENT_SIZE: usize = match fragment_size_for_max_payload(DEFAULT_MAX_PAYLOAD) {
-    Some(fragment_size) => fragment_size,
+pub(crate) const FRAGMENT_LEN: usize = match fragment_len_for_max_payload(DEFAULT_MAX_PAYLOAD) {
+    Some(fragment_len) => fragment_len,
     None => panic!("the default payload cannot hold transport fragment metadata"),
 };
 
-/// A packet the builder staged: its payload after the session's headroom, its kind and the
+/// A packet the builder staged: its payload after the packet session's headroom, its kind and the
 /// messages it carries.
 #[derive(Debug)]
 pub(crate) struct Packet {
@@ -85,8 +85,8 @@ pub(crate) struct Packet {
 }
 
 impl Packet {
-    /// Transfers the payload to the session, which writes its header into the headroom and its
-    /// tag past the end: the payload and its tailroom, split off the rest of the buffer, which
+    /// Transfers the payload to the packet session, which writes its header into the headroom and
+    /// its tag past the end: the payload and its tailroom, split off the rest of the buffer, which
     /// drops.
     pub(crate) fn take_send_payload(&mut self) -> BytesMut {
         let mut payload = core::mem::take(&mut self.payload);
@@ -97,13 +97,9 @@ impl Packet {
         handed
     }
 
-    /// The bytes the packet's payload takes on the wire, after the session's headroom.
+    /// The bytes the packet's payload takes on the wire, after the packet session's headroom.
     pub(crate) fn len(&self) -> usize {
         self.payload.len() - OutgoingPayload::HEADROOM
-    }
-
-    pub(crate) const fn num_messages(&self) -> usize {
-        self.messages.len()
     }
 
     pub(crate) fn record_message(&mut self, message: PacketMessage) {

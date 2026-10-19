@@ -1,5 +1,5 @@
+use crate::controlled_lifetime::ControlledLifetime;
 use crate::controlled_send::ControlledSend;
-use crate::lifetime::Lifetime;
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use bevy_replicon::prelude::ScopeLifetime;
@@ -15,9 +15,9 @@ use tracing::trace;
 /// The receiver will add a `Controlled` marker component upon receiving the entity.
 ///
 /// When the link goes, as the connection layer despawns a disconnected link, the sender will
-/// optionally (based on the [`Lifetime`] value) despawn the entity. To keep a received entity alive
-/// when its connection ends, use [`Persistent`](crate::persistent::Persistent) on the receiver side
-/// instead.
+/// optionally (based on the [`ControlledLifetime`] value) despawn the entity. To keep a received
+/// entity alive when its connection ends, use [`Persistent`](crate::persistent::Persistent) on the
+/// receiver side instead.
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug, Reflect)]
 #[require(ControlledSend)]
 #[reflect(Component)]
@@ -29,7 +29,7 @@ pub struct ControlledBy {
     #[relationship]
     pub link: Entity,
     /// What happens to the entity on the sender-side if the controlling link disconnects?
-    pub lifetime: Lifetime,
+    pub lifetime: ControlledLifetime,
 }
 
 /// `ControlledSend` is receiver-local: only the controlling link sees it.
@@ -48,8 +48,8 @@ impl VisibilityFilter for ControlledBy {
 
 impl ControlledBy {
     /// When the link goes, as the connection layer despawns a disconnected link, each entity it
-    /// controlled for its session goes too.
-    pub(crate) fn end_link_session(
+    /// controlled for its `Link` lifetime goes too.
+    pub(crate) fn end_with_link(
         trigger: On<'_, '_, Despawn<ControlledByRemote>>,
         mut commands: Commands<'_, '_>,
         controlled_by_remote: Query<'_, '_, &ControlledByRemote>,
@@ -61,14 +61,14 @@ impl ControlledBy {
         for entity in owned.collection() {
             if let Ok(owned_by) = controlled_by.get(*entity) {
                 match owned_by.lifetime {
-                    Lifetime::SessionBased => {
+                    ControlledLifetime::Link => {
                         trace!(
                             "Despawning entity {entity:?} controlled by despawned link {:?}",
                             trigger.entity
                         );
                         commands.entity(*entity).queue_silenced(DespawnReplicated);
                     }
-                    Lifetime::Independent => {}
+                    ControlledLifetime::Independent => {}
                 }
             }
         }

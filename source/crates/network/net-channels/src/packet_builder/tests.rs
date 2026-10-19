@@ -3,12 +3,12 @@ use campfire_net_core::NetTick;
 use campfire_net_payload::DEFAULT_MTU;
 
 use crate::channel::Channel;
-use crate::channel_kind::ChannelKind;
+use crate::channel_type_id::ChannelTypeId;
 #[cfg(feature = "compression_lz4")]
 use crate::compression::tests::decompress;
 use crate::fragmented_message::FragmentedMessage;
 use crate::message_id::MessageId;
-use crate::packet::FRAGMENT_SIZE;
+use crate::packet::FRAGMENT_LEN;
 use crate::send_candidate::{CandidateRank, CandidateSink};
 use crate::tick_encoder::{LONG_TICK_LEN, TickEncoder};
 use bevy_platform::collections::HashMap;
@@ -29,13 +29,13 @@ struct Channel3;
 impl Channel for Channel3 {}
 
 /// The wire id of each test channel, as a registry gives them, in the order of their names.
-fn net_id(kind: ChannelKind) -> NetId {
-    let kinds = [
-        ChannelKind::of::<Channel1>(),
-        ChannelKind::of::<Channel2>(),
-        ChannelKind::of::<Channel3>(),
+fn net_id(channel: ChannelTypeId) -> NetId {
+    let channels = [
+        ChannelTypeId::of::<Channel1>(),
+        ChannelTypeId::of::<Channel2>(),
+        ChannelTypeId::of::<Channel3>(),
     ];
-    let index = kinds.iter().position(|known| *known == kind).unwrap();
+    let index = channels.iter().position(|known| *known == channel).unwrap();
     NetId::new(u16::try_from(index).unwrap())
 }
 
@@ -58,8 +58,8 @@ impl Staged {
     }
 
     /// Stages one single of priority 1, ordered by its queue index.
-    fn single(&mut self, (_, channel_id): (ChannelKind, NetId), index: u32, bytes: Bytes) {
-        let single = SingleData::new(None, bytes);
+    fn single(&mut self, (_, channel_id): (ChannelTypeId, NetId), index: u32, bytes: Bytes) {
+        let single = SingleBody::new(None, bytes);
         let rank = CandidateRank {
             priority: 1.0,
             send_order: index,
@@ -76,7 +76,7 @@ impl Staged {
     /// Stages one fragmented message of priority 1 at the queue index `index`.
     fn fragmented(
         &mut self,
-        (_, channel_id): (ChannelKind, NetId),
+        (_, channel_id): (ChannelTypeId, NetId),
         index: u32,
         message: FragmentedMessage,
     ) {
@@ -96,7 +96,7 @@ impl Staged {
     }
 
     /// The source of a flush whose packets carry a long tick, as before the peer read one.
-    fn source(&self, compression: CompressionConfig, max_payload: usize) -> PacketSource<'_, Self> {
+    fn source(&self, compression: CompressionSetup, max_payload: usize) -> PacketSource<'_, Self> {
         PacketSource {
             tick: TickEncoder::default().encode(NetTick(0)),
             candidates: self.candidates.as_slice(),
@@ -119,13 +119,13 @@ impl CandidateMessages for Staged {
     }
 }
 
-/// A message of `len` bytes, split at `fragment_size`.
-fn split(message_id: MessageId, len: usize, fragment_size: usize) -> FragmentedMessage {
+/// A message of `len` bytes, split at `fragment_len`.
+fn split(message_id: MessageId, len: usize, fragment_len: usize) -> FragmentedMessage {
     FragmentedMessage::split(
         message_id,
         Bytes::from(vec![9u8; len]),
-        fragment_size,
-        CompressionConfig::DISABLED,
+        fragment_len,
+        CompressionSetup::DISABLED,
         &mut CompressionScratch::default(),
     )
 }
@@ -133,7 +133,7 @@ fn split(message_id: MessageId, len: usize, fragment_size: usize) -> FragmentedM
 fn build_staged_packets(
     builder: &mut PacketBuilder,
     staged: &Staged,
-    compression: CompressionConfig,
+    compression: CompressionSetup,
 ) -> Result<Vec<Packet>, PacketError> {
     let mut cursor = CandidateCursor::default();
     let mut packets = Vec::new();
@@ -148,7 +148,7 @@ fn build_staged_packets(
     Ok(packets)
 }
 
-/// The bytes before a test packet's body: the session's headroom and a long tick.
+/// The bytes before a test packet's body: the packet session's headroom and a long tick.
 #[cfg(feature = "compression_lz4")]
 const HEADER_LEN: usize = OutgoingPayload::HEADROOM + LONG_TICK_LEN;
 
@@ -159,7 +159,7 @@ fn no_ids(_: NetId) -> bool {
 
 #[cfg(feature = "compression_lz4")]
 fn decompress_packet_for_test(mut packet: Packet) -> Result<Packet, PacketError> {
-    let decompressed_payload = decompress(&packet.payload[HEADER_LEN..], CompressionConfig::LZ4)?;
+    let decompressed_payload = decompress(&packet.payload[HEADER_LEN..], CompressionSetup::LZ4)?;
     packet.kind = packet.kind.uncompressed_variant();
     packet.payload.truncate(HEADER_LEN);
     packet.payload.extend_from_slice(&decompressed_payload);
@@ -198,7 +198,7 @@ fn the_packet_message_list_keeps_its_capacity() {
 /// the spare made with it, and once the first 16 drop, their chunk serves the next 16, with no
 /// allocation past the first two.
 #[test]
-fn payloads_share_chunks_that_come_back_once_they_drop() {
+fn the_payloads_share_chunks_that_come_back_once_they_drop() {
     let mut pool = PacketBufferPool::new(DEFAULT_MTU);
     let first: Vec<BytesMut> = (0..16).map(|_| pool.take_payload()).collect();
     assert_eq!(first[0].capacity(), DEFAULT_MTU);
@@ -237,15 +237,15 @@ fn send_handoff_keeps_the_tailroom() {
 }
 
 #[test]
-fn staged_builder_packs_singles_across_channels() -> Result<(), PacketError> {
+fn the_builder_packs_singles_of_several_channels_in_one_packet() -> Result<(), PacketError> {
     let channels = [
-        ChannelKind::of::<Channel1>(),
-        ChannelKind::of::<Channel2>(),
-        ChannelKind::of::<Channel3>(),
+        ChannelTypeId::of::<Channel1>(),
+        ChannelTypeId::of::<Channel2>(),
+        ChannelTypeId::of::<Channel3>(),
     ]
-    .map(|kind| {
-        let id = net_id(kind);
-        (kind, id)
+    .map(|channel| {
+        let id = net_id(channel);
+        (channel, id)
     });
     let mut staged = Staged::default();
     for (index, (channel, bytes)) in [
@@ -263,7 +263,7 @@ fn staged_builder_packs_singles_across_channels() -> Result<(), PacketError> {
     let mut packets = build_staged_packets(
         &mut PacketBuilder::default(),
         &staged,
-        CompressionConfig::DISABLED,
+        CompressionSetup::DISABLED,
     )?;
     assert_eq!(packets.len(), 1);
     let contents = packets.pop().unwrap().parse_packet_payload(no_ids)?;
@@ -277,15 +277,15 @@ fn staged_builder_packs_singles_across_channels() -> Result<(), PacketError> {
 }
 
 #[test]
-fn staged_builder_splits_singles_at_mtu() -> Result<(), PacketError> {
+fn the_builder_splits_singles_at_the_mtu() -> Result<(), PacketError> {
     let channels = [
-        ChannelKind::of::<Channel1>(),
-        ChannelKind::of::<Channel2>(),
-        ChannelKind::of::<Channel3>(),
+        ChannelTypeId::of::<Channel1>(),
+        ChannelTypeId::of::<Channel2>(),
+        ChannelTypeId::of::<Channel3>(),
     ]
-    .map(|kind| {
-        let id = net_id(kind);
-        (kind, id)
+    .map(|channel| {
+        let id = net_id(channel);
+        (channel, id)
     });
     let mut staged = Staged::default();
     for (index, channel) in [channels[0], channels[1], channels[1], channels[2]]
@@ -302,7 +302,7 @@ fn staged_builder_splits_singles_at_mtu() -> Result<(), PacketError> {
     let packets = build_staged_packets(
         &mut PacketBuilder::default(),
         &staged,
-        CompressionConfig::DISABLED,
+        CompressionSetup::DISABLED,
     )?;
     assert_eq!(packets.len(), 2);
     assert!(
@@ -322,19 +322,19 @@ fn staged_builder_splits_singles_at_mtu() -> Result<(), PacketError> {
 }
 
 #[test]
-fn staged_fragment_packets_respect_worst_case_mtu_overhead() -> Result<(), PacketError> {
-    let channel_kind = ChannelKind::of::<Channel1>();
+fn a_fragment_packet_keeps_to_the_mtu_under_the_largest_overhead() -> Result<(), PacketError> {
+    let channel_type_id = ChannelTypeId::of::<Channel1>();
     let channel_id = 64;
-    let message = split(MessageId(1024), FRAGMENT_SIZE * 64 + 1, FRAGMENT_SIZE);
-    let expected_packet_count = usize::from(message.num_fragments());
+    let message = split(MessageId(1024), FRAGMENT_LEN * 64 + 1, FRAGMENT_LEN);
+    let expected_packet_count = usize::from(message.fragments());
     assert_eq!(expected_packet_count, 65);
     let mut staged = Staged::default();
-    staged.fragmented((channel_kind, NetId::new(channel_id)), 0, message);
+    staged.fragmented((channel_type_id, NetId::new(channel_id)), 0, message);
 
     let packets = build_staged_packets(
         &mut PacketBuilder::default(),
         &staged,
-        CompressionConfig::DISABLED,
+        CompressionSetup::DISABLED,
     )?;
     assert_eq!(packets.len(), expected_packet_count);
     assert!(
@@ -347,20 +347,20 @@ fn staged_fragment_packets_respect_worst_case_mtu_overhead() -> Result<(), Packe
 
 #[cfg(feature = "compression_lz4")]
 #[test]
-fn staged_compression_can_pack_beyond_uncompressed_mtu() -> Result<(), PacketError> {
-    let channel_kind = ChannelKind::of::<Channel1>();
-    let channel_id = net_id(channel_kind);
+fn a_compression_packs_more_than_an_uncompressed_mtu_holds() -> Result<(), PacketError> {
+    let channel_type_id = ChannelTypeId::of::<Channel1>();
+    let channel_id = net_id(channel_type_id);
     let mut staged = Staged::default();
     for index in 0..128 {
         staged.single(
-            (channel_kind, channel_id),
+            (channel_type_id, channel_id),
             index,
             Bytes::from(vec![7u8; 64]),
         );
     }
-    let compression = CompressionConfig {
-        min_payload_size: 0,
-        ..CompressionConfig::LZ4
+    let compression = CompressionSetup {
+        min_payload_len: 0,
+        ..CompressionSetup::LZ4
     };
 
     let mut packets = build_staged_packets(&mut PacketBuilder::default(), &staged, compression)?;
@@ -381,20 +381,20 @@ fn staged_compression_can_pack_beyond_uncompressed_mtu() -> Result<(), PacketErr
 
 #[cfg(feature = "compression_lz4")]
 #[test]
-fn staged_compression_preserves_mtu_for_incompressible_data() -> Result<(), PacketError> {
-    let channel_kind = ChannelKind::of::<Channel1>();
-    let channel_id = net_id(channel_kind);
+fn a_compression_of_incompressible_data_keeps_to_the_mtu() -> Result<(), PacketError> {
+    let channel_type_id = ChannelTypeId::of::<Channel1>();
+    let channel_id = net_id(channel_type_id);
     let mut staged = Staged::default();
     for index in 0..128 {
         staged.single(
-            (channel_kind, channel_id),
+            (channel_type_id, channel_id),
             index,
             random_payload(128, usize::try_from(index).unwrap()).into(),
         );
     }
-    let compression = CompressionConfig {
-        min_payload_size: 0,
-        ..CompressionConfig::LZ4
+    let compression = CompressionSetup {
+        min_payload_len: 0,
+        ..CompressionSetup::LZ4
     };
 
     let packets = build_staged_packets(&mut PacketBuilder::default(), &staged, compression)?;
@@ -420,20 +420,20 @@ fn staged_compression_preserves_mtu_for_incompressible_data() -> Result<(), Pack
 /// fifth single goes alone.
 #[test]
 fn staged_builder_fills_each_final_fragment_with_singles() -> Result<(), PacketError> {
-    let channel_kind = ChannelKind::of::<Channel1>();
-    let channel_id = net_id(channel_kind);
+    let channel_type_id = ChannelTypeId::of::<Channel1>();
+    let channel_id = net_id(channel_type_id);
     let mut staged = Staged::default();
 
     for index in 0..2 {
         staged.fragmented(
-            (channel_kind, channel_id),
+            (channel_type_id, channel_id),
             index,
             split(MessageId(u16::try_from(index).unwrap()), 1800, 900),
         );
     }
     for index in 0..5 {
         staged.single(
-            (channel_kind, channel_id),
+            (channel_type_id, channel_id),
             index,
             Bytes::from(vec![index as u8; 100]),
         );
@@ -442,7 +442,7 @@ fn staged_builder_fills_each_final_fragment_with_singles() -> Result<(), PacketE
     let packets = build_staged_packets(
         &mut PacketBuilder::default(),
         &staged,
-        CompressionConfig::DISABLED,
+        CompressionSetup::DISABLED,
     )?;
 
     let keys = packets
@@ -471,12 +471,12 @@ fn staged_builder_fills_each_final_fragment_with_singles() -> Result<(), PacketE
 }
 
 #[test]
-fn staged_builder_splits_channel_batches_at_u8_limit() -> Result<(), PacketError> {
-    let channel_kind = ChannelKind::of::<Channel1>();
-    let channel_id = net_id(channel_kind);
+fn the_builder_splits_a_channel_batch_at_255_messages() -> Result<(), PacketError> {
+    let channel_type_id = ChannelTypeId::of::<Channel1>();
+    let channel_id = net_id(channel_type_id);
     let mut staged = Staged::default();
     for index in 0..300 {
-        staged.single((channel_kind, channel_id), index, Bytes::new());
+        staged.single((channel_type_id, channel_id), index, Bytes::new());
     }
 
     let mut builder = PacketBuilder::default();
@@ -484,7 +484,7 @@ fn staged_builder_splits_channel_batches_at_u8_limit() -> Result<(), PacketError
     let mut compression_scratch = CompressionScratch::default();
     let packet = builder
         .build_next_packet(
-            &staged.source(CompressionConfig::DISABLED, DEFAULT_MAX_PAYLOAD),
+            &staged.source(CompressionSetup::DISABLED, DEFAULT_MAX_PAYLOAD),
             &mut cursor,
             &mut compression_scratch,
         )?
@@ -495,7 +495,7 @@ fn staged_builder_splits_channel_batches_at_u8_limit() -> Result<(), PacketError
     assert!(
         builder
             .build_next_packet(
-                &staged.source(CompressionConfig::DISABLED, DEFAULT_MAX_PAYLOAD),
+                &staged.source(CompressionSetup::DISABLED, DEFAULT_MAX_PAYLOAD),
                 &mut cursor,
                 &mut compression_scratch
             )?
@@ -510,40 +510,40 @@ fn staged_builder_splits_channel_batches_at_u8_limit() -> Result<(), PacketError
 /// first fragment, with its compression byte, fills the 128; the last, of 115 bytes too, takes
 /// 127 without it.
 #[test]
-fn final_fragment_tail_uses_actual_single_channel_width_and_rolls_back() -> Result<(), PacketError>
-{
+fn a_tail_after_a_last_fragment_takes_the_width_of_its_single_channel_or_rolls_back()
+-> Result<(), PacketError> {
     let max_payload = 128;
-    let fragment_size = 115;
+    let fragment_len = 115;
     let fragment_channel_id = NetId::new(0);
     let single_channel_id = NetId::new(64);
     assert!(single_channel_id.bytes_len() > fragment_channel_id.bytes_len());
 
-    let single = SingleData::new(None, Bytes::new());
+    let single = SingleBody::new(None, Bytes::new());
     let single_wire_len = single_channel_id.bytes_len() + 1 + single.bytes_len();
     assert_eq!(single_wire_len, 4);
     let packet_len = |message: &FragmentedMessage, index| {
         LONG_TICK_LEN + fragment_channel_id.bytes_len() + message.fragment(index).bytes_len()
     };
-    let last_len = (1..=fragment_size)
+    let last_len = (1..=fragment_len)
         .rev()
         .find(|last_len| {
-            let message = split(MessageId(0), fragment_size + last_len, fragment_size);
+            let message = split(MessageId(0), fragment_len + last_len, fragment_len);
             let len = packet_len(&message, 1);
             len <= max_payload && max_payload - len < single_wire_len
         })
         .expect("test MTU should leave a tail smaller than the single batch");
-    let message = split(MessageId(0), fragment_size + last_len, fragment_size);
+    let message = split(MessageId(0), fragment_len + last_len, fragment_len);
     assert_eq!(packet_len(&message, 0), max_payload);
     assert_eq!(packet_len(&message, 1), max_payload - 1);
 
     let mut staged = Staged::default();
     staged.fragmented(
-        (ChannelKind::of::<Channel1>(), fragment_channel_id),
+        (ChannelTypeId::of::<Channel1>(), fragment_channel_id),
         0,
         message,
     );
     staged.single(
-        (ChannelKind::of::<Channel2>(), single_channel_id),
+        (ChannelTypeId::of::<Channel2>(), single_channel_id),
         0,
         Bytes::new(),
     );
@@ -554,7 +554,7 @@ fn final_fragment_tail_uses_actual_single_channel_width_and_rolls_back() -> Resu
     let mut next = || {
         builder
             .build_next_packet(
-                &staged.source(CompressionConfig::DISABLED, max_payload),
+                &staged.source(CompressionSetup::DISABLED, max_payload),
                 &mut cursor,
                 &mut compression_scratch,
             )
@@ -589,19 +589,19 @@ fn final_fragment_tail_uses_actual_single_channel_width_and_rolls_back() -> Resu
 #[cfg(feature = "compression_lz4")]
 #[test]
 fn a_rolled_back_append_seals_with_the_kept_compression() -> Result<(), PacketError> {
-    let channel_kind = ChannelKind::of::<Channel1>();
-    let channel_id = net_id(channel_kind);
+    let channel_type_id = ChannelTypeId::of::<Channel1>();
+    let channel_id = net_id(channel_type_id);
     let mut staged = Staged::default();
     for index in 0..2000 {
         staged.single(
-            (channel_kind, channel_id),
+            (channel_type_id, channel_id),
             index,
             Bytes::from(vec![(index % 4) as u8; 64]),
         );
     }
-    let compression = CompressionConfig {
-        min_payload_size: 0,
-        ..CompressionConfig::LZ4
+    let compression = CompressionSetup {
+        min_payload_len: 0,
+        ..CompressionSetup::LZ4
     };
 
     let packets = build_staged_packets(&mut PacketBuilder::default(), &staged, compression)?;
@@ -624,17 +624,17 @@ fn a_rolled_back_append_seals_with_the_kept_compression() -> Result<(), PacketEr
 /// compressed body fills, stays unallocated.
 #[test]
 fn an_uncompressed_packet_needs_no_staging() -> Result<(), PacketError> {
-    let channel_kind = ChannelKind::of::<Channel1>();
+    let channel_type_id = ChannelTypeId::of::<Channel1>();
     let mut staged = Staged::default();
     for index in 0..64 {
         staged.single(
-            (channel_kind, net_id(channel_kind)),
+            (channel_type_id, net_id(channel_type_id)),
             index,
             Bytes::from(vec![1; 64]),
         );
     }
     let mut builder = PacketBuilder::default();
-    let packets = build_staged_packets(&mut builder, &staged, CompressionConfig::DISABLED)?;
+    let packets = build_staged_packets(&mut builder, &staged, CompressionSetup::DISABLED)?;
     assert!(packets.len() > 1);
     assert_eq!(builder.staging.capacity(), 0);
     Ok(())
@@ -646,15 +646,19 @@ fn an_uncompressed_packet_needs_no_staging() -> Result<(), PacketError> {
 #[cfg(feature = "compression_lz4")]
 #[test]
 fn a_packet_compresses_once_past_the_limit_and_once_at_its_seal() -> Result<(), PacketError> {
-    let channel_kind = ChannelKind::of::<Channel1>();
-    let channel_id = net_id(channel_kind);
+    let channel_type_id = ChannelTypeId::of::<Channel1>();
+    let channel_id = net_id(channel_type_id);
     let mut staged = Staged::default();
     for index in 0..128 {
-        staged.single((channel_kind, channel_id), index, Bytes::from(vec![7; 64]));
+        staged.single(
+            (channel_type_id, channel_id),
+            index,
+            Bytes::from(vec![7; 64]),
+        );
     }
-    let compression = CompressionConfig {
-        min_payload_size: 0,
-        ..CompressionConfig::LZ4
+    let compression = CompressionSetup {
+        min_payload_len: 0,
+        ..CompressionSetup::LZ4
     };
     let mut builder = PacketBuilder::default();
     let mut cursor = CandidateCursor::default();
@@ -679,23 +683,23 @@ fn a_packet_compresses_once_past_the_limit_and_once_at_its_seal() -> Result<(), 
 #[cfg(feature = "compression_lz4")]
 #[test]
 fn a_seal_past_the_room_rolls_back_to_the_verified_body() -> Result<(), PacketError> {
-    let channel_kind = ChannelKind::of::<Channel1>();
-    let channel_id = net_id(channel_kind);
+    let channel_type_id = ChannelTypeId::of::<Channel1>();
+    let channel_id = net_id(channel_type_id);
     let mut staged = Staged::default();
     let mut expected = Vec::new();
     for index in 0..20 {
         let bytes = Bytes::from(vec![7; 64]);
-        staged.single((channel_kind, channel_id), index, bytes.clone());
+        staged.single((channel_type_id, channel_id), index, bytes.clone());
         expected.push(bytes);
     }
     for index in 20..60 {
         let bytes = Bytes::from(random_payload(128, usize::try_from(index).unwrap()));
-        staged.single((channel_kind, channel_id), index, bytes.clone());
+        staged.single((channel_type_id, channel_id), index, bytes.clone());
         expected.push(bytes);
     }
-    let compression = CompressionConfig {
-        min_payload_size: 0,
-        ..CompressionConfig::LZ4
+    let compression = CompressionSetup {
+        min_payload_len: 0,
+        ..CompressionSetup::LZ4
     };
 
     let packets = build_staged_packets(&mut PacketBuilder::default(), &staged, compression)?;

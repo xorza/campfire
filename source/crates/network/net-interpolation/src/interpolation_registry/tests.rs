@@ -7,8 +7,8 @@ use crate::history_receive::InterpolatedMarkerFns;
 use crate::interpolate::sample_history_with_interpolation;
 use crate::interpolation_fns::{InterpolationFns, InterpolationPipeline};
 use crate::interpolation_rule::InterpolationRule;
-use crate::interpolation_rule_component::{InterpolationRuleComponent, MemberSpec};
-use crate::interpolation_sample_context::InterpolationSampleContext;
+use crate::interpolation_rule_component::{InterpolationRuleComponent, MemberShare};
+use crate::interpolation_sample_cx::InterpolationSampleCx;
 use crate::interpolation_stage::InterpolationStage;
 use bevy::prelude::*;
 use bevy_ecs::query::ArchetypeFilter;
@@ -22,11 +22,11 @@ use campfire_net_connection::NetworkTarget;
 use campfire_net_core::NetTick;
 use campfire_net_replication::internals::*;
 use campfire_net_replication::{
-    AppComponentExt, ConfirmedHistory, HistoryState, Interpolated, InterpolatedSend,
-    InterpolationTarget, Replicate, ReplicationCheckpointMap,
+    AppComponentExt, ConfirmedHistory, ConfirmedTickMap, HistoryState, Interpolated,
+    InterpolatedSend, InterpolationTarget, Replicate,
 };
-use campfire_net_stepper::StepperConfig;
-use campfire_net_stepper::{Order, Stepper};
+use campfire_net_stepper::StepperSetup;
+use campfire_net_stepper::{StepOrder, Stepper};
 
 use crate::app_interpolation_ext::AppInterpolationExt;
 
@@ -90,7 +90,7 @@ fn component_rule<C: HistoryComponent, F: ArchetypeFilter + 'static>(
     confirmed: Option<ConfirmedHistoryFns>,
     priority: usize,
 ) -> RegisteredRule {
-    let spec = MemberSpec {
+    let spec = MemberShare {
         confirmed,
         pipeline: fns.pipeline(),
         frame_source: None,
@@ -162,7 +162,7 @@ fn setup_interpolation_diff_app() -> (App, FnsId) {
         InterpolationRegistryPlugin,
         InterpolationPlugins,
     ));
-    app.insert_resource(ReplicationCheckpointMap::default());
+    app.insert_resource(ConfirmedTickMap::default());
     app.register_component::<TestDiffComponent>()
         .replicate_diff()
         .interpolate(InterpolationFns::history_only());
@@ -179,7 +179,7 @@ fn setup_interpolation_diff_app() -> (App, FnsId) {
 }
 
 #[test]
-fn add_interpolation_diff_with_applies_registered_sampler() {
+fn a_diff_interpolation_applies_its_registered_sampler() {
     let mut app = App::new();
     app.add_plugins((
         StatesPlugin,
@@ -188,7 +188,7 @@ fn add_interpolation_diff_with_applies_registered_sampler() {
         InterpolationRegistryPlugin,
         InterpolationPlugins,
     ));
-    app.insert_resource(ReplicationCheckpointMap::default());
+    app.insert_resource(ConfirmedTickMap::default());
     app.register_component::<TestDiffComponent>()
         .replicate_diff()
         .interpolate(InterpolationFns::with(diff_lerp));
@@ -215,9 +215,9 @@ fn add_interpolation_diff_with_applies_registered_sampler() {
     );
 }
 
-/// Checks that interpolation marker setup can be registered before replication metadata.
+/// Interpolation marker setup can be registered before replication metadata.
 #[test]
-fn marker_functions_can_precede_replication_component_registration() {
+fn the_marker_fns_can_come_before_the_replication_registration() {
     let mut app = App::new();
     app.add_plugins((
         StatesPlugin,
@@ -239,7 +239,7 @@ fn marker_functions_can_precede_replication_component_registration() {
         app.world()
             .resource::<InterpolatedMarkerFns>()
             .0
-            .contains(&ComponentKind::of::<TestComp>())
+            .contains(&ComponentTypeId::of::<TestComp>())
     );
 }
 
@@ -247,7 +247,7 @@ fn marker_functions_can_precede_replication_component_registration() {
 #[should_panic(
     expected = "cannot register interpolation rules after InterpolationRegistry has been finalized"
 )]
-fn finalized_registry_rejects_rule_registration() {
+fn a_sealed_registry_refuses_a_rule() {
     let mut registry = InterpolationRegistry::default();
     let mut world = World::new();
     let fns = InterpolationFns::history_only();
@@ -261,16 +261,16 @@ fn finalized_registry_rejects_rule_registration() {
     registry.insert_rule(rule);
 }
 
-fn record_checkpoint(app: &mut App, tick: u32) -> RepliconTick {
+fn record_confirmed_tick(app: &mut App, tick: u32) -> RepliconTick {
     let replicon_tick = RepliconTick::new(tick);
     app.world_mut()
-        .resource_mut::<ReplicationCheckpointMap>()
+        .resource_mut::<ConfirmedTickMap>()
         .record(replicon_tick, NetTick(tick));
     replicon_tick
 }
 
 #[test]
-fn sample_clamps_to_newest_value_when_tick_is_past_end() {
+fn a_sample_past_the_end_takes_the_newest_value() {
     let mut history = ConfirmedHistory::<TestComp>::default();
     history.insert_present(NetTick(10), TestComp(0.0));
     history.insert_present(NetTick(20), TestComp(10.0));
@@ -286,7 +286,7 @@ fn sample_clamps_to_newest_value_when_tick_is_past_end() {
 }
 
 #[test]
-fn sample_returns_start_value_with_single_keyframe() {
+fn a_sample_of_one_keyframe_takes_its_value() {
     let mut history = ConfirmedHistory::<TestComp>::default();
     history.insert_present(NetTick(10), TestComp(42.0));
 
@@ -302,7 +302,7 @@ fn sample_returns_start_value_with_single_keyframe() {
 }
 
 #[test]
-fn inserts_history_when_interpolated_added_after_component_is_already_replicated() {
+fn a_later_interpolated_marker_inserts_the_history_of_a_replicated_component() {
     let mut app = App::new();
     app.add_plugins((
         StatesPlugin,
@@ -311,7 +311,7 @@ fn inserts_history_when_interpolated_added_after_component_is_already_replicated
         InterpolationRegistryPlugin,
         InterpolationPlugins,
     ));
-    app.insert_resource(ReplicationCheckpointMap::default());
+    app.insert_resource(ConfirmedTickMap::default());
     app.register_component::<TestComp>()
         .replicate()
         .interpolate(InterpolationFns::history_only());
@@ -319,7 +319,7 @@ fn inserts_history_when_interpolated_added_after_component_is_already_replicated
 
     let replicon_tick = RepliconTick::new(11);
     app.world_mut()
-        .resource_mut::<ReplicationCheckpointMap>()
+        .resource_mut::<ConfirmedTickMap>()
         .record(replicon_tick, NetTick(42));
 
     let entity = app
@@ -353,7 +353,7 @@ fn inserts_history_when_interpolated_added_after_component_is_already_replicated
     );
 }
 
-/// Checks that a winning no-history rule prevents lower-rule history initialization.
+/// A winning no-history rule prevents lower-rule history initialization.
 #[test]
 fn no_history_winner_does_not_initialize_lower_rule_history() {
     let mut app = App::new();
@@ -364,7 +364,7 @@ fn no_history_winner_does_not_initialize_lower_rule_history() {
         InterpolationRegistryPlugin,
         InterpolationPlugins,
     ));
-    app.insert_resource(ReplicationCheckpointMap::default());
+    app.insert_resource(ConfirmedTickMap::default());
     app.register_component::<TestComp>()
         .replicate()
         .interpolate(InterpolationFns::with(lerp));
@@ -373,7 +373,7 @@ fn no_history_winner_does_not_initialize_lower_rule_history() {
     );
     app.finish();
 
-    let replicon_tick = record_checkpoint(&mut app, 42);
+    let replicon_tick = record_confirmed_tick(&mut app, 42);
     let entity = app
         .world_mut()
         .spawn((TestComp(2.0), NoHistory, ConfirmHistory::new(replicon_tick)))
@@ -389,9 +389,9 @@ fn no_history_winner_does_not_initialize_lower_rule_history() {
     );
 }
 
-/// Checks history and apply ownership for every live/history presence combination.
+/// History and apply holding for every live/history presence combination.
 #[test]
-fn resolved_rule_ownership_covers_live_and_history_presence_matrix() {
+fn the_resolved_rules_hold_each_mix_of_live_and_history_members() {
     let mut world = World::new();
     let mut registry = InterpolationRegistry::default();
 
@@ -411,7 +411,7 @@ fn resolved_rule_ownership_covers_live_and_history_presence_matrix() {
     let bundle_members = std::vec![
         InterpolationRuleComponent::of::<TestComp>(
             &mut world,
-            MemberSpec {
+            MemberShare {
                 confirmed: Some(ConfirmedHistoryFns::full::<TestComp>()),
                 pipeline: InterpolationPipeline::Full,
                 frame_source: None,
@@ -419,7 +419,7 @@ fn resolved_rule_ownership_covers_live_and_history_presence_matrix() {
         ),
         InterpolationRuleComponent::of::<TestComp2>(
             &mut world,
-            MemberSpec {
+            MemberShare {
                 confirmed: Some(ConfirmedHistoryFns::full::<TestComp2>()),
                 pipeline: InterpolationPipeline::Full,
                 frame_source: None,
@@ -485,52 +485,52 @@ fn resolved_rule_ownership_covers_live_and_history_presence_matrix() {
         .id();
     let no_live_or_history = world.spawn_empty().id();
 
-    let ownership = |rule_id, owns_history, owns_apply| ResolvedRule {
+    let holding = |rule_id, holds_history, holds_apply| ResolvedRule {
         rule_id,
-        owns_history,
-        owns_apply,
+        holds_history,
+        holds_apply,
     };
     let cases = std::vec![
         (
             "both live, no history yet",
             both_live_no_history,
-            std::vec![ownership(bundle_rule, true, true)],
+            std::vec![holding(bundle_rule, true, true)],
         ),
         (
             "both live, one history missing",
             both_live_first_history,
-            std::vec![ownership(bundle_rule, true, true)],
+            std::vec![holding(bundle_rule, true, true)],
         ),
         (
             "delayed insertion/removal of second member",
             only_first_both_histories,
             std::vec![
-                ownership(bundle_rule, true, false),
-                ownership(first_rule, false, true),
+                holding(bundle_rule, true, false),
+                holding(first_rule, false, true),
             ],
         ),
         (
             "delayed insertion/removal of first member",
             only_second_both_histories,
             std::vec![
-                ownership(bundle_rule, true, false),
-                ownership(second_rule, false, true),
+                holding(bundle_rule, true, false),
+                holding(second_rule, false, true),
             ],
         ),
         (
             "second member and its history absent",
             only_first_own_history,
-            std::vec![ownership(first_rule, true, true)],
+            std::vec![holding(first_rule, true, true)],
         ),
         (
             "first member and its history absent",
             only_second_own_history,
-            std::vec![ownership(second_rule, true, true)],
+            std::vec![holding(second_rule, true, true)],
         ),
         (
             "both histories retained, both live members absent",
             histories_only,
-            std::vec![ownership(bundle_rule, true, false)],
+            std::vec![holding(bundle_rule, true, false)],
         ),
         (
             "no live members or histories",
@@ -540,7 +540,7 @@ fn resolved_rule_ownership_covers_live_and_history_presence_matrix() {
     ];
 
     // History contents and change status deliberately do not appear in
-    // this matrix. Ownership depends only on archetype presence; sampling
+    // this matrix. Holding depends only on archetype presence; sampling
     // and history maintenance interpret Updated/Removed entries later.
     let mut scratch = RuleResolutionScratch::default();
     for target in [RuleTarget::Delayed, RuleTarget::Frame] {
@@ -556,16 +556,16 @@ fn resolved_rule_ownership_covers_live_and_history_presence_matrix() {
             assert_eq!(
                 actual,
                 expected.as_slice(),
-                "unexpected {target:?} ownership for {name}"
+                "unexpected {target:?} holding for {name}"
             );
         }
     }
 }
 
-/// Checks that a bundle cannot list the same component type more than once.
+/// A bundle cannot list the same component type more than once.
 #[test]
 #[should_panic(expected = "interpolation bundle rules cannot contain duplicate component types")]
-fn bundle_rule_rejects_duplicate_component_types() {
+fn a_bundle_rule_refuses_a_component_type_twice() {
     let mut app = App::new();
     app.register_bundle_interpolation_rule::<(TestComp, TestComp), ()>(InterpolationRule::new(
         InterpolationFns::disabled(),
@@ -574,11 +574,11 @@ fn bundle_rule_rejects_duplicate_component_types() {
 }
 
 #[test]
-fn diff_interpolation_buffers_newer_diff_until_older_base_arrives() {
+fn a_diff_interpolation_buffers_a_newer_diff_until_its_older_base_arrives() {
     let (mut app, fns_id) = setup_interpolation_diff_app();
-    let tick0 = record_checkpoint(&mut app, 0);
-    let tick3 = record_checkpoint(&mut app, 3);
-    let tick5 = record_checkpoint(&mut app, 5);
+    let tick0 = record_confirmed_tick(&mut app, 0);
+    let tick3 = record_confirmed_tick(&mut app, 3);
+    let tick5 = record_confirmed_tick(&mut app, 5);
 
     let entity = app.world_mut().spawn(Interpolated).id();
 
@@ -634,28 +634,28 @@ fn frame_only_app() -> App {
 }
 
 fn frame_only_rule_for<C: Component>(registry: &InterpolationRegistry) -> &RegisteredRule {
-    let kind = ComponentKind::of::<C>();
+    let type_id = ComponentTypeId::of::<C>();
     registry
         .rules
         .iter()
-        .find(|rule| rule.members().any(|member| member == kind))
+        .find(|rule| rule.members().any(|member| member == type_id))
         .expect("frame-only rule should be registered")
 }
 
 fn assert_frame_only_rule<C: Component>(registry: &InterpolationRegistry) {
     let rule = frame_only_rule_for::<C>(registry);
-    // The rule owns the frame history, and no delayed-interpolation history.
+    // The rule holds the frame history, and no delayed-interpolation history.
     let member = rule
         .members
         .iter()
-        .find(|member| member.kind == ComponentKind::of::<C>())
+        .find(|member| member.type_id == ComponentTypeId::of::<C>())
         .expect("rule should contain the component");
     assert!(member.confirmed.is_none());
     assert!(member.frame.is_some());
 }
 
 #[test]
-fn chained_interpolate_with_registers_frame_only_rule() {
+fn a_chained_interpolate_with_registers_a_frame_only_rule() {
     let mut app = frame_only_app();
     app.register_component::<TestComp>()
         .replicate()
@@ -663,38 +663,38 @@ fn chained_interpolate_with_registers_frame_only_rule() {
     app.finish();
 
     let registry = app.world().resource::<InterpolationRegistry>();
-    assert!(registry.interpolated::<TestComp>());
+    assert!(registry.is_interpolated::<TestComp>());
     assert_frame_only_rule::<TestComp>(registry);
 }
 
 #[test]
-fn chained_interpolate_with_context_registers_frame_only_rule() {
-    fn context_lerp(start: &TestComp, end: &TestComp, ctx: InterpolationSampleContext) -> TestComp {
+fn a_chained_contextual_interpolate_registers_a_frame_only_rule() {
+    fn cx_lerp(start: &TestComp, end: &TestComp, ctx: InterpolationSampleCx) -> TestComp {
         lerp(start, end, ctx.t)
     }
 
     let mut app = frame_only_app();
     app.register_component::<TestComp>()
         .replicate()
-        .interpolate(InterpolationFns::no_history_with_context(context_lerp));
+        .interpolate(InterpolationFns::no_history_with_cx(cx_lerp));
     app.finish();
 
     let registry = app.world().resource::<InterpolationRegistry>();
-    assert!(registry.interpolated::<TestComp>());
+    assert!(registry.is_interpolated::<TestComp>());
     assert_frame_only_rule::<TestComp>(registry);
 }
 
 #[test]
-fn chained_interpolate_diff_with_registers_frame_only_rule() {
+fn a_chained_diff_interpolate_registers_a_frame_only_rule() {
     let mut app = frame_only_app();
-    app.insert_resource(ReplicationCheckpointMap::default());
+    app.insert_resource(ConfirmedTickMap::default());
     app.register_component::<TestDiffComponent>()
         .replicate_diff()
         .interpolate(InterpolationFns::no_history(diff_lerp));
     app.finish();
 
     let registry = app.world().resource::<InterpolationRegistry>();
-    assert!(registry.interpolated::<TestDiffComponent>());
+    assert!(registry.is_interpolated::<TestDiffComponent>());
     assert_frame_only_rule::<TestDiffComponent>(registry);
 }
 
@@ -703,7 +703,7 @@ fn chained_interpolate_diff_with_registers_frame_only_rule() {
 #[test]
 fn a_diff_bundle_member_writes_history_from_diffs() {
     let mut app = frame_only_app();
-    app.insert_resource(ReplicationCheckpointMap::default());
+    app.insert_resource(ConfirmedTickMap::default());
     app.register_component::<TestComp>().replicate();
     app.register_component::<TestDiffComponent>()
         .replicate_diff()
@@ -719,8 +719,8 @@ fn a_diff_bundle_member_writes_history_from_diffs() {
                     registry.register_rule_fns(world, RuleFns::<TestDiffComponent>::new_diff());
                 fns_id
             });
-    let tick0 = record_checkpoint(&mut app, 0);
-    let tick3 = record_checkpoint(&mut app, 3);
+    let tick0 = record_confirmed_tick(&mut app, 0);
+    let tick3 = record_confirmed_tick(&mut app, 3);
 
     let entity = app.world_mut().spawn(Interpolated).id();
     app.world_mut().entity_mut(entity).apply_write(
@@ -774,7 +774,7 @@ fn a_history_rule_on_an_unreplicated_component_panics() {
     app.finish();
 }
 
-/// An unreplicated component takes a rule that owns no history, as frame interpolation does.
+/// An unreplicated component takes a rule that holds no history, as frame interpolation does.
 #[test]
 fn an_unreplicated_component_takes_a_frame_only_rule() {
     let mut app = frame_only_app();
@@ -810,7 +810,7 @@ fn a_rule_after_the_app_finishes_panics() {
 
 #[test]
 fn a_history_only_component_gets_a_confirmed_history() {
-    let mut stepper = Stepper::new(InterpolationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(InterpolationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -863,7 +863,7 @@ fn a_history_only_component_gets_a_confirmed_history() {
         .world_mut()
         .entity_mut(server_entity)
         .insert(CompCustomInterp(2.0));
-    stepper.step(2, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(2, stepper.frame_interval(), StepOrder::ServerFirst);
 
     let client_entity_ref = stepper.client_app(0).world().entity(client_entity);
     let history = client_entity_ref
@@ -877,12 +877,12 @@ fn a_history_only_component_gets_a_confirmed_history() {
     );
 }
 
-/// Verifies the end-to-end interpolation path for Replicon diff components:
+/// The end-to-end interpolation path for Replicon diff components:
 /// server-side `apply_diff` produces diff replication, and the client stores
 /// the materialized value in `ConfirmedHistory`.
 #[test]
-fn diff_interpolation_records_confirmed_history_from_replicon_diffs() {
-    let mut stepper = Stepper::new(InterpolationStack, StepperConfig::single());
+fn a_diff_interpolation_records_its_confirmed_history_from_replicon_diffs() {
+    let mut stepper = Stepper::new(InterpolationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -900,7 +900,7 @@ fn diff_interpolation_records_confirmed_history_from_replicon_diffs() {
         .apply_diff::<CompRepliconDiff>(0)
         .unwrap();
 
-    stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
     let client_entity = client_copy(&stepper, server_entity).unwrap();
     assert!(
         stepper
@@ -920,7 +920,7 @@ fn diff_interpolation_records_confirmed_history_from_replicon_diffs() {
         .entity_mut(server_entity)
         .apply_diff::<CompRepliconDiff>(1)
         .unwrap();
-    stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
 
     assert_eq!(
         newest_confirmed_value(stepper.client_app_mut(0), client_entity),

@@ -1,4 +1,4 @@
-//! The endpoints of the UDP protocol: on an OS socket, or on the simulated network with the same
+//! The endpoints of the UDP protocol: on an OS socket, or on the emulated network with the same
 //! handshake.
 
 use core::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -6,18 +6,18 @@ use std::sync::Arc;
 
 use campfire_net_core::Random;
 use campfire_net_emulator::EmulatedIo;
-use campfire_net_packets::{DatagramIo, EmulatedWires, EndpointParts};
+use campfire_net_packets::{DatagramIo, EmulatedWires, EndpointPieces};
 
-use crate::admission_config::AdmissionConfig;
+use crate::admission_setup::AdmissionSetup;
 use crate::bind_error::BindError;
 use crate::secure_establishment::client_side::ClientSide;
 use crate::secure_establishment::server_side::ServerSide;
 use crate::server_identity::ServerIdentity;
 use crate::server_key::ServerKey;
 use crate::server_trust::ServerTrust;
-use crate::udp_config::UdpConfig;
 use crate::udp_io::UdpIo;
 use crate::udp_port::UdpPort;
+use crate::udp_setup::UdpSetup;
 use zeroize::Zeroizing;
 
 /// A server's socket, bound, and what its endpoint takes: it serves once its admission is known,
@@ -27,7 +27,7 @@ pub struct ServerSocket {
     io: UdpIo,
     tls: Arc<rustls::ServerConfig>,
     identity: ServerIdentity,
-    config: UdpConfig,
+    setup: UdpSetup,
 }
 
 impl ServerSocket {
@@ -36,14 +36,14 @@ impl ServerSocket {
     pub fn bind(
         address: SocketAddr,
         identity: ServerIdentity,
-        config: UdpConfig,
+        setup: UdpSetup,
     ) -> Result<Self, BindError> {
         let io = bind(address)?;
         Ok(Self {
             io,
-            tls: identity.tls_config(&config.alpn),
+            tls: identity.tls_config(&setup.alpn),
             identity,
-            config,
+            setup,
         })
     }
 
@@ -58,12 +58,12 @@ impl ServerSocket {
     }
 
     /// The parts of the server's endpoint, which admits each address within `admission`.
-    pub fn serve(self, admission: AdmissionConfig) -> EndpointParts<UdpIo> {
+    pub fn serve(self, admission: AdmissionSetup) -> EndpointPieces<UdpIo> {
         let Self {
             io,
             tls,
             identity,
-            config,
+            setup,
         } = self;
         let mut random = Random::os();
         let mut token_secret = Zeroizing::new([0; 32]);
@@ -73,10 +73,10 @@ impl ServerSocket {
             identity.reset_key(),
             &token_secret,
             admission,
-            config.session.idle_timeout,
+            setup.packet_session.idle_timeout,
             random,
         );
-        EndpointParts::server(io, Box::new(establishment), config.endpoint())
+        EndpointPieces::server(io, Box::new(establishment), setup.endpoint())
     }
 }
 
@@ -87,7 +87,7 @@ pub struct ClientSocket {
     io: UdpIo,
     server: SocketAddr,
     trust: ServerTrust,
-    config: UdpConfig,
+    setup: UdpSetup,
 }
 
 impl ClientSocket {
@@ -95,7 +95,7 @@ impl ClientSocket {
     pub fn bind(
         server: SocketAddr,
         trust: ServerTrust,
-        config: UdpConfig,
+        setup: UdpSetup,
     ) -> Result<Self, BindError> {
         let unspecified = if server.is_ipv4() {
             Ipv4Addr::UNSPECIFIED.into()
@@ -106,7 +106,7 @@ impl ClientSocket {
             io: bind(SocketAddr::new(unspecified, 0))?,
             server,
             trust,
-            config,
+            setup,
         })
     }
 
@@ -115,81 +115,81 @@ impl ClientSocket {
     }
 
     /// The parts of the client's endpoint, which connects at its `LinkStart`.
-    pub fn endpoint(self) -> EndpointParts<UdpIo> {
+    pub fn endpoint(self) -> EndpointPieces<UdpIo> {
         let Self {
             io,
             server,
             trust,
-            config,
+            setup,
         } = self;
-        let establishment = client_side(&trust, &config, Random::os());
-        EndpointParts::client(io, server, Box::new(establishment), config.endpoint())
+        let establishment = client_side(&trust, &setup, Random::os());
+        EndpointPieces::client(io, server, Box::new(establishment), setup.endpoint())
     }
 }
 
-/// A server of the UDP protocol on the simulated network: the same handshake and seal as on a
+/// A server of the UDP protocol on the emulated network: the same handshake and seal as on a
 /// socket, its own random numbers from a seed, so a run of a seed repeats in all but the bytes
 /// of TLS's key shares, which TLS draws from the OS.
 #[derive(Debug)]
 pub struct EmulatedServer {
     identity: ServerIdentity,
-    config: UdpConfig,
+    setup: UdpSetup,
     seed: u64,
 }
 
 impl EmulatedServer {
-    pub const fn new(identity: ServerIdentity, config: UdpConfig, seed: u64) -> Self {
+    pub const fn new(identity: ServerIdentity, setup: UdpSetup, seed: u64) -> Self {
         Self {
             identity,
-            config,
+            setup,
             seed,
         }
     }
 
     /// The parts of the server's endpoint, which takes each client's wire through its `io()` and
     /// admits each address within `admission`.
-    pub fn serve(self, admission: AdmissionConfig) -> EndpointParts<EmulatedWires> {
+    pub fn serve(self, admission: AdmissionSetup) -> EndpointPieces<EmulatedWires> {
         let mut random = Random::seeded(self.seed);
         let token_secret = random.array();
         let establishment = ServerSide::new(
-            self.identity.tls_config(&self.config.alpn),
+            self.identity.tls_config(&self.setup.alpn),
             self.identity.reset_key(),
             &token_secret,
             admission,
-            self.config.session.idle_timeout,
+            self.setup.packet_session.idle_timeout,
             random,
         );
-        EndpointParts::server(
+        EndpointPieces::server(
             EmulatedWires::server(),
             Box::new(establishment),
-            self.config.endpoint(),
+            self.setup.endpoint(),
         )
     }
 }
 
-/// The parts of a client's endpoint of the UDP protocol over the simulated network's `wire`, which
+/// The parts of a client's endpoint of the UDP protocol over the emulated network's `wire`, which
 /// takes its server by `trust`, its random numbers from `seed`.
 pub fn emulated_client(
     wire: EmulatedIo,
     trust: &ServerTrust,
-    config: &UdpConfig,
+    setup: &UdpSetup,
     seed: u64,
-) -> EndpointParts<EmulatedWires> {
-    let server = wire.peer_addr();
-    let establishment = client_side(trust, config, Random::seeded(seed));
-    EndpointParts::client(
+) -> EndpointPieces<EmulatedWires> {
+    let server = wire.remote_address();
+    let establishment = client_side(trust, setup, Random::seeded(seed));
+    EndpointPieces::client(
         EmulatedWires::client(wire),
         server,
         Box::new(establishment),
-        config.endpoint(),
+        setup.endpoint(),
     )
 }
 
-fn client_side(trust: &ServerTrust, config: &UdpConfig, random: Random) -> ClientSide {
+fn client_side(trust: &ServerTrust, setup: &UdpSetup, random: Random) -> ClientSide {
     ClientSide::new(
-        trust.tls_config(&config.alpn),
+        trust.tls_config(&setup.alpn),
         trust.name(),
-        config.session.idle_timeout,
+        setup.packet_session.idle_timeout,
         random,
     )
 }

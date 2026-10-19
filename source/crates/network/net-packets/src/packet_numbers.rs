@@ -36,7 +36,7 @@ pub(crate) const fn expand(largest: Option<PacketNumber>, truncated: u16) -> Pac
 /// `largest_acked`, needs `next ≤ largest_acked + 1 + 2^15`; and the peer's acknowledgement of
 /// `largest_acked`, which the sender reads against its own largest sent, needs
 /// `largest sent ≤ largest_acked + 2^15 − 2`. With nothing acknowledged the bound counts from −1.
-pub(crate) const fn in_reach(next: PacketNumber, largest_acked: Option<PacketNumber>) -> bool {
+pub(crate) const fn is_in_reach(next: PacketNumber, largest_acked: Option<PacketNumber>) -> bool {
     let limit = match largest_acked {
         Some(acked) => acked.0 + WINDOW / 2 - 2,
         None => WINDOW / 2 - 3,
@@ -87,10 +87,10 @@ mod tests {
     /// sender still reads the peer's acknowledgement of 100 whole, and one past it would not.
     #[test]
     fn a_sender_reaches_half_the_window_past_the_largest_acknowledged() {
-        assert!(in_reach(PacketNumber(32_765), None));
-        assert!(!in_reach(PacketNumber(32_766), None));
-        assert!(in_reach(PacketNumber(32_866), Some(PacketNumber(100))));
-        assert!(!in_reach(PacketNumber(32_867), Some(PacketNumber(100))));
+        assert!(is_in_reach(PacketNumber(32_765), None));
+        assert!(!is_in_reach(PacketNumber(32_766), None));
+        assert!(is_in_reach(PacketNumber(32_866), Some(PacketNumber(100))));
+        assert!(!is_in_reach(PacketNumber(32_867), Some(PacketNumber(100))));
         let acked = PacketNumber(100);
         assert_eq!(expand(Some(PacketNumber(32_866)), truncate(acked)), acked);
         assert_ne!(expand(Some(PacketNumber(32_867)), truncate(acked)), acked);

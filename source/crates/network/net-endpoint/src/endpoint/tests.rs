@@ -11,8 +11,8 @@ use campfire_net_emulator::{
 use campfire_net_link::{LinkPlugin, Unlinked};
 use campfire_net_packets::EmulatedWires;
 use campfire_net_packets::{
-    ChannelBinding, ClientEstablish, ConnectionId, Datagram, EndpointConfig, Establish,
-    Established, Establishing, Protection, ServerEstablish,
+    ChannelBinding, ClientEstablish, ConnectionId, Datagram, EndpointSetup, Establish, Established,
+    Establishing, Protection, ServerEstablish,
 };
 use campfire_net_payload::{OutgoingPayload, PayloadFate, PayloadKind, PayloadToken};
 use campfire_net_timeline::ClockPlugin;
@@ -36,13 +36,13 @@ struct Inbox {
 }
 
 impl Inbox {
-    /// Takes, in the frame between its two steps, what each link's session handed it.
+    /// Takes, in the frame between its two steps, what each link's packet session handed it.
     fn take(mut links: Query<'_, '_, (Entity, &mut Link)>, mut inbox: ResMut<'_, Self>) {
         for (entity, mut link) in &mut links {
-            let opened: Vec<_> = link.session.opened().collect();
+            let opened: Vec<_> = link.packet_session.opened().collect();
             for payload in opened {
                 if !inbox.refuse {
-                    link.session.accept(payload.number);
+                    link.packet_session.accept(payload.number);
                 }
                 inbox
                     .opened
@@ -50,8 +50,8 @@ impl Inbox {
             }
             inbox
                 .fates
-                .extend(link.session.fates().map(|fate| (entity, fate)));
-            let samples = link.session.rtt_samples();
+                .extend(link.packet_session.fates().map(|fate| (entity, fate)));
+            let samples = link.packet_session.rtt_samples();
             inbox
                 .rtt_samples
                 .extend(samples.iter().map(|sample| (entity, *sample)));
@@ -75,7 +75,7 @@ fn payload(data: &[u8]) -> BytesMut {
     payload
 }
 
-/// A client's app and a server's, each with a plain endpoint over one simulated link, stepped by
+/// A client's app and a server's, each with a plain endpoint over one emulated link, stepped by
 /// hand on the network's wire time.
 #[derive(Debug)]
 struct Harness {
@@ -88,12 +88,12 @@ struct Harness {
 
 impl Harness {
     fn new(models: DuplexModel) -> Self {
-        Self::with_server(models, EndpointConfig::default())
+        Self::with_server(models, EndpointSetup::default())
     }
 
-    fn with_server(models: DuplexModel, server_config: EndpointConfig) -> Self {
-        Self::with_endpoints(models, EndpointParts::plain_server(server_config), |wire| {
-            EndpointParts::plain_client(wire, EndpointConfig::default())
+    fn with_server(models: DuplexModel, server_setup: EndpointSetup) -> Self {
+        Self::with_endpoints(models, EndpointPieces::plain_server(server_setup), |wire| {
+            EndpointPieces::plain_client(wire, EndpointSetup::default())
         })
     }
 
@@ -101,8 +101,8 @@ impl Harness {
     /// wire.
     fn with_endpoints(
         models: DuplexModel,
-        server_parts: EndpointParts<EmulatedWires>,
-        client_parts: impl FnOnce(EmulatedIo) -> EndpointParts<EmulatedWires>,
+        server_parts: EndpointPieces<EmulatedWires>,
+        client_parts: impl FnOnce(EmulatedIo) -> EndpointPieces<EmulatedWires>,
     ) -> Self {
         let network = EmulatedNetwork::new(WireClock::Driven);
         let pair = network.pair(models);
@@ -167,7 +167,7 @@ impl Harness {
         app.world_mut()
             .get_mut::<Link>(entity)
             .unwrap()
-            .session
+            .packet_session
             .send(PayloadToken(token), PayloadKind::new(1), payload(data));
     }
 }
@@ -191,7 +191,7 @@ fn a_client_links_and_payloads_cross_both_ways() {
     let link = harness.server_link();
     let server_world = harness.server.world();
     assert!(server_world.get::<Linked>(link).is_some());
-    // A plain session has no TLS session to bind.
+    // A plain packet session has no TLS packet session to bind.
     assert!(server_world.get::<LinkBinding>(link).is_none());
     assert!(
         harness
@@ -201,11 +201,11 @@ fn a_client_links_and_payloads_cross_both_ways() {
             .is_none()
     );
     assert_eq!(
-        server_world.get::<PeerAddr>(link).unwrap().0,
+        server_world.get::<RemoteAddress>(link).unwrap().0,
         EmulatedNetwork::new(WireClock::Driven)
             .pair(DuplexModel::default())
             .server
-            .peer_addr(),
+            .remote_address(),
         "the first link's client end has the first link's address"
     );
 
@@ -236,11 +236,11 @@ fn a_client_links_and_payloads_cross_both_ways() {
 #[test]
 fn the_conditioner_delays_what_the_endpoint_receives() {
     let measure = |conditioner| {
-        let config = EndpointConfig {
+        let setup = EndpointSetup {
             conditioner,
-            ..EndpointConfig::default()
+            ..EndpointSetup::default()
         };
-        let mut harness = Harness::with_server(DuplexModel::perfect(), config);
+        let mut harness = Harness::with_server(DuplexModel::perfect(), setup);
         harness.frames(10);
         let client = harness.client_entity;
         Harness::send(&mut harness.client, client, 1, b"held");
@@ -333,8 +333,8 @@ fn an_unaccepted_payload_is_never_delivered() {
     assert_eq!(harness.server.world().resource::<Inbox>().opened.len(), 5);
 }
 
-/// A client's local `Unlink` with a code closes its session, and the server's link unlinks with
-/// the peer's code.
+/// A client's local `Unlink` with a code closes its packet session, and the server's link unlinks
+/// with the peer's code.
 #[test]
 fn a_close_reaches_the_peer_with_its_code() {
     let mut harness = Harness::new(DuplexModel::perfect());
@@ -356,9 +356,9 @@ fn a_close_reaches_the_peer_with_its_code() {
     );
 }
 
-/// A start of a linked client keeps its session. A client that unlinked and starts again opens a
-/// new session on its endpoint: the server's last link unlinks at the close, a new one links,
-/// and a payload crosses on it.
+/// A start of a linked client keeps its packet session. A client that unlinked and starts again
+/// opens a new packet session on its endpoint: the server's last link unlinks at the close, a new
+/// one links, and a payload crosses on it.
 #[test]
 fn a_client_connects_again_on_its_endpoint() {
     let mut harness = Harness::new(DuplexModel::perfect());
@@ -396,7 +396,7 @@ fn a_client_connects_again_on_its_endpoint() {
 }
 
 /// On the OS clock the pass runs on the IO thread: a payload crosses, and is acknowledged, with
-/// no frame driving the sessions' timers.
+/// no frame driving the packet sessions' timers.
 #[test]
 fn a_real_clock_runs_the_pass_on_a_thread() {
     let network = EmulatedNetwork::new(WireClock::Os);
@@ -416,7 +416,7 @@ fn a_real_clock_runs_the_pass_on_a_thread() {
     };
     let mut client = app();
     let mut server = app();
-    let server_endpoint = Endpoint::from(EndpointParts::plain_server(EndpointConfig::default()));
+    let server_endpoint = Endpoint::from(EndpointPieces::plain_server(EndpointSetup::default()));
     server_endpoint.io().add(pair.server);
     let server_entity = server.world_mut().spawn(server_endpoint).id();
     server.world_mut().trigger(LinkStart {
@@ -425,9 +425,9 @@ fn a_real_clock_runs_the_pass_on_a_thread() {
     let client_entity = client
         .world_mut()
         .spawn((
-            Endpoint::from(EndpointParts::plain_client(
+            Endpoint::from(EndpointPieces::plain_client(
                 pair.client,
-                EndpointConfig::default(),
+                EndpointSetup::default(),
             )),
             Link::default(),
         ))
@@ -441,7 +441,7 @@ fn a_real_clock_runs_the_pass_on_a_thread() {
         .world_mut()
         .get_mut::<Link>(client_entity)
         .unwrap()
-        .session
+        .packet_session
         .send(PayloadToken(1), PayloadKind::new(1), payload(b"threaded"));
     let start = std::time::Instant::now();
     loop {
@@ -467,11 +467,12 @@ fn a_real_clock_runs_the_pass_on_a_thread() {
     assert_eq!(opened[0].1, b"threaded");
 }
 
-/// The binding every session of [`Bound`] carries.
+/// The binding every packet session of [`Bound`] carries.
 const BINDING: ChannelBinding = ChannelBinding([7; 32]);
 
-/// Plain sessions that each carry [`BINDING`], as a sealed establishment's carry their TLS
-/// session's: a client's opens at its connect, and a server takes each peer by its first datagram.
+/// Plain packet sessions that each carry [`BINDING`], as a sealed establishment's carry their TLS
+/// packet session's: a client's opens at its connect, and a server takes each peer by its first
+/// datagram.
 #[derive(Debug, Default)]
 struct Bound {
     accepting: bool,
@@ -504,7 +505,7 @@ impl Establish for Bound {
     }
 
     fn challenge(&mut self) -> [u8; 8] {
-        unreachable!("a session routed by address has no candidate path")
+        unreachable!("a packet session routed by address has no candidate path")
     }
 
     fn ended(&mut self, _: Option<ConnectionId>) {}
@@ -528,24 +529,24 @@ impl ServerEstablish for Bound {
     }
 }
 
-/// A session's binding goes on the entity that carries it, as `LinkBinding`: the client's own and
-/// the server's link hold the same one.
+/// A packet session's binding goes on the entity that carries it, as `LinkBinding`: the client's
+/// own and the server's link hold the same one.
 #[test]
-fn a_bound_session_puts_its_binding_on_its_link() {
+fn a_bound_packet_session_puts_its_binding_on_its_link() {
     let mut harness = Harness::with_endpoints(
         DuplexModel::perfect(),
-        EndpointParts::server(
+        EndpointPieces::server(
             EmulatedWires::server(),
             Box::new(Bound::default()),
-            EndpointConfig::default(),
+            EndpointSetup::default(),
         ),
         |wire| {
-            let server = wire.peer_addr();
-            EndpointParts::client(
+            let server = wire.remote_address();
+            EndpointPieces::client(
                 EmulatedWires::client(wire),
                 server,
                 Box::new(Bound::default()),
-                EndpointConfig::default(),
+                EndpointSetup::default(),
             )
         },
     );

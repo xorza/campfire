@@ -1,12 +1,13 @@
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::Remote;
 
-/// Despawns an entity, where the server owns each replicated entity's life. Each [`Remote`]
-/// entity under it that only local entities hold first loses its [`ChildOf`], the view of the
-/// server's relation, and keeps what the server sent: the server ends that entity's life with a
-/// despawn of its own, as it does for each entity it despawns or hides. The local entities under
-/// it die with it, as Bevy's [`ChildOf`] makes them. An entity with no `Remote` entity under it,
-/// as each on a server, despawns as Bevy despawns it.
+/// Despawns an entity, where the server holds each replicated entity's life. Each [`Remote`] entity
+/// under it that only local entities hold first loses its [`ChildOf`], the view of the server's
+/// relation, and keeps what the server sent: the server ends that entity's life with a despawn of
+/// its own, as it does for each entity it despawns or hides. The local entities under it die with
+/// it, as Bevy's [`ChildOf`] makes them. An entity with no `Remote` entity under it, as each on a
+/// server, despawns as Bevy despawns it (13-net-stack/replication.md, Every despawn of the
+/// replication crates is `DespawnReplicated`, in a proxy crate of its own).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DespawnReplicated;
 

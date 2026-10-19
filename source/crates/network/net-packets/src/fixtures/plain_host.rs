@@ -3,22 +3,24 @@ use std::sync::Arc;
 
 use bevy_platform::time::Instant as OsInstant;
 use campfire_net_core::Instant;
-use campfire_net_payload::{PayloadFate, SessionQueues, UnlinkReason};
+use campfire_net_payload::{PacketSessionQueues, PayloadFate, UnlinkReason};
 use campfire_store::Worker;
 
 use crate::channel_binding::ChannelBinding;
 use crate::datagram_io::DatagramIo;
 use crate::datagram_io::Outbound;
 use crate::endpoint_core::{EndpointTime, News, PeerKey};
-use crate::endpoint_parts::EndpointParts;
+use crate::endpoint_pieces::EndpointPieces;
 use crate::endpoint_runtime::{EndpointRuntime, PassScratch};
 
-/// The carrier of a client's one session: the host's own.
+/// The carrier of a client's one packet session: the host's own.
 pub const CLIENT: u32 = 0;
 
 /// A host with no engine, for the tests of an endpoint's protocol: it runs an endpoint's frame
-/// steps as `campfire_net_endpoint` does, with a number for each session where the ECS has an
-/// entity and a [`HostLink`] where it has a link. Each payload a session opens is accepted.
+/// steps as `campfire_net_endpoint` does, with a number for each packet session where the ECS has
+/// an entity and a [`HostLink`] where it has a link. Each payload a packet session opens is
+/// accepted (13-net-stack/testing.md, A protocol's test runs on the plain host of
+/// `net-packets::internals`).
 #[derive(Debug)]
 pub struct PlainHost<Io: DatagramIo> {
     runtime: Arc<EndpointRuntime<Io, u32>>,
@@ -37,27 +39,27 @@ enum Driver {
     Thread(Worker),
 }
 
-/// A session as the host holds it: its queues, its binding, whether it linked or ended, and what
-/// it opened and learned.
+/// A packet session as the host holds it: its queues, its binding, whether it linked or ended, and
+/// what it opened and learned.
 #[derive(Debug, Default)]
 pub struct HostLink {
-    pub queues: SessionQueues,
+    pub queues: PacketSessionQueues,
     pub binding: Option<ChannelBinding>,
     pub linked: bool,
     pub ended: Option<UnlinkReason>,
-    /// The bytes of each payload the session opened, in order.
+    /// The bytes of each payload the packet session opened, in order.
     pub opened: Vec<Vec<u8>>,
     pub fates: Vec<PayloadFate>,
 }
 
 impl<Io: DatagramIo> PlainHost<Io> {
     /// A host on a driven clock, whose frames run the pass at the instant each names.
-    pub fn driven(parts: EndpointParts<Io>) -> Self {
+    pub fn driven(parts: EndpointPieces<Io>) -> Self {
         Self::new(parts, Driver::Inline)
     }
 
     /// A host on the OS clock since `origin`, whose IO thread runs the pass.
-    pub fn os(parts: EndpointParts<Io>, origin: OsInstant) -> Self {
+    pub fn os(parts: EndpointPieces<Io>, origin: OsInstant) -> Self {
         let runtime = Arc::new(EndpointRuntime::new(parts));
         runtime.lock().set_time(EndpointTime::Os(origin));
         let thread = Arc::clone(&runtime);
@@ -67,7 +69,7 @@ impl<Io: DatagramIo> PlainHost<Io> {
         Self::with_runtime(runtime, driver)
     }
 
-    fn new(parts: EndpointParts<Io>, driver: Driver) -> Self {
+    fn new(parts: EndpointPieces<Io>, driver: Driver) -> Self {
         Self::with_runtime(Arc::new(EndpointRuntime::new(parts)), driver)
     }
 
@@ -93,8 +95,8 @@ impl<Io: DatagramIo> PlainHost<Io> {
         self.runtime.lock().now()
     }
 
-    /// Starts the endpoint at `now`: a client connects, its session carried by [`CLIENT`], and
-    /// a server accepts.
+    /// Starts the endpoint at `now`: a client connects, its packet session carried by [`CLIENT`],
+    /// and a server accepts.
     pub fn start(&mut self, now: Instant) {
         {
             let mut core = self.runtime.lock();
@@ -186,7 +188,7 @@ impl<Io: DatagramIo> PlainHost<Io> {
         }
     }
 
-    /// The session `carrier` carries.
+    /// The packet session `carrier` carries.
     pub fn link(&self, carrier: u32) -> Option<&HostLink> {
         self.links.get(&carrier)
     }
@@ -195,7 +197,7 @@ impl<Io: DatagramIo> PlainHost<Io> {
         self.links.get_mut(&carrier)
     }
 
-    /// The carriers of the sessions a server took, which linked, in the order they linked.
+    /// The carriers of the packet sessions a server took, which linked, in the order they linked.
     pub fn linked(&self) -> impl Iterator<Item = u32> + '_ {
         self.links
             .iter()

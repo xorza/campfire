@@ -1,7 +1,7 @@
 //! Writing received values and removals into predicted components' confirmed histories.
 //!
 //! The authoritative value is retained in confirmed history. State mismatch decisions are made
-//! later by the full scan at a completed checkpoint: an entity-level confirmation does not mean
+//! later by the full scan at a completed confirmed tick: an entity-level confirmation does not mean
 //! every predicted component on that entity was updated, so receive-time checks could miss an
 //! unchanged component's mismatch on the same entity.
 use crate::prediction_history::PredictionHistory;
@@ -27,7 +27,7 @@ enum InitialValue {
     HistoryOnly,
     /// It goes live too, as `PredictedSend` asks: a fresh entity materializes normally, and one
     /// predicted already keeps its history-only value. Replicon batches the live component and
-    /// history insertions, so role-marker observers see the complete initial state.
+    /// history insertions, so side-marker observers see the complete initial state.
     Materialize,
 }
 
@@ -62,7 +62,7 @@ fn write_whole<C: HistoryComponent>(
     let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
         debug!(
             message_tick = ?ctx.message_tick,
-            "dropping a predicted value that no checkpoint maps"
+            "dropping a predicted value that no confirmed tick maps"
         );
         return Ok(());
     };
@@ -139,7 +139,7 @@ pub(crate) fn remove_history<C: HistoryComponent>(
     let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
         debug!(
             message_tick = ?ctx.message_tick,
-            "dropping a predicted removal that no checkpoint maps"
+            "dropping a predicted removal that no confirmed tick maps"
         );
         return;
     };
@@ -168,9 +168,9 @@ fn materialize<C: HistoryComponent>(
 ///
 /// Normally `PredictionHistory<C>` is added when live `C` is added. A confirmed insertion on a
 /// predicted entity is instead stored in `ConfirmedHistory<C>`, so the `Add<C>` observer does not
-/// run, while `RollbackPlugin::prepare_rollback<C>` needs the history to include the entity. It is seeded with
-/// the state the client predicted, absent, so a rollback reads the confirmed value and inserts
-/// `C`, even when this update finds no mismatch, as another component may already have.
+/// run, while `RollbackPlugin::prepare_rollback<C>` needs the history to include the entity. It is
+/// seeded with the state the client predicted, absent, so a rollback reads the confirmed value and
+/// inserts `C`, even when this update finds no mismatch, as another component may already have.
 fn seed_unpredicted_insert<C: HistoryComponent>(
     entity: &mut DeferredEntity<'_>,
     confirmed_tick: NetTick,

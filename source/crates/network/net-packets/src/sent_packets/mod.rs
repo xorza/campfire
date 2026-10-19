@@ -12,7 +12,8 @@ use crate::received_window::MAX_ACK_DELAY;
 use crate::rtt_estimator::{GRANULARITY, RttEstimator};
 
 /// A packet this many numbers below the largest acknowledged is lost (RFC 9002 §6.1.1,
-/// `kPacketThreshold`).
+/// `kPacketThreshold`) (13-net-stack/packet-session.md, Loss is found by the packet threshold of 3,
+/// or by 9/8 of the RTT).
 const PACKET_THRESHOLD: u64 = 3;
 
 /// Losses that span this many probe timeouts with no acknowledgement among them are persistent
@@ -70,7 +71,7 @@ impl SentPacket {
         usize::try_from(self.bytes).expect("a u32 fits a usize")
     }
 
-    const fn settled(&self) -> bool {
+    const fn is_settled(&self) -> bool {
         self.flags & Self::SETTLED != 0
     }
 
@@ -155,7 +156,7 @@ impl SentPackets {
             if packet.number > largest {
                 break;
             }
-            if packet.settled() || !named(packet.number) {
+            if packet.is_settled() || !named(packet.number) {
                 continue;
             }
             packet.settle();
@@ -201,7 +202,7 @@ impl SentPackets {
             if packet.number >= largest_acked {
                 break;
             }
-            if packet.settled() {
+            if packet.is_settled() {
                 gap |= lost_span.is_some();
                 continue;
             }
@@ -238,7 +239,7 @@ impl SentPackets {
         {
             reno.on_persistent_congestion();
         }
-        while self.packets.front().is_some_and(SentPacket::settled) {
+        while self.packets.front().is_some_and(SentPacket::is_settled) {
             self.packets.pop_front();
         }
     }
@@ -258,14 +259,14 @@ impl SentPackets {
     /// When the probe timeout fires: the probe timeout after the last packet that needs an ACK,
     /// doubled for each probe in a row; none while no such packet waits for one.
     pub(crate) fn probe_deadline(&self, rtt: &RttEstimator) -> Option<Instant> {
-        if self.packets.iter().all(SentPacket::settled) {
+        if self.packets.iter().all(SentPacket::is_settled) {
             return None;
         }
         let last_sent = self.last_sent?;
         Some(last_sent + rtt.probe_timeout() * 2_u32.saturating_pow(self.probes))
     }
 
-    /// The probe timeout fired, and the session sends a probe.
+    /// The probe timeout fired, and the packet session sends a probe.
     pub(crate) const fn on_probe(&mut self) {
         self.probes = self.probes.saturating_add(1);
     }

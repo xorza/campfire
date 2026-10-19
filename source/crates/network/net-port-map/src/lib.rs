@@ -18,7 +18,7 @@ mod soap_call;
 mod ssdp_announcement;
 mod ssdp_headers;
 mod ssdp_search;
-mod stop;
+mod thread_stop;
 mod upnp_gateway;
 
 pub use crate::port_map::PortMap;

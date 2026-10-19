@@ -8,8 +8,8 @@ use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::NetTick;
 use campfire_net_replication::ConfirmedHistory;
+use campfire_net_replication::ConfirmedTickMap;
 use campfire_net_replication::HistoryDiffReceiver;
-use campfire_net_replication::ReplicationCheckpointMap;
 use tracing::warn;
 
 /// What seeding an entity's confirmed history from its live component did.
@@ -40,7 +40,7 @@ fn seed_confirmed_history<C: HistoryComponent>(world: &mut World, entity: Entity
         .get::<ConfirmHistory>()
         .and_then(|confirm_history| {
             world
-                .resource::<ReplicationCheckpointMap>()
+                .resource::<ConfirmedTickMap>()
                 .confirmed_state_tick(confirm_history)
         });
     let mut history = ConfirmedHistory::<C>::default();

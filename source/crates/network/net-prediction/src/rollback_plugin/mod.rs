@@ -17,8 +17,8 @@ Does that mean that we fully know the state of entity B? How do we determine the
 Then the question becomes, how does that affect how we rollback?
 We need:
 - when we receive an update, we add its authoritative value to confirmed history;
-- once a completed checkpoint advances, we compare every replicated predicted component at that
-  checkpoint. We cannot skip an entity just because it received an update: confirmation is tracked
+- once a completed confirmed_tick advances, we compare every replicated predicted component at that
+  confirmed_tick. We cannot skip an entity just because it received an update: confirmation is tracked
   per entity, and another predicted component on that entity may have been unchanged and mismatched;
 - To rollback we have 2 choices:
   - rollback from the earliest confirmed tick across all predicted entities (predicted entities are a subset of all entities so it's possible that this is more recent than the latest completed mutate tick)
@@ -26,7 +26,7 @@ We need:
     For simplicity we will do the second choice
 - One thing to be careful of is that we could have completed mutate tick T, but have received confirmed updates for ticks > T. In which case we don't want to overwrite them when we rollback, and instead use these confirmed values during the rollback!
 
-The replay rewinds `Time<Fixed>` and `Time<()>`, which the stack owns. Any other clock that
+The replay rewinds `Time<Fixed>` and `Time<()>`, which the stack holds. Any other clock that
 `FixedMain` advances, as a physics engine's, rolls back as other state does:
 `register_component::<Time<C>>().local_rollback()` keeps its history, and its writer runs before
 [`PredictionSystems::UpdateHistory`](crate::prediction_systems::PredictionSystems), so the history
@@ -41,8 +41,8 @@ use crate::locally_predicted::LocallyPredicted;
 use crate::prediction_counts::PredictionCounts;
 use crate::prediction_despawned::PredictionDespawned;
 use crate::prediction_history::PredictionHistory;
-use crate::prediction_manager::PredictionManager;
 use crate::prediction_registry::PredictionRegistry;
+use crate::prediction_setup::PredictionSetup;
 use crate::prediction_systems::PredictionSystems;
 use crate::previous_visual::PreviousVisual;
 use crate::rollback_check_stage::RollbackCheckStage;
@@ -66,15 +66,15 @@ use campfire_net_core::NetTick;
 use campfire_net_core::TickRate;
 use campfire_net_interpolation::FrameInterpolationSystems;
 use campfire_net_replication::ConfirmedHistory;
+use campfire_net_replication::ConfirmedTickMap;
 use campfire_net_replication::DeferredEntityCommands;
 use campfire_net_replication::HistoryState;
 use campfire_net_replication::Interpolated;
 use campfire_net_replication::PreSpawned;
 use campfire_net_replication::PreSpawnedReceiver;
 use campfire_net_replication::Predicted;
-use campfire_net_replication::ReplicationCheckpointMap;
 use campfire_net_replication::ReplicationSystems;
-use campfire_net_sync::{InputTimelineConfig, SyncedLocalTimeline};
+use campfire_net_sync::{InputTimelineSetup, SyncedLocalTimeline};
 use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::Rollback;
 use core::fmt::Debug;
@@ -87,7 +87,7 @@ pub struct RollbackPlugin;
 impl Plugin for RollbackPlugin {
     fn build(&self, app: &mut App) {
         // The other layers' resources come from their plugins: the connection's topology, and
-        // replication's registries, checkpoints and pre-spawn receiver.
+        // replication's registries, confirmed ticks and pre-spawn receiver.
         app.init_resource::<RollbackCheckState>();
         app.init_resource::<RollbackScan>();
         app.init_resource::<TickPeriodHistory>();
@@ -142,8 +142,8 @@ impl Plugin for RollbackPlugin {
                     .before(ClientSystems::Receive),
                 Self::begin_rollback_check.in_set(RollbackCheckStage::Begin),
                 Self::check_rollback.in_set(RollbackCheckStage::Decide),
-                Self::finish_rollback_check.in_set(RollbackCheckStage::Finish),
-                (Self::start_rollback, Self::remove_prediction_despawned)
+                Self::end_rollback_check.in_set(RollbackCheckStage::Finish),
+                (Self::begin_rollback, Self::remove_prediction_despawned)
                     .chain()
                     .in_set(RollbackSystems::RestoreDespawned),
                 Self::run_rollback.in_set(RollbackSystems::Rollback),
@@ -159,8 +159,8 @@ impl Plugin for RollbackPlugin {
 impl RollbackPlugin {
     /// Before we start preparing for rollback, restore each predicted entity whose despawn the
     /// rollback undoes: one the server holds, as its authority wins, and one a prediction despawned
-    /// after the rollback tick, as the replay predicts its despawn again. A locally predicted entity
-    /// despawned at or before the tick was already gone there, and stays disabled.
+    /// after the rollback tick, as the replay predicts its despawn again. A locally predicted
+    /// entity despawned at or before the tick was already gone there, and stays disabled.
     pub(crate) fn remove_prediction_despawned(
         mut commands: Commands<'_, '_>,
         rollback: Res<'_, Rollback>,
@@ -190,7 +190,8 @@ impl RollbackPlugin {
     ///
     /// This function:
     /// 1. Clears all **predicted** values from rollback_tick onwards (we will re-predict them)
-    /// 2. Preserves all **confirmed** values (we know the real server values and will snap to them during re-simulation)
+    /// 2. Preserves all **confirmed** values (we know the real server values and will snap to them
+    ///    during re-simulation)
     /// 3. Reverts the component to the value at rollback_tick
     ///
     /// Neither history is marked changed, as their types define.
@@ -224,8 +225,8 @@ impl RollbackPlugin {
         {
             let predicted_history = predicted_history.bypass_change_detection();
             let restore_state = if let Some(confirmed_history) = confirmed_history {
-                // A policy-driven state rollback uses the diff-aware completed checkpoint C stored
-                // in PredictionManager as its rollback target. Completion of C proves that a
+                // A policy-driven state rollback uses the diff-aware completed confirmed tick C
+                // stored in PredictionSetup as its rollback target. Completion of C proves that a
                 // component without an explicit update is unchanged since its previous confirmed
                 // state, even if the check wrote no anchor at C because it stopped at the first
                 // mismatch.
@@ -324,7 +325,8 @@ impl RollbackPlugin {
                         "No history entry for component at rollback tick; leaving current value in place"
                     );
                 }
-                // An explicit removal means the component was authoritatively removed at rollback_tick.
+                // An explicit removal means the component was authoritatively removed at
+                // rollback_tick.
                 Some(HistoryState::Removed) => {
                     if live.is_some() {
                         deferred.remove::<C>(entity_id);
@@ -354,10 +356,8 @@ impl RollbackPlugin {
 
         // The components hold their state at the end of `rollback_start_tick`, so the timeline goes
         // back there and the replay runs forward to the end of `current_tick`.
-        let num_rollback_ticks = current_tick - rollback_start_tick;
-        world
-            .resource_mut::<LocalTimeline>()
-            .shift(-num_rollback_ticks);
+        let rollback_ticks = current_tick - rollback_start_tick;
+        world.resource_mut::<LocalTimeline>().shift(-rollback_ticks);
         debug!(
             "Rollback between {:?} and {:?}",
             rollback_start_tick, current_tick
@@ -369,7 +369,7 @@ impl RollbackPlugin {
             sample_point = "PreUpdate",
             local_tick = current_tick.0,
             rollback_tick = rollback_start_tick.0,
-            num_rollback_ticks,
+            rollback_ticks,
             "starting rollback"
         );
 
@@ -394,7 +394,7 @@ impl RollbackPlugin {
         // Run the fixed update schedule (which should contain ALL
         // predicted/rollback components and resources). This is similar to what
         // `bevy_time::fixed::run_fixed_main_schedule()` does
-        for i in 0..num_rollback_ticks {
+        for i in 0..rollback_ticks {
             // we add 1 here because running FixedUpdate will start by incrementing the tick
             let rollback_tick = rollback_start_tick + i + 1;
             let _span = debug_span!("rollback", tick = ?rollback_tick).entered();
@@ -407,7 +407,7 @@ impl RollbackPlugin {
                 local_tick = rollback_tick.0,
                 rollback_tick = rollback_tick.0,
                 rollback_iteration = i,
-                num_rollback_ticks,
+                rollback_ticks,
                 "running rollback tick"
             );
             // A tick that did not run, as one a resync skipped, runs now at the current period.
@@ -448,14 +448,14 @@ impl RollbackPlugin {
             sample_point = "PreUpdate",
             local_tick = current_tick.0,
             rollback_tick = rollback_start_tick.0,
-            num_rollback_ticks,
+            rollback_ticks,
             "finished rollback"
         );
 
         let mut counts = world.get_resource_mut::<PredictionCounts>().unwrap();
         counts.rollbacks = counts.rollbacks.saturating_add(1);
         // A start tick after the current tick replays no tick.
-        let replayed = num_rollback_ticks.max(0).unsigned_abs();
+        let replayed = rollback_ticks.max(0).unsigned_abs();
         counts.rollback_ticks = counts.rollback_ticks.saturating_add(replayed);
     }
 
@@ -501,24 +501,26 @@ impl RollbackPlugin {
         }
     }
 
-    /// Check if we need to do a rollback. We do this separately from `RollbackPlugin::prepare_rollback` because even if
-    /// we stop the `RollbackPlugin::check_rollback` function early as soon as we find a mismatch, but we need to
-    /// rollback all components to the original state.
+    /// Check if we need to do a rollback. We do this separately from
+    /// `RollbackPlugin::prepare_rollback` because even if we stop the
+    /// `RollbackPlugin::check_rollback` function early as soon as we find a mismatch, but we need
+    /// to rollback all components to the original state.
     ///
-    /// Key invariant: a completed checkpoint C guarantees that for all entities, we have complete
-    /// information at C:
+    /// Key invariant: a completed confirmed tick C guarantees that for all entities, we have
+    /// complete information at C:
     /// - entities that received an update at C have their confirmed value in history;
-    /// - entities that did not receive an update have the same value as their last confirmation before C.
+    /// - entities that did not receive an update have the same value as their last confirmation
+    ///   before C.
     #[expect(
         clippy::too_many_arguments,
         reason = "a Bevy system takes each resource it reads"
     )]
     fn check_rollback(
         timeline: SyncedLocalTimeline<'_, '_>,
-        input_config: Res<'_, InputTimelineConfig>,
-        prediction_manager: Res<'_, PredictionManager>,
+        input_setup: Res<'_, InputTimelineSetup>,
+        prediction_setup: Res<'_, PredictionSetup>,
         mut check_state: ResMut<'_, RollbackCheckState>,
-        checkpoints: Res<'_, ReplicationCheckpointMap>,
+        confirmed_ticks: Res<'_, ConfirmedTickMap>,
         server_mutate_ticks: Res<'_, ServerMutateTicks>,
         server_held_disabled: Query<
             '_,
@@ -530,13 +532,13 @@ impl RollbackPlugin {
     ) {
         let tick = timeline.tick();
         let received_state = check_state.received_messages_this_frame;
-        let max_rollback_ticks = prediction_manager.max_rollback_ticks(&input_config);
-        let server_confirmed_tick = checkpoints.last_confirmed_tick();
+        let max_rollback_ticks = prediction_setup.max_rollback_ticks(&input_setup);
+        let server_confirmed_tick = confirmed_ticks.last_confirmed_tick();
         let candidate_confirmed_tick = scan.candidate;
 
         // Forced rollbacks (requested externally via
         // `RollbackCheckState::request_forced_rollback`) take precedence over
-        // policy-driven rollbacks and fire regardless of `rollback_config.mode`.
+        // policy-driven rollbacks and fire regardless of `rollback_setup.mode`.
         // This lets one-shot mechanisms (e.g. a late-join snapshot) trigger a
         // rollback even on a client whose normal rollback policy is `Disabled`.
         let forced_rollback_kind = core::mem::take(&mut check_state.forced_rollback_kind);
@@ -567,7 +569,7 @@ impl RollbackPlugin {
             return;
         }
 
-        // Start from the newest globally completed checkpoint at or before the local tick, then
+        // Start from the newest globally completed confirmed tick at or before the local tick, then
         // constrain it by unresolved diffs on predicted diff-replicated components.
         //
         // We might be in a situation where a tick is confirmed in ServerMutateTicks, but the diff
@@ -578,10 +580,10 @@ impl RollbackPlugin {
         let confirmed_tick = |candidate: NetTick| {
             let confirmed = match earliest_pending_tick {
                 // P itself is unresolved, so the bound is strict. The selected rollback target is
-                // still required to be a globally completed Replicon checkpoint.
-                Some(pending_tick) => checkpoints
+                // still required to be a globally completed Replicon confirmed tick.
+                Some(pending_tick) => confirmed_ticks
                     .latest_completed_before(&server_mutate_ticks, pending_tick)
-                    .map(|checkpoint| checkpoint.tick),
+                    .map(|confirmed_tick| confirmed_tick.tick),
                 None => Some(candidate),
             };
             debug_assert!(confirmed.is_none_or(|confirmed| confirmed <= candidate));
@@ -589,9 +591,9 @@ impl RollbackPlugin {
         };
 
         // If we check for rollback on both state and input, state takes precedence.
-        match prediction_manager.rollback_config.mode {
-            // if we received a state update, we don't check for mismatches and just set the rollback
-            // tick
+        match prediction_setup.rollback_setup.mode {
+            // if we received a state update, we don't check for mismatches and just set the
+            // rollback tick
             RollbackMode::Always => {
                 if received_state
                     && scan.has_check_entities
@@ -637,7 +639,7 @@ impl RollbackPlugin {
                         debug!(
                             ?confirmed_tick,
                             ?entity,
-                            "Rollback because a predicted despawn of a server-held entity is at or before the completed checkpoint"
+                            "Rollback because a predicted despawn of a server-held entity is at or before the confirmed tick"
                         );
                         scan.request(confirmed_tick, max_rollback_ticks, RollbackKind::Policy);
                     } else {
@@ -654,14 +656,14 @@ impl RollbackPlugin {
         }
     }
 
-    /// Selects the newest completed checkpoint at or before the local tick, and whether this
-    /// frame's policy looks at it, for the components' surveys. It resets the frame's scan first, so
-    /// a frame before the timeline syncs asks for no rollback.
+    /// Selects the newest completed confirmed tick at or before the local tick, and whether this
+    /// frame's policy looks at it, for the components' surveys. It resets the frame's scan first,
+    /// so a frame before the timeline syncs asks for no rollback.
     fn begin_rollback_check(
         timeline: Option<SyncedLocalTimeline<'_, '_>>,
-        prediction_manager: Res<'_, PredictionManager>,
+        prediction_setup: Res<'_, PredictionSetup>,
         check_state: Res<'_, RollbackCheckState>,
-        checkpoints: Res<'_, ReplicationCheckpointMap>,
+        confirmed_ticks: Res<'_, ConfirmedTickMap>,
         server_mutate_ticks: Res<'_, ServerMutateTicks>,
         mut scan: ResMut<'_, RollbackScan>,
     ) {
@@ -673,29 +675,30 @@ impl RollbackPlugin {
         scan.tick = Some(tick);
         // Let:
         // - T be the current local simulation tick;
-        // - S be the globally latest confirmed checkpoint;
-        // - C0 be the latest confirmed checkpoint with C0 <= T;
+        // - S be the globally latest confirmed confirmed tick;
+        // - C0 be the latest confirmed confirmed tick with C0 <= T;
         // - P be the earliest unresolved diff tick at or before C0;
-        // - C be C0 when no such P exists, otherwise the latest completed checkpoint before P.
+        // - C be C0 when no such P exists, otherwise the latest completed confirmed tick before P.
         //
         // In the usual case, the client is ahead of the server so S <= T and C0 = S. The
-        // completed-checkpoint scan checks all replicated predicted components. This is
+        // completed-confirmed tick scan checks all replicated predicted components. This is
         // required for correctness: Replicon's confirmation marker is
         // entity-level, so a receive-time check would skip an updated entity even when
         // another predicted component on that entity was unchanged and mismatched.
         //
         // If S > T, Replicon's completion history lets us find C0 even though the latest completed
-        // checkpoint is still in the local future. Diff replication adds one more constraint: an
-        // unresolved diff at P makes the effective authoritative state unknown at every tick from P
-        // onward. We therefore cannot use C0 when P <= C0. In that case, choose the latest globally
-        // completed checkpoint strictly before the earliest such P. We intentionally derive that
-        // fallback from ServerMutateTicks rather than ConfirmedHistory: histories contain explicit
-        // component updates and selected unchanged anchors, not every globally completed checkpoint.
-        let candidate = match checkpoints.last_confirmed_tick() {
+        // confirmed tick is still in the local future. Diff replication adds one more constraint:
+        // an unresolved diff at P makes the effective authoritative state unknown at every tick
+        // from P onward. We therefore cannot use C0 when P <= C0. In that case, choose the latest
+        // globally completed confirmed tick strictly before the earliest such P. We intentionally
+        // derive that fallback from ServerMutateTicks rather than ConfirmedHistory: histories
+        // contain explicit component updates and selected unchanged anchors, not every globally
+        // completed confirmed tick.
+        let candidate = match confirmed_ticks.last_confirmed_tick() {
             Some(confirmed_tick) if confirmed_tick <= tick => Some(confirmed_tick),
-            Some(_) => checkpoints
+            Some(_) => confirmed_ticks
                 .latest_completed_at_or_before(&server_mutate_ticks, tick)
-                .map(|checkpoint| checkpoint.tick),
+                .map(|confirmed_tick| confirmed_tick.tick),
             None => None,
         };
         scan.candidate = candidate;
@@ -703,7 +706,7 @@ impl RollbackPlugin {
         if check_state.forced_rollback_tick.is_some() {
             return;
         }
-        match prediction_manager.rollback_config.mode {
+        match prediction_setup.rollback_setup.mode {
             RollbackMode::Always => {
                 scan.surveys = check_state.received_messages_this_frame && candidate.is_some();
                 scan.counts_targets = scan.surveys;
@@ -718,10 +721,10 @@ impl RollbackPlugin {
 
     /// Asks for the rollback the frame decided on, or the one a component's mismatch at the scan
     /// tick asks for.
-    fn finish_rollback_check(
-        input_config: Res<'_, InputTimelineConfig>,
-        prediction_manager: Res<'_, PredictionManager>,
-        checkpoints: Res<'_, ReplicationCheckpointMap>,
+    fn end_rollback_check(
+        input_setup: Res<'_, InputTimelineSetup>,
+        prediction_setup: Res<'_, PredictionSetup>,
+        confirmed_ticks: Res<'_, ConfirmedTickMap>,
         mut check_state: ResMut<'_, RollbackCheckState>,
         mut scan: ResMut<'_, RollbackScan>,
         mut commands: Commands<'_, '_>,
@@ -730,29 +733,29 @@ impl RollbackPlugin {
             let tick = scan.tick.expect("a scan runs once the timeline is synced");
             debug!(
                 ?confirmed_tick,
-                "Rollback because of mismatch at completed checkpoint"
+                "Rollback because of mismatch at confirmed tick"
             );
             trace!(
                 target: "campfire_net_debug::prediction",
-                kind = "completed_checkpoint_mismatch",
+                kind = "confirmed_tick_mismatch",
                 schedule = "PreUpdate",
                 sample_point = "PreUpdate",
                 entity = ?entity,
                 local_tick = tick.0,
-                latest_completed_tick = checkpoints.last_confirmed_tick().map(|tick| tick.0),
+                latest_completed_tick = confirmed_ticks.last_confirmed_tick().map(|tick| tick.0),
                 completed_tick = confirmed_tick.0,
                 rollback_tick = confirmed_tick.0,
-                "rollback mismatch detected at completed checkpoint"
+                "rollback mismatch detected at confirmed tick"
             );
-            let max_rollback_ticks = prediction_manager.max_rollback_ticks(&input_config);
+            let max_rollback_ticks = prediction_setup.max_rollback_ticks(&input_setup);
             scan.request(confirmed_tick, max_rollback_ticks, RollbackKind::Policy);
         }
         // if we have a rollback, despawn any PreSpawned/LocallyPredicted entities that were spawned
         // since the rollback tick (they will get respawned during the rollback)
         //
-        // NOTE: if rollback happened at rollback_tick, then we will start running systems starting from
-        // rollback_tick + 1. so if the entity was spawned at tick >= rollback_tick + 1, we despawn it,
-        // and it can get respawned again
+        // NOTE: if rollback happened at rollback_tick, then we will start running systems starting
+        // from rollback_tick + 1. so if the entity was spawned at tick >= rollback_tick + 1, we
+        // despawn it, and it can get respawned again
         if let Some(rollback_tick) = scan.requested {
             commands.insert_resource(Rollback(rollback_tick));
             check_state.rollback_kind = scan.kind;
@@ -762,7 +765,7 @@ impl RollbackPlugin {
     /// At the start of a rollback, despawns the pre-spawned and locally predicted entities that
     /// spawned after its tick, which the replay spawns again, and sets which locally predicted
     /// entities the rollback leaves alone.
-    fn start_rollback(
+    fn begin_rollback(
         rollback: Res<'_, Rollback>,
         mut check_state: ResMut<'_, RollbackCheckState>,
         mut pre_spawned_receiver: ResMut<'_, PreSpawnedReceiver>,
@@ -808,8 +811,9 @@ impl RollbackPlugin {
         // A snapshot is an explicit one-shot reconcile (e.g. a late-join snapshot) where the caller
         // has already deposited authoritative confirmed state at `rollback_tick` for every relevant
         // entity. Stamping `DisableRollback` on skip-despawn entities during such a reconcile would
-        // exclude them from `RollbackPlugin::prepare_rollback` and leave their prediction history out of sync with
-        // the rest of the world, so the snapshot ends the protection window of every one.
+        // exclude them from `RollbackPlugin::prepare_rollback` and leave their prediction history
+        // out of sync with the rest of the world, so the snapshot ends the protection window of
+        // every one.
         if ends_protection {
             for (_, entity) in check_state.local_skip_despawn.drain(..) {
                 commands.entity(entity).try_remove::<DisableRollback>();
@@ -830,12 +834,12 @@ impl RollbackPlugin {
     /// A locally predicted entity that spawned before the oldest tick a rollback may restore can no
     /// longer be despawned by one, and leaves the list.
     fn prune_local_despawn(
-        manager: Res<'_, PredictionManager>,
-        input_config: Res<'_, InputTimelineConfig>,
+        setup: Res<'_, PredictionSetup>,
+        input_setup: Res<'_, InputTimelineSetup>,
         timeline: Res<'_, LocalTimeline>,
         mut check_state: ResMut<'_, RollbackCheckState>,
     ) {
-        let oldest = manager.oldest_rollback_tick(timeline.tick(), &input_config);
+        let oldest = setup.oldest_rollback_tick(timeline.tick(), &input_setup);
         let stale = check_state
             .local_despawn
             .partition_point(|(spawn_tick, _)| *spawn_tick < oldest);

@@ -1,6 +1,6 @@
 use super::*;
 use campfire_net_channels::Channel;
-use campfire_net_channels::ChannelKind;
+use campfire_net_channels::ChannelTypeId;
 use campfire_net_core::NetTick;
 
 #[derive(Debug, PartialEq)]
@@ -17,7 +17,7 @@ fn received_messages_keep_their_order_and_metadata() {
         receiver.push_received(ReceivedMessage {
             data: TestMessage(message),
             remote_tick: NetTick(tick),
-            channel_kind: ChannelKind::of::<TestChannel>(),
+            channel_type_id: ChannelTypeId::of::<TestChannel>(),
             message_id: None,
         });
     }
@@ -34,5 +34,5 @@ fn received_messages_keep_their_order_and_metadata() {
             ("third", NetTick(11))
         ]
     );
-    assert_eq!(receiver.num_messages(), 0);
+    assert!(receiver.is_empty());
 }

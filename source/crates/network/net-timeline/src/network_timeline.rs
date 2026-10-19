@@ -1,17 +1,17 @@
 use crate::timeline::Timeline;
-use crate::timeline_config::TimelineConfig;
+use crate::timeline_setup::TimelineSetup;
 use bevy_ecs::component::{Component, Mutable};
 use campfire_net_core::NetTick;
 use campfire_net_core::Overstep;
-use campfire_net_core::TickDelta;
 use campfire_net_core::TickInstant;
 use campfire_net_core::TickRate;
+use campfire_net_core::TickSpan;
 use core::ops::DerefMut;
 use core::time::Duration;
 
-/// A component that wraps a [`Timeline`], whose `now` moves by fractional [`TickDelta`]s.
+/// A component that wraps a [`Timeline`], whose `now` moves by fractional [`TickSpan`]s.
 pub trait NetworkTimeline: Component<Mutability = Mutable> {
-    type Config: TimelineConfig;
+    type Setup: TimelineSetup;
 
     /// Estimate of the current time in the [`Timeline`]
     fn now(&self) -> TickInstant;
@@ -22,17 +22,17 @@ pub trait NetworkTimeline: Component<Mutability = Mutable> {
 
     fn set_now(&mut self, now: TickInstant);
 
-    fn apply_delta(&mut self, delta: TickDelta);
+    fn apply_delta(&mut self, delta: TickSpan);
 
     fn apply_duration(&mut self, duration: Duration, rate: TickRate) {
-        self.apply_delta(TickDelta::from_duration(duration, rate));
+        self.apply_delta(TickSpan::from_duration(duration, rate));
     }
 }
 
-impl<C: TimelineConfig, T: Component<Mutability = Mutable> + DerefMut<Target = Timeline<C>>>
+impl<C: TimelineSetup, T: Component<Mutability = Mutable> + DerefMut<Target = Timeline<C>>>
     NetworkTimeline for T
 {
-    type Config = C;
+    type Setup = C;
 
     /// Estimate of the current time in the [`Timeline`]
     fn now(&self) -> TickInstant {
@@ -51,7 +51,7 @@ impl<C: TimelineConfig, T: Component<Mutability = Mutable> + DerefMut<Target = T
         self.now = now;
     }
 
-    fn apply_delta(&mut self, delta: TickDelta) {
+    fn apply_delta(&mut self, delta: TickSpan) {
         self.now = self.now + delta;
     }
 }

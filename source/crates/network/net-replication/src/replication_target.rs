@@ -1,15 +1,5 @@
-//! Replication send-side: target components, visibility rules, and send scheduling.
-//!
-//! The main type here is [`Replicate`] (an alias for [`ReplicationTarget<()>`]),
-//! which selects the peers that receive an entity. Adding it also inserts
-//! Replicon's required [`Replicated`] marker.
-//! On the server you also typically add [`PredictionTarget`] and
-//! [`InterpolationTarget`] to control which clients run prediction or
-//! interpolation for that entity.
-//!
-//! Each link entity (the entity representing a connection to a remote peer) needs a
-//! [`ReplicationSender`](crate::replication_sender::ReplicationSender) component to enable outgoing
-//! replication through that link.
+//! The send side of replication: the targets that choose which links receive, predict or
+//! interpolate an entity; a target brings Replicon's `Replicated`.
 
 use crate::interpolated::Interpolated;
 use crate::predicted::Predicted;
@@ -41,28 +31,6 @@ use serde::Serialize;
 /// spawning (or replacing) it evaluates visibility against all connected links, and it composes
 /// (logical AND) with rooms and manual visibility. The component is immutable, so retarget with
 /// `insert`, not mutation.
-///
-/// # Example
-///
-/// ```rust
-/// use bevy_ecs::prelude::Entity;
-/// use bevy_replicon::prelude::VisibilityFilter;
-/// use campfire_net_connection::NetworkTarget;
-/// use campfire_net_core::PeerId;
-/// use campfire_net_connection::RemoteId;
-/// use campfire_net_replication::Replicate;
-///
-/// let alice = PeerId::Entity(1);
-/// let bob = PeerId::Entity(2);
-///
-/// // The predicate Replicon evaluates for each link. Only the link's `RemoteId` matters, and
-/// // links without one receive nothing.
-/// let link = Entity::PLACEHOLDER;
-/// let target = Replicate::to_clients(NetworkTarget::single(alice));
-/// assert!(target.is_visible(link, Some(&RemoteId(alice))));
-/// assert!(!target.is_visible(link, Some(&RemoteId(bob))));
-/// assert!(!target.is_visible(link, None));
-/// ```
 pub type Replicate = ReplicationTarget<()>;
 
 /// Replication target configuration, evaluated as a Replicon [`VisibilityFilter`].
@@ -174,14 +142,14 @@ impl<T: TargetKind> ReplicationTarget<T> {
     /// A target that is removed hides the entity from every link, and takes its host marker and
     /// what leaves with it.
     ///
-    /// `Remove` does not fire on replace (only `Discard` does), so a retarget runs just the filter's
-    /// re-evaluation, preserving manual visibility overrides. A despawn (`new_archetype` of `None`)
-    /// is skipped: marking an entity hidden while it is being despawned makes Replicon suppress the
-    /// actual despawn message.
+    /// `Remove` does not fire on replace (only `Discard` does), so a retarget runs just the
+    /// filter's re-evaluation, preserving manual visibility overrides. A despawn (`new_archetype`
+    /// of `None`) is skipped: marking an entity hidden while it is being despawned makes Replicon
+    /// suppress the actual despawn message.
     ///
-    /// The hide runs deferred (after Replicon's own `ReplicationTarget::on_remove`, which releases the filter bit) so
-    /// removing `Replicate` deterministically despawns the remote entity instead of leaving it
-    /// retained.
+    /// The hide runs deferred (after Replicon's own `ReplicationTarget::on_remove`, which releases
+    /// the filter bit) so removing `Replicate` deterministically despawns the remote entity instead
+    /// of leaving it retained.
     pub(crate) fn on_remove(trigger: On<'_, '_, Remove<Self>>, mut commands: Commands<'_, '_>)
     where
         Self: VisibilityFilter,
@@ -291,14 +259,6 @@ impl VisibilityFilter for InterpolationTarget {
 ///
 /// Typically set to the owning client so they get a `Predicted` entity,
 /// while other clients receive an `Interpolated` entity instead.
-///
-/// ```rust,ignore
-/// commands.spawn((
-///     Replicate::to_clients(NetworkTarget::All),
-///     PredictionTarget::to_clients(NetworkTarget::single(client_id)),
-///     InterpolationTarget::to_clients(NetworkTarget::all_except([client_id])),
-/// ));
-/// ```
 pub type PredictionTarget = ReplicationTarget<PredictedSend>;
 
 /// Component-level replication target: `PredictedSend` is visible exactly on the links in the
@@ -389,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn unchanged_timeline_does_not_trigger_send() {
+    fn an_unchanged_timeline_sends_nothing() {
         let mut app = App::new();
         app.init_resource::<Time>();
         app.insert_resource(LocalTimeline::default());
@@ -410,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_fixed_ticks_trigger_single_replication_tick_after_fixed_loop() {
+    fn several_fixed_ticks_make_one_replication_tick_after_the_fixed_loop() {
         let mut app = App::new();
         app.init_resource::<Time>();
         app.insert_resource(LocalTimeline::default());

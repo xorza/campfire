@@ -4,10 +4,10 @@ use ring::hmac;
 use crate::derived_secret::DerivedSecret;
 use crate::server_secret::ServerSecret;
 
-/// The key of a server's stateless resets: the token of a session is its HMAC of the session's
-/// connection ID. It derives from the server's secret, so a server started again resets the
-/// sessions its last run held at their next packet (13-net-stack/udp.md, A stateless reset ends the
-/// sessions of a server that started again).
+/// The key of a server's stateless resets: the token of a packet session is its HMAC of the packet
+/// session's connection ID. It derives from the server's secret, so a server started again resets
+/// the packet sessions its last run held at their next packet (13-net-stack/udp.md, A stateless
+/// reset ends the packet sessions of a server that started again).
 #[derive(Debug)]
 pub(crate) struct ResetKey(hmac::Key);
 
@@ -18,7 +18,8 @@ impl ResetKey {
         Self(hmac::Key::new(hmac::HMAC_SHA256, key.as_slice()))
     }
 
-    /// The reset token of the session whose connection ID is `id`: the first 16 bytes of its HMAC.
+    /// The reset token of the packet session whose connection ID is `id`: the first 16 bytes of its
+    /// HMAC.
     pub(crate) fn token(&self, id: ConnectionId) -> [u8; RESET_TOKEN_LEN] {
         let tag = hmac::sign(&self.0, &id.to_bytes());
         let mut token = [0; RESET_TOKEN_LEN];

@@ -116,10 +116,10 @@ impl ServerSendPlugin {
     /// Replication is triggered in Replicon every time the `ServerTick` is incremented.
     ///
     /// Run this once per app frame after the fixed loop has drained. Replicating
-    /// from every app frame can produce multiple Replicon checkpoints for the same
+    /// from every app frame can produce multiple Replicon confirmed ticks for the same
     /// fixed network tick, while running once per fixed step can produce multiple
-    /// sends in a catch-up frame. Replicon's tick is only a replication checkpoint;
-    /// it is mapped back to the stack's fixed tick by `ReplicationCheckpointMap`.
+    /// sends in a catch-up frame. Replicon's tick is only a replication confirmed tick;
+    /// it is mapped back to the stack's fixed tick by `ConfirmedTickMap`.
     pub(crate) fn update_replication_tick(
         time: Res<'_, Time>,
         timeline: Res<'_, LocalTimeline>,

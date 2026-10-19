@@ -16,7 +16,7 @@ impl Plugin for ControlPlugin {
         // ControlledSend is registered in SharedComponentRegistrationPlugin
         // so its wire ID and custom Controlled receive behavior match.
         app.add_visibility_filter::<ControlledBy>();
-        app.add_observer(ControlledBy::end_link_session);
+        app.add_observer(ControlledBy::end_with_link);
         app.add_observer(Self::sync_controlled);
         app.add_observer(Self::remove_controlled);
         app.add_observer(Self::controlled_on_host_added);

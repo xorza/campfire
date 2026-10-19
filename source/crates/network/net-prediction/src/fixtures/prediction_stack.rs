@@ -5,11 +5,11 @@ use campfire_net_interpolation::internals::InterpolationStack;
 use campfire_net_stepper::Stack;
 
 use crate::fixtures::protocol::PredictionProtocolPlugin;
-use crate::prediction_manager::PredictionManager;
 use crate::prediction_marker_plugin::PredictionMarkerPlugin;
 use crate::prediction_plugin::PredictionPlugin;
 use crate::prediction_plugins::PredictionPlugins;
 use crate::prediction_registry_plugin::PredictionRegistryPlugin;
+use crate::prediction_setup::PredictionSetup;
 
 /// Interpolation with prediction and rollback on the client.
 #[derive(Debug, Clone, Copy, Default)]
@@ -46,7 +46,7 @@ impl Stack for PredictionStack {
 
     fn client_link(&self, link: &mut EntityWorldMut<'_>) {
         InterpolationStack.client_link(link);
-        link.world_scope(|world| world.insert_resource(PredictionManager::default()));
+        link.world_scope(|world| world.insert_resource(PredictionSetup::default()));
     }
 
     fn server_link(&self, link: &mut EntityWorldMut<'_>) {
@@ -62,17 +62,17 @@ impl Stack for PredictionStack {
 mod tests {
     use super::*;
     use campfire_net_stepper::Stepper;
-    use campfire_net_stepper::StepperConfig;
+    use campfire_net_stepper::StepperSetup;
 
-    /// The client connects and syncs with prediction on, its app holding the prediction manager.
+    /// The client connects and syncs with prediction on, its app holding the prediction setup.
     #[test]
     fn the_client_predicts_once_synced() {
-        let stepper = Stepper::new(PredictionStack, StepperConfig::host_server());
+        let stepper = Stepper::new(PredictionStack, StepperSetup::host_server());
         assert!(
             stepper
                 .client_app(0)
                 .world()
-                .contains_resource::<PredictionManager>()
+                .contains_resource::<PredictionSetup>()
         );
     }
 }

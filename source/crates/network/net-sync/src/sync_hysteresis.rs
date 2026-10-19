@@ -1,7 +1,7 @@
 use crate::sync_adjustment::SyncAdjustment;
-use crate::sync_config::SyncConfig;
+use crate::sync_setup::SyncSetup;
 use bevy_reflect::Reflect;
-use campfire_net_core::TickDelta;
+use campfire_net_core::TickSpan;
 
 /// Mutable hysteresis shared by timeline synchronization controllers.
 ///
@@ -31,18 +31,18 @@ impl SyncHysteresis {
     /// errors on both sides are noise, not drift.
     pub(crate) fn speed_adjustment(
         &mut self,
-        config: &SyncConfig,
-        offset: TickDelta,
+        setup: &SyncSetup,
+        offset: TickSpan,
     ) -> SyncAdjustment {
         let sign = !offset.is_negative();
         let flipped = sign != self.previous_error_sign;
         self.previous_error_sign = sign;
         let error = offset.unsigned_abs();
-        if error > config.max_error_margin {
+        if error > setup.max_error_margin {
             self.consecutive_errors = 0;
             return SyncAdjustment::Resync;
         }
-        if error <= config.error_margin {
+        if error <= setup.error_margin {
             self.consecutive_errors = 0;
             return SyncAdjustment::Nominal;
         }
@@ -51,12 +51,12 @@ impl SyncHysteresis {
         } else {
             self.consecutive_errors.saturating_add(1)
         };
-        if self.consecutive_errors < config.consecutive_errors_threshold {
+        if self.consecutive_errors < setup.consecutive_errors_threshold {
             return SyncAdjustment::Nominal;
         }
-        let base_factor = config.speedup_factor - 1.0;
+        let base_factor = setup.speedup_factor - 1.0;
         // At most 1, and the band's bounds keep the divisor above 0.
-        let error_ratio: f32 = (error.value / config.max_error_margin.value).to_num();
+        let error_ratio: f32 = (error.value / setup.max_error_margin.value).to_num();
         // Apply progressively stronger adjustment as error increases
         let adjustment = 1.0 + (base_factor * error_ratio * 2.0);
         // Slow down if we are ahead
@@ -77,19 +77,19 @@ mod tests {
     /// the run at 1. A third error behind completes it.
     #[test]
     fn a_sign_flip_restarts_the_run() {
-        let config = SyncConfig {
+        let setup = SyncSetup {
             consecutive_errors_threshold: 3,
-            ..SyncConfig::default()
+            ..SyncSetup::default()
         };
         let mut hysteresis = SyncHysteresis::default();
-        for offset in [2, 2, -2, -2].map(TickDelta::from) {
+        for offset in [2, 2, -2, -2].map(TickSpan::from) {
             assert!(matches!(
-                hysteresis.speed_adjustment(&config, offset),
+                hysteresis.speed_adjustment(&setup, offset),
                 SyncAdjustment::Nominal
             ));
         }
         assert!(matches!(
-            hysteresis.speed_adjustment(&config, TickDelta::from(-2)),
+            hysteresis.speed_adjustment(&setup, TickSpan::from(-2)),
             SyncAdjustment::SpeedAdjust(_)
         ));
     }

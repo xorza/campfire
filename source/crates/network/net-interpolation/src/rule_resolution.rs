@@ -1,11 +1,11 @@
-//! What the registry resolves an archetype into, for each pipeline's owners.
+//! What the registry resolves an archetype into, for each pipeline's holders.
 
 use crate::interpolation_rule_id::InterpolationRuleId;
-use campfire_net_replication::ComponentKind;
+use campfire_net_replication::ComponentTypeId;
 
-/// History representation used when resolving history ownership.
+/// History representation used when resolving history holding.
 ///
-/// This affects only the history lane. Apply ownership always requires every
+/// This affects only the history lane. Apply holding always requires every
 /// live component targeted by the rule.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum RuleTarget {
@@ -19,9 +19,9 @@ pub(crate) enum RuleTarget {
 ///
 /// The resolver selects rules independently for two jobs:
 ///
-/// - `owns_history` selects which rule's member callbacks create and update
+/// - `holds_history` selects which rule's member callbacks create and update
 ///   histories and insert or remove delayed live components.
-/// - `owns_apply` selects which rule's interpolation callback writes the live
+/// - `holds_apply` selects which rule's interpolation callback writes the live
 ///   components.
 ///
 /// Winning one job does not affect resolution of the other. A rule without the
@@ -32,19 +32,19 @@ pub(crate) struct ResolvedRule {
     /// Rule receiving work in at least one lane.
     pub rule_id: InterpolationRuleId,
     /// Whether this rule wins the history-policy lane for all of its members.
-    pub owns_history: bool,
+    pub holds_history: bool,
     /// Whether this rule wins the interpolation-application lane for all of its members.
-    pub owns_apply: bool,
+    pub holds_apply: bool,
 }
 
 /// Reusable temporary storage for `InterpolationRegistry::resolved_rules_for_archetype`.
 ///
-/// Each pipeline's owners keep one and reuse its vector capacities while resolving
+/// Each pipeline's holders keep one and reuse its vector capacities while resolving
 /// newly-created archetypes.
 #[derive(Debug, Default)]
 pub(crate) struct RuleResolutionScratch {
     pub(crate) candidates: Vec<InterpolationRuleId>,
-    pub(crate) history_claimed_members: Vec<ComponentKind>,
-    pub(crate) apply_claimed_members: Vec<ComponentKind>,
+    pub(crate) history_claimed_members: Vec<ComponentTypeId>,
+    pub(crate) apply_claimed_members: Vec<ComponentTypeId>,
     pub(crate) resolved_rules: Vec<ResolvedRule>,
 }

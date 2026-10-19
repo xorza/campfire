@@ -17,7 +17,7 @@ fn spawn_host(app: &mut App) -> (Entity, Entity) {
 }
 
 #[test]
-fn connect_is_retried_when_server_starts() {
+fn a_host_client_connects_again_when_its_server_starts() {
     let mut app = app();
     let (server, client) = spawn_host(&mut app);
 
@@ -36,7 +36,7 @@ fn connect_is_retried_when_server_starts() {
 }
 
 #[test]
-fn disconnect_cancels_pending_connection() {
+fn a_disconnect_cancels_a_pending_connection() {
     let mut app = app();
     let (server, client) = spawn_host(&mut app);
 
@@ -56,7 +56,7 @@ fn disconnect_cancels_pending_connection() {
 }
 
 #[test]
-fn connected_client_becomes_host_when_server_starts() {
+fn a_connected_client_becomes_the_host_client_when_its_server_starts() {
     let mut app = app();
     let (server, client) = spawn_host(&mut app);
     app.world_mut().entity_mut(client).insert((

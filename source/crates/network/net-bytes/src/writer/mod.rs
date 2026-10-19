@@ -1,10 +1,10 @@
 //! Writer that reuses its allocations while the messages split from it are alive.
 //!
 //! Each written message is split off as a [`Bytes`] that shares the writer's chunk, in an
-//! [`Arena`]. A chunk is reused once every message split from it is dropped, so a sender whose
+//! [`ByteArena`]. A chunk is reused once every message split from it is dropped, so a sender whose
 //! messages wait for an ack writes into a reclaimed chunk instead of a new allocation.
 
-use crate::arena::Arena;
+use crate::byte_arena::ByteArena;
 use crate::var_int::VarInt;
 use bytes::{Bytes, BytesMut};
 
@@ -16,13 +16,13 @@ const MAX_SPARE_CHUNKS: usize = 4;
 
 #[derive(Debug)]
 pub struct Writer {
-    arena: Arena,
+    arena: ByteArena,
 }
 
 impl Default for Writer {
     fn default() -> Self {
         Self {
-            arena: Arena::new(CHUNK, MAX_SPARE_CHUNKS),
+            arena: ByteArena::new(CHUNK, MAX_SPARE_CHUNKS),
         }
     }
 }
@@ -31,7 +31,7 @@ impl Writer {
     /// A writer with one buffer of `capacity` bytes, which grows as plain [`BytesMut`] does.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            arena: Arena::new(CHUNK, MAX_SPARE_CHUNKS).with_capacity(capacity),
+            arena: ByteArena::new(CHUNK, MAX_SPARE_CHUNKS).with_capacity(capacity),
         }
     }
 

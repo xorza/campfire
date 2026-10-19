@@ -7,7 +7,7 @@ use crate::bandwidth_limit::BandwidthLimit;
 const UNITS_PER_BYTE: u64 = 1_000_000_000;
 
 /// A token bucket of a [`BandwidthLimit`]: it starts full, holds at most the burst, and refills
-/// at the sustained rate on the session's clock.
+/// at the sustained rate on the packet session's clock.
 #[derive(Debug)]
 pub(crate) struct BandwidthLimiter {
     bytes_per_second: u64,

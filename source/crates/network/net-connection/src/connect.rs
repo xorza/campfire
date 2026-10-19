@@ -1,6 +1,6 @@
 use bevy_ecs::prelude::*;
 
-/// Trigger to connect the client
+/// Connects a client.
 #[derive(Debug, EntityEvent)]
 pub struct Connect {
     pub entity: Entity,

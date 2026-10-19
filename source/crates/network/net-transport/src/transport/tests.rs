@@ -3,17 +3,17 @@ use crate::fixtures::protocol::{Channel1, channel_id};
 use crate::fixtures::transport_stack::TransportStack;
 use bevy_ecs::world::World;
 use bytes::Bytes;
-use campfire_net_channels::fragment_size_for_max_payload;
+use campfire_net_channels::fragment_len_for_max_payload;
 use campfire_net_channels::internals::ChannelCounts;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 
 /// A 5-byte message counts 5 bytes sent on the client and 5 received on the server, and
 /// nothing the other way.
 #[test]
 fn one_message_counts_on_both_sides() {
-    let mut stepper = Stepper::new(TransportStack, StepperConfig::single());
-    let channel = ChannelKind::of::<Channel1>();
+    let mut stepper = Stepper::new(TransportStack, StepperSetup::single());
+    let channel = ChannelTypeId::of::<Channel1>();
     let read = |stepper: &Stepper<TransportStack>, client: bool| {
         let link = if client {
             stepper.client(0)
@@ -52,28 +52,28 @@ fn one_message_counts_on_both_sides() {
     );
 }
 
-/// The senders' fragment size follows the largest payload of the link's session: the one the
+/// The senders' fragment size follows the largest payload of the link's packet session: the one the
 /// link holds when the transport comes, then the one it holds at each link.
 #[test]
-fn fragment_size_follows_the_sessions_largest_payload() {
+fn the_fragment_len_follows_the_packet_sessions_largest_payload() {
     let mut world = World::new();
     world.add_observer(Transport::on_linked);
     let mut link = Link::default();
-    link.session.set_max_payload(256);
+    link.packet_session.set_max_payload(256);
     let entity = world.spawn((link, Transport::default())).id();
     assert_eq!(
-        world.get::<Transport>(entity).unwrap().fragment_size(),
-        fragment_size_for_max_payload(256).unwrap()
+        world.get::<Transport>(entity).unwrap().fragment_len(),
+        fragment_len_for_max_payload(256).unwrap()
     );
 
     world
         .get_mut::<Link>(entity)
         .unwrap()
-        .session
+        .packet_session
         .set_max_payload(200);
     world.entity_mut(entity).insert(Linked);
     assert_eq!(
-        world.get::<Transport>(entity).unwrap().fragment_size(),
-        fragment_size_for_max_payload(200).unwrap()
+        world.get::<Transport>(entity).unwrap().fragment_len(),
+        fragment_len_for_max_payload(200).unwrap()
     );
 }

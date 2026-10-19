@@ -88,7 +88,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn items_leave_in_key_order_once_ready() {
+    fn items_leave_in_the_order_of_their_keys_once_ready() {
         let mut buffer = ReadyBuffer::new();
         buffer.push(3, 'c');
         buffer.push(1, 'a');
@@ -105,7 +105,7 @@ mod tests {
     /// A binary heap gives no order to equal keys: with the key alone, 0..8 pushed under one key
     /// popped as `[0, 2, 6, 5, 7, 4, 1, 3]`.
     #[test]
-    fn items_with_equal_keys_leave_in_push_order() {
+    fn items_of_one_key_leave_in_the_order_they_came() {
         let mut buffer = ReadyBuffer::new();
         for item in 0..8 {
             buffer.push(5, item);

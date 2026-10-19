@@ -1,6 +1,6 @@
 //! The transport parameters each end's TLS carries, encrypted in the server's handshake: the
-//! version, and from the server the session's connection ID, its reset token and the client's
-//! address tokens for its next connections.
+//! version, and from the server the packet session's connection ID, its reset token and the
+//! client's address tokens for its next connections.
 
 use campfire_net_packets::{ConnectionId, RESET_TOKEN_LEN};
 
@@ -14,7 +14,7 @@ pub(crate) const TOKENS: usize = 2;
 /// What a server tells its client.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ServerParams {
-    /// The ID that starts each of the client's session datagrams.
+    /// The ID that starts each of the client's packet session datagrams.
     pub(crate) id: ConnectionId,
     pub(crate) reset_token: [u8; RESET_TOKEN_LEN],
     pub(crate) tokens: [[u8; TOKEN_LEN]; TOKENS],

@@ -8,8 +8,8 @@ use bytes::Bytes;
 use campfire_net_core::NetTick;
 use serde::Serialize;
 
+use crate::confirmed_tick_map::ConfirmedTickMap;
 use crate::fixtures::protocol::CompRepliconDiff;
-use crate::replication_checkpoint_map::ReplicationCheckpointMap;
 
 /// Replicon's wire form of a diffed component's update, for tests that write it by hand.
 #[derive(Debug, Serialize)]
@@ -47,10 +47,10 @@ fn encode(delta: &ComponentDelta<'_>) -> Bytes {
 }
 
 /// Maps replicon tick `tick` to the network tick of the same number.
-pub fn record_checkpoint(app: &mut App, tick: u32) -> RepliconTick {
+pub fn record_confirmed_tick(app: &mut App, tick: u32) -> RepliconTick {
     let replicon_tick = RepliconTick::new(tick);
     app.world_mut()
-        .resource_mut::<ReplicationCheckpointMap>()
+        .resource_mut::<ConfirmedTickMap>()
         .record(replicon_tick, NetTick(tick));
     replicon_tick
 }

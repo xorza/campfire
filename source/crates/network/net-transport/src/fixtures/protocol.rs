@@ -1,13 +1,13 @@
 use bevy_app::{App, Plugin};
 use bevy_reflect::Reflect;
-use campfire_net_core::Directions;
+use campfire_net_core::LinkDirections;
 
 use crate::app_channel_ext::AppChannelExt;
 use crate::channel_registry::ChannelRegistry;
 use campfire_net_channels::Channel;
-use campfire_net_channels::ChannelConfig;
-use campfire_net_channels::ChannelKind;
 use campfire_net_channels::ChannelMode;
+use campfire_net_channels::ChannelSetup;
+use campfire_net_channels::ChannelTypeId;
 use campfire_net_core::NetId;
 
 #[derive(Debug, Reflect)]
@@ -34,7 +34,7 @@ impl Channel for ChannelOrderedReliable {}
 pub fn channel_id<C: Channel>(app: &App) -> NetId {
     app.world()
         .resource::<ChannelRegistry>()
-        .net_id(ChannelKind::of::<C>())
+        .net_id(ChannelTypeId::of::<C>())
         .unwrap()
 }
 
@@ -44,21 +44,21 @@ pub struct TransportProtocolPlugin;
 
 impl Plugin for TransportProtocolPlugin {
     fn build(&self, app: &mut App) {
-        let channel = |mode| ChannelConfig {
+        let channel = |mode| ChannelSetup {
             mode,
-            ..ChannelConfig::default()
+            ..ChannelSetup::default()
         };
         app.register_channel::<Channel1>(channel(ChannelMode::UnorderedUnreliable))
-            .add_direction(Directions::BOTH);
+            .add_direction(LinkDirections::BOTH);
         app.register_channel::<ChannelSequencedUnreliable>(channel(
             ChannelMode::SequencedUnreliable,
         ))
-        .add_direction(Directions::BOTH);
+        .add_direction(LinkDirections::BOTH);
         app.register_channel::<ChannelUnorderedReliable>(channel(ChannelMode::UnorderedReliable))
-            .add_direction(Directions::BOTH);
+            .add_direction(LinkDirections::BOTH);
         app.register_channel::<ChannelSequencedReliable>(channel(ChannelMode::SequencedReliable))
-            .add_direction(Directions::BOTH);
+            .add_direction(LinkDirections::BOTH);
         app.register_channel::<ChannelOrderedReliable>(channel(ChannelMode::OrderedReliable))
-            .add_direction(Directions::BOTH);
+            .add_direction(LinkDirections::BOTH);
     }
 }

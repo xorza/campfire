@@ -3,8 +3,8 @@
 
 use crate::component_codec::ComponentCodec;
 use crate::confirmed_history::ConfirmedHistory;
+use crate::confirmed_tick_map::ConfirmedTickMap;
 use crate::history_diff_receiver::HistoryDiffReceiver;
-use crate::replication_checkpoint_map::ReplicationCheckpointMap;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::error::Result;
 use bevy_replicon::prelude::RepliconTick;
@@ -17,7 +17,7 @@ use campfire_net_core::NetTick;
 use campfire_net_core::Ticked;
 use tracing::debug;
 
-/// The authoritative tick of the replicated message of `message_tick`; one that no checkpoint
+/// The authoritative tick of the replicated message of `message_tick`; one that no confirmed tick
 /// maps is counted as a fault of the peer's data.
 pub fn replicated_message_tick(
     entity: &DeferredEntity<'_>,
@@ -25,7 +25,7 @@ pub fn replicated_message_tick(
 ) -> Option<NetTick> {
     entity
         .world()
-        .resource::<ReplicationCheckpointMap>()
+        .resource::<ConfirmedTickMap>()
         .message_tick(message_tick)
 }
 
@@ -43,7 +43,7 @@ pub struct ReceivedValue<'a, C> {
 /// diff that the history now gives a base for, in order. `before_write` sees each value before
 /// the history records it, so a caller can act on it.
 ///
-/// A message that the entity's checkpoints do not map is dropped. An entity without a confirmed
+/// A message that the entity's confirmed ticks do not map is dropped. An entity without a confirmed
 /// history gets one: its values are written there and read back for the diffs they make ready,
 /// as the entity's own component goes on only when the message's changes are flushed.
 pub fn receive_history_diff<
@@ -59,7 +59,7 @@ pub fn receive_history_diff<
         debug!(
             message_tick = ?ctx.message_tick,
             component = core::any::type_name::<C>(),
-            "dropping a diff that no checkpoint maps"
+            "dropping a diff that no confirmed tick maps"
         );
         return Ok(());
     };

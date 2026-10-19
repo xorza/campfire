@@ -7,18 +7,18 @@ use campfire_net_connection::{ClientOf, Connect, Connected, NetworkTarget};
 use campfire_net_interpolation::internals::*;
 use campfire_net_replication::internals::*;
 use campfire_net_replication::{
-    Controlled, ControlledBy, Interpolated, InterpolationTarget, Lifetime, Overridden, Predicted,
-    PredictedSend, PredictionTarget, Replicate, RoomAllocator, Rooms,
+    Controlled, ControlledBy, ControlledLifetime, Interpolated, InterpolationTarget, Overridden,
+    Predicted, PredictedSend, PredictionTarget, Replicate, RoomAllocator, Rooms,
 };
 use campfire_net_stepper::ClientKind;
-use campfire_net_stepper::{Init, StepperConfig};
-use campfire_net_stepper::{Order, Stepper};
+use campfire_net_stepper::{Init, StepperSetup};
+use campfire_net_stepper::{StepOrder, Stepper};
 use tracing::info;
 
 fn host_only_stepper_before_host_connect() -> Stepper<PredictionStack> {
-    let mut config = StepperConfig::with_clients(vec![ClientKind::Host]);
-    config.init = Init::Deferred;
-    let mut stepper = Stepper::new(PredictionStack, config);
+    let mut setup = StepperSetup::with_clients(vec![ClientKind::Host]);
+    setup.init = Init::Deferred;
+    let mut stepper = Stepper::new(PredictionStack, setup);
     stepper.start_server();
     stepper
 }
@@ -34,7 +34,7 @@ fn connect_host(stepper: &mut Stepper<PredictionStack>) -> Entity {
 
 #[test]
 fn late_join_client_gets_predicted_marker_for_prediction_target_all() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -103,8 +103,8 @@ fn late_join_client_gets_predicted_marker_for_prediction_target_all() {
 }
 
 #[test]
-fn prediction_target_removal_removes_receiver_marker() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+fn the_removal_of_a_prediction_target_removes_the_receiver_marker() {
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -149,8 +149,8 @@ fn prediction_target_removal_removes_receiver_marker() {
 }
 
 #[test]
-fn late_join_client_gets_latest_state_for_existing_predicted_entity() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+fn a_client_that_joins_late_gets_the_latest_state_of_a_predicted_entity() {
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -204,7 +204,7 @@ fn late_join_client_gets_latest_state_for_existing_predicted_entity() {
 /// only give the Predicted component to that specific client, not all clients.
 #[test]
 fn a_single_prediction_target_predicts_on_that_client_only() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::with_plain_clients(2));
 
     let client_0_id = stepper.client_of(0).get::<RemoteId>().unwrap().0;
     let client_1_id = stepper.client_of(1).get::<RemoteId>().unwrap().0;
@@ -366,7 +366,7 @@ fn a_single_prediction_target_predicts_on_that_client_only() {
 /// more closely mimics how the simple_box example works.
 #[test]
 fn sequential_spawns_predict_only_on_their_target_client() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::with_plain_clients(2));
 
     let client_0_id = stepper.client_of(0).get::<RemoteId>().unwrap().0;
     let client_1_id = stepper.client_of(1).get::<RemoteId>().unwrap().0;
@@ -484,11 +484,11 @@ fn sequential_spawns_predict_only_on_their_target_client() {
 
 /// Mimics the simple_box pattern: entities spawned via observer on Connected,
 /// with ControlledBy + PredictionTarget/InterpolationTarget.
-/// Verifies each client sees exactly 1 Predicted entity (their own) and
+/// Each client sees exactly 1 Predicted entity (their own) and
 /// the other client's entity as Interpolated.
 #[test]
 fn each_client_predicts_its_own_entity_and_interpolates_the_others() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::with_plain_clients(2));
 
     // Mimic handle_connected: for each connected client, spawn a player entity
     let client_of_0 = stepper.client_of_entity(0);
@@ -506,7 +506,7 @@ fn each_client_predicts_its_own_entity_and_interpolates_the_others() {
             InterpolationTarget::to_clients(NetworkTarget::all_except([client_0_id])),
             ControlledBy {
                 link: client_of_0,
-                lifetime: Lifetime::default(),
+                lifetime: ControlledLifetime::default(),
             },
         ))
         .id();
@@ -528,7 +528,7 @@ fn each_client_predicts_its_own_entity_and_interpolates_the_others() {
             InterpolationTarget::to_clients(NetworkTarget::all_except([client_1_id])),
             ControlledBy {
                 link: client_of_1,
-                lifetime: Lifetime::default(),
+                lifetime: ControlledLifetime::default(),
             },
         ))
         .id();
@@ -692,11 +692,11 @@ fn each_client_predicts_its_own_entity_and_interpolates_the_others() {
 
 /// Test prediction visibility with a late-joining client.
 /// Client 0 connects first, entity spawned for it. Then client 1 joins.
-/// Verifies that client 1 does NOT see client 0's entity as Predicted.
+/// Client 1 does NOT see client 0's entity as Predicted.
 #[test]
 fn a_late_client_does_not_predict_another_clients_entity() {
     // Start with 1 client
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let client_0_id = stepper.client_of(0).get::<RemoteId>().unwrap().0;
     let client_of_0 = stepper.client_of_entity(0);
@@ -711,7 +711,7 @@ fn a_late_client_does_not_predict_another_clients_entity() {
             InterpolationTarget::to_clients(NetworkTarget::all_except([client_0_id])),
             ControlledBy {
                 link: client_of_0,
-                lifetime: Lifetime::default(),
+                lifetime: ControlledLifetime::default(),
             },
         ))
         .id();
@@ -753,7 +753,7 @@ fn a_late_client_does_not_predict_another_clients_entity() {
             InterpolationTarget::to_clients(NetworkTarget::all_except([client_1_id])),
             ControlledBy {
                 link: client_of_1,
-                lifetime: Lifetime::default(),
+                lifetime: ControlledLifetime::default(),
             },
         ))
         .id();
@@ -886,9 +886,9 @@ fn a_late_client_does_not_predict_another_clients_entity() {
 #[test]
 fn observer_spawned_entities_predict_only_on_their_owner_after_a_late_join() {
     // Start with 1 client only
-    let mut config = StepperConfig::single();
-    config.init = Init::Deferred;
-    let mut stepper = Stepper::new(PredictionStack, config);
+    let mut setup = StepperSetup::single();
+    setup.init = Init::Deferred;
+    let mut stepper = Stepper::new(PredictionStack, setup);
 
     // Register observer on the SERVER that spawns player entities when clients connect
     // (mimicking simple_box handle_connected)
@@ -910,7 +910,7 @@ fn observer_spawned_entities_predict_only_on_their_owner_after_a_late_join() {
                 InterpolationTarget::to_clients(NetworkTarget::all_except([client_id])),
                 ControlledBy {
                     link: trigger.entity,
-                    lifetime: Lifetime::default(),
+                    lifetime: ControlledLifetime::default(),
                 },
                 Name::from(format!("Player_{client_id:?}")),
             ));
@@ -983,13 +983,13 @@ fn observer_spawned_entities_predict_only_on_their_owner_after_a_late_join() {
     );
 }
 
-/// Test that re-inserting a Replicate component works as expected (doesn't
+/// Re-inserting a Replicate component works as expected (doesn't
 /// create duplicate entities)
 /// https://github.com/cBournhonesque/lightyear/issues/1025
 #[test]
 fn reinserting_replicate_creates_no_duplicate_entity() {
     {
-        let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+        let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
         let source_entity = spawn_on_server(
             &mut stepper,
@@ -1027,12 +1027,12 @@ fn reinserting_replicate_creates_no_duplicate_entity() {
     }
 }
 
-/// Test that verifies Predicted and Interpolated are correctly distributed
+/// Predicted and Interpolated are correctly distributed
 /// across clients. Each client's own entity should be Predicted, and other
 /// clients' entities should be Interpolated.
 #[test]
 fn each_client_gets_predicted_for_its_own_entity_and_interpolated_for_others() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::with_plain_clients(2));
 
     let client_0_id = stepper.client_of(0).get::<RemoteId>().unwrap().0;
     let client_1_id = stepper.client_of(1).get::<RemoteId>().unwrap().0;
@@ -1049,7 +1049,7 @@ fn each_client_gets_predicted_for_its_own_entity_and_interpolated_for_others() {
             InterpolationTarget::to_clients(NetworkTarget::all_except([client_0_id])),
             ControlledBy {
                 link: client_of_0,
-                lifetime: Lifetime::default(),
+                lifetime: ControlledLifetime::default(),
             },
         ))
         .id();
@@ -1064,7 +1064,7 @@ fn each_client_gets_predicted_for_its_own_entity_and_interpolated_for_others() {
             InterpolationTarget::to_clients(NetworkTarget::all_except([client_1_id])),
             ControlledBy {
                 link: client_of_1,
-                lifetime: Lifetime::default(),
+                lifetime: ControlledLifetime::default(),
             },
         ))
         .id();
@@ -1179,7 +1179,7 @@ fn each_client_gets_predicted_for_its_own_entity_and_interpolated_for_others() {
 /// add the `Predicted` marker component.
 #[test]
 fn a_prediction_target_adds_predicted_on_a_host_server() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::host_server());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::host_server());
 
     let server_entity = stepper
         .server_app_mut()
@@ -1203,7 +1203,7 @@ fn a_prediction_target_adds_predicted_on_a_host_server() {
 }
 
 #[test]
-fn prediction_target_backfills_predicted_when_client_becomes_host_client() {
+fn a_prediction_target_marks_a_client_that_becomes_the_host_client() {
     let mut stepper = host_only_stepper_before_host_connect();
 
     let server_entity = stepper
@@ -1246,13 +1246,13 @@ fn prediction_target_backfills_predicted_when_client_becomes_host_client() {
     );
 }
 
-/// Test that a child with explicitly set rooms keeps them (override):
+/// A child with explicitly set rooms keeps them (override):
 /// plain children follow the root, but an overridden child replicates
 /// independently and survives root room changes. Removing the override
 /// follows the root's rooms again.
 #[test]
 fn a_child_with_its_own_rooms_overrides_the_root() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::with_plain_clients(2));
 
     let room_a = stepper
         .server_app_mut()
@@ -1412,7 +1412,7 @@ fn a_child_with_its_own_rooms_overrides_the_root() {
 /// on the client.
 #[test]
 fn a_child_follows_a_root_prediction_target_switch() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     let client_id = stepper.client_of(0).get::<RemoteId>().unwrap().0;
 
     let server_root = stepper
@@ -1428,7 +1428,7 @@ fn a_child_follows_a_root_prediction_target_switch() {
         .world_mut()
         .spawn(ChildOf(server_root))
         .id();
-    stepper.step(4, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(4, stepper.frame_interval(), StepOrder::ServerFirst);
     let client_child = stepper
         .client_app(0)
         .world()
@@ -1466,7 +1466,7 @@ fn a_child_follows_a_root_prediction_target_switch() {
         .insert(PredictionTarget::to_clients(NetworkTarget::all_except([
             client_id,
         ])));
-    stepper.step(6, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(6, stepper.frame_interval(), StepOrder::ServerFirst);
 
     // the child followed the switch server-side...
     assert_eq!(
@@ -1495,7 +1495,7 @@ fn a_child_follows_a_root_prediction_target_switch() {
 /// names the client's entity for the server's parent.
 #[test]
 fn a_predicted_hierarchy_keeps_its_child_of_on_the_client() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let server_child = stepper.server_app_mut().world_mut().spawn_empty().id();
     let server_parent = stepper

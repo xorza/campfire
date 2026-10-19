@@ -1,12 +1,12 @@
 use super::*;
 use crate::channel::Channel;
 
-use crate::compression_config::CompressionConfig;
 use crate::compression_scratch::CompressionScratch;
+use crate::compression_setup::CompressionSetup;
 use crate::fragmented_message::FragmentedMessage;
-use crate::packet::FRAGMENT_SIZE;
+use crate::packet::FRAGMENT_LEN;
 
-use crate::single_data::SingleData;
+use crate::single_body::SingleBody;
 
 #[derive(Debug)]
 struct TestChannel;
@@ -14,24 +14,24 @@ impl Channel for TestChannel {}
 
 fn message(id: Option<u16>, tick: u32, bytes: &'static [u8]) -> ReceiveMessage {
     ReceiveMessage {
-        data: SingleData::new(id.map(MessageId), Bytes::from_static(bytes)).into(),
+        data: SingleBody::new(id.map(MessageId), Bytes::from_static(bytes)).into(),
         remote_sent_tick: NetTick(tick),
-        compression: CompressionConfig::DISABLED,
+        compression: CompressionSetup::DISABLED,
     }
 }
 
 /// Receives with room to spare.
-fn receive(channel: &mut ChannelReceiver, message: ReceiveMessage) -> Result<Receipt> {
+fn receive(channel: &mut ChannelReceiver, message: ReceiveMessage) -> Result<BufferOutcome> {
     channel.buffer_receive(message, &mut ReceiveBudget::new(usize::MAX))
 }
 
 fn channel(mode: ChannelMode) -> ChannelReceiver {
     ChannelReceiver::new(
-        ChannelKind::of::<TestChannel>(),
+        ChannelTypeId::of::<TestChannel>(),
         "TestChannel",
-        &ChannelConfig {
+        &ChannelSetup {
             mode,
-            ..ChannelConfig::default()
+            ..ChannelSetup::default()
         },
     )
 }
@@ -46,8 +46,8 @@ fn every_channel_mode_constructs_one_channel_receive() {
         ChannelMode::SequencedReliable,
     ] {
         assert_eq!(
-            channel(mode).channel_kind(),
-            ChannelKind::of::<TestChannel>()
+            channel(mode).channel_type_id(),
+            ChannelTypeId::of::<TestChannel>()
         );
     }
 }
@@ -69,7 +69,7 @@ fn ordered_reliable_waits_for_the_missing_sequence() {
 }
 
 #[test]
-fn ordered_reliable_buffers_across_message_id_rollover() {
+fn an_ordered_reliable_channel_buffers_across_the_wrap_of_the_message_id() {
     let mut channel = channel(ChannelMode::OrderedReliable);
     let ReceiveState::ReliableOrdered { pending, .. } = &mut channel.state else {
         unreachable!("the channel was built in `ReliableOrdered` mode")
@@ -96,7 +96,7 @@ fn ordered_reliable_buffers_across_message_id_rollover() {
 }
 
 #[test]
-fn unordered_unreliable_mode_does_not_expose_message_ids() {
+fn an_unordered_unreliable_channel_exposes_no_message_id() {
     let mut channel = channel(ChannelMode::UnorderedUnreliable);
     receive(&mut channel, message(Some(42), 3, b"payload")).unwrap();
     assert_eq!(channel.read_message().unwrap().message_id, None);
@@ -114,7 +114,7 @@ fn sequenced_unreliable_rejects_messages_older_than_the_latest_seen() {
 }
 
 #[test]
-fn sequenced_unreliable_replaces_buffered_messages_and_rejects_duplicates() {
+fn a_sequenced_unreliable_channel_replaces_its_buffered_message_and_refuses_a_copy() {
     let mut channel = channel(ChannelMode::SequencedUnreliable);
     receive(&mut channel, message(Some(0), 0, b"zero")).unwrap();
     receive(&mut channel, message(Some(1), 1, b"one")).unwrap();
@@ -131,7 +131,7 @@ fn sequenced_unreliable_replaces_buffered_messages_and_rejects_duplicates() {
 }
 
 #[test]
-fn unordered_reliable_advances_across_messages_received_out_of_order() {
+fn an_unordered_reliable_channel_advances_past_messages_that_arrive_out_of_order() {
     let mut channel = channel(ChannelMode::UnorderedReliable);
     receive(&mut channel, message(Some(1), 1, b"one")).unwrap();
     assert_eq!(
@@ -155,7 +155,7 @@ fn unordered_reliable_advances_across_messages_received_out_of_order() {
 }
 
 #[test]
-fn unordered_reliable_advances_and_deduplicates_across_message_id_rollover() {
+fn an_unordered_reliable_channel_advances_and_drops_copies_across_the_wrap_of_the_message_id() {
     let mut channel = channel(ChannelMode::UnorderedReliable);
     let ReceiveState::ReliableUnordered { pending, .. } = &mut channel.state else {
         unreachable!("the channel was built in `ReliableUnordered` mode")
@@ -199,7 +199,7 @@ fn sequenced_reliable_exposes_only_the_newest_buffered_message() {
 }
 
 #[test]
-fn sequenced_reliable_does_not_redeliver_after_drain() {
+fn a_sequenced_reliable_channel_delivers_no_message_again_after_a_drain() {
     let mut channel = channel(ChannelMode::SequencedReliable);
     receive(&mut channel, message(Some(1), 1, b"one")).unwrap();
     assert_eq!(
@@ -234,29 +234,29 @@ fn sequenced_reliable_accepts_the_newest_message_across_message_id_rollover() {
 
 /// The two fragments of message `id`, of 2 * FRAGMENT_SIZE - 1 bytes.
 fn fragments(id: u16) -> [ReceiveMessage; 2] {
-    let bytes = Bytes::from(vec![id as u8; 2 * FRAGMENT_SIZE - 1]);
+    let bytes = Bytes::from(vec![id as u8; 2 * FRAGMENT_LEN - 1]);
     let [first, second] = <[_; 2]>::try_from(
         FragmentedMessage::split(
             MessageId(id),
             bytes,
-            FRAGMENT_SIZE,
-            CompressionConfig::DISABLED,
+            FRAGMENT_LEN,
+            CompressionSetup::DISABLED,
             &mut CompressionScratch::default(),
         )
-        .fragment_data(),
+        .fragment_body(),
     )
     .unwrap();
     [first, second].map(|fragment| ReceiveMessage {
         data: fragment.into(),
         remote_sent_tick: NetTick(u32::from(id)),
-        compression: CompressionConfig::DISABLED,
+        compression: CompressionSetup::DISABLED,
     })
 }
 
 /// In both sequenced modes, message 2 supersedes the half-received message 1, whose partial is
 /// dropped; a late copy of a fragment of the completed message 2 opens no partial either.
 #[test]
-fn sequenced_modes_drop_superseded_and_completed_partials() {
+fn a_sequenced_channel_drops_a_superseded_partial_and_a_copy_of_a_completed_one() {
     for mode in [
         ChannelMode::SequencedUnreliable,
         ChannelMode::SequencedReliable,
@@ -290,7 +290,7 @@ fn sequenced_modes_drop_superseded_and_completed_partials() {
 /// After 3 s of silence an unreliable unordered partial expires; a reliable one does not, since
 /// its acked fragments are never resent, and completes when its last fragment arrives.
 #[test]
-fn only_unreliable_unordered_partials_expire() {
+fn only_the_partials_of_an_unreliable_unordered_channel_expire() {
     for (mode, expires) in [
         (ChannelMode::UnorderedUnreliable, true),
         (ChannelMode::OrderedReliable, false),
@@ -323,20 +323,20 @@ fn ordered_messages_behind_a_gap_hold_budget() {
         channel
             .buffer_receive(behind(1, b"sixsix"), &mut budget)
             .unwrap(),
-        Receipt::Stored
+        BufferOutcome::Stored
     );
     assert_eq!(
         channel
             .buffer_receive(behind(2, b"fives"), &mut budget)
             .unwrap(),
-        Receipt::OverBudget
+        BufferOutcome::OverBudget
     );
     assert_eq!(channel.held(), 6);
     assert_eq!(
         channel
             .buffer_receive(behind(0, b"the head is twenty b"), &mut budget)
             .unwrap(),
-        Receipt::Stored
+        BufferOutcome::Stored
     );
     assert_eq!(channel.held(), 26);
     assert_eq!(
@@ -358,27 +358,27 @@ fn ordered_messages_behind_a_gap_hold_budget() {
 fn reassembly_reserves_budget_and_the_head_is_reserved_anyway() {
     let mut unordered = channel(ChannelMode::UnorderedReliable);
     let [first, _] = fragments(0);
-    let mut budget = ReceiveBudget::new(FRAGMENT_SIZE);
+    let mut budget = ReceiveBudget::new(FRAGMENT_LEN);
     assert_eq!(
         unordered.buffer_receive(first, &mut budget).unwrap(),
-        Receipt::OverBudget
+        BufferOutcome::OverBudget
     );
     assert_eq!((unordered.partial_fragments(), unordered.held()), (0, 0));
 
     let mut ordered = channel(ChannelMode::OrderedReliable);
     let [first, second] = fragments(0);
-    let mut budget = ReceiveBudget::new(FRAGMENT_SIZE);
+    let mut budget = ReceiveBudget::new(FRAGMENT_LEN);
     assert_eq!(
         ordered.buffer_receive(first, &mut budget).unwrap(),
-        Receipt::Stored
+        BufferOutcome::Stored
     );
-    assert_eq!(ordered.held(), 2 * FRAGMENT_SIZE);
+    assert_eq!(ordered.held(), 2 * FRAGMENT_LEN);
     assert_eq!(
         ordered.buffer_receive(second, &mut budget).unwrap(),
-        Receipt::Stored
+        BufferOutcome::Stored
     );
     // The completed message waits for the read, holding its own length only.
-    assert_eq!(ordered.held(), 2 * FRAGMENT_SIZE - 1);
+    assert_eq!(ordered.held(), 2 * FRAGMENT_LEN - 1);
     assert!(ordered.read_message().is_some());
     assert_eq!(ordered.held(), 0);
 }

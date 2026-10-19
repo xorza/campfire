@@ -1,7 +1,7 @@
+use crate::confirmed_tick_map::ConfirmedTickMap;
 use crate::pre_spawned::PreSpawned;
 use crate::pre_spawned_receiver::PreSpawnedReceiver;
 use crate::pre_spawned_systems::PreSpawnedSystems;
-use crate::replication_checkpoint_map::ReplicationCheckpointMap;
 use crate::replication_receiver::ReplicationReceiver;
 use bevy_app::{App, Plugin, PostUpdate};
 use bevy_ecs::prelude::*;
@@ -12,10 +12,9 @@ use campfire_net_connection::Connected;
 use campfire_net_connection::HostClient;
 use campfire_net_timeline::LocalTimeline;
 
-/// PreSpawning allows you to replicate an entity to the remote, but instead of creating a new
-/// entity in the remote world, you match an existing pre-spawned entity.
-///
-/// This is achieved by adding a [`PreSpawned`] component on both the sender and receiver entity.
+/// Matches an entity a client pre-spawned to the one its server replicates, by the hash of a
+/// `PreSpawned` on each (13-net-stack/replication.md, An unmatched pre-spawn expires when the
+/// server's applied state reaches its tick).
 #[derive(Debug, Default)]
 pub(crate) struct PreSpawnedPlugin;
 
@@ -91,14 +90,14 @@ impl PreSpawnedPlugin {
 
     /// Despawns the receiver's pre-spawned entities that the server state applied here reaches
     /// unmatched. Replicon applies a mutate message only once its update tick is applied, and it
-    /// sends one each send, so the latest completed checkpoint means that each entity the server
-    /// spawned through its tick is here.
+    /// sends one each send, so the latest completed confirmed tick means that each entity the
+    /// server spawned through its tick is here.
     pub(crate) fn expire_unmatched_pre_spawns(
-        checkpoints: Res<'_, ReplicationCheckpointMap>,
+        confirmed_ticks: Res<'_, ConfirmedTickMap>,
         mut receiver: ResMut<'_, PreSpawnedReceiver>,
         mut commands: Commands<'_, '_>,
     ) {
-        if let Some(confirmed) = checkpoints.last_confirmed_tick() {
+        if let Some(confirmed) = confirmed_ticks.last_confirmed_tick() {
             receiver.expire_unmatched(confirmed, &mut commands);
         }
     }

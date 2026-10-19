@@ -1,7 +1,7 @@
 use crate::archetype_set::ArchetypeSet;
 use crate::frame_source::FrameSource;
 use crate::history_component::HistoryComponent;
-use crate::interpolation_owners::Owners;
+use crate::interpolation_holders::Holders;
 use crate::interpolation_rule_id::InterpolationRuleId;
 use crate::member_mode::MemberMode;
 use crate::registered_rule::RegisteredRule;
@@ -13,8 +13,8 @@ use bevy_ecs::component::{ComponentId, Components};
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::ComponentIdSet;
 use bevy_platform::collections::{HashMap, HashSet};
-use campfire_net_replication::ComponentKind;
-use campfire_net_replication::Replication;
+use campfire_net_replication::ComponentTypeId;
+use campfire_net_replication::ReplicationKind;
 
 /// Stores interpolation functions and rule selection metadata.
 ///
@@ -22,22 +22,6 @@ use campfire_net_replication::Replication;
 /// registration APIs. Most users should not mutate it directly; use
 /// `InterpolationRegistrationExt::interpolate`
 /// or `AppInterpolationExt`.
-///
-/// # Examples
-///
-/// Inspect whether a component has been registered for interpolation:
-///
-/// ```rust,ignore
-/// use bevy_ecs::prelude::*;
-/// use campfire_net_interpolation::{AppInterpolationExt, InterpolationFns, InterpolationRegistrationExt};
-///
-/// #[derive(Component, Clone, PartialEq)]
-/// struct Position(f32);
-///
-/// app.register_component::<Position>()
-///     .replicate()
-///     .interpolate(InterpolationFns::history_only());
-/// ```
 #[derive(Resource, Debug, Default)]
 pub struct InterpolationRegistry {
     /// All registered interpolation rules in insertion order.
@@ -50,18 +34,18 @@ pub struct InterpolationRegistry {
     frame_history_component_ids: Vec<ComponentId>,
     /// Where frame interpolation reads each component's samples in place of its frame history,
     /// as another plugin set it.
-    frame_sources: HashMap<ComponentKind, FrameSource>,
+    frame_sources: HashMap<ComponentTypeId, FrameSource>,
     /// Whether plugin finalization has run, after which a rule would install no system.
     finalized: bool,
     /// The components whose confirmed history system is installed, each once, and how each
     /// replicates.
-    history_systems: HashMap<ComponentKind, Replication>,
+    history_systems: HashMap<ComponentTypeId, ReplicationKind>,
     /// The components whose frame history systems are installed, each once.
-    frame_history_systems: HashSet<ComponentKind>,
+    frame_history_systems: HashSet<ComponentTypeId>,
     /// The rules registered so far, built by [`finish`] once every member's mode is known.
     pending: PendingRules,
     /// How each component's confirmed history is written, as its registration recorded it.
-    member_modes: HashMap<ComponentKind, MemberMode>,
+    member_modes: HashMap<ComponentTypeId, MemberMode>,
 }
 
 /// A registered rule, built once the app finishes its plugins.
@@ -106,9 +90,9 @@ impl InterpolationRegistry {
     /// # Panics
     ///
     /// When `C` recorded the other mode: one component interpolates one way.
-    /// The mode `kind` recorded, if it did.
-    pub(crate) fn member_mode(&self, kind: &ComponentKind) -> Option<MemberMode> {
-        self.member_modes.get(kind).copied()
+    /// The mode `type_id` recorded, if it did.
+    pub(crate) fn member_mode(&self, type_id: &ComponentTypeId) -> Option<MemberMode> {
+        self.member_modes.get(type_id).copied()
     }
 
     /// Queues `rule` for [`finish`].
@@ -117,7 +101,7 @@ impl InterpolationRegistry {
     }
 
     pub(crate) fn record_member<C: HistoryComponent>(&mut self, mode: MemberMode) {
-        let previous = self.member_modes.insert(ComponentKind::of::<C>(), mode);
+        let previous = self.member_modes.insert(ComponentTypeId::of::<C>(), mode);
         assert!(
             previous.is_none_or(|previous| previous.replication() == mode.replication()),
             "{} registers for interpolation in two modes",
@@ -152,40 +136,41 @@ impl InterpolationRegistry {
     /// After the app finished its plugins, which finalizes the registry.
     pub fn set_frame_source<C: 'static>(&mut self, source: FrameSource) {
         self.assert_not_finalized();
-        self.frame_sources.insert(ComponentKind::of::<C>(), source);
+        self.frame_sources
+            .insert(ComponentTypeId::of::<C>(), source);
     }
 
-    /// Where frame interpolation reads `kind`'s samples in place of its frame history.
-    pub(crate) fn frame_source(&self, kind: &ComponentKind) -> Option<&FrameSource> {
-        self.frame_sources.get(kind)
+    /// Where frame interpolation reads `type_id`'s samples in place of its frame history.
+    pub(crate) fn frame_source(&self, type_id: &ComponentTypeId) -> Option<&FrameSource> {
+        self.frame_sources.get(type_id)
     }
 
-    /// Whether `kind`'s confirmed history system, for `replication`, is still to install, which
+    /// Whether `type_id`'s confirmed history system, for `replication`, is still to install, which
     /// it then is.
     ///
     /// # Panics
     ///
-    /// When `kind`'s system is installed for the other replication: one component's confirmed
-    /// history is written one way, by one system, whichever rule owns it.
+    /// When `type_id`'s system is installed for the other replication: one component's confirmed
+    /// history is written one way, by one system, whichever rule holds it.
     pub(crate) fn install_history_once(
         &mut self,
-        kind: ComponentKind,
-        replication: Replication,
+        type_id: ComponentTypeId,
+        replication: ReplicationKind,
     ) -> bool {
-        if let Some(&installed) = self.history_systems.get(&kind) {
+        if let Some(&installed) = self.history_systems.get(&type_id) {
             assert_eq!(
                 installed, replication,
                 "a component's confirmed history is maintained in one mode"
             );
             return false;
         }
-        self.history_systems.insert(kind, replication);
+        self.history_systems.insert(type_id, replication);
         true
     }
 
-    /// Whether `kind`'s frame history systems are still to install, which they then are.
-    pub(crate) fn install_frame_history_once(&mut self, kind: ComponentKind) -> bool {
-        self.frame_history_systems.insert(kind)
+    /// Whether `type_id`'s frame history systems are still to install, which they then are.
+    pub(crate) fn install_frame_history_once(&mut self, type_id: ComponentTypeId) -> bool {
+        self.frame_history_systems.insert(type_id)
     }
 
     fn assert_not_finalized(&self) {
@@ -196,20 +181,20 @@ impl InterpolationRegistry {
         );
     }
 
-    /// Returns a rule by ID.
+    /// A rule by ID.
     ///
     /// # Panics
     ///
     /// Panics if `rule_id` was not produced by this registry.
-    /// Resolves into `owners` the archetypes created since their last refresh.
-    pub(crate) fn refresh_owners(
+    /// Resolves into `holders` the archetypes created since their last refresh.
+    pub(crate) fn refresh_holders(
         &self,
-        owners: &mut Owners,
+        holders: &mut Holders,
         archetypes: &Archetypes,
         components: &Components,
     ) {
-        let old_generation = core::mem::replace(&mut owners.generation, archetypes.generation());
-        let Owners {
+        let old_generation = core::mem::replace(&mut holders.generation, archetypes.generation());
+        let Holders {
             target,
             marker_component_id,
             apply,
@@ -217,7 +202,7 @@ impl InterpolationRegistry {
             sourced,
             scratch,
             ..
-        } = owners;
+        } = holders;
         for archetype in archetypes[old_generation..]
             .iter()
             .filter(|archetype| archetype.contains(*marker_component_id))
@@ -227,7 +212,7 @@ impl InterpolationRegistry {
                 self.resolved_rules_for_archetype(components, archetype, *target, scratch)
             {
                 let rule = self.rule(resolved.rule_id);
-                if resolved.owns_apply {
+                if resolved.holds_apply {
                     let rule_index = resolved.rule_id.0;
                     if apply.len() <= rule_index {
                         apply.resize(rule_index + 1, ArchetypeSet::new());
@@ -239,15 +224,15 @@ impl InterpolationRegistry {
                         RuleTarget::Delayed => member.confirmed.is_some(),
                         RuleTarget::Frame => member.frame.is_some(),
                     };
-                    if resolved.owns_history && maintains {
-                        history.entry(member.kind).or_default().insert(id);
+                    if resolved.holds_history && maintains {
+                        history.entry(member.type_id).or_default().insert(id);
                     }
                     if member
                         .frame_source
                         .as_ref()
                         .is_some_and(|source| archetype.contains(source.component_id))
                     {
-                        sourced.entry(member.kind).or_default().insert(id);
+                        sourced.entry(member.type_id).or_default().insert(id);
                     }
                 }
             }
@@ -260,7 +245,7 @@ impl InterpolationRegistry {
             .expect("interpolation rule ID should belong to this registry")
     }
 
-    /// The `FrameInterpolationHistory` component IDs owned by frame rules, set when the registry
+    /// The `FrameInterpolationHistory` component IDs held by frame rules, set when the registry
     /// is finalized.
     ///
     /// Removing these from an entity re-seeds its frame interpolation: the
@@ -273,7 +258,7 @@ impl InterpolationRegistry {
         &self.frame_history_component_ids
     }
 
-    /// Resolves history and apply ownership for one archetype.
+    /// Resolves history and apply holding for one archetype.
     ///
     /// Candidates are ordered by descending priority and then by registration
     /// order. History and apply are then resolved independently, with separate
@@ -309,26 +294,6 @@ impl InterpolationRegistry {
     ///   histories.
     /// - With `(A, History<A>)`, neither live `B` nor `History<B>` exists. The
     ///   bundle is unavailable for both jobs, so the `A` rule wins both.
-    ///
-    /// A normal delayed insertion therefore transitions like this:
-    ///
-    /// ```text
-    /// replication receives B:
-    ///     (A, History<A>)
-    ///         -> (A, History<A>, History<B>)
-    ///
-    /// before B's insertion tick:
-    ///     history owner = (A, B)  // maintains both histories
-    ///     apply owner   = A       // interpolates the only live member
-    ///
-    /// when history maintenance reaches B's insertion tick:
-    ///     (A, History<A>, History<B>)
-    ///         -> (A, B, History<A>, History<B>)
-    ///
-    /// after B is live:
-    ///     history owner = (A, B)
-    ///     apply owner   = (A, B)  // interpolates the bundle together
-    /// ```
     ///
     /// History preparation runs before interpolation application. If creating
     /// a missing history inserts or removes a live component, the apply phase
@@ -393,8 +358,8 @@ impl InterpolationRegistry {
             if history || apply {
                 resolved_rules.push(ResolvedRule {
                     rule_id,
-                    owns_history: history,
-                    owns_apply: apply,
+                    holds_history: history,
+                    holds_apply: apply,
                 });
             }
         }
@@ -407,7 +372,7 @@ impl InterpolationRegistry {
             assert!(
                 !rule.members[..index]
                     .iter()
-                    .any(|previous| previous.kind == member.kind),
+                    .any(|previous| previous.type_id == member.type_id),
                 "interpolation bundle rules cannot contain duplicate component types"
             );
         }
@@ -418,11 +383,11 @@ impl InterpolationRegistry {
     }
 
     /// Returns `true` if any interpolation rule covers component `C`.
-    pub fn interpolated<C: Component>(&self) -> bool {
-        let kind = ComponentKind::of::<C>();
+    pub fn is_interpolated<C: Component>(&self) -> bool {
+        let type_id = ComponentTypeId::of::<C>();
         self.rules
             .iter()
-            .any(|rule| rule.members().any(|member| member == kind))
+            .any(|rule| rule.members().any(|member| member == type_id))
     }
 }
 

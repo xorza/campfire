@@ -3,27 +3,27 @@ use bevy_platform::collections::HashMap;
 use core::any::TypeId;
 use core::hash::Hash;
 
-pub trait TypeKind: From<TypeId> + Copy + PartialEq + Eq + Hash {}
+pub trait RegisteredType: From<TypeId> + Copy + PartialEq + Eq + Hash {}
 
 /// The types of a registry, each with the id it travels as: the ids are dense, `0..len` in
 /// registration order, so an id indexes its type.
 #[derive(Clone, Debug, PartialEq)]
-pub struct TypeMapper<K: TypeKind> {
+pub struct TypeMapper<K: RegisteredType> {
     /// Each type and its name, at the index of its id.
-    kinds: Vec<(K, &'static str)>,
+    type_ids: Vec<(K, &'static str)>,
     ids: HashMap<K, NetId>,
 }
 
-impl<K: TypeKind> Default for TypeMapper<K> {
+impl<K: RegisteredType> Default for TypeMapper<K> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K: TypeKind> TypeMapper<K> {
+impl<K: RegisteredType> TypeMapper<K> {
     pub fn new() -> Self {
         Self {
-            kinds: Vec::new(),
+            type_ids: Vec::new(),
             ids: HashMap::default(),
         }
     }
@@ -34,56 +34,56 @@ impl<K: TypeKind> TypeMapper<K> {
     ///
     /// Past 65,536 types: a registry's ids are `u16`.
     pub fn add<T: 'static>(&mut self) -> K {
-        let kind = K::from(TypeId::of::<T>());
-        if self.ids.contains_key(&kind) {
-            return kind;
+        let type_id = K::from(TypeId::of::<T>());
+        if self.ids.contains_key(&type_id) {
+            return type_id;
         }
         let net_id = NetId::new(
-            u16::try_from(self.kinds.len()).expect("a registry holds at most 65,536 types"),
+            u16::try_from(self.type_ids.len()).expect("a registry holds at most 65,536 types"),
         );
-        self.kinds.push((kind, core::any::type_name::<T>()));
-        self.ids.insert(kind, net_id);
-        kind
+        self.type_ids.push((type_id, core::any::type_name::<T>()));
+        self.ids.insert(type_id, net_id);
+        type_id
     }
 
-    pub fn kind(&self, net_id: NetId) -> Option<&K> {
-        self.kinds
+    pub fn type_id(&self, net_id: NetId) -> Option<&K> {
+        self.type_ids
             .get(usize::from(net_id.get()))
-            .map(|(kind, _)| kind)
+            .map(|(type_id, _)| type_id)
     }
 
-    pub fn net_id(&self, kind: &K) -> Option<&NetId> {
-        self.ids.get(kind)
+    pub fn net_id(&self, type_id: &K) -> Option<&NetId> {
+        self.ids.get(type_id)
     }
 
     /// The name of the type `net_id` names.
     pub fn name_at(&self, net_id: NetId) -> Option<&'static str> {
-        self.kinds
+        self.type_ids
             .get(usize::from(net_id.get()))
             .map(|(_, name)| *name)
     }
 
-    pub fn name(&self, kind: &K) -> Option<&'static str> {
+    pub fn name(&self, type_id: &K) -> Option<&'static str> {
         self.ids
-            .get(kind)
-            .map(|net_id| self.kinds[usize::from(net_id.get())].1)
+            .get(type_id)
+            .map(|net_id| self.type_ids[usize::from(net_id.get())].1)
     }
 
     pub const fn len(&self) -> usize {
-        self.kinds.len()
+        self.type_ids.len()
     }
 
     pub const fn is_empty(&self) -> bool {
-        self.kinds.is_empty()
+        self.type_ids.is_empty()
     }
 
     /// Each type and its name, in the order of their ids.
     pub fn iter(&self) -> core::slice::Iter<'_, (K, &'static str)> {
-        self.kinds.iter()
+        self.type_ids.iter()
     }
 }
 
-impl<'a, K: TypeKind> IntoIterator for &'a TypeMapper<K> {
+impl<'a, K: RegisteredType> IntoIterator for &'a TypeMapper<K> {
     type Item = &'a (K, &'static str);
     type IntoIter = core::slice::Iter<'a, (K, &'static str)>;
 
@@ -97,34 +97,37 @@ mod tests {
     use super::*;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    struct Kind(TypeId);
+    struct TestTypeId(TypeId);
 
-    impl From<TypeId> for Kind {
+    impl From<TypeId> for TestTypeId {
         fn from(type_id: TypeId) -> Self {
             Self(type_id)
         }
     }
 
-    impl TypeKind for Kind {}
+    impl RegisteredType for TestTypeId {}
 
     /// Types get the ids 0 and 1 in registration order, and a type registered again keeps its
     /// id; an id beyond them names no type.
     #[test]
-    fn ids_are_dense_in_registration_order() {
-        let mut mapper = TypeMapper::<Kind>::new();
+    fn the_ids_are_dense_in_the_order_of_registration() {
+        let mut mapper = TypeMapper::<TestTypeId>::new();
         let first = mapper.add::<u8>();
         let second = mapper.add::<u16>();
         assert_eq!(mapper.add::<u8>(), first);
 
         assert_eq!(mapper.net_id(&first), Some(&NetId::new(0)));
         assert_eq!(mapper.net_id(&second), Some(&NetId::new(1)));
-        assert_eq!(mapper.kind(NetId::new(1)), Some(&second));
-        assert_eq!(mapper.kind(NetId::new(2)), None);
+        assert_eq!(mapper.type_id(NetId::new(1)), Some(&second));
+        assert_eq!(mapper.type_id(NetId::new(2)), None);
         assert_eq!(mapper.name(&second), Some("u16"));
         assert_eq!(mapper.name_at(NetId::new(1)), Some("u16"));
         assert_eq!(mapper.name_at(NetId::new(2)), None);
         assert_eq!(
-            mapper.iter().map(|&(kind, _)| kind).collect::<Vec<_>>(),
+            mapper
+                .iter()
+                .map(|&(type_id, _)| type_id)
+                .collect::<Vec<_>>(),
             [first, second]
         );
         assert_eq!(mapper.len(), 2);

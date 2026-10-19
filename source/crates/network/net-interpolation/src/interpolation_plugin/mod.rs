@@ -6,11 +6,7 @@ use campfire_net_despawn::DespawnReplicated;
 use campfire_net_replication::{DelayedDespawn, InterpolatedDespawn};
 use campfire_net_timeline::NetworkTimeline;
 
-/// Plugin that enables interpolating between replicated updates received from the remote, on the
-/// client.
-///
-/// Each remote update will be stored in a buffer, and the component will smoothly interpolate
-/// between two consecutive remote updates.
+/// A client's interpolation between two consecutive replicated updates of each component.
 #[derive(Debug, Default)]
 pub(crate) struct InterpolationPlugin;
 

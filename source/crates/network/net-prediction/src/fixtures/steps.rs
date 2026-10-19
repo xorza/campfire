@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
 use bevy_replicon::prelude::RepliconTick;
 use campfire_net_core::NetTick;
-use campfire_net_replication::ReplicationCheckpointMap;
+use campfire_net_replication::ConfirmedTickMap;
 use campfire_net_stepper::Stepper;
 use campfire_net_timeline::Rollback;
 
@@ -19,12 +19,12 @@ pub(crate) fn record_completed_mutate_tick_for_rollback_check(world: &mut World,
     if !mutate_ticks.contains(replicon_tick) {
         mutate_ticks.confirm(replicon_tick, 1);
     }
-    let mut checkpoints = world.resource_mut::<ReplicationCheckpointMap>();
-    checkpoints.record(replicon_tick, tick);
-    checkpoints.record_last_confirmed_checkpoint(replicon_tick);
+    let mut confirmed_ticks = world.resource_mut::<ConfirmedTickMap>();
+    confirmed_ticks.record(replicon_tick, tick);
+    confirmed_ticks.record_last_confirmed_tick(replicon_tick);
 }
 
-/// Records a completed checkpoint and requests the one-shot rollback, for tests of rollback
+/// Records a completed confirmed tick and requests the one-shot rollback, for tests of rollback
 /// restoration and replay rather than of mismatch detection.
 pub(crate) fn request_forced_rollback_at_completed_tick(
     stepper: &mut Stepper<PredictionStack>,

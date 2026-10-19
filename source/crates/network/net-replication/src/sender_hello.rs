@@ -3,7 +3,7 @@ use campfire_net_bytes::Reader;
 use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::WriteInteger;
-use campfire_net_core::PositiveTickDelta;
+use campfire_net_core::PositiveTickSpan;
 use campfire_net_messages::WireEntity;
 
 /// Event emitted when the receiver learns the sender's replication interval.
@@ -13,7 +13,7 @@ use campfire_net_messages::WireEntity;
 #[derive(Event, Debug)]
 pub struct SenderHello {
     /// How often the sender emits replication updates.
-    pub send_interval: PositiveTickDelta,
+    pub send_interval: PositiveTickSpan,
     /// The link entity that sent this hello.
     pub link: Entity,
 }
@@ -32,7 +32,7 @@ impl ToBytes for SenderHello {
     where
         Self: Sized,
     {
-        let send_interval = PositiveTickDelta::from_bytes(buffer)?;
+        let send_interval = PositiveTickSpan::from_bytes(buffer)?;
         let WireEntity(link) = WireEntity::from_bytes(buffer)?;
         Ok(Self {
             send_interval,
@@ -45,22 +45,22 @@ impl ToBytes for SenderHello {
 mod tests {
     use crate::fixtures::replication_stack::ReplicationStack;
     use bevy_ecs::world::EntityRef;
-    use campfire_net_messages::MessageManager;
+    use campfire_net_messages::LinkMessages;
     use campfire_net_stepper::Stepper;
-    use campfire_net_stepper::StepperConfig;
+    use campfire_net_stepper::StepperSetup;
 
     /// Each end's hello maps the peer's link entity to its own, in the messages layer's map:
     /// replicon's map holds only replicated entities.
     #[test]
     fn hello_maps_the_link_entities_both_ways() {
-        let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+        let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
         // The hello goes on connection and arrives in the next frames.
         stepper.frame_step(2);
         let client = stepper.client_entity(0);
         let client_of = stepper.client_of_entity(0);
         let local = |entity: EntityRef<'_>, remote| {
             entity
-                .get::<MessageManager>()
+                .get::<LinkMessages>()
                 .unwrap()
                 .entity_mapper
                 .get_local(remote)

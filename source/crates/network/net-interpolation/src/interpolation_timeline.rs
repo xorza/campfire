@@ -1,50 +1,49 @@
 //! The interpolation timeline, which trails the remote timeline by a delay that the sender's
 //! replication interval sets: a sender announces it in its `SenderHello` when it connects.
 
-use crate::interpolation_config::InterpolationConfig;
+use crate::interpolation_setup::InterpolationSetup;
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
-use campfire_net_core::TickDelta;
 use campfire_net_core::TickInstant;
-use campfire_net_sync::SyncConfig;
+use campfire_net_core::TickSpan;
 use campfire_net_sync::SyncHysteresis;
 use campfire_net_sync::SyncSample;
+use campfire_net_sync::SyncSetup;
 use campfire_net_sync::TimelineSync;
 use campfire_net_timeline::Timeline;
 use core::time::Duration;
 use tracing::trace;
 
-/// Application-global presentation timeline used to sample interpolation histories.
-///
-/// Unlike the local simulation clock, this is a genuine independent timeline: it intentionally
-/// trails remote simulation time and advances at its own synchronization-controlled speed.
+/// The timeline the interpolation histories are sampled at: it trails the remote timeline at a
+/// speed its sync controls, apart from the local one (13-net-stack/time.md, Two estimates of one
+/// link keep two promises).
 #[derive(Debug, Resource, Default, Deref, DerefMut, Reflect)]
-pub struct InterpolationTimeline(Timeline<InterpolationConfig>);
+pub struct InterpolationTimeline(Timeline<InterpolationSetup>);
 
 impl TimelineSync for InterpolationTimeline {
-    type Config = InterpolationConfig;
+    type Setup = InterpolationSetup;
 
     fn sync_hysteresis(&mut self) -> &mut SyncHysteresis {
         &mut self.state.hysteresis
     }
 
-    fn sync_config(config: &Self::Config) -> &SyncConfig {
-        &config.sync
+    fn sync_setup(setup: &Self::Setup) -> &SyncSetup {
+        &setup.sync
     }
 
-    fn sync_objective(&self, sample: &SyncSample<'_, InterpolationConfig>) -> TickInstant {
+    fn sync_objective(&self, sample: &SyncSample<'_, InterpolationSetup>) -> TickInstant {
         let SyncSample {
             remote,
-            config,
+            setup,
             estimate,
             tick_rate,
         } = *sample;
         let delay =
-            TickDelta::from_duration(config.to_duration(self.remote_send_interval), tick_rate);
+            TickSpan::from_duration(setup.to_duration(self.remote_send_interval), tick_rate);
         // take extra margin if there is jitter
-        let jitter_margin = TickDelta::from_duration(
-            config.sync.jitter_margin(estimate.jitter(), tick_rate),
+        let jitter_margin = TickSpan::from_duration(
+            setup.sync.jitter_margin(estimate.jitter(), tick_rate),
             tick_rate,
         );
         let target = remote.current_estimate();
@@ -61,10 +60,10 @@ impl TimelineSync for InterpolationTimeline {
 
     fn resync(&mut self, now: TickInstant, sync_objective: TickInstant) -> i32 {
         let target = sync_objective;
-        let tick_delta = (target - now).to_i32();
-        trace!(?tick_delta, "Resync Interpolation timeline!");
+        let tick_span = (target - now).to_i32();
+        trace!(?tick_span, "Resync Interpolation timeline!");
         self.now = target;
-        tick_delta
+        tick_span
     }
 
     fn is_synced(&self) -> bool {
@@ -92,9 +91,9 @@ impl TimelineSync for InterpolationTimeline {
 }
 
 impl InterpolationTimeline {
-    /// Resets the timeline for a new session: the controller, the presentation cursor and the
-    /// remote send interval the previous session advertised.
-    pub(crate) fn reset_session(&mut self) {
+    /// Resets the timeline for a new link: the controller, the presentation cursor and the remote
+    /// send interval the previous link advertised.
+    pub(crate) fn reset_link(&mut self) {
         self.reset();
         self.now = TickInstant::default();
         self.remote_send_interval = Duration::default();
@@ -124,10 +123,10 @@ mod tests {
     #[derive(Debug, Resource, Default)]
     struct SyncedParamRuns(u8);
 
-    /// A controller reset keeps the cursor at tick 7; a session reset also clears the cursor and
-    /// the send interval.
+    /// A controller reset keeps the cursor at tick 7; a link reset also clears the cursor
+    /// and the send interval.
     #[test]
-    fn reset_keeps_the_cursor_and_a_session_reset_clears_it() {
+    fn a_reset_keeps_the_cursor_and_a_link_reset_clears_it() {
         let mut timeline = InterpolationTimeline::default();
         timeline.set_now(TickInstant::from(NetTick(7)));
         timeline.set_synced(true);
@@ -140,23 +139,23 @@ mod tests {
         assert_eq!(timeline.now(), TickInstant::from(NetTick(7)));
         assert_eq!(timeline.remote_send_interval, Duration::from_millis(50));
 
-        timeline.reset_session();
+        timeline.reset_link();
         assert_eq!(timeline.now(), TickInstant::default());
         assert_eq!(timeline.remote_send_interval, Duration::ZERO);
     }
 
     #[test]
-    fn interpolation_timeline_objective_lags_remote_by_delay_margin() {
+    fn the_interpolation_objective_trails_the_remote_by_its_margin() {
         let tick_rate = TickRate::try_from(100).unwrap();
         let mut remote = RemoteTimeline::default();
         remote.set_now(TickInstant::from(NetTick(100)));
-        let config = InterpolationConfig::default()
+        let setup = InterpolationSetup::default()
             .with_min_delay(Duration::from_millis(20))
             .with_send_interval_ratio(0.0);
 
         let objective = InterpolationTimeline::default().sync_objective(&SyncSample {
             remote: &remote,
-            config: &config,
+            setup: &setup,
             estimate: LinkEstimate::new(Duration::ZERO, Duration::ZERO),
             tick_rate,
         });
@@ -166,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn synced_interpolation_timeline_checks_presentation_readiness() {
+    fn the_synced_interpolation_timeline_waits_for_its_sync() {
         fn require_synced_timeline(
             timeline: SyncedInterpolationTimeline<'_, '_>,
             mut runs: ResMut<'_, SyncedParamRuns>,
@@ -192,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn paused_virtual_time_does_not_advance_interpolation_timeline() {
+    fn a_paused_virtual_time_holds_the_interpolation_timeline() {
         let mut app = App::new();
         let mut virtual_time = Time::<Virtual>::default();
         virtual_time.set_relative_speed(0.0);

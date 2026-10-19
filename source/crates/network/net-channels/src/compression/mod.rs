@@ -8,8 +8,8 @@ use lz4_flex::block;
 
 #[cfg(feature = "compression_lz4")]
 use crate::compression_algorithm::CompressionAlgorithm;
-use crate::compression_config::CompressionConfig;
 use crate::compression_scratch::CompressionScratch;
+use crate::compression_setup::CompressionSetup;
 use crate::packet_error::PacketError;
 use campfire_net_bytes::Writer;
 
@@ -38,7 +38,7 @@ pub(crate) enum CompressionOutcome {
 /// compressed form must fit in.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PacketCompression {
-    pub(crate) config: CompressionConfig,
+    pub(crate) setup: CompressionSetup,
     pub(crate) room: usize,
 }
 
@@ -54,17 +54,17 @@ impl PacketCompression {
         scratch: &mut CompressionScratch,
         output: &mut Vec<u8>,
     ) -> Result<CompressionOutcome, PacketError> {
-        let Some(algorithm) = self.config.algorithm else {
+        let Some(algorithm) = self.setup.algorithm else {
             return Ok(CompressionOutcome::Disabled);
         };
         let payload_len = body.len();
-        if payload_len == 0 || payload_len < self.config.min_payload_size {
+        if payload_len == 0 || payload_len < self.setup.min_payload_len {
             return Ok(CompressionOutcome::TooSmall { payload_len });
         }
-        if payload_len > self.config.max_decompressed_payload_size {
+        if payload_len > self.setup.max_decompressed_payload_len {
             return Ok(CompressionOutcome::TooLargeForDecompressionLimit {
                 payload_len,
-                limit: self.config.max_decompressed_payload_size,
+                limit: self.setup.max_decompressed_payload_len,
             });
         }
         let compressed_len = scratch.compress_into(body, algorithm, output)?.len();
@@ -85,21 +85,21 @@ impl PacketCompression {
 /// compressed bytes are the first `compressed_len` of `scratch`'s output.
 pub(crate) fn compress_fragment(
     payload: &[u8],
-    config: CompressionConfig,
+    setup: CompressionSetup,
     scratch: &mut CompressionScratch,
 ) -> Result<CompressionOutcome, PacketError> {
-    let Some(algorithm) = config.algorithm else {
+    let Some(algorithm) = setup.algorithm else {
         return Ok(CompressionOutcome::Disabled);
     };
 
     let payload_len = payload.len();
-    if payload_len < config.min_payload_size {
+    if payload_len < setup.min_payload_len {
         return Ok(CompressionOutcome::TooSmall { payload_len });
     }
-    if payload_len > config.max_decompressed_payload_size {
+    if payload_len > setup.max_decompressed_payload_len {
         return Ok(CompressionOutcome::TooLargeForDecompressionLimit {
             payload_len,
-            limit: config.max_decompressed_payload_size,
+            limit: setup.max_decompressed_payload_len,
         });
     }
 
@@ -128,39 +128,39 @@ pub(crate) fn compress_fragment(
 )]
 pub(crate) fn decompress_payload(
     compressed_payload: &[u8],
-    config: CompressionConfig,
+    setup: CompressionSetup,
     out: &mut Writer,
 ) -> Result<(), PacketError> {
-    let Some(algorithm) = config.algorithm else {
+    let Some(algorithm) = setup.algorithm else {
         return Err(PacketError::UnsupportedCompression);
     };
 
     match algorithm {
         #[cfg(feature = "compression_lz4")]
-        CompressionAlgorithm::Lz4 => decompress_lz4(compressed_payload, config, out),
+        CompressionAlgorithm::Lz4 => decompress_lz4(compressed_payload, setup, out),
     }
 }
 
 #[cfg(feature = "compression_lz4")]
 fn decompress_lz4(
     compressed_payload: &[u8],
-    config: CompressionConfig,
+    setup: CompressionSetup,
     out: &mut Writer,
 ) -> Result<(), PacketError> {
-    let (uncompressed_size, compressed_payload) = block::uncompressed_size(compressed_payload)
+    let (uncompressed_len, compressed_payload) = block::uncompressed_size(compressed_payload)
         .map_err(|_| PacketError::DecompressionFailed)?;
 
-    if uncompressed_size > config.max_decompressed_payload_size {
+    if uncompressed_len > setup.max_decompressed_payload_len {
         return Err(PacketError::DecompressedPayloadTooLarge {
-            actual: uncompressed_size,
-            limit: config.max_decompressed_payload_size,
+            actual: uncompressed_len,
+            limit: setup.max_decompressed_payload_len,
         });
     }
 
     out.fill(
-        uncompressed_size,
+        uncompressed_len,
         |decompressed| match block::decompress_into(compressed_payload, decompressed) {
-            Ok(decoded_size) if decoded_size == uncompressed_size => Ok(()),
+            Ok(decoded_len) if decoded_len == uncompressed_len => Ok(()),
             _ => Err(PacketError::DecompressionFailed),
         },
     )

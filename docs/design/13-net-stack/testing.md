@@ -1,37 +1,37 @@
 # Testing
 
-How the stack is tested over a simulated network; the clocks are in [Time](time.md).
+How the stack is tested over an emulated network; the clocks are in [Time](time.md).
 
 - **Deterministic simulation from one seed.** Single-threaded schedules, `FixedHasher` maps, no
   OS time, and one seed for every generator, so a failing seed replays exactly; a canary runs one
   seed twice and compares a digest of the run. Practice: FoundationDB's simulation and
   TigerBeetle's VOPR, which replay a run from its seed.
-- **A discrete-event stepper owns the time.** Each app has its own frame interval, clock drift
+- **A discrete-event stepper holds the time.** Each app has its own frame interval, clock drift
   and stalls, and `run_for` runs the next due frame of whichever app; `frame_step` keeps moving
   every app together. Refused: lockstep alone, which cannot express different frame rates, drift,
   or a stalled app whose next frame Bevy clamps to a 250 ms advance (`bevy_time`'s
   `DEFAULT_MAX_DELTA`).
-- **The simulated network is the in-process IO, in `net-emulator`, whose endpoint the facade's
-  public `sim` feature adds.** Its wires carry sessions, as a socket does; on `WireClock::Os` with
-  `LinkModel::perfect()` it does what the deleted `CrossbeamIo` did, so one in-process IO exists.
-  Campfire's tests run over it too. Refused: `internals`, which keeps it from every crate but
-  the stack's; crossbeam as a second in-process IO with the same behaviour.
-- **One `LinkModel` for simulated and real links, in netem's terms.** Latency and jitter,
+- **The emulated network is the in-process IO, in `net-emulator`.** The facade's public `sim`
+  feature adds its endpoint. Its wires carry packet sessions, as a socket does; on `WireClock::Os`
+  with `LinkModel::perfect()` it is the one in-process IO. Campfire's tests run over it too.
+  Refused: `internals`, which keeps it from every crate but the stack's; crossbeam as a second
+  in-process IO with the same behaviour.
+- **One `LinkModel` for emulated and real links, in netem's terms.** Latency and jitter,
   Gilbert–Elliott loss, duplication, reordering, a rate limit with a drop-tail queue, and an MTU;
   `EmulatedIo` runs one per direction with a timeline of phases, and an endpoint's `LinkConditioner`
-  runs one on what its IO receives, before its sessions. Refused: deleting the conditioner, which
-  leaves no way to degrade a real link in a dev build; and corruption, which a real link's packet
-  protection drops before the stack sees it.
+  runs one on what its IO receives, before its packet sessions. Refused: deleting the conditioner,
+  which leaves no way to degrade a real link in a dev build; and corruption, which a real link's
+  packet protection drops before the stack sees it.
 - **A link's queue drains in order across phase changes.** A packet never leaves before the ones
   queued ahead of it, even when a phase lifts the rate limit. The swarm found that lifting it let
   new packets overtake the queue, which no real link does.
-- **The session times a silent peer out, on every IO,** so an outage of the simulated wire
+- **The packet session times a silent peer out, on every IO,** so an outage of the emulated wire
   reaches a disconnect as one of a socket does. Refused: a timeout of the wire's own, which a
   socket lacks.
 - **Presets are plausible profiles.** `DuplexModel`'s LTE, EDGE and Very Bad Network take the
   Network Link Conditioner's values as third parties report them (countingup, NSHipster), as no
   Apple page lists them; they are not measurements.
-- **The session drops a copy of a packet,** by its window of 32 accepted packets and the
+- **The packet session drops a copy of a packet,** by its window of 32 accepted packets and the
   packets the frame holds, so every IO gets the same at-most-once delivery on unreliable
   channels. Refused: leaving it to the IO, since a datagram IO without its own check would
   deliver a message twice.
@@ -43,32 +43,31 @@ How the stack is tested over a simulated network; the clocks are in [Time](time.
   which finds more failures than one run with every fault on (Groce et al., ISSTA 2012). The
   default run fits the suite's time budget; `CAMPFIRE_SWARM_SEEDS` runs more, and
   `CAMPFIRE_SWARM_SEED` replays one.
-- **The stepper lives in `net-stepper`,** a test-only crate above connection, the session
-  and the UDP protocol, as linking a client takes a session's endpoint, plain or sealed, and no
-  production crate below the facade has both connection and one. It holds only what is
-  layer-free: apps, time, `EmulatedNetwork`, `AppSchedule`, the client kinds, the steps, and the
-  connection layer's stack and its tests. A stack value supplies each side's plugins, the
-  per-link components and the condition that ends `init`. Each layer's `internals` depends on it,
-  so each edge that only tests need points to it, and each other edge is one the layer's code
-  uses. A change to connection runs the stepper's tests too. Refused: the stepper in
-  `net-connection::internals`, whose edges to the session and the UDP protocol no code of
-  connection uses; a harness crate at the top with each crate's tests in a `tests/stack/` binary,
-  whose dev-dependency cycle builds for `tests/` only, never for a `#[cfg(test)]` module, and puts
-  the whole stack in every layer's tests.
+- **The stepper lives in `net-stepper`,** a test-only crate above connection, the packet session and
+  the UDP protocol, as linking a client takes a packet session's endpoint, plain or sealed, and no
+  production crate below the facade has both connection and one. It holds only what is layer-free:
+  apps, time, `EmulatedNetwork`, `AppSchedule`, the client kinds, the steps, and the connection
+  layer's stack and its tests. A stack value supplies each side's plugins, the per-link components
+  and the condition that ends `init`. Each layer's `internals` depends on it, so each edge that only
+  tests need points to it, and each other edge is one the layer's code uses. A change to connection
+  runs the stepper's tests too. Refused: the stepper in `net-connection::internals`, whose edges to
+  the packet session and the UDP protocol no code of connection uses; a harness crate at the top
+  with each crate's tests in a `tests/stack/` binary, whose dev-dependency cycle builds for `tests/`
+  only, never for a `#[cfg(test)]` module, and puts the whole stack in every layer's tests.
 - **Each layer's `internals` gives its stack on the one below,** with its test protocol;
   `net-stack`'s `internals` gives the full stack.
-- **A protocol's test runs on the plain host of `net-packets::internals`,** which drives an
-  endpoint with a number for each session where the ECS has an entity, so a test of the session or
-  the UDP protocol needs no engine; what the ECS adds, as a link's `LinkBinding`, is tested in
-  `net-endpoint`. Refused: an app in the protocol's tests, which puts the engine and the glue
-  in its dev-dependencies.
+- **A protocol's test runs on the plain host of `net-packets::internals`,** which drives an endpoint
+  with a number for each packet session where the ECS has an entity, so a test of the packet session
+  or the UDP protocol needs no engine; what the ECS adds, as a link's `LinkBinding`, is tested in
+  `net-endpoint`. Refused: an app in the protocol's tests, which puts the engine and the glue in its
+  dev-dependencies.
 - **A test lives in the lowest crate whose stack has every layer it uses,** in the `tests.rs` of the
   module it asserts, so the tests a change to a crate reaches hold every test of its code. Refused:
   one test crate as every test's home, where the chain of a touched crate misses its own tests.
 - **`tests/` holds only a target that must be its own binary:** the allocation audit, whose
   `#[global_allocator]` is per binary.
-- **The full stack's home is `net-stack`:** the scenarios and the swarm under `#[cfg(test)]`, and
-  the allocation audit.
+- **The full stack's home is `net-stack`.** It holds the scenarios and the swarm under
+  `#[cfg(test)]`, and the allocation audit.
 - **One allocation binary, on the workspace's audit.** `net-stack`'s `tests/alloc` runs its
   fixtures through `campfire-measure`'s allocator and audit, whose window counts every thread of
   the process but its main one, and a failure prints each trace cut to the dependency frames that
@@ -102,14 +101,14 @@ How the stack is tested over a simulated network; the clocks are in [Time](time.
   `cargo test`, which times no single test; a lower seed count, which would trade coverage for the
   budget.
 - **The stepper's remote clients are all plain or all sealed,** as the server's one endpoint
-  takes plain sessions or sealed ones of the UDP protocol, and that endpoint spawns each
+  takes plain packet sessions or sealed ones of the UDP protocol, and that endpoint spawns each
   client's link at the client's first packet, which takes the stack's components before it links.
   Refused: a stepper that spawns the server's links, which skips the handshake every app runs.
 - **Every remote client kind runs the same tests.** A test of a remote client runs each of the
   stepper's remote `ClientKind`s where the kind can matter, as the message tests, the scenarios,
   the swarm, the canary and the allocation audits do.
 - **A parser's robustness is a seeded mutation test.** Seeded bit flips, cuts, extensions and
-  overwrites of each packet type reach the session, the handshake and the transport, and none
+  overwrites of each packet type reach the packet session, the handshake and the transport, and none
   panics; a sealed datagram that changed one byte never opens. Refused: a fuzzer run in CI,
   whose inputs no seed replays.
 - **Every gate builds the code a feature gates off.** The `ship` lint, at default features, lints
@@ -121,7 +120,7 @@ How the stack is tested over a simulated network; the clocks are in [Time](time.
   benches and `internals` are not library code and are left out. Refused: the line column of
   `llvm-cov report`, which sums per function and counts a line that several functions share once
   for each; `cargo-llvm-cov`, a tool to install for what the system LLVM tools do.
-- **A test has the std `#[test]` and no subscriber,** as the audits and benches run, and a test
-  that reads logs holds `campfire-log`'s check, scoped to its run, as the scenarios do, which a
-  warning fails as an error does. A test name states the behaviour it checks. Refused: `test-log`, a dependency whose shadowed `#[test]`
-  installs a subscriber that every test pays for.
+- **A test has the std `#[test]` and no subscriber,** as the audits and benches run, and a test that
+  reads logs holds `campfire-log`'s check, scoped to its run, as the scenarios do, which a warning
+  fails as an error does. A test name states the behaviour it checks. Refused: `test-log`, a
+  dependency whose shadowed `#[test]` installs a subscriber that every test pays for.

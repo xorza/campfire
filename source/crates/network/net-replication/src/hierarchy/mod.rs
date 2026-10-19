@@ -1,5 +1,5 @@
-//! This module is responsible for making sure that parent-children hierarchies are replicated
-//! correctly.
+//! The replication of `ChildOf`, whose parent goes as the server's entity, which the receiver maps.
+
 use crate::component_codec::ComponentCodec;
 use crate::remote_parent::RemoteParent;
 use bevy_ecs::prelude::*;

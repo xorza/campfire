@@ -2,9 +2,9 @@ use super::*;
 use crate::connection_stack::ConnectionStack;
 
 #[test]
-fn run_for_on_equal_intervals_repeats_frame_step() {
-    let mut lockstep = Stepper::new(ConnectionStack, StepperConfig::single());
-    let mut scheduled = Stepper::new(ConnectionStack, StepperConfig::single());
+fn a_run_for_of_equal_intervals_repeats_the_frame_step() {
+    let mut lockstep = Stepper::new(ConnectionStack, StepperSetup::single());
+    let mut scheduled = Stepper::new(ConnectionStack, StepperSetup::single());
     lockstep.frame_step(100);
     scheduled.run_for(lockstep.frame_interval() * 100);
     assert_eq!(scheduled.now(), lockstep.now());
@@ -16,10 +16,10 @@ fn run_for_on_equal_intervals_repeats_frame_step() {
 /// 20 ms; its clock went on, so its frame at 30 ms runs the three ticks it missed.
 #[test]
 fn a_step_runs_each_app_once_unless_stalled() {
-    let mut stepper = Stepper::new(ConnectionStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ConnectionStack, StepperSetup::single());
     let (client, server) = (stepper.client_tick(0), stepper.server_tick());
-    stepper.step(2, stepper.tick_rate().period(), Order::ServerFirst);
-    stepper.step(1, stepper.tick_rate().period(), Order::ClientsFirst);
+    stepper.step(2, stepper.tick_rate().period(), StepOrder::ServerFirst);
+    stepper.step(1, stepper.tick_rate().period(), StepOrder::ClientsFirst);
     assert_eq!(stepper.client_tick(0), client + 3);
     assert_eq!(stepper.server_tick(), server + 3);
 
@@ -38,7 +38,7 @@ fn a_step_runs_each_app_once_unless_stalled() {
 /// A host client lives in the server's app: it has no app of its own and connects with `init`.
 #[test]
 fn a_host_client_has_no_app_and_connects() {
-    let stepper = Stepper::new(ConnectionStack, StepperConfig::host_server());
+    let stepper = Stepper::new(ConnectionStack, StepperSetup::host_server());
     assert_eq!(stepper.client_count(), 1);
     assert!(stepper.host_client().contains::<Connected>());
     assert!(stepper.client(0).contains::<Connected>());
@@ -50,7 +50,7 @@ fn a_host_client_has_no_app_and_connects() {
 fn a_client_disconnects_through_the_stack() {
     let mut stepper = Stepper::new(
         ConnectionStack,
-        StepperConfig::with_clients(vec![ClientKind::Raw; 2]),
+        StepperSetup::with_clients(vec![ClientKind::Plain; 2]),
     );
     let link = stepper.client_of_entity(1);
     stepper.disconnect(1);
@@ -88,15 +88,15 @@ impl Stack for NeverReady {
 #[test]
 #[should_panic(expected = "client 0 is connected but not ready after 50 ticks")]
 fn init_names_the_client_it_waits_for() {
-    Stepper::new(NeverReady, StepperConfig::single());
+    Stepper::new(NeverReady, StepperSetup::single());
 }
 
 /// A deferred stepper leaves its client unconnected until `init`.
 #[test]
 fn a_deferred_stepper_connects_on_init() {
-    let mut config = StepperConfig::single();
-    config.init = Init::Deferred;
-    let mut stepper = Stepper::new(ConnectionStack, config);
+    let mut setup = StepperSetup::single();
+    setup.init = Init::Deferred;
+    let mut stepper = Stepper::new(ConnectionStack, setup);
     assert!(!stepper.client(0).contains::<Connected>());
     stepper.init();
     assert!(stepper.client(0).contains::<Connected>());

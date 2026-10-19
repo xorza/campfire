@@ -8,7 +8,7 @@ use core::time::Duration;
 
 use crate::client_sync_plugins::ClientSyncPlugins;
 use crate::link_estimator::LinkEstimator;
-use crate::link_estimator_config::LinkEstimatorConfig;
+use crate::link_estimator_setup::LinkEstimatorSetup;
 use crate::local_timeline_sync::LocalTimelineSync;
 use crate::sync_plugins::SyncPlugins;
 use crate::timeline_sync::TimelineSync;
@@ -30,9 +30,9 @@ impl SyncStack {
     /// An estimate that takes every sample, and a transport that sends its tick every frame it
     /// sends nothing else, so that a test syncs in a few frames.
     fn sync_link(link: &mut EntityWorldMut<'_>) {
-        link.insert(LinkEstimator::new(LinkEstimatorConfig {
+        link.insert(LinkEstimator::new(LinkEstimatorSetup {
             sample_interval: Duration::ZERO,
-            ..LinkEstimatorConfig::default()
+            ..LinkEstimatorSetup::default()
         }));
         link.get_mut::<Transport>()
             .expect("the transport stack puts a transport on each link")
@@ -82,12 +82,12 @@ pub fn input_timeline_is_synced(world: &World) -> bool {
 mod tests {
     use super::*;
     use campfire_net_stepper::Stepper;
-    use campfire_net_stepper::StepperConfig;
+    use campfire_net_stepper::StepperSetup;
 
     /// `init` returns once the client's input timeline is synced.
     #[test]
     fn the_client_syncs() {
-        let stepper = Stepper::new(SyncStack, StepperConfig::single());
+        let stepper = Stepper::new(SyncStack, StepperSetup::single());
         assert!(input_timeline_is_synced(stepper.client_app(0).world()));
     }
 }

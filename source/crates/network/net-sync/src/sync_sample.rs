@@ -6,7 +6,7 @@ use campfire_net_core::TickRate;
 #[derive(Debug, Clone, Copy)]
 pub struct SyncSample<'a, C> {
     pub remote: &'a RemoteTimeline,
-    pub config: &'a C,
+    pub setup: &'a C,
     /// The link's latency estimate.
     pub estimate: LinkEstimate,
     pub tick_rate: TickRate,

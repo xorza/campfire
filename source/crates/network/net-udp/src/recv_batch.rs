@@ -1,7 +1,7 @@
 use std::io::{self, IoSliceMut};
 use std::{array, iter};
 
-use campfire_net_bytes::Arena;
+use campfire_net_bytes::ByteArena;
 use campfire_net_packets::{Datagram, datagram_arena};
 use quinn_udp::{BATCH_SIZE, RecvMeta};
 
@@ -14,7 +14,7 @@ pub(crate) struct RecvBatch {
     buffer: Box<[u8]>,
     meta: [RecvMeta; BATCH_SIZE],
     slot: usize,
-    arenas: Arena,
+    arenas: ByteArena,
 }
 
 impl RecvBatch {

@@ -57,7 +57,7 @@ impl ServerIdentity {
     }
 
     /// TLS for the server: TLS 1.3, its identity, no client key, the ALPN `alpn` alone, and no
-    /// session ticket, so every client checks the identity.
+    /// packet session ticket, so every client checks the identity.
     pub(crate) fn tls_config(&self, alpn: &[u8]) -> Arc<rustls::ServerConfig> {
         let builder = rustls::ServerConfig::builder_with_provider(tls_provider::get())
             .with_protocol_versions(&[&TLS13])

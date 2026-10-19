@@ -39,11 +39,9 @@ use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 use crate::room_allocator::RoomAllocator;
 use crate::rooms::Rooms;
 
-/// Plugin used to handle interest management via [`Rooms`].
-///
-/// Members of a replication hierarchy follow their root's [`Rooms`], so only the root needs to be
-/// added to rooms. A member with rooms that differ from its root's keeps them, with
-/// [`Overridden<Rooms>`](crate::overridden::Overridden).
+/// Interest by [`Rooms`]: a hierarchy member follows its root's rooms unless it holds
+/// [`Overridden<Rooms>`](crate::overridden::Overridden) (13-net-stack/replication.md, A member
+/// follows its root for each aspect, unless it overrides that aspect).
 #[derive(Debug, Default)]
 pub struct RoomPlugin;
 

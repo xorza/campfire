@@ -14,8 +14,8 @@ use crate::recv_batch::RecvBatch;
 use crate::udp_port::UdpPort;
 
 /// The socket of an endpoint: read in batches that GRO joins, written in sends that GSO joins for
-/// one peer, and waited on by the IO thread with the poller (13-net-stack/session.md, One endpoint
-/// core and one pass for each IO).
+/// one peer, and waited on by the IO thread with the poller (13-net-stack/packet-session.md, One
+/// endpoint core and one pass for each IO).
 #[derive(Debug)]
 pub struct UdpIo {
     port: UdpPort,
@@ -45,8 +45,8 @@ impl UdpIo {
     }
 
     /// Sends `contents` to `to` in datagrams of `segment` bytes, the last shorter at times. A send
-    /// that fails drops its datagrams, which the sessions take as lost: a full socket, or a path
-    /// that is down, which their timers find.
+    /// that fails drops its datagrams, which the packet sessions take as lost: a full socket, or a
+    /// path that is down, which their timers find.
     fn transmit(&self, to: SocketAddr, contents: &[u8], segment: usize) {
         let transmit = Transmit {
             destination: to,

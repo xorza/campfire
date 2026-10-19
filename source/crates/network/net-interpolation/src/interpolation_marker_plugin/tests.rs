@@ -7,13 +7,13 @@ use campfire_net_replication::{
     ConfirmedHistory, Interpolated, InterpolatedSend, InterpolationTarget, Replicate,
 };
 use campfire_net_stepper::ClientKind;
-use campfire_net_stepper::{Init, StepperConfig};
-use campfire_net_stepper::{Order, Stepper};
+use campfire_net_stepper::{Init, StepperSetup};
+use campfire_net_stepper::{StepOrder, Stepper};
 
 fn host_only_stepper_before_host_connect() -> Stepper<InterpolationStack> {
-    let mut config = StepperConfig::with_clients(vec![ClientKind::Host]);
-    config.init = Init::Deferred;
-    let mut stepper = Stepper::new(InterpolationStack, config);
+    let mut setup = StepperSetup::with_clients(vec![ClientKind::Host]);
+    setup.init = Init::Deferred;
+    let mut stepper = Stepper::new(InterpolationStack, setup);
     stepper.start_server();
     stepper
 }
@@ -29,7 +29,7 @@ fn connect_host(stepper: &mut Stepper<InterpolationStack>) -> Entity {
 
 #[test]
 fn a_manual_interpolated_marker_backfills_an_existing_replicated_component() {
-    let mut stepper = Stepper::new(InterpolationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(InterpolationStack, StepperSetup::single());
     let server_entity = stepper
         .server_app_mut()
         .world_mut()
@@ -81,8 +81,8 @@ fn a_manual_interpolated_marker_backfills_an_existing_replicated_component() {
 }
 
 #[test]
-fn interpolation_target_removal_removes_receiver_marker() {
-    let mut stepper = Stepper::new(InterpolationStack, StepperConfig::single());
+fn the_removal_of_an_interpolation_target_removes_the_receiver_marker() {
+    let mut stepper = Stepper::new(InterpolationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -130,7 +130,7 @@ fn interpolation_target_removal_removes_receiver_marker() {
 /// add the `Interpolated` marker component.
 #[test]
 fn an_interpolation_target_adds_interpolated_on_a_host_server() {
-    let mut stepper = Stepper::new(InterpolationStack, StepperConfig::host_server());
+    let mut stepper = Stepper::new(InterpolationStack, StepperSetup::host_server());
 
     let server_entity = stepper
         .server_app_mut()
@@ -154,7 +154,7 @@ fn an_interpolation_target_adds_interpolated_on_a_host_server() {
 }
 
 #[test]
-fn interpolation_target_backfills_interpolated_when_client_becomes_host_client() {
+fn an_interpolation_target_marks_a_client_that_becomes_the_host_client() {
     let mut stepper = host_only_stepper_before_host_connect();
 
     let server_entity = stepper
@@ -199,7 +199,7 @@ fn interpolation_target_backfills_interpolated_when_client_becomes_host_client()
 
 #[test]
 fn a_child_overrides_the_prediction_target() {
-    let mut stepper = Stepper::new(InterpolationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(InterpolationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -209,7 +209,7 @@ fn a_child_overrides_the_prediction_target() {
             InterpolationTarget::to_clients(NetworkTarget::All),
         ))
         .id();
-    stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
     let client_entity = stepper
         .client_app(0)
         .world()
@@ -226,7 +226,7 @@ fn a_child_overrides_the_prediction_target() {
         // over the one from the root entity
         .spawn((ChildOf(server_entity), InterpolationTarget::to_links([])))
         .id();
-    stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
     let client_child = stepper
         .client_app(0)
         .world()

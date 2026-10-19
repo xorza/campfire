@@ -19,14 +19,15 @@ use bevy_ecs::system::SystemParam;
 use bevy_replicon::server::visibility::client_visibility::ClientVisibility;
 use core::fmt::Debug;
 
-/// Keeps each aspect that a hierarchy member follows equal to its root's.
+/// Keeps each aspect that a hierarchy member follows equal to its root's
+/// (13-net-stack/replication.md, Detaching never widens what an entity replicates).
 #[derive(Debug)]
 pub(crate) struct InheritancePlugin;
 
 /// What an entity keeps of an aspect it followed when it leaves its root.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Unlinked {
-    /// The copy goes with the link: the aspect lets the entity replicate.
+enum OnDetach {
+    /// The copy goes with the attachment: the aspect lets the entity replicate.
     Drop,
     /// The copy becomes the entity's own: the aspect limits where the entity replicates.
     Keep,
@@ -35,23 +36,23 @@ enum Unlinked {
 /// A component that hierarchy members follow from their root unless they hold
 /// [`Overridden<Self>`].
 trait Aspect: Component<Mutability = Immutable> + Clone + PartialEq + Debug {
-    const UNLINKED: Unlinked;
+    const ON_DETACH: OnDetach;
 }
 
 impl Aspect for Replicate {
-    const UNLINKED: Unlinked = Unlinked::Drop;
+    const ON_DETACH: OnDetach = OnDetach::Drop;
 }
 
 impl Aspect for PredictionTarget {
-    const UNLINKED: Unlinked = Unlinked::Drop;
+    const ON_DETACH: OnDetach = OnDetach::Drop;
 }
 
 impl Aspect for InterpolationTarget {
-    const UNLINKED: Unlinked = Unlinked::Drop;
+    const ON_DETACH: OnDetach = OnDetach::Drop;
 }
 
 impl Aspect for Rooms {
-    const UNLINKED: Unlinked = Unlinked::Keep;
+    const ON_DETACH: OnDetach = OnDetach::Keep;
 }
 
 #[derive(Debug, QueryData)]
@@ -88,22 +89,23 @@ impl<T: Aspect> MemberAspectItem<'_, '_, T> {
         }
     }
 
-    fn relink(&self, member: Entity, root: Option<&T>, deferred: &mut DeferredEntityCommands) {
+    fn reattach(&self, member: Entity, root: Option<&T>, deferred: &mut DeferredEntityCommands) {
         if let Some(follow) = self.follow(root) {
             follow.defer(member, deferred);
         }
     }
 
-    fn unlink(&self, member: Entity, deferred: &mut DeferredEntityCommands) {
+    fn detach(&self, member: Entity, deferred: &mut DeferredEntityCommands) {
         if self.overridden {
             deferred.remove::<Overridden<T>>(member);
-        } else if T::UNLINKED == Unlinked::Drop && self.value.is_some() {
+        } else if T::ON_DETACH == OnDetach::Drop && self.value.is_some() {
             deferred.remove::<T>(member);
         }
     }
 }
 
-/// The write that makes a member's copy equal to its root's value, absence included.
+/// The write that makes a member's copy equal to its root's value, absence included
+/// (13-net-stack/replication.md, Absence is a value).
 #[derive(Debug)]
 enum FollowWrite<T> {
     Insert(T),
@@ -149,11 +151,11 @@ struct Aspects {
     visibility_overridden: Has<Overridden<ManualVisibility>>,
 }
 
-/// What a link change reads and writes: the aspects of the member and its root, and the manual
-/// visibility of every sender.
+/// What a change of attachment reads and writes: the aspects of the member and its root, and the
+/// manual visibility of every sender.
 #[derive(Debug, SystemParam)]
 struct LinkAccess<'w, 's> {
-    links: Query<'w, 's, &'static ReplicateLike>,
+    likes: Query<'w, 's, &'static ReplicateLike>,
     aspects: Query<'w, 's, Aspects>,
     senders: Query<'w, 's, &'static mut ClientVisibility>,
     bits: Option<Res<'w, VisibilityBits>>,
@@ -166,25 +168,26 @@ enum Write {
     Remove,
 }
 
-/// What a write of `T` reads: the member's link, the root's members, and `T` on both.
+/// What a write of `T` reads: the member's attachment, the root's members, and `T` on both.
 #[derive(Debug, SystemParam)]
 struct WriteAccess<'w, 's, T: Aspect> {
-    links: Query<'w, 's, &'static ReplicateLike>,
+    likes: Query<'w, 's, &'static ReplicateLike>,
     members: Query<'w, 's, &'static ReplicateLikeChildren>,
     aspects: Query<'w, 's, MemberAspect<T>>,
 }
 
 impl<T: Aspect> WriteAccess<'_, '_, T> {
-    /// A write on a member overrides its root's `T` when it leaves the member's `T` different
-    /// from the root's, and follows the root when it leaves them equal. A write on a root reaches
-    /// every member that follows it.
+    /// A write on a member overrides its root's `T` when it leaves the member's `T` different from
+    /// the root's, and follows the root when it leaves them equal. A write on a root reaches every
+    /// member that follows it (13-net-stack/replication.md, A write equal to the root's value is a
+    /// follow).
     fn written(&self, entity: Entity, write: Write, commands: &mut Commands<'_, '_>) {
         let value = match write {
             Write::Insert => self.aspects.get(entity).ok().and_then(|own| own.value),
             Write::Remove => None,
         };
-        if let Ok(link) = self.links.get(entity) {
-            let root = self.aspects.get(link.root).ok().and_then(|root| root.value);
+        if let Ok(like) = self.likes.get(entity) {
+            let root = self.aspects.get(like.root).ok().and_then(|root| root.value);
             let overridden = self.aspects.get(entity).is_ok_and(|own| own.overridden);
             match (value == root, overridden) {
                 (false, false) => {
@@ -241,15 +244,15 @@ impl InheritancePlugin {
     /// A member that loses [`Overridden<T>`] follows its root's `T` again.
     fn override_removed<T: Aspect>(
         trigger: On<'_, '_, Remove<Overridden<T>>>,
-        links: Query<'_, '_, &ReplicateLike>,
+        likes: Query<'_, '_, &ReplicateLike>,
         aspects: Query<'_, '_, MemberAspect<T>>,
         mut commands: Commands<'_, '_>,
     ) {
         let member = trigger.entity;
-        let Ok(link) = links.get(member) else {
+        let Ok(like) = likes.get(member) else {
             return;
         };
-        let (Ok(own), Ok(root)) = (aspects.get(member), aspects.get(link.root)) else {
+        let (Ok(own), Ok(root)) = (aspects.get(member), aspects.get(like.root)) else {
             return;
         };
         if let Some(follow) = FollowWrite::of(own.value, root.value) {
@@ -261,15 +264,15 @@ impl InheritancePlugin {
     /// again.
     fn visibility_override_removed(
         trigger: On<'_, '_, Remove<Overridden<ManualVisibility>>>,
-        links: Query<'_, '_, &ReplicateLike>,
+        likes: Query<'_, '_, &ReplicateLike>,
         mut senders: Query<'_, '_, &mut ClientVisibility>,
         bits: Option<Res<'_, VisibilityBits>>,
     ) {
-        let (Ok(link), Some(bits)) = (links.get(trigger.entity), bits) else {
+        let (Ok(like), Some(bits)) = (likes.get(trigger.entity), bits) else {
             return;
         };
         for mut visibility in &mut senders {
-            bits.copy(&mut visibility, trigger.entity, link.root);
+            bits.copy(&mut visibility, trigger.entity, like.root);
         }
     }
 
@@ -281,7 +284,7 @@ impl InheritancePlugin {
         mut deferred: Deferred<'_, DeferredEntityCommands>,
     ) {
         let member = trigger.entity;
-        let Ok(&ReplicateLike { root }) = access.links.get(member) else {
+        let Ok(&ReplicateLike { root }) = access.likes.get(member) else {
             return;
         };
         let (Ok(own), Ok(root_aspects)) = (access.aspects.get(member), access.aspects.get(root))
@@ -312,13 +315,14 @@ impl InheritancePlugin {
         }
     }
 
-    fn relink(trigger: On<'_, '_, Discard<ReplicateLike>>, mut commands: Commands<'_, '_>) {
-        commands.run_system_cached_with(Self::relinked, trigger.entity);
+    fn reattach(trigger: On<'_, '_, Discard<ReplicateLike>>, mut commands: Commands<'_, '_>) {
+        commands.run_system_cached_with(Self::reattached, trigger.entity);
     }
 
-    /// A member whose link changes follows its new root. An entity that leaves its root keeps
-    /// only what it owns, and the copies that [`Unlinked`] keeps.
-    fn relinked(
+    /// A member whose attachment changes follows its new root. An entity that leaves its root keeps
+    /// only what it holds, and the copies that [`OnDetach`] keeps (13-net-stack/replication.md, An
+    /// entity joins with what it holds).
+    fn reattached(
         In(member): In<Entity>,
         mut access: LinkAccess<'_, '_>,
         mut deferred: Deferred<'_, DeferredEntityCommands>,
@@ -327,11 +331,11 @@ impl InheritancePlugin {
             return;
         };
         let deferred = &mut *deferred;
-        let Ok(&ReplicateLike { root }) = access.links.get(member) else {
-            own.replicate.unlink(member, deferred);
-            own.prediction.unlink(member, deferred);
-            own.interpolation.unlink(member, deferred);
-            own.rooms.unlink(member, deferred);
+        let Ok(&ReplicateLike { root }) = access.likes.get(member) else {
+            own.replicate.detach(member, deferred);
+            own.prediction.detach(member, deferred);
+            own.interpolation.detach(member, deferred);
+            own.rooms.detach(member, deferred);
             if own.visibility_overridden {
                 deferred.remove::<Overridden<ManualVisibility>>(member);
             }
@@ -341,12 +345,13 @@ impl InheritancePlugin {
             return;
         };
         own.replicate
-            .relink(member, root_aspects.replicate.value, deferred);
+            .reattach(member, root_aspects.replicate.value, deferred);
         own.prediction
-            .relink(member, root_aspects.prediction.value, deferred);
+            .reattach(member, root_aspects.prediction.value, deferred);
         own.interpolation
-            .relink(member, root_aspects.interpolation.value, deferred);
-        own.rooms.relink(member, root_aspects.rooms.value, deferred);
+            .reattach(member, root_aspects.interpolation.value, deferred);
+        own.rooms
+            .reattach(member, root_aspects.rooms.value, deferred);
         let visibility_overridden = own.visibility_overridden;
         if let Some(bits) = access.bits.as_deref().copied()
             && !visibility_overridden
@@ -361,7 +366,7 @@ impl InheritancePlugin {
 impl Plugin for InheritancePlugin {
     fn build(&self, app: &mut App) {
         app.add_observer(Self::join);
-        app.add_observer(Self::relink);
+        app.add_observer(Self::reattach);
         app.add_observer(Self::visibility_override_removed);
         Self::register::<Replicate>(app);
         Self::register::<PredictionTarget>(app);

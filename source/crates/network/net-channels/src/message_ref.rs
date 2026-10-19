@@ -1,11 +1,11 @@
 use crate::fragmented_message::FragmentRef;
-use crate::single_data::SingleData;
+use crate::single_body::SingleBody;
 
-/// A channel-owned message or fragment, as the packet builder reads it while the channel keeps
+/// A channel-held message or fragment, as the packet builder reads it while the channel keeps
 /// it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum MessageRef<'a> {
-    Single(&'a SingleData),
+    Single(&'a SingleBody),
     Fragment(FragmentRef<'a>),
 }
 

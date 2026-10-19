@@ -30,7 +30,7 @@ fn idx(value: u16) -> DiffIndex {
 /// batch `4` transforms cursor `3` into cursor `4`, and batch `5`
 /// transforms cursor `4` into cursor `5`.
 #[test]
-fn buffers_diff_range_until_base_state_is_available() {
+fn a_diff_range_waits_for_its_base_state() {
     let mut history = ConfirmedHistory::<TestDiffValue>::default();
     history.insert_present(NetTick(0), TestDiffValue(0));
 
@@ -51,7 +51,7 @@ fn buffers_diff_range_until_base_state_is_available() {
 /// message is stale. Its final cursor is at the retained base, so it cannot
 /// produce a newer confirmed history value and is ignored.
 #[test]
-fn ignores_diff_range_at_or_before_retained_base_cursor() {
+fn a_diff_range_at_or_before_the_kept_base_is_ignored() {
     let mut history = ConfirmedHistory::<TestDiffValue>::default();
     history.insert_present(NetTick(0), TestDiffValue(0));
     history.insert_present(NetTick(3), TestDiffValue(3));
@@ -78,7 +78,7 @@ fn ignores_diff_range_at_or_before_retained_base_cursor() {
 /// Here `S0` is represented by cursor `0`, so the older message is encoded
 /// as `first_diff_index = 1` with batches `1`, `2`, and `3`.
 #[test]
-fn older_diff_range_materializes_buffered_newer_range() {
+fn an_older_diff_range_writes_the_newer_one_it_waited_for() {
     let mut history = ConfirmedHistory::<TestDiffValue>::default();
     history.insert_present(NetTick(0), TestDiffValue(0));
 
@@ -124,7 +124,7 @@ fn older_diff_range_materializes_buffered_newer_range() {
 /// A later message can use an older available base and overlap an earlier pending message. Once
 /// the later message materializes its newer cursor, the earlier pending range is superseded.
 #[test]
-fn newer_overlapping_range_supersedes_older_pending_range() {
+fn a_newer_range_that_overlaps_supersedes_an_older_pending_one() {
     let mut history = ConfirmedHistory::<TestDiffValue>::default();
     history.insert_present(NetTick(0), TestDiffValue(0));
 
@@ -153,7 +153,7 @@ fn newer_overlapping_range_supersedes_older_pending_range() {
 /// unchanged history anchor can be carried forward and the later base
 /// message can no longer materialize the missing historical state.
 #[test]
-fn pending_diff_range_blocks_receiver_cleanup_until_materialized() {
+fn a_pending_diff_range_holds_the_cleanup_until_it_is_written() {
     let mut history = ConfirmedHistory::<TestDiffValue>::default();
     history.insert_present(NetTick(0), TestDiffValue(0));
 
@@ -180,11 +180,11 @@ fn pending_diff_range_blocks_receiver_cleanup_until_materialized() {
     assert_eq!((tick, value), (NetTick(5), TestDiffValue(5)));
 }
 
-/// A completed checkpoint beyond a pending diff cannot receive an unchanged anchor until the
+/// A completed confirmed tick beyond a pending diff cannot receive an unchanged anchor until the
 /// older diff materializes. Once it does, the anchor resolves immediately to the final
 /// authoritative value and cannot change later.
 #[test]
-fn older_pending_diff_blocks_later_unchanged_anchor_until_materialized() {
+fn an_older_pending_diff_holds_a_later_unchanged_anchor_until_it_is_written() {
     let mut history = ConfirmedHistory::<TestDiffValue>::default();
     history.insert_present(NetTick(0), TestDiffValue(0));
 
@@ -230,7 +230,7 @@ fn older_pending_diff_blocks_later_unchanged_anchor_until_materialized() {
 /// apply the suffix of that message from the retained base instead of
 /// waiting forever for a retired cursor.
 #[test]
-fn overlapping_diff_range_is_trimmed_to_retained_base() {
+fn an_overlapping_diff_range_is_cut_to_the_kept_base() {
     let mut history = ConfirmedHistory::<TestDiffValue>::default();
     history.insert_present(NetTick(0), TestDiffValue(0));
     history.insert_present(NetTick(3), TestDiffValue(3));
@@ -257,7 +257,7 @@ fn overlapping_diff_range_is_trimmed_to_retained_base() {
 /// Replicon's diff indexes wrap at u16::MAX. A message ending at cursor 3
 /// with 10 diffs starts at cursor 65530 and uses 65529 as its base.
 #[test]
-fn queue_diff_handles_wrapped_diff_indexes() {
+fn a_queued_diff_takes_a_wrapped_diff_index() {
     let mut history = ConfirmedHistory::<TestDiffValue>::default();
     history.insert_present(NetTick(0), TestDiffValue(0));
 
@@ -278,7 +278,7 @@ fn queue_diff_handles_wrapped_diff_indexes() {
 /// to the retained base. `base_tick` becomes the lowest retained tick, and
 /// `diff_ticks` only keeps newer cursors that may still be useful.
 #[test]
-fn pruning_promotes_processed_tick_to_retained_base() {
+fn a_prune_makes_the_processed_tick_the_kept_base() {
     let mut receiver = HistoryDiffReceiver::<TestDiffValue>::default();
     receiver.record_cursor(NetTick(0), Some(idx(0)));
     receiver.record_cursor(NetTick(3), Some(idx(3)));
@@ -303,7 +303,7 @@ fn pruning_promotes_processed_tick_to_retained_base() {
 /// snapshot was written in the same frame. That must not wipe the retained
 /// base cursor, or the next diff range will be unable to find its base.
 #[test]
-fn pruning_older_than_retained_base_is_noop() {
+fn a_prune_older_than_the_kept_base_changes_nothing() {
     let mut receiver = HistoryDiffReceiver::<TestDiffValue>::default();
     receiver.record_cursor(NetTick(128), Some(idx(0)));
     receiver.clear_before_tick(NetTick(128), true);
@@ -346,7 +346,7 @@ fn a_pending_range_behind_the_floor_is_dropped() {
 
 /// A message with more diffs than a cursor range spans is refused with its count.
 #[test]
-fn too_many_diffs_are_refused() {
+fn a_message_of_too_many_diffs_is_refused() {
     let mut receiver = HistoryDiffReceiver::<TestDiffValue>::default();
     let diffs = vec![0; usize::from(u16::MAX) + 2];
     assert!(matches!(

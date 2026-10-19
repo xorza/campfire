@@ -9,15 +9,15 @@ use campfire_codec::Binary;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_core::NetTick;
 use campfire_net_replication::ConfirmedHistory;
+use campfire_net_replication::ConfirmedTickMap;
 use campfire_net_replication::HistoryState;
 use campfire_net_replication::Predicted;
-use campfire_net_replication::ReplicationCheckpointMap;
 use campfire_net_replication::internals::CompRepliconDiff;
 use campfire_net_replication::internals::client_copy;
 use campfire_net_replication::internals::newest_confirmed_value;
 use campfire_net_replication::{PredictionTarget, Replicate};
-use campfire_net_stepper::StepperConfig;
-use campfire_net_stepper::{Order, Stepper};
+use campfire_net_stepper::StepperSetup;
+use campfire_net_stepper::{StepOrder, Stepper};
 use campfire_net_sync::TimelineSync;
 use campfire_net_timeline::LocalTimeline;
 
@@ -29,21 +29,21 @@ use campfire_net_replication::ComponentRegistry;
 
 impl PredictionRegistry {
     /// Returns true if the component is predicted
-    pub(crate) fn predicted<C: Component>(&self) -> bool {
-        self.fns(ComponentKind::of::<C>())
+    pub(crate) fn is_predicted<C: Component>(&self) -> bool {
+        self.fns(ComponentTypeId::of::<C>())
             .is_some_and(|fns| fns.prediction.is_some())
     }
 
     /// Whether the component rolls back locally, with no prediction fns.
     pub(crate) fn rolls_back_locally<C: Component>(&self) -> bool {
-        self.fns(ComponentKind::of::<C>())
+        self.fns(ComponentTypeId::of::<C>())
             .is_some_and(|fns| fns.prediction.is_none())
     }
 }
-use crate::prediction_manager::PredictionManager;
 use crate::prediction_marker_plugin::PredictionMarkerPlugin;
 use crate::prediction_plugins::PredictionPlugins;
 use crate::prediction_registry_plugin::PredictionRegistryPlugin;
+use crate::prediction_setup::PredictionSetup;
 use bevy_ecs::system::RunSystemOnce;
 use bevy_replicon::prelude::{AuthMethod, RepliconPlugins, RepliconSharedPlugin};
 use bevy_replicon::shared::replication::diff::diff_index::DiffIndex;
@@ -56,7 +56,7 @@ use campfire_net_interpolation::{
     InterpolationRegistrationExt, InterpolationRegistry, InterpolationRegistryPlugin,
 };
 use campfire_net_replication::AppComponentExt;
-use campfire_net_sync::{InputTimelineConfig, LocalTimelineSync};
+use campfire_net_sync::{InputTimelineSetup, LocalTimelineSync};
 use serde::{Deserialize, Serialize};
 
 #[derive(Component, Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -84,8 +84,8 @@ fn prediction_app() -> App {
         InterpolationPlugins,
     ));
     app.init_resource::<PredictionRegistry>();
-    app.init_resource::<PredictionManager>();
-    app.init_resource::<InputTimelineConfig>();
+    app.init_resource::<PredictionSetup>();
+    app.init_resource::<InputTimelineSetup>();
     app
 }
 
@@ -151,7 +151,7 @@ fn parity_mismatch(confirmed: &BuilderComponent, predicted: &BuilderComponent) -
 }
 
 #[test]
-fn marker_plugin_does_not_enable_prediction() {
+fn the_marker_plugin_enables_no_prediction() {
     let mut app = App::new();
     app.add_plugins((
         StatesPlugin,
@@ -165,7 +165,7 @@ fn marker_plugin_does_not_enable_prediction() {
 }
 
 #[test]
-fn predict_builder_enables_prediction_before_mismatch_with() {
+fn a_predict_builder_enables_prediction_before_its_mismatch_fn() {
     let mut app = prediction_app();
 
     app.register_component::<BuilderComponent>()
@@ -174,7 +174,7 @@ fn predict_builder_enables_prediction_before_mismatch_with() {
         .mismatch_with(parity_mismatch);
 
     let registry = app.world().resource::<PredictionRegistry>();
-    assert!(registry.predicted::<BuilderComponent>());
+    assert!(registry.is_predicted::<BuilderComponent>());
     assert!(!registry.mismatch::<BuilderComponent>()(
         &BuilderComponent(1),
         &BuilderComponent(3)
@@ -186,7 +186,7 @@ fn predict_builder_enables_prediction_before_mismatch_with() {
 }
 
 #[test]
-fn predicted_builder_can_add_custom_interpolation() {
+fn a_predicted_builder_can_add_its_own_interpolation() {
     let mut app = prediction_app();
 
     app.register_component::<BuilderComponent>()
@@ -197,10 +197,10 @@ fn predicted_builder_can_add_custom_interpolation() {
     finish_registration(&mut app);
 
     let prediction_registry = app.world().resource::<PredictionRegistry>();
-    assert!(prediction_registry.predicted::<BuilderComponent>());
+    assert!(prediction_registry.is_predicted::<BuilderComponent>());
 
     let interpolation_registry = app.world().resource::<InterpolationRegistry>();
-    assert!(interpolation_registry.interpolated::<BuilderComponent>());
+    assert!(interpolation_registry.is_interpolated::<BuilderComponent>());
     assert!(prediction_registry.mismatch::<BuilderComponent>()(
         &BuilderComponent(1),
         &BuilderComponent(2)
@@ -208,7 +208,7 @@ fn predicted_builder_can_add_custom_interpolation() {
 }
 
 #[test]
-fn interpolated_builder_can_add_prediction() {
+fn an_interpolated_builder_can_add_prediction() {
     let mut app = prediction_app();
 
     app.register_component::<BuilderComponent>()
@@ -219,10 +219,10 @@ fn interpolated_builder_can_add_prediction() {
     finish_registration(&mut app);
 
     let prediction_registry = app.world().resource::<PredictionRegistry>();
-    assert!(prediction_registry.predicted::<BuilderComponent>());
+    assert!(prediction_registry.is_predicted::<BuilderComponent>());
 
     let interpolation_registry = app.world().resource::<InterpolationRegistry>();
-    assert!(interpolation_registry.interpolated::<BuilderComponent>());
+    assert!(interpolation_registry.is_interpolated::<BuilderComponent>());
     assert!(prediction_registry.mismatch::<BuilderComponent>()(
         &BuilderComponent(1),
         &BuilderComponent(2)
@@ -230,7 +230,7 @@ fn interpolated_builder_can_add_prediction() {
 }
 
 #[test]
-fn local_rollback_builder_registers_non_networked_rollback() {
+fn a_local_rollback_builder_registers_a_rollback_with_no_network() {
     let mut app = App::new();
     app.init_resource::<PredictionRegistry>();
 
@@ -240,7 +240,7 @@ fn local_rollback_builder_registers_non_networked_rollback() {
     seal(&mut app);
 
     let registry = app.world().resource::<PredictionRegistry>();
-    assert!(!registry.predicted::<LocalRollbackComponent>());
+    assert!(!registry.is_predicted::<LocalRollbackComponent>());
     assert!(registry.rolls_back_locally::<LocalRollbackComponent>());
     assert!(app.world().get_resource::<ComponentRegistry>().is_none());
 }
@@ -300,8 +300,8 @@ fn setup_prediction_diff_app() -> (App, FnsId) {
         PredictionPlugins,
     ));
     app.insert_resource(LocalTimeline::default());
-    app.insert_resource(ReplicationCheckpointMap::default());
-    app.insert_resource(PredictionManager::default());
+    app.insert_resource(ConfirmedTickMap::default());
+    app.insert_resource(PredictionSetup::default());
     app.world_mut().flush();
     app.register_component::<TestDiffComponent>()
         .replicate_diff()
@@ -318,16 +318,16 @@ fn setup_prediction_diff_app() -> (App, FnsId) {
     (app, fns_id)
 }
 
-fn record_checkpoint(app: &mut App, tick: u32) -> RepliconTick {
+fn record_confirmed_tick(app: &mut App, tick: u32) -> RepliconTick {
     let replicon_tick = RepliconTick::new(tick);
     app.world_mut()
-        .resource_mut::<ReplicationCheckpointMap>()
+        .resource_mut::<ConfirmedTickMap>()
         .record(replicon_tick, NetTick(tick));
     replicon_tick
 }
 
 #[test]
-fn component_builder_local_rollback_supports_non_sync_component() {
+fn a_local_rollback_takes_a_component_that_is_not_sync() {
     let mut app = prediction_app();
 
     app.register_component::<LocalRollbackOnlyComponent>()
@@ -341,12 +341,12 @@ fn component_builder_local_rollback_supports_non_sync_component() {
     assert!(
         !app.world()
             .resource::<PredictionRegistry>()
-            .predicted::<LocalRollbackOnlyComponent>()
+            .is_predicted::<LocalRollbackOnlyComponent>()
     );
 }
 
 #[test]
-fn local_rollback_resource_backfills_existing_resource_history() {
+fn a_local_rollback_resource_gives_an_existing_resource_its_history() {
     let mut app = prediction_app();
     app.insert_resource(LocalTimeline::default());
     let mut sync = LocalTimelineSync::default();
@@ -354,7 +354,7 @@ fn local_rollback_resource_backfills_existing_resource_history() {
     app.insert_resource(sync);
     app.insert_resource(LocalRollbackOnlyResource(42));
     app.world_mut()
-        .spawn((PredictionManager::default(), InputTimelineConfig::default()));
+        .spawn((PredictionSetup::default(), InputTimelineSetup::default()));
 
     app.register_component::<LocalRollbackOnlyResource>()
         .local_rollback();
@@ -372,7 +372,7 @@ fn local_rollback_resource_backfills_existing_resource_history() {
     assert!(
         !app.world()
             .resource::<PredictionRegistry>()
-            .predicted::<LocalRollbackOnlyResource>()
+            .is_predicted::<LocalRollbackOnlyResource>()
     );
 
     let resource_entity = app
@@ -394,14 +394,14 @@ fn local_rollback_resource_backfills_existing_resource_history() {
 }
 
 #[test]
-fn local_rollback_resource_adds_history_to_late_resource() {
+fn a_local_rollback_resource_gives_a_later_resource_its_history() {
     let mut app = prediction_app();
     app.insert_resource(LocalTimeline::default());
     let mut sync = LocalTimelineSync::default();
     sync.set_synced(true);
     app.insert_resource(sync);
     app.world_mut()
-        .spawn((PredictionManager::default(), InputTimelineConfig::default()));
+        .spawn((PredictionSetup::default(), InputTimelineSetup::default()));
 
     app.register_component::<LocalRollbackOnlyResource>()
         .local_rollback();
@@ -432,11 +432,11 @@ fn local_rollback_resource_adds_history_to_late_resource() {
 }
 
 #[test]
-fn diff_prediction_buffers_newer_diff_until_older_base_arrives() {
+fn a_diff_prediction_buffers_a_newer_diff_until_its_older_base_arrives() {
     let (mut app, fns_id) = setup_prediction_diff_app();
-    let tick0 = record_checkpoint(&mut app, 0);
-    let tick3 = record_checkpoint(&mut app, 3);
-    let tick5 = record_checkpoint(&mut app, 5);
+    let tick0 = record_confirmed_tick(&mut app, 0);
+    let tick3 = record_confirmed_tick(&mut app, 3);
+    let tick5 = record_confirmed_tick(&mut app, 5);
 
     let entity = app.world_mut().spawn(Predicted).id();
 
@@ -479,12 +479,12 @@ fn diff_prediction_buffers_newer_diff_until_older_base_arrives() {
     );
 }
 
-/// Verifies the end-to-end prediction path for Replicon diff components:
+/// The end-to-end prediction path for Replicon diff components:
 /// server-side `apply_diff` produces diff replication, and the client stores
 /// the materialized value in `ConfirmedHistory`.
 #[test]
-fn diff_prediction_records_confirmed_history_from_replicon_diffs() {
-    let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
+fn a_diff_prediction_records_its_confirmed_history_from_replicon_diffs() {
+    let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -502,7 +502,7 @@ fn diff_prediction_records_confirmed_history_from_replicon_diffs() {
         .apply_diff::<CompRepliconDiff>(0)
         .unwrap();
 
-    stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
     let client_entity = client_copy(&stepper, server_entity).unwrap();
     assert!(
         stepper
@@ -522,7 +522,7 @@ fn diff_prediction_records_confirmed_history_from_replicon_diffs() {
         .entity_mut(server_entity)
         .apply_diff::<CompRepliconDiff>(1)
         .unwrap();
-    stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
+    stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
 
     assert_eq!(
         newest_confirmed_value(stepper.client_app_mut(0), client_entity),

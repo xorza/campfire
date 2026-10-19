@@ -13,16 +13,17 @@ use crate::datagram_io::Outbound;
 use crate::datagram_io::{Datagram, DatagramIo};
 use crate::io_failed::IoFailed;
 use crate::signal::Signal;
-use campfire_net_bytes::Arena;
+use campfire_net_bytes::ByteArena;
 
-/// The simulated network's wires an endpoint holds: a client's one, a server's one for each
-/// client.
+/// The emulated network's wires an endpoint holds: a client's one, a server's one for each client
+/// (13-net-stack/layering.md, The emulated wires and `net-udp`'s emulated server and client are
+/// production).
 #[derive(Debug)]
 pub struct EmulatedWires {
     wires: Mutex<Wires>,
     /// What each datagram the wires deliver is copied into, as a socket reads into its own
     /// buffers: the wire's bytes share their allocation with the sender's.
-    arenas: Mutex<Arena>,
+    arenas: Mutex<ByteArena>,
     signal: Arc<Signal>,
     local: SocketAddr,
 }
@@ -48,7 +49,7 @@ impl EmulatedWires {
     /// The wires of a client, its one `wire`.
     pub fn client(wire: EmulatedIo) -> Self {
         let wires = Self {
-            local: wire.client_addr(),
+            local: wire.client_address(),
             ..Self::server()
         };
         wires.add(wire);
@@ -60,7 +61,7 @@ impl EmulatedWires {
         wire.set_waker(Waker::from(Arc::clone(&self.signal)));
         let mut wires = self.lock();
         let index = wires.ends.len();
-        wires.by_peer.insert(wire.peer_addr(), index);
+        wires.by_peer.insert(wire.remote_address(), index);
         wires.ends.push(wire);
     }
 
@@ -85,7 +86,7 @@ impl DatagramIo for EmulatedWires {
                 .receive_ends(&wires.ends, max, |end, bytes| {
                     let payload = arenas.copy(&bytes);
                     out.push(Datagram {
-                        from: end.peer_addr(),
+                        from: end.remote_address(),
                         payload,
                     });
                 });

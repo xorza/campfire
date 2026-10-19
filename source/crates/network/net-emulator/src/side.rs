@@ -1,6 +1,6 @@
-use campfire_net_core::Direction;
+use campfire_net_core::LinkDirection;
 
-/// The end of a `EmulatedIo` link an entity holds.
+/// The end of an `EmulatedIo` link an entity holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Client,
@@ -8,17 +8,17 @@ pub enum Side {
 }
 
 impl Side {
-    pub(crate) const fn sends(self) -> Direction {
+    pub(crate) const fn sends(self) -> LinkDirection {
         match self {
-            Self::Client => Direction::ClientToServer,
-            Self::Server => Direction::ServerToClient,
+            Self::Client => LinkDirection::ClientToServer,
+            Self::Server => LinkDirection::ServerToClient,
         }
     }
 
-    pub(crate) const fn receives(self) -> Direction {
+    pub(crate) const fn receives(self) -> LinkDirection {
         match self {
-            Self::Client => Direction::ServerToClient,
-            Self::Server => Direction::ClientToServer,
+            Self::Client => LinkDirection::ServerToClient,
+            Self::Server => LinkDirection::ClientToServer,
         }
     }
 

@@ -1,8 +1,6 @@
 use crate::host_message_sender::HostMessageSender;
 use crate::message::Message;
-use crate::message_registry::{
-    MessageRegistry, mapped_context_deserialize, mapped_context_serialize,
-};
+use crate::message_registry::{MessageRegistry, mapped_cx_deserialize, mapped_cx_serialize};
 use crate::message_sender::MessageSender;
 use bevy_app::App;
 use bevy_ecs::component::Component;
@@ -10,8 +8,8 @@ use bevy_ecs::entity::MapEntities;
 use campfire_net_connection::Client;
 use campfire_net_connection::ClientOf;
 use campfire_net_connection::HostClient;
-use campfire_net_connection::LinkRole;
-use campfire_net_core::Directions;
+use campfire_net_connection::LinkSide;
+use campfire_net_core::LinkDirections;
 
 #[derive(Debug)]
 pub struct MessageRegistration<'a, M> {
@@ -27,25 +25,25 @@ impl<M: Message> MessageRegistration<'_, M> {
         M: Clone + MapEntities + 'static,
     {
         let mut registry = self.app.world_mut().resource_mut::<MessageRegistry>();
-        registry.add_map_entities::<M>(mapped_context_serialize, mapped_context_deserialize);
+        registry.add_map_entities::<M>(mapped_cx_serialize, mapped_cx_deserialize);
         self
     }
 
     /// Adds the sender component on each side that sends this message.
     ///
     /// Receiver components are inserted lazily when a payload arrives.
-    pub fn add_direction(&mut self, directions: impl Into<Directions>) -> &mut Self {
+    pub fn add_direction(&mut self, directions: impl Into<LinkDirections>) -> &mut Self {
         add_senders::<M, MessageSender<M>, HostMessageSender<M>>(self.app, directions.into());
         self
     }
 }
 
-/// Widens the directions `M` travels in, and gives each link of a role that sends it in
+/// Widens the directions `M` travels in, and gives each link of a side that sends it in
 /// `directions` its sender `S`, and a host client, which sends to its server from its own side,
 /// its host sender `H`. A receiver goes on lazily when a payload arrives.
 pub(crate) fn add_senders<M: 'static, S: Component + Default, H: Component + Default>(
     app: &mut App,
-    directions: Directions,
+    directions: LinkDirections,
 ) {
     app.world_mut()
         .resource_mut::<MessageRegistry>()

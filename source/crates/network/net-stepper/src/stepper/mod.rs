@@ -7,7 +7,7 @@ use bevy_ecs::system::{Commands, Query};
 use bevy_ecs::world::{EntityRef, EntityWorldMut, World};
 use bevy_time::{Real, Time, TimePlugin, TimeUpdateStrategy};
 use campfire_net_connection::{
-    Client, Connect, Connected, Connecting, Disconnect, Disconnected, RawClient, RawServer, Start,
+    Client, Connect, Connected, Connecting, Disconnect, Disconnected, Start,
 };
 use campfire_net_core::NetTick;
 use campfire_net_core::TickRate;
@@ -15,11 +15,11 @@ use campfire_net_emulator::{
     DuplexModel, EmulatedLinkId, EmulatedNetwork, EmulatedPair, WireClock,
 };
 use campfire_net_endpoint::Endpoint;
-use campfire_net_link::{Link, LinkOf, Linked, PeerAddr, Unlinked};
-use campfire_net_packets::{EmulatedWires, EndpointConfig, EndpointParts, SessionConfig};
+use campfire_net_link::{Link, LinkOf, Linked, RemoteAddress, Server, Unlinked};
+use campfire_net_packets::{EmulatedWires, EndpointPieces, EndpointSetup, PacketSessionSetup};
 use campfire_net_timeline::LocalTimeline;
 use campfire_net_udp::{
-    AdmissionConfig, EmulatedServer, ServerIdentity, ServerSecret, ServerTrust, UdpConfig,
+    AdmissionSetup, EmulatedServer, ServerIdentity, ServerSecret, ServerTrust, UdpSetup,
 };
 use core::num::NonZeroU32;
 use core::time::Duration;
@@ -33,7 +33,7 @@ use crate::app_schedule::AppSchedule;
 use crate::client_kind::ClientKind;
 use crate::remote_client::RemoteClient;
 use crate::stack::Stack;
-use crate::stepper_config::{Init, StepperConfig};
+use crate::stepper_setup::{Init, StepperSetup};
 
 /// The ticks `init` and `disconnect` step before they give up on a client.
 const WAIT_TICKS: usize = 50;
@@ -46,19 +46,21 @@ const UDP_SECRET: [u8; 32] = [7; 32];
 
 /// The order in which the apps of one step run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Order {
+pub enum StepOrder {
     ClientsFirst,
     ServerFirst,
 }
 
 /// One server app and one app for each remote client, linked over a [`EmulatedNetwork`], with the
-/// stack `S` on each side; a host client lives in the server's app.
+/// stack `S` on each side; a host client lives in the server's app (13-net-stack/testing.md, A
+/// discrete-event stepper holds the time) (13-net-stack/testing.md, The stepper's remote clients
+/// are all plain or all sealed).
 ///
-/// Every remote client is of one kind: a plain session or a sealed one of the UDP protocol, which
-/// the server's one endpoint takes. The server's endpoint spawns its link to each client at the
-/// client's first packet, and the stack's components go on it before it links.
+/// Every remote client is of one kind: a plain packet session or a sealed one of the UDP protocol,
+/// which the server's one endpoint takes. The server's endpoint spawns its link to each client at
+/// the client's first packet, and the stack's components go on it before it links.
 ///
-/// The stepper owns one virtual time. `step` and `advance_time` move every app's clock together;
+/// The stepper holds one virtual time. `step` and `advance_time` move every app's clock together;
 /// `run_for` runs each app on its own frame interval, clock drift and stalls, frame by frame in
 /// the order their frames fall. Each app's stack clock is on its default `ClockSource::Auto`,
 /// which follows the time the stepper hands to its `TimeUpdateStrategy`, so every endpoint runs
@@ -85,40 +87,40 @@ pub struct Stepper<S> {
     link: DuplexModel,
     /// Client `i`'s link draws follow `seed + i`.
     seed: u64,
-    /// The sessions of every endpoint.
-    session: SessionConfig,
+    /// The packet sessions of every endpoint.
+    packet_session: PacketSessionSetup,
     server_started: bool,
 }
 
 impl<S: Stack> Stepper<S> {
-    pub fn new(stack: S, config: StepperConfig) -> Self {
+    pub fn new(stack: S, setup: StepperSetup) -> Self {
         assert!(
-            config.frame_interval > Duration::ZERO,
+            setup.frame_interval > Duration::ZERO,
             "a frame interval is positive"
         );
-        let host_clients = config
+        let host_clients = setup
             .clients
             .iter()
             .filter(|&&kind| kind == ClientKind::Host)
             .count();
         assert!(host_clients <= 1, "a server has at most one host client");
-        let remote = if config.clients.contains(&ClientKind::Udp) {
+        let remote = if setup.clients.contains(&ClientKind::Udp) {
             assert!(
-                !config.clients.contains(&ClientKind::Raw),
-                "the server's one endpoint takes plain or sealed sessions, not both"
+                !setup.clients.contains(&ClientKind::Plain),
+                "the server's one endpoint takes plain or sealed packet sessions, not both"
             );
             ClientKind::Udp
         } else {
-            ClientKind::Raw
+            ClientKind::Plain
         };
         let mut server_app = App::new();
         server_app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
-        stack.add_server(&mut server_app, config.tick_rate);
+        stack.add_server(&mut server_app, setup.tick_rate);
         // The links the server's endpoint spawns take the stack's components before they link: a
         // queued command runs before the endpoint's `Linked`, which comes in a later command.
         server_app.add_observer(
             move |link: On<'_, '_, Add<LinkOf>>,
-                  endpoint_links: Query<'_, '_, (), With<PeerAddr>>,
+                  endpoint_links: Query<'_, '_, (), With<RemoteAddress>>,
                   mut commands: Commands<'_, '_>| {
                 let entity = link.entity;
                 if endpoint_links.contains(entity) {
@@ -129,25 +131,25 @@ impl<S: Stack> Stepper<S> {
             },
         );
         if host_clients == 1 {
-            stack.add_client(&mut server_app, config.tick_rate);
+            stack.add_client(&mut server_app, setup.tick_rate);
         }
         stack.add_protocol(&mut server_app);
         let endpoint = Endpoint::from(match remote {
             ClientKind::Udp => EmulatedServer::new(
                 Self::udp_identity(),
-                Self::udp_config(config.session),
-                config.seed,
+                Self::udp_setup(setup.packet_session),
+                setup.seed,
             )
-            .serve(AdmissionConfig::new(
-                NonZeroU32::MAX,
-                Duration::from_secs(1),
-            )),
-            ClientKind::Raw | ClientKind::Host => EndpointParts::plain_server(EndpointConfig {
-                session: config.session,
+            .serve(AdmissionSetup::new(NonZeroU32::MAX, Duration::from_secs(1))),
+            ClientKind::Plain | ClientKind::Host => EndpointPieces::plain_server(EndpointSetup {
+                packet_session: setup.packet_session,
                 conditioner: None,
             }),
         });
-        let server_entity = server_app.world_mut().spawn((RawServer, endpoint)).id();
+        let server_entity = server_app
+            .world_mut()
+            .spawn((Server::default(), endpoint))
+            .id();
         let host_client_entity = (host_clients == 1).then(|| {
             server_app
                 .world_mut()
@@ -169,23 +171,23 @@ impl<S: Stack> Stepper<S> {
             clients: vec![],
             remote,
             host_client_entity,
-            frame_interval: config.frame_interval,
-            tick_rate: config.tick_rate,
+            frame_interval: setup.frame_interval,
+            tick_rate: setup.tick_rate,
             origin: Instant::now(),
             now: Duration::ZERO,
-            server_schedule: AppSchedule::new(config.frame_interval, Duration::ZERO),
+            server_schedule: AppSchedule::new(setup.frame_interval, Duration::ZERO),
             network: EmulatedNetwork::new(WireClock::Driven),
-            link: config.link,
-            seed: config.seed,
-            session: config.session,
+            link: setup.link,
+            seed: setup.seed,
+            packet_session: setup.packet_session,
             server_started: false,
         };
-        for kind in &config.clients {
+        for kind in &setup.clients {
             if *kind != ClientKind::Host {
                 stepper.add_remote_client();
             }
         }
-        if config.init == Init::Ready {
+        if setup.init == Init::Ready {
             stepper.init();
         }
         stepper
@@ -198,11 +200,9 @@ impl<S: Stack> Stepper<S> {
         let client_id = self.clients.len();
         let pair = self.emulated_pair(client_id);
         let wire = pair.client.link();
-        let address = pair.client.client_addr();
+        let address = pair.client.client_address();
         let endpoint = self.client_endpoint(client_id, pair);
-        let mut client = app
-            .world_mut()
-            .spawn((Client, RawClient, Link::default(), endpoint));
+        let mut client = app.world_mut().spawn((Client, Link::default(), endpoint));
         self.stack.client_link(&mut client);
         let entity = client.id();
         self.clients.push(RemoteClient {
@@ -231,18 +231,18 @@ impl<S: Stack> Stepper<S> {
                         .expect("the stepper's server presents a raw key"),
                 );
                 let seed = self.seed.wrapping_add(u64::try_from(client_id).unwrap());
-                let config = Self::udp_config(self.session);
+                let setup = Self::udp_setup(self.packet_session);
                 Endpoint::from(campfire_net_udp::emulated_client(
                     pair.client,
                     &trust,
-                    &config,
+                    &setup,
                     seed,
                 ))
             }
-            ClientKind::Raw | ClientKind::Host => Endpoint::from(EndpointParts::plain_client(
+            ClientKind::Plain | ClientKind::Host => Endpoint::from(EndpointPieces::plain_client(
                 pair.client,
-                EndpointConfig {
-                    session: self.session,
+                EndpointSetup {
+                    packet_session: self.packet_session,
                     conditioner: None,
                 },
             )),
@@ -254,10 +254,10 @@ impl<S: Stack> Stepper<S> {
         ServerIdentity::raw_key(ServerSecret::new(Zeroizing::new(UDP_SECRET)))
     }
 
-    fn udp_config(session: SessionConfig) -> UdpConfig {
-        UdpConfig {
-            session,
-            ..UdpConfig::new(UDP_ALPN)
+    fn udp_setup(packet_session: PacketSessionSetup) -> UdpSetup {
+        UdpSetup {
+            packet_session,
+            ..UdpSetup::new(UDP_ALPN)
         }
     }
 
@@ -272,7 +272,7 @@ impl<S: Stack> Stepper<S> {
         client_app
     }
 
-    /// A new simulated link for remote client `client_id`, its models seeded by the index.
+    /// A new emulated link for remote client `client_id`, its models seeded by the index.
     fn emulated_pair(&self, client_id: usize) -> EmulatedPair {
         self.network.pair(
             self.link
@@ -281,14 +281,14 @@ impl<S: Stack> Stepper<S> {
         )
     }
 
-    /// Connects remote client `client` again over a new simulated link and a new endpoint,
+    /// Connects remote client `client` again over a new emulated link and a new endpoint,
     /// without stepping. The server's link to it is a new entity, as a reconnect is: the
     /// connection layer despawned the old one when it disconnected.
     pub fn reconnect(&mut self, client: usize) {
         let client_entity = self.clients[client].entity;
         let pair = self.emulated_pair(client);
         self.clients[client].wire = pair.client.link();
-        self.clients[client].address = pair.client.client_addr();
+        self.clients[client].address = pair.client.client_address();
         let endpoint = self.client_endpoint(client, pair);
         self.clients[client]
             .app
@@ -302,7 +302,7 @@ impl<S: Stack> Stepper<S> {
     }
 
     /// Disconnects remote client `client` through its stack, and steps until the server despawns
-    /// its link to it: the client's session closes, and its close ends the server's.
+    /// its link to it: the client's packet session closes, and its close ends the server's.
     pub fn disconnect(&mut self, client: usize) {
         let client_entity = self.clients[client].entity;
         let client_of = self.client_of_entity(client);
@@ -314,7 +314,7 @@ impl<S: Stack> Stepper<S> {
             if self.server_app.world().get_entity(client_of).is_err() {
                 return;
             }
-            self.step(1, self.tick_rate.period(), Order::ClientsFirst);
+            self.step(1, self.tick_rate.period(), StepOrder::ClientsFirst);
         }
         panic!("the server's link to client {client} still exists after {WAIT_TICKS} ticks");
     }
@@ -326,7 +326,7 @@ impl<S: Stack> Stepper<S> {
             if self.waiting_client().is_none() {
                 return;
             }
-            self.step(1, self.tick_rate.period(), Order::ClientsFirst);
+            self.step(1, self.tick_rate.period(), StepOrder::ClientsFirst);
         }
         if let Some(waiting) = self.waiting_client() {
             panic!("{waiting} after {WAIT_TICKS} ticks");
@@ -400,7 +400,7 @@ impl<S: Stack> Stepper<S> {
             .world_mut()
             .resource_mut::<Time<Real>>()
             .update_with_instant(now);
-        // The server's endpoint links at its `LinkStart`, and `RawServer` starts once linked: a
+        // The server's endpoint links at its `LinkStart`, and the server starts once linked: a
         // host server starts before its host client connects.
         self.server_app.world_mut().trigger(Start {
             entity: self.server_entity,
@@ -410,16 +410,16 @@ impl<S: Stack> Stepper<S> {
     }
 
     /// Runs `n` steps of `interval`, every app once a step in `order`, unless it is stalled.
-    pub fn step(&mut self, n: usize, interval: Duration, order: Order) {
+    pub fn step(&mut self, n: usize, interval: Duration, order: StepOrder) {
         for _ in 0..n {
             self.advance_time(interval);
             let clients = self.clients.len();
             for slot in 0..=clients {
                 let app = match order {
-                    Order::ClientsFirst if slot == clients => AppId::Server,
-                    Order::ClientsFirst => AppId::Client(slot),
-                    Order::ServerFirst if slot == 0 => AppId::Server,
-                    Order::ServerFirst => AppId::Client(slot - 1),
+                    StepOrder::ClientsFirst if slot == clients => AppId::Server,
+                    StepOrder::ClientsFirst => AppId::Client(slot),
+                    StepOrder::ServerFirst if slot == 0 => AppId::Server,
+                    StepOrder::ServerFirst => AppId::Client(slot - 1),
                 };
                 if !self.schedule(app).is_stalled(self.now) {
                     self.update(app);
@@ -432,7 +432,7 @@ impl<S: Stack> Stepper<S> {
 
     /// Runs `n` frame intervals, clients first.
     pub fn frame_step(&mut self, n: usize) {
-        self.step(n, self.frame_interval, Order::ClientsFirst);
+        self.step(n, self.frame_interval, StepOrder::ClientsFirst);
     }
 
     /// Runs `run` on client `client`'s world in its next `FixedUpdate`, as a game spawns from its
@@ -606,7 +606,7 @@ impl<S> Stepper<S> {
         self.clients[client].entity
     }
 
-    /// The server's link to remote client `client`: the one of its session that has not
+    /// The server's link to remote client `client`: the one of its packet session that has not
     /// unlinked, else its last.
     pub fn client_of_entity(&self, client: usize) -> Entity {
         let address = self.clients[client].address;
@@ -614,7 +614,10 @@ impl<S> Stepper<S> {
         let mut links = world
             .iter_entities()
             .filter(EntityRef::contains::<LinkOf>)
-            .filter(|link| link.get::<PeerAddr>().is_some_and(|peer| peer.0 == address));
+            .filter(|link| {
+                link.get::<RemoteAddress>()
+                    .is_some_and(|peer| peer.0 == address)
+            });
         let mut last = None;
         for link in links.by_ref() {
             if !link.contains::<Unlinked>() {
@@ -698,7 +701,7 @@ impl<S> Stepper<S> {
         self.server_app.world_mut().entity_mut(client_of)
     }
 
-    /// The simulated link of remote client `client`.
+    /// The emulated link of remote client `client`.
     pub fn client_link(&self, client: usize) -> EmulatedLinkId {
         self.clients[client].wire
     }

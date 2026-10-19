@@ -8,7 +8,7 @@ license.workspace = true
 kind = "problem"
 
 [features]
-# The sessions' counts, for the tests of every layer above
+# The packet sessions' counts, for the tests of every layer above
 internals = [
     "campfire-net-bytes/internals",
     "dep:campfire-store",

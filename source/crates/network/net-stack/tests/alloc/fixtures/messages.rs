@@ -8,7 +8,7 @@ use campfire_net_messages::internals::StringMessage;
 use campfire_net_stack::internals::FullStack;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 use campfire_net_transport::internals::{Channel1, ChannelOrderedReliable};
 
 #[derive(Debug, Default, Resource)]
@@ -43,7 +43,7 @@ fn send_both_ways<C: Channel>(stepper: &mut Stepper<FullStack>) {
 
 #[track_caller]
 fn audit_both_ways<C: Channel>(kind: ClientKind) {
-    let mut stepper = Stepper::new(FullStack, StepperConfig::with_clients(vec![kind]));
+    let mut stepper = Stepper::new(FullStack, StepperSetup::with_clients(vec![kind]));
     for app in stepper.apps_mut() {
         app.init_resource::<Received>().add_systems(Update, count);
     }
@@ -63,10 +63,10 @@ fn audit_both_ways<C: Channel>(kind: ClientKind) {
 /// nothing over the idle link.
 #[test]
 fn messages_both_ways() {
-    audit_both_ways::<Channel1>(ClientKind::Raw);
+    audit_both_ways::<Channel1>(ClientKind::Plain);
 }
 
-/// The same in a sealed session of the UDP protocol.
+/// The same in a sealed packet session of the UDP protocol.
 #[test]
 fn sealed_messages_both_ways() {
     audit_both_ways::<Channel1>(ClientKind::Udp);
@@ -76,10 +76,10 @@ fn sealed_messages_both_ways() {
 /// delivered.
 #[test]
 fn reliable_messages_both_ways() {
-    audit_both_ways::<ChannelOrderedReliable>(ClientKind::Raw);
+    audit_both_ways::<ChannelOrderedReliable>(ClientKind::Plain);
 }
 
-/// The same in a sealed session of the UDP protocol.
+/// The same in a sealed packet session of the UDP protocol.
 #[test]
 fn sealed_reliable_messages_both_ways() {
     audit_both_ways::<ChannelOrderedReliable>(ClientKind::Udp);

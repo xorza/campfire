@@ -7,7 +7,7 @@ use bevy_ecs::prelude::*;
 use campfire_net_channels::Channel;
 use campfire_net_connection::Disconnected;
 use campfire_net_connection::HostClient;
-use campfire_net_connection::LinkRole;
+use campfire_net_connection::LinkSide;
 use campfire_net_link::{Link, LinkSystems, Linked, Unlink};
 use campfire_net_payload::UnlinkReason;
 use campfire_net_timeline::Clock;
@@ -20,8 +20,8 @@ use crate::channel_registry::ChannelRegistry;
 pub struct TransportPlugin;
 
 impl TransportPlugin {
-    /// Reads each packet the link's session opened into its channels, and unlinks a peer whose
-    /// packet breaks the protocol.
+    /// Reads each packet the link's packet session opened into its channels, and unlinks a peer
+    /// whose packet breaks the protocol.
     fn buffer_receive(
         clock: Res<'_, Clock>,
         par_commands: ParallelCommands<'_, '_>,
@@ -36,7 +36,7 @@ impl TransportPlugin {
         query.for_each(|(entity, mut link, mut transport)| {
             let _span = trace_span!("transport", ?entity).entered();
             let received = transport.receive(
-                &mut link.session,
+                &mut link.packet_session,
                 clock.now(),
                 clock.delta(),
                 |remote_tick| {
@@ -60,7 +60,8 @@ impl TransportPlugin {
         });
     }
 
-    /// Packs each link's staged messages into packets for its session, while its budget lasts.
+    /// Packs each link's staged messages into packets for its packet session, while its budget
+    /// lasts.
     fn buffer_send(
         clock: Res<'_, Clock>,
         timeline: Res<'_, LocalTimeline>,
@@ -77,7 +78,7 @@ impl TransportPlugin {
                 );
                 return;
             }
-            transport.flush(&mut link.session, tick, clock.now());
+            transport.flush(&mut link.packet_session, tick, clock.now());
         });
     }
 
@@ -91,7 +92,7 @@ impl TransportPlugin {
         }
     }
 
-    pub(crate) fn add_sender_channel<C: Channel, R: LinkRole>(
+    pub(crate) fn add_sender_channel<C: Channel, R: LinkSide>(
         trigger: On<'_, '_, Insert<(Transport, R)>>,
         mut query: Query<'_, '_, &mut Transport, With<R>>,
         registry: Res<'_, ChannelRegistry>,
@@ -101,7 +102,7 @@ impl TransportPlugin {
         }
     }
 
-    pub(crate) fn add_receiver_channel<C: Channel, R: LinkRole>(
+    pub(crate) fn add_receiver_channel<C: Channel, R: LinkSide>(
         trigger: On<'_, '_, Insert<(Transport, R)>>,
         mut query: Query<'_, '_, &mut Transport, With<R>>,
         registry: Res<'_, ChannelRegistry>,

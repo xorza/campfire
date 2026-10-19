@@ -1,11 +1,11 @@
 use super::*;
 
 impl Channels {
-    /// The sending channel of `kind`.
-    pub(crate) fn sender_mut(&mut self, kind: ChannelKind) -> Option<&mut ChannelSender> {
+    /// The sending channel `channel`.
+    pub(crate) fn sender_mut(&mut self, channel: ChannelTypeId) -> Option<&mut ChannelSender> {
         self.senders
             .iter_mut()
-            .find(|sender| sender.channel_kind() == kind)
+            .find(|sender| sender.channel_type_id() == channel)
     }
 }
 #[cfg(feature = "compression_lz4")]
@@ -13,25 +13,25 @@ use crate::channel_message::ChannelMessage;
 use crate::channel_mode::ChannelMode;
 use crate::packet::MAX_FRAGMENTS;
 
-/// The senders' fragment size follows the largest payload the session hands over: sizing for
+/// The senders' fragment size follows the largest payload the packet session hands over: sizing for
 /// 256 bytes, then linking at 200, gives each one's size; a link at 0 keeps the last.
 #[test]
-fn fragment_size_follows_the_sessions_largest_payload() {
+fn the_fragment_len_follows_the_packet_sessions_largest_payload() {
     let mut channels = Channels::default();
     channels.size_fragments(256).unwrap();
     assert_eq!(
-        channels.fragment_size,
-        fragment_size_for_max_payload(256).unwrap()
+        channels.fragment_len,
+        fragment_len_for_max_payload(256).unwrap()
     );
     assert_eq!(channels.link(200).unwrap(), []);
     assert_eq!(
-        channels.fragment_size,
-        fragment_size_for_max_payload(200).unwrap()
+        channels.fragment_len,
+        fragment_len_for_max_payload(200).unwrap()
     );
     assert_eq!(channels.link(0).unwrap(), []);
     assert_eq!(
-        channels.fragment_size,
-        fragment_size_for_max_payload(200).unwrap()
+        channels.fragment_len,
+        fragment_len_for_max_payload(200).unwrap()
     );
 }
 
@@ -41,25 +41,25 @@ fn fragment_size_follows_the_sessions_largest_payload() {
 #[test]
 fn a_link_refuses_the_staged_messages_its_bound_no_longer_holds() {
     let mut channels = Channels::default();
-    let config = ChannelConfig {
-        max_message_size: 4 << 20,
-        ..ChannelConfig::default()
+    let setup = ChannelSetup {
+        max_message_len: 4 << 20,
+        ..ChannelSetup::default()
     };
-    channels.add_channel_send::<ResetChannel>(config, NetId::new(0));
+    channels.add_channel_send::<ResetChannel>(setup, NetId::new(0));
     channels.size_fragments(1200).unwrap();
-    let max = MAX_FRAGMENTS * fragment_size_for_max_payload(200).unwrap();
-    for size in [max + 1, max] {
+    let max = MAX_FRAGMENTS * fragment_len_for_max_payload(200).unwrap();
+    for len in [max + 1, max] {
         channels
-            .send(NetId::new(0), Bytes::from(vec![0_u8; size]), 1.0)
+            .send(NetId::new(0), Bytes::from(vec![0_u8; len]), 1.0)
             .unwrap();
     }
 
     assert_eq!(
         channels.link(200).unwrap(),
         [RefusedMessage {
-            kind: ChannelKind::of::<ResetChannel>(),
-            size: max + 1,
-            max,
+            channel: ChannelTypeId::of::<ResetChannel>(),
+            len: max + 1,
+            max_len: max,
         }]
     );
     assert_eq!(
@@ -72,15 +72,15 @@ fn a_link_refuses_the_staged_messages_its_bound_no_longer_holds() {
     );
 }
 
-/// A reset drops every pending message, and each channel keeps its own config, so a reset needs
+/// A reset drops every pending message, and each channel keeps its own setup, so a reset needs
 /// no registry.
 #[test]
-fn a_reset_drops_the_messages_and_keeps_each_channels_config() {
+fn a_reset_drops_the_messages_and_keeps_each_channels_setup() {
     let mut channels = Channels::default();
     let mode = ChannelMode::OrderedReliable;
-    let channel = ChannelConfig {
+    let channel = ChannelSetup {
         mode,
-        ..ChannelConfig::default()
+        ..ChannelSetup::default()
     };
     channels.add_channel_send::<ResetChannel>(channel, NetId::new(0));
     channels.add_channel_receive::<ResetChannel>(channel, NetId::new(0));
@@ -91,7 +91,9 @@ fn a_reset_drops_the_messages_and_keeps_each_channels_config() {
 
     channels.reset();
     assert_eq!(channels.pending_reliable(), Vec::new());
-    let sender = channels.sender(ChannelKind::of::<ResetChannel>()).unwrap();
+    let sender = channels
+        .sender(ChannelTypeId::of::<ResetChannel>())
+        .unwrap();
     assert_eq!(sender.mode(), mode);
 }
 
@@ -119,29 +121,29 @@ mod lz4 {
     impl Channel for CompressionChannel {}
 
     #[test]
-    fn compressed_fragmented_message_round_trips_through_sender_packet_builder_and_receiver()
+    fn a_compressed_fragmented_message_crosses_the_sender_the_builder_and_the_receiver()
     -> Result<(), PacketError> {
-        let compression = CompressionConfig {
-            min_payload_size: 0,
-            max_decompressed_payload_size: FRAGMENT_SIZE * 4,
-            ..CompressionConfig::LZ4
+        let compression = CompressionSetup {
+            min_payload_len: 0,
+            max_decompressed_payload_len: FRAGMENT_LEN * 4,
+            ..CompressionSetup::LZ4
         };
-        let config = ChannelConfig {
+        let setup = ChannelSetup {
             mode: ChannelMode::SequencedUnreliable,
-            ..ChannelConfig::default()
+            ..ChannelSetup::default()
         };
         let channel_id = NetId::new(0);
-        let channel_kind = ChannelKind::of::<CompressionChannel>();
+        let channel_type_id = ChannelTypeId::of::<CompressionChannel>();
 
         let mut sender_transport = Channels::default();
         sender_transport.set_compression(compression);
-        sender_transport.add_channel_send::<CompressionChannel>(config, channel_id);
+        sender_transport.add_channel_send::<CompressionChannel>(setup, channel_id);
 
         let mut receiver_transport = Channels::default();
         receiver_transport.set_compression(compression);
-        receiver_transport.add_channel_receive::<CompressionChannel>(config, channel_id);
+        receiver_transport.add_channel_receive::<CompressionChannel>(setup, channel_id);
 
-        let message = Bytes::from(vec![7u8; FRAGMENT_SIZE * 3]);
+        let message = Bytes::from(vec![7u8; FRAGMENT_LEN * 3]);
         let message_id = sender_transport
             .send_mut(channel_id, message.clone(), 1.0)
             .unwrap()
@@ -149,7 +151,7 @@ mod lz4 {
 
         let mut candidates = vec![];
         sender_transport
-            .sender_mut(channel_kind)
+            .sender_mut(channel_type_id)
             .unwrap()
             .collect_send_candidates(&mut candidates);
         // The compressed message is one candidate of fewer than 3 fragments, the first of which
@@ -163,7 +165,7 @@ mod lz4 {
         };
         let first = first.data();
         assert_eq!(first.compression, Some(FragmentCompression::Lz4));
-        assert!(first.num_fragments.0 < 3);
+        assert!(first.fragments.0 < 3);
 
         let mut cursor = CandidateCursor::default();
         let mut packets = vec![];
@@ -176,7 +178,7 @@ mod lz4 {
                 compression,
                 max_payload: DEFAULT_MAX_PAYLOAD,
             };
-            let Some(packet) = sender_transport.packet_manager.build_next_packet(
+            let Some(packet) = sender_transport.packet_builder.build_next_packet(
                 &source,
                 &mut cursor,
                 &mut sender_transport.compression_scratch,
@@ -204,22 +206,22 @@ mod lz4 {
         Ok(())
     }
 
-    /// Eight messages of 200 bytes pack into one packet whose length, which the session's budget
-    /// takes, is its tick and its compressed body, below 600 bytes.
+    /// Eight messages of 200 bytes pack into one packet whose length, which the packet session's
+    /// budget takes, is its tick and its compressed body, below 600 bytes.
     #[test]
     fn a_packets_length_is_its_compressed_length() -> Result<(), PacketError> {
-        let compression = CompressionConfig {
-            min_payload_size: 0,
-            ..CompressionConfig::LZ4
+        let compression = CompressionSetup {
+            min_payload_len: 0,
+            ..CompressionSetup::LZ4
         };
-        let config = ChannelConfig {
+        let setup = ChannelSetup {
             mode: ChannelMode::UnorderedUnreliable,
-            ..ChannelConfig::default()
+            ..ChannelSetup::default()
         };
         let channel_id = NetId::new(0);
         let mut channels = Channels::default();
         channels.set_compression(compression);
-        channels.add_channel_send::<CompressionChannel>(config, channel_id);
+        channels.add_channel_send::<CompressionChannel>(setup, channel_id);
 
         for _ in 0..8 {
             channels
@@ -231,23 +233,23 @@ mod lz4 {
             .senders
             .get_mut(channel_id)
             .unwrap()
-            .collect_send_candidates(channels.priority_manager.candidates_mut());
-        assert_eq!(channels.priority_manager.candidates().len(), 8);
-        channels.priority_manager.prioritize();
+            .collect_send_candidates(channels.candidate_order.candidates_mut());
+        assert_eq!(channels.candidate_order.candidates().len(), 8);
+        channels.candidate_order.prioritize();
         let mut cursor = CandidateCursor::default();
         let source = PacketSource {
             tick: TickEncoder::default().encode(NetTick(0)),
-            candidates: channels.priority_manager.candidates(),
+            candidates: channels.candidate_order.candidates(),
             messages: &channels.senders,
             compression,
             max_payload: DEFAULT_MAX_PAYLOAD,
         };
         let packet = channels
-            .packet_manager
+            .packet_builder
             .build_next_packet(&source, &mut cursor, &mut channels.compression_scratch)?
             .unwrap();
 
-        assert_eq!(packet.num_messages(), 8);
+        assert_eq!(packet.messages.len(), 8);
         let compression = packet.compression.unwrap();
         assert_eq!(packet.len(), LONG_TICK_LEN + compression.compressed_len);
         assert!(packet.len() < 600);
@@ -257,7 +259,7 @@ mod lz4 {
     fn buffer_packet_into_receivers(
         channels: &mut Channels,
         packet: Packet,
-        compression: CompressionConfig,
+        compression: CompressionSetup,
     ) -> Result<(), PacketError> {
         let mut payload = packet.payload.freeze();
         let _ = payload.split_to(OutgoingPayload::HEADROOM);
@@ -272,14 +274,14 @@ mod lz4 {
 
         if packet_kind == PacketKind::DataFragment {
             let channel_id = NetId::from_bytes(&mut cursor)?;
-            let fragment_data = FragmentData::from_bytes(&mut cursor)?;
+            let fragment_body = FragmentBody::from_bytes(&mut cursor)?;
             channels
                 .receivers
                 .get_mut(channel_id)
                 .ok_or(PacketError::ChannelNotFound)?
                 .buffer_receive(
                     ReceiveMessage {
-                        data: fragment_data.into(),
+                        data: fragment_body.into(),
                         remote_sent_tick: tick,
                         compression,
                     },
@@ -289,17 +291,17 @@ mod lz4 {
 
         while cursor.has_remaining() {
             let channel_id = NetId::from_bytes(&mut cursor)?;
-            let num_messages = cursor.read_u8().map_err(SerializationError::from)?;
+            let messages = cursor.read_u8().map_err(SerializationError::from)?;
             let receiver = channels
                 .receivers
                 .get_mut(channel_id)
                 .ok_or(PacketError::ChannelNotFound)?;
             let has_id = receiver.single_has_id();
-            for _ in 0..num_messages {
-                let single_data = SingleData::read(&mut cursor, has_id)?;
+            for _ in 0..messages {
+                let single_body = SingleBody::read(&mut cursor, has_id)?;
                 receiver.buffer_receive(
                     ReceiveMessage {
-                        data: single_data.into(),
+                        data: single_body.into(),
                         remote_sent_tick: tick,
                         compression,
                     },
@@ -314,24 +316,30 @@ mod lz4 {
 /// A 10-byte limit admits 10 bytes and refuses 11, on both send paths, staging nothing.
 #[test]
 fn a_send_above_the_channel_limit_is_refused() {
-    let config = ChannelConfig {
-        max_message_size: 10,
-        ..ChannelConfig::default()
+    let setup = ChannelSetup {
+        max_message_len: 10,
+        ..ChannelSetup::default()
     };
     let mut channels = Channels::default();
     let id = NetId::new(0);
-    channels.add_channel_send::<ResetChannel>(config, id);
+    channels.add_channel_send::<ResetChannel>(setup, id);
 
     assert!(channels.send(id, Bytes::from(vec![0; 10]), 1.0).is_ok());
     assert!(matches!(
         channels.send(id, Bytes::from(vec![0; 11]), 1.0),
-        Err(TransportError::MessageTooLarge { size: 11, max: 10 })
+        Err(TransportError::MessageTooLarge {
+            len: 11,
+            max_len: 10
+        })
     ));
     assert_eq!(channels.staged.len(), 1);
     assert!(channels.send_mut(id, Bytes::from(vec![0; 10]), 1.0).is_ok());
     assert!(matches!(
         channels.send_mut(id, Bytes::from(vec![0; 11]), 1.0),
-        Err(TransportError::MessageTooLarge { size: 11, max: 10 })
+        Err(TransportError::MessageTooLarge {
+            len: 11,
+            max_len: 10
+        })
     ));
     // A channel the transport does not send on is refused too.
     assert!(matches!(
@@ -344,15 +352,16 @@ fn a_send_above_the_channel_limit_is_refused() {
 #[test]
 #[should_panic(expected = "it needs twice that")]
 fn a_budget_below_twice_the_largest_message_is_refused() {
-    let config = ChannelConfig {
-        max_message_size: 100,
-        ..ChannelConfig::default()
+    let setup = ChannelSetup {
+        max_message_len: 100,
+        ..ChannelSetup::default()
     };
     let mut channels = Channels::default().with_receive_budget(199);
-    channels.add_channel_receive::<ResetChannel>(config, NetId::new(0));
+    channels.add_channel_receive::<ResetChannel>(setup, NetId::new(0));
 }
 
-/// The steps' tests: what a flush gives a session's queues, and what a receive takes from them.
+/// The steps' tests: what a flush gives a packet session's queues, and what a receive takes from
+/// them.
 mod steps {
     use super::*;
     use crate::packet::DEFAULT_MAX_PAYLOAD;
@@ -383,30 +392,33 @@ mod steps {
         Instant::from_elapsed(Duration::from_millis(millis))
     }
 
-    /// A session's queues that carry packets of `DEFAULT_MAX_PAYLOAD` within a budget of
+    /// A packet session's queues that carry packets of `DEFAULT_MAX_PAYLOAD` within a budget of
     /// `budget`.
-    fn queues(budget: usize) -> SessionQueues {
-        let mut queues = SessionQueues::default();
+    fn queues(budget: usize) -> PacketSessionQueues {
+        let mut queues = PacketSessionQueues::default();
         queues.set_room(budget, 0);
         queues.set_max_payload(DEFAULT_MAX_PAYLOAD);
         queues
     }
 
     /// A receive at 0 that hears nothing of what it admits.
-    fn receive(channels: &mut Channels, queues: &mut SessionQueues) -> Result<(), TransportError> {
+    fn receive(
+        channels: &mut Channels,
+        queues: &mut PacketSessionQueues,
+    ) -> Result<(), TransportError> {
         channels.receive(queues, Instant::ZERO, Duration::ZERO, |_| {})
     }
 
     fn pending_candidates<C: Channel>(channels: &mut Channels) -> usize {
         let mut candidates = Vec::new();
         channels
-            .sender_mut(ChannelKind::of::<C>())
+            .sender_mut(ChannelTypeId::of::<C>())
             .unwrap()
             .collect_send_candidates(&mut candidates);
         candidates.len()
     }
 
-    /// A payload the frame got from its session, as `kind` after its headroom.
+    /// A payload the frame got from its packet session, as `kind` after its headroom.
     fn opened(number: u64, kind: PacketKind, data: &[u8]) -> OpenedPayload {
         OpenedPayload {
             number: PacketNumber(number),
@@ -422,24 +434,24 @@ mod steps {
         payload
     }
 
-    /// A flush that the session's budget stops after one packet keeps the second message of a
-    /// channel that retries unsent messages, and drops it on one that does not. One packet of
-    /// 1,000 bytes of message takes 1,009: a long tick of 5, the channel id, the count, a length
-    /// of 2 and the message. A budget of 1,100 leaves 91 after it.
+    /// A flush that the packet session's budget stops after one packet keeps the second message of
+    /// a channel that retries unsent messages, and drops it on one that does not. One packet of
+    /// 1,000 bytes of message takes 1,009: a long tick of 5, the channel id, the count, a length of
+    /// 2 and the message. A budget of 1,100 leaves 91 after it.
     #[test]
     fn a_limited_flush_applies_each_channels_retry_policy() {
-        let retry = ChannelConfig {
+        let retry = ChannelSetup {
             mode: ChannelMode::UnorderedUnreliable,
             retry_unsent_messages: true,
             ..Default::default()
         };
-        let discard = ChannelConfig {
+        let discard = ChannelSetup {
             retry_unsent_messages: false,
             ..retry
         };
-        let flushed = |add: fn(&mut Channels, ChannelConfig), config| {
+        let flushed = |add: fn(&mut Channels, ChannelSetup), setup| {
             let mut channels = Channels::default();
-            add(&mut channels, config);
+            add(&mut channels, setup);
             for value in [1, 2] {
                 channels
                     .send_mut(NetId::new(0), Bytes::from(vec![value; 1000]), 1.0)
@@ -453,33 +465,33 @@ mod steps {
             channels
         };
         let mut kept = flushed(
-            |channels, config| channels.add_channel_send::<RetryChannel>(config, NetId::new(0)),
+            |channels, setup| channels.add_channel_send::<RetryChannel>(setup, NetId::new(0)),
             retry,
         );
         assert_eq!(pending_candidates::<RetryChannel>(&mut kept), 1);
         let mut dropped = flushed(
-            |channels, config| channels.add_channel_send::<DiscardChannel>(config, NetId::new(0)),
+            |channels, setup| channels.add_channel_send::<DiscardChannel>(setup, NetId::new(0)),
             discard,
         );
         assert_eq!(pending_candidates::<DiscardChannel>(&mut dropped), 0);
     }
 
-    /// A reliable message whose packet the session finds lost goes again in the next flush, as a
-    /// resend under a new token; the delivery of that packet ends it. A delivery tells the tick's
-    /// encoder too, whose next packet carries the short tick.
+    /// A reliable message whose packet the packet session finds lost goes again in the next flush,
+    /// as a resend under a new token; the delivery of that packet ends it. A delivery tells the
+    /// tick's encoder too, whose next packet carries the short tick.
     #[test]
     fn a_lost_packet_sends_its_reliable_messages_again() {
-        let config = ChannelConfig {
+        let setup = ChannelSetup {
             mode: ChannelMode::OrderedReliable,
             ..Default::default()
         };
         let mut channels = Channels::default();
-        channels.add_channel_send::<FateChannel>(config, NetId::new(0));
+        channels.add_channel_send::<FateChannel>(setup, NetId::new(0));
         channels
             .send(NetId::new(0), Bytes::from_static(b"m"), 1.0)
             .unwrap();
         let mut queues = queues(usize::MAX);
-        let flush = |channels: &mut Channels, queues: &mut SessionQueues| {
+        let flush = |channels: &mut Channels, queues: &mut PacketSessionQueues| {
             channels.flush(queues, NetTick(0), Instant::ZERO);
             queues.take_sends().collect::<Vec<_>>()
         };
@@ -514,7 +526,7 @@ mod steps {
     #[test]
     fn an_idle_transport_sends_its_tick() {
         let mut channels = Channels::default();
-        channels.add_channel_send::<FateChannel>(ChannelConfig::default(), NetId::new(0));
+        channels.add_channel_send::<FateChannel>(ChannelSetup::default(), NetId::new(0));
         let mut queues = queues(usize::MAX);
         let mut flush_at = |channels: &mut Channels, millis| {
             channels.flush(&mut queues, NetTick(0), at(millis));
@@ -534,20 +546,20 @@ mod steps {
         assert_eq!(flush_at(&mut channels, 250), [5]);
     }
 
-    /// The two links' sessions carry payloads of different sizes, so the sender's fragment size
-    /// differs from the one the receiver's own link gives.
+    /// The two links' packet sessions carry payloads of different sizes, so the sender's fragment
+    /// size differs from the one the receiver's own link gives.
     #[test]
     fn fragments_follow_the_sender_payload_and_reassemble_on_any_link() {
         for (sender_payload, receiver_payload) in
             [(256, DEFAULT_MAX_PAYLOAD), (DEFAULT_MAX_PAYLOAD, 256)]
         {
-            let config = ChannelConfig::default();
+            let setup = ChannelSetup::default();
             let channel_id = NetId::new(0);
             let mut sender = Channels::default();
-            sender.add_channel_send::<SmallPayloadChannel>(config, channel_id);
+            sender.add_channel_send::<SmallPayloadChannel>(setup, channel_id);
             sender.link(sender_payload).unwrap();
             let mut receiver = Channels::default();
-            receiver.add_channel_receive::<SmallPayloadChannel>(config, channel_id);
+            receiver.add_channel_receive::<SmallPayloadChannel>(setup, channel_id);
             receiver.link(receiver_payload).unwrap();
             let mut sender_queues = queues(usize::MAX);
             sender_queues.set_max_payload(sender_payload);
@@ -582,9 +594,10 @@ mod steps {
 
     /// Bytes that do not decode, a channel the transport lacks, a short tick with no whole one
     /// before it and the fourth payload kind each break the protocol: the receive returns the
-    /// error, admits nothing and accepts nothing, so the session never acknowledges the packet,
-    /// and the packet queued behind it is not read. 0xff starts an 8-byte varint channel id with
-    /// no bytes after it; channel 5 carries one message with no id, a length of 1 and the byte 7.
+    /// error, admits nothing and accepts nothing, so the packet session never acknowledges the
+    /// packet, and the packet queued behind it is not read. 0xff starts an 8-byte varint channel id
+    /// with no bytes after it; channel 5 carries one message with no id, a length of 1 and the byte
+    /// 7.
     #[test]
     fn a_protocol_violation_admits_and_accepts_nothing() {
         let undecodable = opened(0, PacketKind::Data, &data_payload(&[0xff]));
@@ -613,7 +626,7 @@ mod steps {
     fn batch(messages: &[(u16, &[u8])]) -> Vec<u8> {
         let mut payload = vec![0, u8::try_from(messages.len()).unwrap()];
         for &(id, bytes) in messages {
-            SingleData::new(Some(MessageId(id)), Bytes::copy_from_slice(bytes)).write(&mut payload);
+            SingleBody::new(Some(MessageId(id)), Bytes::copy_from_slice(bytes)).write(&mut payload);
         }
         data_payload(&payload)
     }
@@ -624,13 +637,13 @@ mod steps {
     /// four payloads the frame read, it accepts the three it admitted.
     #[test]
     fn a_packet_over_the_receive_budget_is_not_accepted() {
-        let config = ChannelConfig {
+        let setup = ChannelSetup {
             mode: ChannelMode::OrderedReliable,
-            max_message_size: 100,
+            max_message_len: 100,
             ..Default::default()
         };
         let mut channels = Channels::default().with_receive_budget(200);
-        channels.add_channel_receive::<BudgetChannel>(config, NetId::new(0));
+        channels.add_channel_receive::<BudgetChannel>(setup, NetId::new(0));
         let mut queues = queues(usize::MAX);
         let mut read = |channels: &mut Channels, payloads: &[OpenedPayload]| {
             for payload in payloads {
@@ -670,13 +683,13 @@ mod steps {
     /// fragments, reach a receiver of the same channels, and none panics; a mutation reads, or
     /// breaks the protocol, or is refused at the receive budget.
     #[test]
-    fn mutated_packets_are_refused_or_read() {
+    fn a_mutated_packet_is_refused_or_read() {
         use campfire_net_bytes::internals::Mutations;
 
-        let unordered = ChannelConfig::default();
-        let ordered = ChannelConfig {
+        let unordered = ChannelSetup::default();
+        let ordered = ChannelSetup {
             mode: ChannelMode::OrderedReliable,
-            ..ChannelConfig::default()
+            ..ChannelSetup::default()
         };
         let [unordered_id, ordered_id] = [NetId::new(0), NetId::new(1)];
         let mut sender = Channels::default();

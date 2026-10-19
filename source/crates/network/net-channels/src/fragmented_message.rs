@@ -1,8 +1,8 @@
 use crate::compression::{CompressionOutcome, compress_fragment};
 #[cfg(feature = "compression_lz4")]
 use crate::compression_algorithm::CompressionAlgorithm;
-use crate::compression_config::CompressionConfig;
 use crate::compression_scratch::CompressionScratch;
+use crate::compression_setup::CompressionSetup;
 use crate::fragment_compression::FragmentCompression;
 use crate::message_id::MessageId;
 use bytes::Bytes;
@@ -21,7 +21,7 @@ pub(crate) struct FragmentedMessage {
     message_id: MessageId,
     /// The message, compressed when that made it smaller.
     bytes: Bytes,
-    fragment_size: usize,
+    fragment_len: usize,
     compression: FragmentCompression,
     states: Vec<PartState>,
     /// No fragment before it is due.
@@ -36,10 +36,10 @@ pub(crate) struct FragmentedMessage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PartState {
     Unsent,
-    /// A packet that carries it went to the session, and its fate is not known: on an unreliable
-    /// channel, for good.
+    /// A packet that carries it went to the packet session, and its fate is not known: on an
+    /// unreliable channel, for good.
     InFlight,
-    /// The session found the packet that carried it lost.
+    /// The packet session found the packet that carried it lost.
     Lost,
     Acked,
 }
@@ -51,18 +51,18 @@ impl PartState {
 }
 
 impl FragmentedMessage {
-    /// Splits `message`, which is longer than `fragment_size`, into fragments of that size,
+    /// Splits `message`, which is longer than `fragment_len`, into fragments of that size,
     /// after compressing it when that makes it smaller.
     pub(crate) fn split(
         message_id: MessageId,
         message: Bytes,
-        fragment_size: usize,
-        compression: CompressionConfig,
+        fragment_len: usize,
+        compression: CompressionSetup,
         compression_scratch: &mut CompressionScratch,
     ) -> Self {
         debug_assert!(
-            message.len() > fragment_size,
-            "a message of {} bytes fits a fragment of {fragment_size}",
+            message.len() > fragment_len,
+            "a message of {} bytes fits a fragment of {fragment_len}",
             message.len()
         );
         let (bytes, compression) =
@@ -75,21 +75,21 @@ impl FragmentedMessage {
                         original_len,
                         compressed_len, "compressed fragmented message payload"
                     );
-                    // The message owns a copy of the compressed bytes until it is sent or acked, so
-                    // the scratch keeps its buffer.
+                    // The message holds a copy of the compressed bytes until it is sent or acked,
+                    // so the scratch keeps its buffer.
                     let bytes = Bytes::copy_from_slice(compression_scratch.output(compressed_len));
                     (bytes, fragment_compression)
                 }
                 _ => (message, FragmentCompression::None),
             };
-        let num_fragments = u16::try_from(bytes.len().div_ceil(fragment_size))
+        let fragments = u16::try_from(bytes.len().div_ceil(fragment_len))
             .expect("a channel's message bound keeps its fragments under 2^16");
         Self {
             message_id,
             bytes,
-            fragment_size,
+            fragment_len,
             compression,
-            states: vec![PartState::Unsent; usize::from(num_fragments)],
+            states: vec![PartState::Unsent; usize::from(fragments)],
             due_from: 0,
             sent: 0,
             acked: 0,
@@ -100,12 +100,12 @@ impl FragmentedMessage {
         self.message_id = message_id;
     }
 
-    pub(crate) fn num_fragments(&self) -> u16 {
+    pub(crate) fn fragments(&self) -> u16 {
         u16::try_from(self.states.len()).unwrap()
     }
 
     pub(crate) fn fragment(&self, index: u16) -> FragmentRef<'_> {
-        debug_assert!(index < self.num_fragments(), "fragment {index} of {self:?}");
+        debug_assert!(index < self.fragments(), "fragment {index} of {self:?}");
         FragmentRef {
             message: self,
             index,
@@ -124,7 +124,7 @@ impl FragmentedMessage {
     /// The first due fragment, which moves the start of the next search to it.
     pub(crate) fn first_due(&mut self) -> Option<u16> {
         let first = self.next_due(self.due_from);
-        self.due_from = first.unwrap_or_else(|| self.num_fragments());
+        self.due_from = first.unwrap_or_else(|| self.fragments());
         first
     }
 
@@ -158,7 +158,7 @@ impl FragmentedMessage {
         }
         *state = PartState::Acked;
         self.acked += 1;
-        self.acked == self.num_fragments()
+        self.acked == self.fragments()
     }
 
     /// Whether a packet carried one of its fragments.
@@ -168,7 +168,7 @@ impl FragmentedMessage {
 
     /// Whether a packet carried each of its fragments.
     pub(crate) fn is_sent(&self) -> bool {
-        self.sent == self.num_fragments()
+        self.sent == self.fragments()
     }
 }
 
@@ -181,13 +181,13 @@ pub(crate) struct FragmentRef<'a> {
 
 impl<'a> FragmentRef<'a> {
     pub(crate) fn is_last(self) -> bool {
-        self.index + 1 == self.message.num_fragments()
+        self.index + 1 == self.message.fragments()
     }
 
     /// The message's bytes this fragment carries.
     pub(crate) fn payload(self) -> &'a [u8] {
-        let start = usize::from(self.index) * self.message.fragment_size;
-        let end = (start + self.message.fragment_size).min(self.message.bytes.len());
+        let start = usize::from(self.index) * self.message.fragment_len;
+        let end = (start + self.message.fragment_len).min(self.message.bytes.len());
         &self.message.bytes[start..end]
     }
 
@@ -196,7 +196,7 @@ impl<'a> FragmentRef<'a> {
         let payload_len = self.payload().len();
         self.message.message_id.bytes_len()
             + VarInt::new(u64::from(self.index)).encoded_len()
-            + VarInt::new(u64::from(self.message.num_fragments())).encoded_len()
+            + VarInt::new(u64::from(self.message.fragments())).encoded_len()
             + if self.index == 0 {
                 self.message.compression.bytes_len()
             } else {
@@ -206,13 +206,13 @@ impl<'a> FragmentRef<'a> {
             + payload_len
     }
 
-    /// Writes the fragment as [`FragmentData`](crate::fragment_data::FragmentData) reads it: the
+    /// Writes the fragment as [`FragmentBody`](crate::fragment_body::FragmentBody) reads it: the
     /// message id, the fragment's index and count, the message's compression on its first
     /// fragment, and its bytes.
     pub(crate) fn write(self, buffer: &mut impl WriteInteger) {
         self.message.message_id.to_bytes(buffer);
         buffer.write_varint(u64::from(self.index));
-        buffer.write_varint(u64::from(self.message.num_fragments()));
+        buffer.write_varint(u64::from(self.message.fragments()));
         if self.index == 0 {
             self.message.compression.to_bytes(buffer);
         }
@@ -222,7 +222,7 @@ impl<'a> FragmentRef<'a> {
     }
 }
 
-const fn fragment_compression(compression: CompressionConfig) -> Option<FragmentCompression> {
+const fn fragment_compression(compression: CompressionSetup) -> Option<FragmentCompression> {
     match compression.algorithm {
         #[cfg(feature = "compression_lz4")]
         Some(CompressionAlgorithm::Lz4) => Some(FragmentCompression::Lz4),
@@ -232,16 +232,16 @@ const fn fragment_compression(compression: CompressionConfig) -> Option<Fragment
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::fragment_body::FragmentBody;
     use crate::fragment_count::FragmentCount;
-    use crate::fragment_data::FragmentData;
     use crate::fragment_index::FragmentIndex;
     use crate::fragmented_message::{FragmentRef, FragmentedMessage};
     use bytes::Bytes;
 
     impl FragmentedMessage {
         /// Each fragment as the receiver reads it.
-        pub(crate) fn fragment_data(&self) -> Vec<FragmentData> {
-            (0..self.num_fragments())
+        pub(crate) fn fragment_body(&self) -> Vec<FragmentBody> {
+            (0..self.fragments())
                 .map(|index| self.fragment(index).data())
                 .collect()
         }
@@ -249,11 +249,11 @@ pub(crate) mod internals {
 
     impl FragmentRef<'_> {
         /// The fragment as the receiver reads it.
-        pub(crate) fn data(self) -> FragmentData {
-            FragmentData {
+        pub(crate) fn data(self) -> FragmentBody {
+            FragmentBody {
                 message_id: self.message.message_id,
                 fragment_index: FragmentIndex(u64::from(self.index)),
-                num_fragments: FragmentCount(u64::from(self.message.num_fragments())),
+                fragments: FragmentCount(u64::from(self.message.fragments())),
                 compression: (self.index == 0).then_some(self.message.compression),
                 bytes: Bytes::copy_from_slice(self.payload()),
             }
@@ -264,10 +264,10 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fragment_body::FragmentBody;
     use crate::fragment_count::FragmentCount;
-    use crate::fragment_data::FragmentData;
     use crate::fragment_index::FragmentIndex;
-    use crate::packet::FRAGMENT_SIZE;
+    use crate::packet::FRAGMENT_LEN;
     use campfire_net_bytes::Reader;
     use campfire_net_bytes::Writer;
 
@@ -275,25 +275,25 @@ mod tests {
         FragmentedMessage::split(
             MessageId(7),
             Bytes::from((0..len).map(|byte| byte as u8).collect::<Vec<_>>()),
-            FRAGMENT_SIZE,
-            CompressionConfig::DISABLED,
+            FRAGMENT_LEN,
+            CompressionSetup::DISABLED,
             &mut CompressionScratch::default(),
         )
     }
 
     /// 2.5 fragments of bytes make 3 fragments, each a slice at its index; each writes what
-    /// `FragmentData` reads back, its compression on the first alone, and in the length it
+    /// `FragmentBody` reads back, its compression on the first alone, and in the length it
     /// counts.
     #[test]
     fn each_fragment_writes_what_the_receiver_reads() {
-        let len = FRAGMENT_SIZE * 5 / 2;
+        let len = FRAGMENT_LEN * 5 / 2;
         let message = split(len);
-        assert_eq!(message.num_fragments(), 3);
+        assert_eq!(message.fragments(), 3);
         let bytes = Bytes::from((0..len).map(|byte| byte as u8).collect::<Vec<_>>());
         for (index, range) in [
-            (0, 0..FRAGMENT_SIZE),
-            (1, FRAGMENT_SIZE..2 * FRAGMENT_SIZE),
-            (2, 2 * FRAGMENT_SIZE..len),
+            (0, 0..FRAGMENT_LEN),
+            (1, FRAGMENT_LEN..2 * FRAGMENT_LEN),
+            (2, 2 * FRAGMENT_LEN..len),
         ] {
             let fragment = message.fragment(index);
             assert_eq!(fragment.is_last(), index == 2);
@@ -301,13 +301,13 @@ mod tests {
             fragment.write(&mut writer);
             let written = writer.take_written();
             assert_eq!(written.len(), fragment.bytes_len());
-            let read = FragmentData::from_bytes(&mut Reader::from(written)).unwrap();
+            let read = FragmentBody::from_bytes(&mut Reader::from(written)).unwrap();
             assert_eq!(
                 read,
-                FragmentData {
+                FragmentBody {
                     message_id: MessageId(7),
                     fragment_index: FragmentIndex(u64::from(index)),
-                    num_fragments: FragmentCount(3),
+                    fragments: FragmentCount(3),
                     compression: (index == 0).then_some(FragmentCompression::None),
                     bytes: bytes.slice(range),
                 }
@@ -319,7 +319,7 @@ mod tests {
     /// its next commit a resend; an ack of each completes the message once, at the third.
     #[test]
     fn a_fragment_is_due_until_sent_and_again_once_lost() {
-        let mut message = split(FRAGMENT_SIZE * 5 / 2);
+        let mut message = split(FRAGMENT_LEN * 5 / 2);
         assert_eq!(message.first_due(), Some(0));
         assert!(!message.commit(0));
         assert!(!message.commit(2));

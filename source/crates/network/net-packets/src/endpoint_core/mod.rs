@@ -1,5 +1,5 @@
-//! An endpoint's sessions and its establishment, which its pass drives with the IO's datagrams
-//! and its timers, and which the frame reads and feeds through each link's queues.
+//! An endpoint's packet sessions and its establishment, which its pass drives with the IO's
+//! datagrams and its timers, and which the frame reads and feeds through each link's queues.
 
 use bytes::Buf;
 use core::cmp::Reverse;
@@ -9,40 +9,40 @@ use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 use bevy_platform::time::Instant as OsInstant;
 use campfire_net_core::Instant;
 use campfire_net_emulator::LinkConditioner;
-use campfire_net_payload::{AppCode, SessionQueues, UnlinkReason};
+use campfire_net_payload::{AppCode, PacketSessionQueues, UnlinkReason};
 
 use crate::carrier::Carrier;
 use crate::channel_binding::ChannelBinding;
 use crate::connection_id::ConnectionId;
 use crate::datagram_io::Datagram;
 use crate::datagram_io::Outbound;
-use crate::endpoint_parts::EndpointSide;
+use crate::endpoint_pieces::EndpointSide;
 use crate::establish::{ClientEstablish, Establish, Established, Establishing, ServerEstablish};
 use crate::header::IO_BIT;
 use crate::packet_session::{PacketSession, PathOutcome, Received};
-use crate::session_config::SessionConfig;
+use crate::packet_session_setup::PacketSessionSetup;
 use crate::stateless_reset;
 use crate::transmit::{Path, Transmit};
 
-/// A session's slot in its endpoint's table, and its id, which no later session in the slot
-/// shares.
+/// A packet session's slot in its endpoint's table, and its id, which no later packet session in
+/// the slot shares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PeerKey {
     slot: usize,
     id: u64,
 }
 
-/// What routes a datagram to its session: the connection ID it starts with, or, on an endpoint
-/// that routes by address, the address it came from.
+/// What routes a datagram to its packet session: the connection ID it starts with, or, on an
+/// endpoint that routes by address, the address it came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum RouteKey {
     Id(ConnectionId),
     Address(SocketAddr),
 }
 
-/// A session's entry in its endpoint's timers: when its pass polls it.
+/// A packet session's entry in its endpoint's timers: when its pass polls it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Timer {
+struct PollTimer {
     at: Instant,
     key: PeerKey,
 }
@@ -50,22 +50,23 @@ struct Timer {
 /// What the pass tells the endpoint's host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum News<C> {
-    /// A session opened with the peer at `address`, its TLS session's binding if it has one.
+    /// A packet session opened with the peer at `address`, its TLS packet session's binding if it
+    /// has one.
     Linked {
         key: PeerKey,
         address: SocketAddr,
         binding: Option<ChannelBinding>,
     },
-    /// The session that `carrier` carries ended, as `reason` says, or the client's connect that
-    /// it carries failed.
+    /// The packet session that `carrier` carries ended, as `reason` says, or the client's connect
+    /// that it carries failed.
     Ended { carrier: C, reason: UnlinkReason },
 }
 
-/// Whether the endpoint opens one session to its server or takes sessions, with the
+/// Whether the endpoint opens one packet session to its server or takes packet sessions, with the
 /// establishment of that side.
 #[derive(Debug)]
 enum Side<C> {
-    /// A client's endpoint, whose session the host's own carrier carries from its start.
+    /// A client's endpoint, whose packet session the host's own carrier carries from its start.
     Client {
         server: SocketAddr,
         carrier: Option<C>,
@@ -92,8 +93,8 @@ impl<C> Side<C> {
     }
 }
 
-/// The time the endpoint's sessions read: the frame's, as the frame sets it, on a driven clock;
-/// the OS's since the app's origin on a real one, so the IO thread reads the app's time.
+/// The time the endpoint's packet sessions read: the frame's, as the frame sets it, on a driven
+/// clock; the OS's since the app's origin on a real one, so the IO thread reads the app's time.
 #[derive(Debug, Clone, Copy)]
 pub enum EndpointTime {
     Driven(Instant),
@@ -111,21 +112,22 @@ impl EndpointTime {
 
 #[derive(Debug)]
 struct Peer<C> {
-    session: PacketSession,
+    packet_session: PacketSession,
     key: PeerKey,
-    /// The token of the peer's stateless reset, which ends the session with no packet it opens.
+    /// The token of the peer's stateless reset, which ends the packet session with no packet it
+    /// opens.
     reset_token: Option<[u8; stateless_reset::TOKEN_LEN]>,
     address: SocketAddr,
-    /// A new address the peer's packets came from, which its session checks.
+    /// A new address the peer's packets came from, which its packet session checks.
     candidate: Option<SocketAddr>,
     route: Option<ConnectionId>,
-    /// What carries the session for the host, once the host gave it one.
+    /// What carries the packet session for the host, once the host gave it one.
     carrier: Option<C>,
     /// The largest datagram the IO carries to the peer, which the host names as it carries the
-    /// session: a peer's MTU holds for its session's life.
+    /// packet session: a peer's MTU holds for its packet session's life.
     mtu: usize,
-    /// When the session's entry in the timers is due, at or before its next deadline; none while
-    /// the pass runs it. An entry of another time is stale.
+    /// When the packet session's entry in the timers is due, at or before its next deadline; none
+    /// while the pass runs it. An entry of another time is stale.
     scheduled: Option<Instant>,
 }
 
@@ -136,26 +138,27 @@ impl<C> Peer<C> {
     }
 }
 
-/// An endpoint's sessions and its establishment, which a host drives through an
-/// `EndpointRuntime`, and whose sessions each
-/// carrier `C` of the host carries.
+/// An endpoint's packet sessions and its establishment, which a host drives through an
+/// `EndpointRuntime`, and whose packet sessions each carrier `C` of the host carries
+/// (13-net-stack/packet-session.md, The endpoint core names each packet session by its carrier).
 #[derive(Debug)]
 pub struct EndpointCore<C> {
-    config: SessionConfig,
+    setup: PacketSessionSetup,
     side: Side<C>,
     peers: Vec<Option<Peer<C>>>,
-    /// The empty slots of `peers`, which a new session takes before the vector grows.
+    /// The empty slots of `peers`, which a new packet session takes before the vector grows.
     free: Vec<usize>,
-    /// The slot of each session by what routes its datagrams (13-net-stack/session.md, A pass
-    /// touches only the sessions that need it).
+    /// The slot of each packet session by what routes its datagrams
+    /// (13-net-stack/packet-session.md, A pass touches only the packet sessions that need it).
     routes: BTreeMap<RouteKey, usize>,
-    /// Each session's next deadline, so a pass polls only the sessions that are due.
-    timers: BinaryHeap<Reverse<Timer>>,
-    /// The timers a pass takes due before it polls their sessions.
-    due: Vec<Timer>,
+    /// Each packet session's next deadline, so a pass polls only the packet sessions that are due.
+    timers: BinaryHeap<Reverse<PollTimer>>,
+    /// The timers a pass takes due before it polls their packet sessions.
+    due: Vec<PollTimer>,
     next_id: u64,
     news: VecDeque<News<C>>,
-    /// The model the endpoint applies to each datagram the IO gives, before the sessions see it.
+    /// The model the endpoint applies to each datagram the IO gives, before the packet sessions see
+    /// it.
     conditioner: Option<LinkConditioner<Datagram>>,
     establishing: Establishing,
     transmits: Vec<Transmit>,
@@ -166,16 +169,16 @@ pub struct EndpointCore<C> {
 
 impl<C: Carrier> EndpointCore<C> {
     pub(crate) fn new(
-        config: SessionConfig,
+        setup: PacketSessionSetup,
         side: EndpointSide,
         conditioner: Option<LinkConditioner<Datagram>>,
     ) -> Self {
         assert!(
-            config.keep_alive < config.idle_timeout,
-            "a keep-alive less often than the idle timeout lets a quiet session time out"
+            setup.keep_alive < setup.idle_timeout,
+            "a keep-alive less often than the idle timeout lets a quiet packet session time out"
         );
         Self {
-            config,
+            setup,
             side: match side {
                 EndpointSide::Client { server, establish } => Side::Client {
                     server,
@@ -199,7 +202,7 @@ impl<C: Carrier> EndpointCore<C> {
         }
     }
 
-    pub(crate) const fn ended(&self) -> bool {
+    pub(crate) const fn is_ended(&self) -> bool {
         self.ended
     }
 
@@ -215,8 +218,8 @@ impl<C: Carrier> EndpointCore<C> {
         self.time = time;
     }
 
-    /// Starts the endpoint: a client connects to its server, its session carried by `carrier`,
-    /// and a server accepts.
+    /// Starts the endpoint: a client connects to its server, its packet session carried by
+    /// `carrier`, and a server accepts.
     pub fn start(&mut self, carrier: C, out: &mut Vec<Outbound>) {
         let now = self.now();
         match &mut self.side {
@@ -226,8 +229,8 @@ impl<C: Carrier> EndpointCore<C> {
                 establish,
             } => {
                 *client = Some(carrier);
-                // A client that connects again drops its last session, closing or not: the new
-                // one's datagrams come from the same address.
+                // A client that connects again drops its last packet session, closing or not: the
+                // new one's datagrams come from the same address.
                 self.free.clear();
                 for peer in self.peers.drain(..).flatten() {
                     establish.ended(peer.route);
@@ -266,7 +269,7 @@ impl<C: Carrier> EndpointCore<C> {
         }
         self.side.establish().poll(now, &mut self.establishing);
         self.apply_establishing(now, out);
-        // The due timers are taken first, so a pass polls each session once, as a timer it
+        // The due timers are taken first, so a pass polls each packet session once, as a timer it
         // leaves due waits for the next pass.
         self.due.clear();
         while let Some(&Reverse(timer)) = self.timers.peek()
@@ -275,7 +278,7 @@ impl<C: Carrier> EndpointCore<C> {
             self.timers.pop();
             self.due.push(timer);
         }
-        for &Timer { at, key } in &self.due {
+        for &PollTimer { at, key } in &self.due {
             let Some(slot) = self.peers.get_mut(key.slot) else {
                 continue;
             };
@@ -286,10 +289,10 @@ impl<C: Carrier> EndpointCore<C> {
                 continue;
             };
             peer.scheduled = None;
-            peer.session.poll(now, &mut self.transmits);
+            peer.packet_session.poll(now, &mut self.transmits);
             Self::check_path(peer);
             Self::flush(peer, &mut self.transmits, out);
-            if let Some(reason) = peer.session.ended() {
+            if let Some(reason) = peer.packet_session.ended() {
                 if let Some(carrier) = peer.carrier {
                     self.news.push_back(News::Ended { carrier, reason });
                 }
@@ -302,20 +305,24 @@ impl<C: Carrier> EndpointCore<C> {
             }
         }
         debug_assert!(
-            self.peers.iter().flatten().all(|peer| peer
-                .scheduled
-                .is_some_and(|at| peer.session.next_deadline().is_none_or(|due| at <= due))),
-            "each session's timer is due at or before its next deadline"
+            self.peers
+                .iter()
+                .flatten()
+                .all(|peer| peer.scheduled.is_some_and(|at| peer
+                    .packet_session
+                    .next_deadline()
+                    .is_none_or(|due| at <= due))),
+            "each packet session's timer is due at or before its next deadline"
         );
     }
 
-    /// Enters `peer`'s next deadline in `timers` when it comes before its entry: a session that
-    /// ended is due at `now`, which removes it.
-    fn schedule(peer: &mut Peer<C>, timers: &mut BinaryHeap<Reverse<Timer>>, now: Instant) {
-        let due = peer.session.next_deadline().unwrap_or(now);
+    /// Enters `peer`'s next deadline in `timers` when it comes before its entry: a packet session
+    /// that ended is due at `now`, which removes it.
+    fn schedule(peer: &mut Peer<C>, timers: &mut BinaryHeap<Reverse<PollTimer>>, now: Instant) {
+        let due = peer.packet_session.next_deadline().unwrap_or(now);
         if peer.scheduled.is_none_or(|at| due < at) {
             peer.scheduled = Some(due);
-            timers.push(Reverse(Timer {
+            timers.push(Reverse(PollTimer {
                 at: due,
                 key: peer.key,
             }));
@@ -371,7 +378,7 @@ impl<C: Carrier> EndpointCore<C> {
             .reset_token
             .is_some_and(|token| stateless_reset::matches(&payload, &token))
         {
-            peer.session.reset();
+            peer.packet_session.reset();
             Self::schedule(peer, &mut self.timers, now);
             return;
         }
@@ -381,7 +388,7 @@ impl<C: Carrier> EndpointCore<C> {
             Path::Candidate
         };
         let received = peer
-            .session
+            .packet_session
             .receive(now, payload, path, &mut self.transmits);
         // A peer routed by its ID whose newest packet comes from an address of its own is
         // checked there before its datagrams go to it.
@@ -391,15 +398,16 @@ impl<C: Carrier> EndpointCore<C> {
         {
             peer.candidate = Some(from);
             let data = self.side.establish().challenge();
-            peer.session.start_challenge(now, data, &mut self.transmits);
+            peer.packet_session
+                .start_challenge(now, data, &mut self.transmits);
         }
         Self::check_path(peer);
         Self::flush(peer, &mut self.transmits, out);
         Self::schedule(peer, &mut self.timers, now);
     }
 
-    /// Hands the establishment's output on: its datagrams go out, each session it made takes a
-    /// slot, and a failed connect ends the client's carrier.
+    /// Hands the establishment's output on: its datagrams go out, each packet session it made takes
+    /// a slot, and a failed connect ends the client's carrier.
     fn apply_establishing(&mut self, now: Instant, out: &mut Vec<Outbound>) {
         out.append(&mut self.establishing.outbound);
         for established in core::mem::take(&mut self.establishing.established) {
@@ -434,16 +442,16 @@ impl<C: Carrier> EndpointCore<C> {
             id: self.next_id,
         };
         self.next_id += 1;
-        let mut session = PacketSession::new(protection, prefix, self.config, now);
-        // Each end's first packet tells its peer the session is open: a client's server spawns
-        // its link, and a server's client stops sending its handshake's end.
-        session.ping(now, &mut self.transmits);
+        let mut packet_session = PacketSession::new(protection, prefix, self.setup, now);
+        // Each end's first packet tells its peer the packet session is open: a client's server
+        // spawns its link, and a server's client stops sending its handshake's end.
+        packet_session.ping(now, &mut self.transmits);
         let carrier = match &self.side {
             Side::Client { carrier, .. } => *carrier,
             Side::Server { .. } => None,
         };
         let mut peer = Peer {
-            session,
+            packet_session,
             key,
             reset_token,
             address: peer,
@@ -461,14 +469,14 @@ impl<C: Carrier> EndpointCore<C> {
             binding,
         });
         let replaced = self.routes.insert(peer.route_key(), slot);
-        debug_assert!(replaced.is_none(), "one session holds each route");
+        debug_assert!(replaced.is_none(), "one packet session holds each route");
         self.peers[slot] = Some(peer);
     }
 
     /// Takes what the peer's path check came to: an answered candidate is its address now, and a
     /// silent one goes.
     const fn check_path(peer: &mut Peer<C>) {
-        match peer.session.take_path_outcome() {
+        match peer.packet_session.take_path_outcome() {
             Some(PathOutcome::Validated) => {
                 if let Some(candidate) = peer.candidate.take() {
                     peer.address = candidate;
@@ -479,7 +487,7 @@ impl<C: Carrier> EndpointCore<C> {
         }
     }
 
-    /// Moves a session's transmits to `out`, each to the address of its path.
+    /// Moves a packet session's transmits to `out`, each to the address of its path.
     fn flush(peer: &Peer<C>, transmits: &mut Vec<Transmit>, out: &mut Vec<Outbound>) {
         for Transmit { path, datagram } in transmits.drain(..) {
             let to = match path {
@@ -498,8 +506,8 @@ impl<C: Carrier> EndpointCore<C> {
         self.news.pop_front()
     }
 
-    /// Records that `carrier` carries the session `key` names, whose datagrams the IO carries
-    /// at most `mtu` bytes.
+    /// Records that `carrier` carries the packet session `key` names, whose datagrams the IO
+    /// carries at most `mtu` bytes.
     pub fn carry(&mut self, key: PeerKey, carrier: C, mtu: usize) {
         if let Some(peer) = self.peer(key) {
             peer.carrier = Some(carrier);
@@ -514,7 +522,7 @@ impl<C: Carrier> EndpointCore<C> {
             .filter(|peer| peer.key == key)
     }
 
-    /// Each session a carrier carries, with its carrier.
+    /// Each packet session a carrier carries, with its carrier.
     pub fn carried(&self) -> impl Iterator<Item = (PeerKey, C)> + '_ {
         self.peers
             .iter()
@@ -522,21 +530,27 @@ impl<C: Carrier> EndpointCore<C> {
             .filter_map(|peer| peer.carrier.map(|carrier| (peer.key, carrier)))
     }
 
-    /// Hands the host's queues of session `key` what its session has for them, its datagrams
-    /// at most the MTU its carry named.
-    pub fn hand_over(&mut self, key: PeerKey, queues: &mut SessionQueues) {
+    /// Hands the host's queues of packet session `key` what its packet session has for them, its
+    /// datagrams at most the MTU its carry named.
+    pub fn hand_over(&mut self, key: PeerKey, queues: &mut PacketSessionQueues) {
         let now = self.now();
         if let Some(peer) = self.peer(key) {
             debug_assert!(
                 peer.carrier.is_some(),
-                "a host hands over a session it carries"
+                "a host hands over a packet session it carries"
             );
-            peer.session.hand_over(queues, peer.mtu, now);
+            peer.packet_session.hand_over(queues, peer.mtu, now);
         }
     }
 
-    /// Takes what the host's queues of session `key` give, and appends what goes out to `out`.
-    pub fn take_over(&mut self, key: PeerKey, queues: &mut SessionQueues, out: &mut Vec<Outbound>) {
+    /// Takes what the host's queues of packet session `key` give, and appends what goes out to
+    /// `out`.
+    pub fn take_over(
+        &mut self,
+        key: PeerKey,
+        queues: &mut PacketSessionQueues,
+        out: &mut Vec<Outbound>,
+    ) {
         let now = self.now();
         let Some(slot) = self.peers.get_mut(key.slot) else {
             return;
@@ -544,12 +558,13 @@ impl<C: Carrier> EndpointCore<C> {
         let Some(peer) = slot.as_mut().filter(|peer| peer.key == key) else {
             return;
         };
-        peer.session.take_over(queues, now, &mut self.transmits);
+        peer.packet_session
+            .take_over(queues, now, &mut self.transmits);
         Self::flush(peer, &mut self.transmits, out);
         Self::schedule(peer, &mut self.timers, now);
     }
 
-    /// Closes session `key` with `code`, which then answers its peer for a while with no
+    /// Closes packet session `key` with `code`, which then answers its peer for a while with no
     /// carrier: a link its own end closed has no loss to tell.
     pub(crate) fn close(&mut self, key: PeerKey, code: AppCode, out: &mut Vec<Outbound>) {
         let now = self.now();
@@ -560,12 +575,13 @@ impl<C: Carrier> EndpointCore<C> {
             return;
         };
         peer.carrier = None;
-        peer.session.close(now, code, &mut self.transmits);
+        peer.packet_session.close(now, code, &mut self.transmits);
         Self::flush(peer, &mut self.transmits, out);
         Self::schedule(peer, &mut self.timers, now);
     }
 
-    /// Ends every session as the IO failed: each carrier of one learns it, and the pass ends.
+    /// Ends every packet session as the IO failed: each carrier of one learns it, and the pass
+    /// ends.
     pub(crate) fn fail(&mut self) {
         self.ended = true;
         self.stop_accepting();
@@ -582,21 +598,22 @@ impl<C: Carrier> EndpointCore<C> {
         self.timers.clear();
     }
 
-    /// Closes every session with `AppCode::DROPPED`, takes no new one, and lets the pass end.
+    /// Closes every packet session with `AppCode::DROPPED`, takes no new one, and lets the pass
+    /// end.
     pub fn close_all(&mut self, out: &mut Vec<Outbound>) {
         let now = self.now();
         self.ended = true;
         self.stop_accepting();
         for peer in self.peers.iter_mut().flatten() {
             peer.carrier = None;
-            peer.session
+            peer.packet_session
                 .close(now, AppCode::DROPPED, &mut self.transmits);
             Self::flush(peer, &mut self.transmits, out);
             Self::schedule(peer, &mut self.timers, now);
         }
     }
 
-    /// The earliest moment the pass has work: a session's timer, the establishment's, or a
+    /// The earliest moment the pass has work: a packet session's timer, the establishment's, or a
     /// datagram the conditioner holds. A stale timer may come first, and then wakes a pass
     /// that finds nothing to do.
     pub(crate) fn next_deadline(&self) -> Option<Instant> {
@@ -618,16 +635,16 @@ impl<C: Carrier> EndpointCore<C> {
 pub(crate) mod internals {
     use crate::carrier::Carrier;
     use crate::endpoint_core::EndpointCore;
-    use crate::packet_session::internals::SessionCounts;
+    use crate::packet_session::internals::PacketSessionCounts;
 
     impl<C: Carrier> EndpointCore<C> {
-        /// The counts of the session that `carrier` carries.
-        pub fn session_counts(&self, carrier: C) -> Option<SessionCounts> {
+        /// The counts of the packet session that `carrier` carries.
+        pub fn packet_session_counts(&self, carrier: C) -> Option<PacketSessionCounts> {
             self.peers
                 .iter()
                 .flatten()
                 .find(|peer| peer.carrier == Some(carrier))
-                .map(|peer| peer.session.counts())
+                .map(|peer| peer.packet_session.counts())
         }
     }
 }

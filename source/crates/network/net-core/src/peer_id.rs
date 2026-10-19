@@ -12,10 +12,9 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "reflect", derive(Reflect))]
 pub enum PeerId {
     Entity(u64),
-    /// A raw connection where the IO Link is used to associate a long-term id.
-    /// The id is the SocketAddr of the link.
+    /// A peer that a link names by its address.
     #[cfg_attr(feature = "reflect", reflect(ignore))]
-    Raw(SocketAddr),
+    Address(SocketAddr),
     /// A local client to use when running in HostServer mode
     Local(u64),
     /// Refers to the server
@@ -26,9 +25,9 @@ impl ToBytes for PeerId {
     fn bytes_len(&self) -> usize {
         match self {
             Self::Entity(_) => 1 + 8,
-            Self::Raw(socket_addr) => {
+            Self::Address(address) => {
                 // 1 byte for variant + address bytes + 2 bytes for port
-                match socket_addr {
+                match address {
                     SocketAddr::V4(_) => 1 + 4 + 2,
                     SocketAddr::V6(_) => 1 + 16 + 2,
                 }
@@ -44,7 +43,7 @@ impl ToBytes for PeerId {
                 buffer.write_u8(0);
                 buffer.write_u64(*id);
             }
-            Self::Raw(socket) => match socket {
+            Self::Address(address) => match address {
                 SocketAddr::V4(v4) => {
                     buffer.write_u8(1);
                     for byte in &v4.ip().octets() {
@@ -82,11 +81,11 @@ impl ToBytes for PeerId {
                 let c = buffer.read_u8()?;
                 let d = buffer.read_u8()?;
                 let port = buffer.read_u16()?;
-                let addr = SocketAddr::new(
+                let address = SocketAddr::new(
                     core::net::IpAddr::V4(core::net::Ipv4Addr::new(a, b, c, d)),
                     port,
                 );
-                Ok(Self::Raw(addr))
+                Ok(Self::Address(address))
             }
             2 => {
                 let mut segments = [0u16; 8];
@@ -94,11 +93,11 @@ impl ToBytes for PeerId {
                     *segment = buffer.read_u16()?;
                 }
                 let port = buffer.read_u16()?;
-                let addr = SocketAddr::new(
+                let address = SocketAddr::new(
                     core::net::IpAddr::V6(core::net::Ipv6Addr::from(segments)),
                     port,
                 );
-                Ok(Self::Raw(addr))
+                Ok(Self::Address(address))
             }
             5 => Ok(Self::Local(buffer.read_u64()?)),
             6 => Ok(Self::Server),

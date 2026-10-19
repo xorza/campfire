@@ -2,9 +2,9 @@ use campfire_net_payload::PayloadKind;
 
 use crate::packet_error::PacketError;
 
-/// What a packet's payload holds, which the session carries in its 2 bits of payload kind
-/// (13-net-stack/session.md, The session carries 2 bits of its payload's kind, which it does not
-/// read).
+/// What a packet's payload holds, which the packet session carries in its 2 bits of payload kind
+/// (13-net-stack/packet-session.md, The packet session carries 2 bits of its payload's kind, which
+/// it does not read).
 ///
 /// Each payload starts with the tick, then:
 /// - `Data`: batches of a channel ID, a message count and that many messages, to the end. Channel

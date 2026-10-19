@@ -10,7 +10,7 @@ use bevy::prelude::Entity;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_measure::AllocAudit;
 use campfire_net_stack::internals::FullStack;
-use campfire_net_stepper::Order;
+use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
 
 /// Frames before the measured run. The last buffer to grow is bevy_replicon's mutation message,
@@ -34,7 +34,7 @@ const LINK: u64 = 3;
 /// entity.
 fn replicate_to_client(stepper: &mut Stepper<FullStack>, server_entity: Entity) -> Entity {
     for _ in 0..8 {
-        stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
+        stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
         let mapped = stepper
             .client_app(0)
             .world()

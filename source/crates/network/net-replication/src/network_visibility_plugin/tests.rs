@@ -7,9 +7,9 @@ use crate::visibility_ext::VisibilityExt;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_despawn::DespawnReplicated;
-use campfire_net_messages::MessageManager;
+use campfire_net_messages::LinkMessages;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 use tracing::info;
 
 use bevy_replicon::server::visibility::registry::FilterRegistry;
@@ -27,7 +27,7 @@ fn visibility_app() -> (App, Entity) {
 
 /// Reads effective visibility straight from the sender's
 /// [`ClientVisibility`]: hidden iff the manual despawn-on-hide bit is set.
-fn hidden(app: &App, sender: Entity, entity: Entity) -> bool {
+fn is_hidden(app: &App, sender: Entity, entity: Entity) -> bool {
     let bits = app.world().resource::<VisibilityBits>();
     let visibility = app.world().get::<ClientVisibility>(sender).unwrap();
     visibility.get(entity).contains(bits.while_visible)
@@ -40,18 +40,18 @@ fn is_overridden(app: &App, entity: Entity) -> bool {
 }
 
 #[test]
-fn members_follow_visibility() {
+fn the_members_follow_the_visibility_of_their_root() {
     let (mut app, sender) = visibility_app();
     let root = app.world_mut().spawn_empty().id();
     let child = app.world_mut().spawn(ReplicateLike { root }).id();
 
     app.world_mut().lose_visibility(root, sender);
-    assert!(hidden(&app, sender, root));
-    assert!(hidden(&app, sender, child));
+    assert!(is_hidden(&app, sender, root));
+    assert!(is_hidden(&app, sender, child));
 
     app.world_mut().gain_visibility(root, sender);
-    assert!(!hidden(&app, sender, root));
-    assert!(!hidden(&app, sender, child));
+    assert!(!is_hidden(&app, sender, root));
+    assert!(!is_hidden(&app, sender, child));
     // A hierarchy write never marks.
     assert!(!is_overridden(&app, root));
     assert!(!is_overridden(&app, child));
@@ -60,7 +60,7 @@ fn members_follow_visibility() {
 /// Visibility set for a link that replication has not admitted yet applies, on the members that
 /// follow too, once the link is: the last write for each entity wins.
 #[test]
-fn visibility_set_before_admission_applies_on_admission() {
+fn a_visibility_set_before_the_admission_applies_at_it() {
     let (mut app, _) = visibility_app();
     let sender = app.world_mut().spawn_empty().id();
     let root = app.world_mut().spawn_empty().id();
@@ -75,28 +75,28 @@ fn visibility_set_before_admission_applies_on_admission() {
         .insert(ClientVisibility::default());
     app.world_mut().flush();
 
-    assert!(hidden(&app, sender, root));
-    assert!(hidden(&app, sender, child));
-    assert!(!hidden(&app, sender, other));
+    assert!(is_hidden(&app, sender, root));
+    assert!(is_hidden(&app, sender, child));
+    assert!(!is_hidden(&app, sender, other));
     assert!(app.world().get::<PendingVisibility>(sender).is_none());
 }
 
 #[test]
-fn direct_member_write_overrides_and_sticks() {
+fn a_direct_write_on_a_member_overrides_and_stays() {
     let (mut app, sender) = visibility_app();
     let root = app.world_mut().spawn_empty().id();
     let child = app.world_mut().spawn(ReplicateLike { root }).id();
 
     // Hide the child directly: later root pushes must skip it.
     app.world_mut().lose_visibility(child, sender);
-    assert!(!hidden(&app, sender, root));
-    assert!(hidden(&app, sender, child));
+    assert!(!is_hidden(&app, sender, root));
+    assert!(is_hidden(&app, sender, child));
     assert!(is_overridden(&app, child));
 
     app.world_mut().gain_visibility(root, sender);
-    assert!(!hidden(&app, sender, root));
+    assert!(!is_hidden(&app, sender, root));
     assert!(
-        hidden(&app, sender, child),
+        is_hidden(&app, sender, child),
         "root push should skip the overridden child"
     );
 
@@ -104,16 +104,16 @@ fn direct_member_write_overrides_and_sticks() {
     app.world_mut()
         .entity_mut(child)
         .remove::<Overridden<ManualVisibility>>();
-    assert!(!hidden(&app, sender, child));
+    assert!(!is_hidden(&app, sender, child));
     assert!(!is_overridden(&app, child));
 
     // ...and the child follows the root again afterwards.
     app.world_mut().lose_visibility(root, sender);
-    assert!(hidden(&app, sender, child));
+    assert!(is_hidden(&app, sender, child));
 }
 
 #[test]
-fn overridden_child_replicates_while_root_hidden() {
+fn an_overridden_child_replicates_while_its_root_is_hidden() {
     let (mut app, sender) = visibility_app();
     let root = app.world_mut().spawn_empty().id();
     let child = app.world_mut().spawn(ReplicateLike { root }).id();
@@ -121,13 +121,13 @@ fn overridden_child_replicates_while_root_hidden() {
     app.world_mut().lose_visibility(root, sender);
     app.world_mut().gain_visibility(child, sender);
 
-    assert!(hidden(&app, sender, root));
-    assert!(!hidden(&app, sender, child));
+    assert!(is_hidden(&app, sender, root));
+    assert!(!is_hidden(&app, sender, child));
     assert!(is_overridden(&app, child));
 }
 
 #[test]
-fn direct_root_write_does_not_mark() {
+fn a_direct_write_on_a_root_marks_nothing() {
     let (mut app, sender) = visibility_app();
     let root = app.world_mut().spawn_empty().id();
     let standalone = app.world_mut().spawn_empty().id();
@@ -141,7 +141,7 @@ fn direct_root_write_does_not_mark() {
 
 #[test]
 fn gaining_visibility_spawns_the_entity() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -198,7 +198,7 @@ fn gaining_visibility_spawns_the_entity() {
 
 #[test]
 fn losing_visibility_despawns_the_entity() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -261,7 +261,7 @@ fn losing_visibility_despawns_the_entity() {
 
 #[test]
 fn losing_retained_visibility_keeps_the_entity() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -350,7 +350,7 @@ fn losing_retained_visibility_keeps_the_entity() {
 
 #[test]
 fn retained_visibility_before_the_first_replication_sends_nothing() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -396,7 +396,7 @@ fn retained_visibility_before_the_first_replication_sends_nothing() {
 
 #[test]
 fn always_present_visibility_spawns_a_hidden_entity() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -495,7 +495,7 @@ fn always_present_visibility_spawns_a_hidden_entity() {
 
 #[test]
 fn a_despawn_reaches_a_retained_entity() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -556,7 +556,7 @@ fn a_despawn_reaches_a_retained_entity() {
 
 #[test]
 fn removing_replicate_suppresses_the_despawn_of_a_retained_entity() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -603,11 +603,11 @@ fn removing_replicate_suppresses_the_despawn_of_a_retained_entity() {
 }
 
 /// https://github.com/cBournhonesque/lightyear/issues/637
-/// Test that if an entity with NetworkVisibility is despawned, the DespawnMessage
+/// If an entity with NetworkVisibility is despawned, the DespawnMessage
 /// is only sent to clients that have visibility on it.
 #[test]
 fn a_despawn_reaches_only_the_clients_that_see_the_entity() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let server_entity_0 = stepper
         .server_app_mut()
@@ -659,7 +659,7 @@ fn a_despawn_reaches_only_the_clients_that_see_the_entity() {
     // client_entity_1 This only works because the replication group is the same for both entities.
     stepper
         .client_mut(1)
-        .get_mut::<MessageManager>()
+        .get_mut::<LinkMessages>()
         .unwrap()
         .entity_mapper
         .insert(server_entity_0, client_entity_1);
@@ -692,11 +692,11 @@ fn a_despawn_reaches_only_the_clients_that_see_the_entity() {
     );
 }
 
-/// Test that there is no logspam when we despawn an entity with NetworkVisibility
+/// There is no logspam when we despawn an entity with NetworkVisibility
 /// but that is not visible to a client
 #[test]
 fn despawning_an_entity_hidden_from_a_client_logs_nothing() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     let server_parent = stepper
         .server_app_mut()
         .world_mut()
@@ -726,7 +726,7 @@ fn despawning_an_entity_hidden_from_a_client_logs_nothing() {
 /// Repeated `lose_visibility` calls should not disturb the entity's replication target.
 #[test]
 fn repeated_lose_visibility_keeps_the_replication_target() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::single());
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
         .server_app_mut()
@@ -793,13 +793,13 @@ fn repeated_lose_visibility_keeps_the_replication_target() {
     );
 }
 
-/// Test that visibility overrides are NOT reset when ReplicationTarget is replaced.
+/// Visibility overrides are NOT reset when ReplicationTarget is replaced.
 ///
 /// Scenario: server spawns entity visible to clients 1 and 2, then lose_visibility for client 2,
 /// then re-insert Replicate targeting all clients. Client 2 should still not see the entity.
 #[test]
 fn visibility_overrides_survive_a_replication_target_change() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperConfig::with_raw_clients(2));
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let server_entity = stepper
         .server_app_mut()

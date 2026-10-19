@@ -1,9 +1,10 @@
 use campfire_common::{DomainHasher, HashDomain, Meaning, Value32};
 
-/// Hashes a registry's entries into the value peers compare before data flows: the registry's
-/// seal feeds each entry as it stands then, in the order of its id, so the hash holds the
-/// protocol and not the order of the calls that built it (14-workspace-alignment.md, The registry
-/// hash is a domain hash).
+/// Hashes a registry's entries into the value peers compare before data flows: the registry's seal
+/// feeds each entry as it stands then, in the order of its id, so the hash holds the protocol and
+/// not the order of the calls that built it (14-workspace-alignment.md, The registry hash is a
+/// domain hash) (13-net-stack/api.md, A registry's hash holds its final entries, in the order of
+/// their ids).
 ///
 /// A type enters by its `core::any::type_name`, which the compiler does not promise to keep
 /// across compiler versions: peers built from the same source by the same compiler agree, and

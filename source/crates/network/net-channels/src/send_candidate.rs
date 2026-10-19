@@ -3,12 +3,13 @@ use crate::send_message_key::SendMessageKey;
 use campfire_net_core::NetId;
 use core::num::NonZeroU32;
 
-/// A channel-owned message that is due in a flush, and how it competes: one for each message, a
-/// fragmented one's included, whose fragments the packet builder takes in turn.
+/// A channel-held message that is due in a flush, and how it competes: one for each message, a
+/// fragmented one's included, whose fragments the packet builder takes in turn
+/// (13-net-stack/transport.md, A send candidate holds a key, and the packet builder reads the bytes
+/// from the channel).
 ///
-/// The channel keeps the message until
-/// `ChannelSender::commit_send` runs after
-/// its packet goes to the session. The packet builder reads it through [`CandidateMessages`].
+/// The channel keeps the message until `ChannelSender::commit_send` runs after its packet goes to
+/// the packet session. The packet builder reads it through [`CandidateMessages`].
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SendCandidate {
     pub(crate) channel_id: NetId,
@@ -88,12 +89,12 @@ pub(crate) trait CandidateMessages {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::single_data::SingleData;
+    use crate::single_body::SingleBody;
     use bytes::Bytes;
 
     fn pushed(channel_priority: f32, priority: f32) -> f32 {
         let mut candidates = Vec::new();
-        let single = SingleData::new(None, Bytes::new());
+        let single = SingleBody::new(None, Bytes::new());
         CandidateSink {
             channel_id: NetId::new(0),
             channel_priority,

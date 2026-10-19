@@ -1,4 +1,4 @@
-use crate::interpolation_config::InterpolationConfig;
+use crate::interpolation_setup::InterpolationSetup;
 use crate::interpolation_timeline::InterpolationTimeline;
 use bevy_app::{App, Plugin, PostUpdate, PreUpdate};
 use bevy_ecs::prelude::*;
@@ -25,14 +25,14 @@ use tracing::{debug, trace};
 pub(crate) struct InterpolationTimelinePlugin;
 
 impl InterpolationTimelinePlugin {
-    /// Reset the presentation timeline for a newly connected client session.
+    /// Reset the presentation timeline for a newly connected client.
     fn handle_connect(
         trigger: On<'_, '_, Add<Connected>>,
         clients: Query<'_, '_, (), With<Client>>,
         mut timeline: ResMut<'_, InterpolationTimeline>,
     ) {
         if clients.contains(trigger.entity) {
-            timeline.reset_session();
+            timeline.reset_link();
         }
     }
 
@@ -54,7 +54,7 @@ impl InterpolationTimelinePlugin {
         mut timeline: ResMut<'_, InterpolationTimeline>,
     ) {
         if clients.contains(trigger.entity) {
-            timeline.reset_session();
+            timeline.reset_link();
         }
     }
 
@@ -80,7 +80,7 @@ impl InterpolationTimelinePlugin {
     fn sync_timeline(
         tick_rate: Res<'_, TickRate>,
         networking: Res<'_, NetworkingState>,
-        config: Res<'_, InterpolationConfig>,
+        setup: Res<'_, InterpolationSetup>,
         mut timeline: ResMut<'_, InterpolationTimeline>,
         remotes: Query<
             '_,
@@ -100,18 +100,18 @@ impl InterpolationTimelinePlugin {
                 let Ok((remote, estimator)) = remotes.get(*client) else {
                     return;
                 };
-                if !remote.received_packet() {
+                if !remote.has_received_packet() {
                     return;
                 }
                 let Some(estimate) = estimator.estimate() else {
                     return;
                 };
                 let before = timeline.now();
-                let tick_delta = timeline.sync(
+                let tick_span = timeline.sync(
                     before,
                     &SyncSample {
                         remote,
-                        config: &config,
+                        setup: &setup,
                         estimate,
                         tick_rate: *tick_rate,
                     },
@@ -125,7 +125,7 @@ impl InterpolationTimelinePlugin {
                     ?before,
                     after = ?timeline.now(),
                     remote_estimate = ?remote.current_estimate(),
-                    ?tick_delta,
+                    ?tick_span,
                     relative_speed = timeline.relative_speed(),
                     "synchronized the application-global presentation timeline"
                 );
@@ -163,7 +163,7 @@ impl InterpolationTimelinePlugin {
 impl Plugin for InterpolationTimelinePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<InterpolationTimeline>();
-        app.init_resource::<InterpolationConfig>();
+        app.init_resource::<InterpolationSetup>();
         app.add_observer(Self::handle_connect);
         app.add_observer(Self::handle_host_client);
         app.add_observer(Self::handle_disconnect);

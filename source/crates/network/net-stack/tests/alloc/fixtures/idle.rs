@@ -3,21 +3,21 @@ use crate::fixtures::LINK;
 use campfire_net_stack::internals::FullStack;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 
 #[track_caller]
 fn audit_idle(kind: ClientKind) {
-    let mut stepper = Stepper::new(FullStack, StepperConfig::with_clients(vec![kind]));
+    let mut stepper = Stepper::new(FullStack, StepperSetup::with_clients(vec![kind]));
     AUDIT.budget(LINK).run(|| stepper.frame_step(1));
 }
 
 #[test]
-fn idle_link() {
-    audit_idle(ClientKind::Raw);
+fn an_idle_link_allocates_nothing() {
+    audit_idle(ClientKind::Plain);
 }
 
-/// The same in a sealed session of the UDP protocol, whose seal and open work in place.
+/// The same in a sealed packet session of the UDP protocol, whose seal and open work in place.
 #[test]
-fn idle_sealed_link() {
+fn an_idle_sealed_link_allocates_nothing() {
     audit_idle(ClientKind::Udp);
 }

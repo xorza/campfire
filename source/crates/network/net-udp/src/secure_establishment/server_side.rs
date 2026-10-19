@@ -1,5 +1,5 @@
 //! A server's side of its handshakes: a Retry for each new address, a token's check, the
-//! admission, the server's flight, and a stateless reset for a session it no longer holds.
+//! admission, the server's flight, and a stateless reset for a packet session it no longer holds.
 
 use core::net::{IpAddr, SocketAddr};
 use core::time::Duration;
@@ -17,7 +17,7 @@ use rustls::quic::{Connection, KeyChange, Keys, ServerConnection, Version};
 
 use crate::address_token::{NEXT_LIFETIME, RETRY_LIFETIME, TokenKey, TokenKind};
 use crate::admission::{AddressKey, Admission};
-use crate::admission_config::AdmissionConfig;
+use crate::admission_setup::AdmissionSetup;
 use crate::crypto_stream::{CryptoSend, CryptoStream};
 use crate::handshake_packet::{
     self, CryptoFrame, HandshakePacket, ID_LEN, PADDED_INITIAL, Padding,
@@ -42,7 +42,7 @@ pub(crate) struct ServerSide {
     token_key: TokenKey,
     used: UsedTokens,
     reset_key: ResetKey,
-    admission_config: AdmissionConfig,
+    admission_setup: AdmissionSetup,
     admission: Option<Admission>,
     /// How long a handshake waits for its client before it goes.
     patience: Duration,
@@ -50,14 +50,15 @@ pub(crate) struct ServerSide {
     /// When each pending handshake's timer is due, the earlier of its resend and its patience's
     /// end, and the handshake: a set, so a handshake that goes takes its timer with it.
     timers: BTreeSet<(Instant, PendingKey)>,
-    /// The connection ID of each live session and pending handshake, and the address it was
-    /// admitted from, which it counts against: a session that moved since still counts there.
+    /// The connection ID of each live packet session and pending handshake, and the address it was
+    /// admitted from, which it counts against: a packet session that moved since still counts
+    /// there.
     holders: BTreeMap<ConnectionId, IpAddr>,
-    /// How many live sessions and pending handshakes each address holds, which the admission
+    /// How many live packet sessions and pending handshakes each address holds, which the admission
     /// limits.
     counts: BTreeMap<AddressKey, u32>,
     accepting: bool,
-    /// The OS's on a socket and a seed's on the simulated network, so a run of a seed repeats;
+    /// The OS's on a socket and a seed's on the emulated network, so a run of a seed repeats;
     /// TLS draws its own from the OS in both.
     random: Random,
 }
@@ -102,7 +103,7 @@ impl ServerSide {
         tls: Arc<rustls::ServerConfig>,
         reset_key: ResetKey,
         token_secret: &[u8; 32],
-        admission: AdmissionConfig,
+        admission: AdmissionSetup,
         patience: Duration,
         random: Random,
     ) -> Self {
@@ -111,7 +112,7 @@ impl ServerSide {
             token_key: TokenKey::new(token_secret),
             used: UsedTokens::default(),
             reset_key,
-            admission_config: admission,
+            admission_setup: admission,
             admission: None,
             patience,
             pending: BTreeMap::new(),
@@ -123,12 +124,12 @@ impl ServerSide {
         }
     }
 
-    /// Whether `ip` may start a handshake at `now`, within its live sessions and its bucket.
+    /// Whether `ip` may start a handshake at `now`, within its live packet sessions and its bucket.
     fn admit(&mut self, ip: IpAddr, now: Instant) -> bool {
         let counts = &self.counts;
         let admission = self
             .admission
-            .get_or_insert_with(|| Admission::new(self.admission_config, now));
+            .get_or_insert_with(|| Admission::new(self.admission_setup, now));
         admission.admit(ip, now, |key| {
             counts
                 .get(&key)
@@ -144,7 +145,7 @@ impl ServerSide {
         }
     }
 
-    /// Frees `id`, whose session or handshake went, and its count.
+    /// Frees `id`, whose packet session or handshake went, and its count.
     fn release(&mut self, id: ConnectionId) {
         let Some(ip) = self.holders.remove(&id) else {
             return;
@@ -237,7 +238,7 @@ impl ServerSide {
         self.pending.insert((from, id), pending);
     }
 
-    /// A random connection ID no live session or pending handshake holds.
+    /// A random connection ID no live packet session or pending handshake holds.
     fn connection_id(&mut self) -> ConnectionId {
         loop {
             let id = ConnectionId::from_random(self.random.array());
@@ -347,7 +348,8 @@ impl Establish for ServerSide {
                 if !pending.tls.is_handshaking()
                     && let Some(keys) = pending.one_rtt.take()
                 {
-                    // The session keeps the connection ID, and its count, from its handshake.
+                    // The packet session keeps the connection ID, and its count, from its
+                    // handshake.
                     let pending = self.take_pending(key).unwrap();
                     out.established.push(Established {
                         peer: pending.from,
@@ -390,9 +392,9 @@ impl Establish for ServerSide {
         self.timers.first().map(|&(at, _)| at)
     }
 
-    /// A session left: its ID and its address's count go.
+    /// A packet session left: its ID and its address's count go.
     fn ended(&mut self, route: Option<ConnectionId>) {
-        let route = route.expect("a server's session is routed by its connection ID");
+        let route = route.expect("a server's packet session is routed by its connection ID");
         self.release(route);
     }
 
@@ -407,9 +409,9 @@ impl ServerEstablish for ServerSide {
         self.accepting = accepting;
     }
 
-    /// Answers a session datagram whose connection ID no session holds with a stateless reset of
-    /// that ID's token, shorter than the datagram, which a datagram of `MIN_RESET_LEN` bytes or
-    /// less gets none of.
+    /// Answers a packet session datagram whose connection ID no packet session holds with a
+    /// stateless reset of that ID's token, shorter than the datagram, which a datagram of
+    /// `MIN_RESET_LEN` bytes or less gets none of.
     fn unknown(&mut self, _now: Instant, datagram: &Datagram, out: &mut Establishing) {
         let Datagram { from, payload } = datagram;
         let datagram: &[u8] = payload;

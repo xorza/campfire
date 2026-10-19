@@ -7,7 +7,7 @@ use crate::side::Side;
 use crate::wire_clock::WireClock;
 use bevy_platform::time::Instant as OsInstant;
 use bytes::Bytes;
-use campfire_net_core::Direction;
+use campfire_net_core::LinkDirection;
 use core::net::IpAddr;
 use core::net::Ipv4Addr;
 use core::net::SocketAddr;
@@ -17,8 +17,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 
-/// A simulated network shared by the apps of one process: it makes [`EmulatedIo`] links and
-/// schedules every delivery on its own wire clock.
+/// An emulated network shared by the apps of one process: it makes [`EmulatedIo`] links and
+/// schedules every delivery on its own wire clock (13-net-stack/testing.md, The emulated network is
+/// the in-process IO, in `net-emulator`).
 ///
 /// Clones share one network, so each app's `EmulatedIo` end and the harness that drives the wire
 /// time hold the same state.
@@ -37,7 +38,7 @@ struct EmulatedNetworkState {
 
 #[derive(Debug)]
 struct EmulatedLink {
-    /// Indexed by [`Direction::index`].
+    /// Indexed by [`LinkDirection::index`].
     directions: [EmulatedDirection; 2],
     /// Woken as a packet goes on the wire to each end, for an IO thread that waits for it.
     /// Indexed by [`Side::index`].
@@ -65,11 +66,11 @@ impl EmulatedNetwork {
             directions: [
                 EmulatedDirection::new(
                     models.client_to_server,
-                    models.seeds[Direction::ClientToServer.index()],
+                    models.seeds[LinkDirection::ClientToServer.index()],
                 ),
                 EmulatedDirection::new(
                     models.server_to_client,
-                    models.seeds[Direction::ServerToClient.index()],
+                    models.seeds[LinkDirection::ServerToClient.index()],
                 ),
             ],
             wakers: [None, None],
@@ -100,12 +101,12 @@ impl EmulatedNetwork {
     }
 
     /// From `phase.start`, `direction` of `link` follows `phase`, until a later phase.
-    pub fn add_phase(&self, link: EmulatedLinkId, direction: Direction, phase: Phase) {
+    pub fn add_phase(&self, link: EmulatedLinkId, direction: LinkDirection, phase: Phase) {
         self.lock().links[link.0].directions[direction.index()].add_phase(phase);
     }
 
     /// What `direction` of `link` did with its packets so far.
-    pub fn counts(&self, link: EmulatedLinkId, direction: Direction) -> DirectionCounts {
+    pub fn counts(&self, link: EmulatedLinkId, direction: LinkDirection) -> DirectionCounts {
         self.lock().links[link.0].directions[direction.index()].counts
     }
 
@@ -184,7 +185,7 @@ impl EmulatedNetwork {
     fn lock(&self) -> MutexGuard<'_, EmulatedNetworkState> {
         self.inner
             .lock()
-            .expect("no simulated network user panicked")
+            .expect("no emulated network user panicked")
     }
 }
 
@@ -236,9 +237,9 @@ impl EmulatedIo {
     }
 
     /// The address of the link's client end, its own for each link.
-    pub fn client_addr(&self) -> SocketAddr {
+    pub fn client_address(&self) -> SocketAddr {
         let port =
-            u16::try_from(self.link.0 + 1).expect("a simulated network has at most 65,535 links");
+            u16::try_from(self.link.0 + 1).expect("an emulated network has at most 65,535 links");
         SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)
     }
 
@@ -249,10 +250,10 @@ impl EmulatedIo {
 
     /// The address of this end's peer: the server's for a client end, the client end's own for a
     /// server end.
-    pub fn peer_addr(&self) -> SocketAddr {
+    pub fn remote_address(&self) -> SocketAddr {
         match self.side {
             Side::Client => Self::SERVER_ADDR,
-            Side::Server => self.client_addr(),
+            Side::Server => self.client_address(),
         }
     }
 

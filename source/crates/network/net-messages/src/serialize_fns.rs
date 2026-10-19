@@ -24,71 +24,69 @@ pub(crate) struct ErasedSerializeFns {
 /// The four fns of one type that [`ErasedSerializeFns`] erases.
 #[derive(Debug)]
 struct TypedSerializeFns<M> {
-    serialize: ContextSerializeFns<M>,
-    deserialize: ContextDeserializeFns<M>,
+    serialize: CxSerializeFns<M>,
+    deserialize: CxDeserializeFns<M>,
 }
 
 /// The fns that serialize a type: its own, and the one that runs it with the link's entity map.
-pub(crate) struct ContextSerializeFns<M> {
+pub(crate) struct CxSerializeFns<M> {
     serialize: SerializeFn<M>,
-    context_serialize: ContextSerializeFn<M>,
+    cx_serialize: CxSerializeFn<M>,
 }
 
 // Manual impls: a derive would bound `M`, which only appears in fn pointer types.
-impl<M> Clone for ContextSerializeFns<M> {
+impl<M> Clone for CxSerializeFns<M> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<M> Copy for ContextSerializeFns<M> {}
+impl<M> Copy for CxSerializeFns<M> {}
 
-impl<M> core::fmt::Debug for ContextSerializeFns<M> {
+impl<M> core::fmt::Debug for CxSerializeFns<M> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ContextSerializeFns")
-            .finish_non_exhaustive()
+        f.debug_struct("CxSerializeFns").finish_non_exhaustive()
     }
 }
 
-impl<M> ContextSerializeFns<M> {
+impl<M> CxSerializeFns<M> {
     /// `serialize`, with no entity to map.
     pub(crate) fn new(serialize: SerializeFn<M>) -> Self {
         Self {
             serialize,
-            context_serialize: default_context_serialize::<M>,
+            cx_serialize: default_cx_serialize::<M>,
         }
     }
 }
 
 /// The fns that deserialize a type: its own, and the one that runs it with the link's entity
 /// map.
-pub(crate) struct ContextDeserializeFns<M> {
+pub(crate) struct CxDeserializeFns<M> {
     deserialize: DeserializeFn<M>,
-    context_deserialize: ContextDeserializeFn<M>,
+    cx_deserialize: CxDeserializeFn<M>,
 }
 
 // Manual impls: a derive would bound `M`, which only appears in fn pointer types.
-impl<M> Clone for ContextDeserializeFns<M> {
+impl<M> Clone for CxDeserializeFns<M> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<M> Copy for ContextDeserializeFns<M> {}
+impl<M> Copy for CxDeserializeFns<M> {}
 
-impl<M> core::fmt::Debug for ContextDeserializeFns<M> {
+impl<M> core::fmt::Debug for CxDeserializeFns<M> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ContextDeserializeFns")
-            .finish_non_exhaustive()
+        f.debug_struct("CxDeserializeFns").finish_non_exhaustive()
     }
 }
 
-impl<M> ContextDeserializeFns<M> {
+impl<M> CxDeserializeFns<M> {
     /// `deserialize`, with no entity to map.
     pub(crate) fn new(deserialize: DeserializeFn<M>) -> Self {
         Self {
             deserialize,
-            context_deserialize: default_context_deserialize::<M>,
+            cx_deserialize: default_cx_deserialize::<M>,
         }
     }
 }
@@ -131,20 +129,20 @@ pub(crate) type DeserializeFn<M> = fn(reader: &mut Reader) -> Result<M, MessageE
 ///
 /// The map is a concrete [`SendMapView`] chaining an optional shared map
 /// (e.g. replicon's, on client connections) over the connection-local map.
-pub(crate) type ContextSerializeFn<M> =
+pub(crate) type CxSerializeFn<M> =
     for<'a> fn(&'a SendMapView<'a>, message: &M, writer: &mut Writer, SerializeFn<M>);
 
 /// Type of the deserialize function with entity mapping.
 ///
 /// The map is a concrete [`ReceiveMapView`] chaining an optional shared map
 /// (e.g. replicon's, on client connections) over the connection-local map.
-pub(crate) type ContextDeserializeFn<M> = for<'a> fn(
+pub(crate) type CxDeserializeFn<M> = for<'a> fn(
     &'a ReceiveMapView<'a>,
     reader: &mut Reader,
     DeserializeFn<M>,
 ) -> Result<M, MessageError>;
 
-fn default_context_serialize<M>(
+fn default_cx_serialize<M>(
     _: &SendMapView<'_>,
     message: &M,
     writer: &mut Writer,
@@ -153,7 +151,7 @@ fn default_context_serialize<M>(
     serialize_fn(message, writer);
 }
 
-fn default_context_deserialize<M>(
+fn default_cx_deserialize<M>(
     _: &ReceiveMapView<'_>,
     reader: &mut Reader,
     deserialize_fn: DeserializeFn<M>,
@@ -190,8 +188,8 @@ fn default_deserialize<M: Serialize + DeserializeOwned>(
 
 impl ErasedSerializeFns {
     pub(crate) fn new<M: 'static>(
-        serialize: ContextSerializeFns<M>,
-        deserialize: ContextDeserializeFns<M>,
+        serialize: CxSerializeFns<M>,
+        deserialize: CxDeserializeFns<M>,
     ) -> Self {
         Self {
             fns: Arc::new(TypedSerializeFns {
@@ -212,18 +210,18 @@ impl ErasedSerializeFns {
     /// Runs the context fns `serialize` and `deserialize` from now on, which map entities.
     pub(crate) fn map_entities<M: 'static>(
         &mut self,
-        serialize: ContextSerializeFn<M>,
-        deserialize: ContextDeserializeFn<M>,
+        serialize: CxSerializeFn<M>,
+        deserialize: CxDeserializeFn<M>,
     ) {
         let typed = self.typed::<M>();
         let fns = TypedSerializeFns {
-            serialize: ContextSerializeFns {
+            serialize: CxSerializeFns {
                 serialize: typed.serialize.serialize,
-                context_serialize: serialize,
+                cx_serialize: serialize,
             },
-            deserialize: ContextDeserializeFns {
+            deserialize: CxDeserializeFns {
                 deserialize: typed.deserialize.deserialize,
-                context_deserialize: deserialize,
+                cx_deserialize: deserialize,
             },
         };
         self.fns = Arc::new(fns);
@@ -239,7 +237,7 @@ impl ErasedSerializeFns {
         context: &SendMapView<'_>,
     ) {
         let fns = self.typed::<M>().serialize;
-        (fns.context_serialize)(context, message, writer, fns.serialize);
+        (fns.cx_serialize)(context, message, writer, fns.serialize);
     }
 
     /// Deserialize the message value from the reader
@@ -249,7 +247,7 @@ impl ErasedSerializeFns {
         context: &ReceiveMapView<'_>,
     ) -> Result<M, MessageError> {
         let fns = self.typed::<M>().deserialize;
-        (fns.context_deserialize)(context, reader, fns.deserialize)
+        (fns.cx_deserialize)(context, reader, fns.deserialize)
     }
 }
 

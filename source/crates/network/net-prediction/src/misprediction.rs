@@ -25,7 +25,7 @@ pub(crate) type CheckTarget = (
 
 /// Whether the confirmed and the predicted state of `C` differ, as `mismatch` compares
 /// two present values.
-pub(crate) fn rollback_needed<C: HistoryComponent>(
+pub(crate) fn needs_rollback<C: HistoryComponent>(
     mismatch: MismatchFn<C>,
     confirmed: Option<&C>,
     predicted: Option<&C>,

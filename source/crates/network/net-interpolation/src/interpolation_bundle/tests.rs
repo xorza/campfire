@@ -67,9 +67,9 @@ fn sample_pair(
     })
 }
 
-/// Checks shared bundle brackets across mismatched, unchanged, removed, and open histories.
+/// Shared bundle brackets across mismatched, unchanged, removed, and open histories.
 #[test]
-fn shared_present_history_bracket_cases() {
+fn a_bundle_brackets_each_shape_of_its_histories() {
     let cases = [
         Case {
             name: "different immediate start and end ticks",

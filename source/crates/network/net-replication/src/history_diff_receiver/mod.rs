@@ -105,7 +105,8 @@ impl<Diff> PendingDiffMessage<Diff> {
 ///   moved to the prune tick so the base can be fetched from `ConfirmedHistory`.
 ///
 /// Lifecycle:
-/// 1. The prediction/interpolation `write_fn` receives a [`ComponentDelta`](bevy_replicon::shared::replication::diff::ComponentDelta).
+/// 1. The prediction/interpolation `write_fn` receives a
+///    [`ComponentDelta`](bevy_replicon::shared::replication::diff::ComponentDelta).
 /// 2. Snapshots are written directly into [`ConfirmedHistory`] and their cursor
 ///    is recorded with [`Self::record_cursor`].
 /// 3. Diff messages are added with [`Self::queue_diffs`]. They may be
@@ -125,7 +126,7 @@ pub struct HistoryDiffReceiver<C: RepliconDiffable> {
     /// stores each cursor's state.
     ///
     /// [`ConfirmedHistory`] can provide the effective authoritative state at a completed
-    /// checkpoint, but it does not associate that state with a diff cursor. These mappings are
+    /// confirmed tick, but it does not associate that state with a diff cursor. These mappings are
     /// retained so a pending diff index can locate the history value for its specific base cursor.
     ///
     /// Entries are appended when their cursor is materialized and existing cursor ticks can be
@@ -228,7 +229,7 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
         }
     }
 
-    /// Returns the confirmed tick corresponding to `cursor`.
+    /// The confirmed tick corresponding to `cursor`.
     pub fn tick_for_cursor(&self, cursor: Option<DiffIndex>) -> Option<NetTick> {
         if cursor == self.base_cursor {
             return self.base_tick;
@@ -239,7 +240,7 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
             .find_map(|(known_cursor, tick)| (*known_cursor == cursor).then_some(*tick))
     }
 
-    /// Returns the newest retained cursor recorded at or before `tick`.
+    /// The newest retained cursor recorded at or before `tick`.
     fn cursor_at_or_before(&self, tick: NetTick) -> Option<Ticked<Option<DiffIndex>>> {
         self.base_tick
             .map(|base_tick| Ticked::new(base_tick, self.base_cursor))
@@ -294,12 +295,12 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
         !self.pending.is_empty()
     }
 
-    /// Returns the earliest unresolved diff tick that is not newer than `limit`.
+    /// The earliest unresolved diff tick that is not newer than `limit`.
     ///
-    /// A pending diff at `P` makes the effective authoritative state unknown at every tick from
-    /// `P` onward. A rollback checkpoint `C >= P` is therefore unusable until the pending range is
+    /// A pending diff at `P` makes the effective authoritative state unknown at every tick from `P`
+    /// onward. A rollback confirmed tick `C >= P` is therefore unusable until the pending range is
     /// materialized or superseded. [`Self::record_cursor`] removes superseded ranges, so every
-    /// entry considered here still constrains checkpoint selection.
+    /// entry considered here still constrains confirmed tick selection.
     pub fn earliest_pending_tick_at_or_before(&self, limit: NetTick) -> Option<NetTick> {
         self.pending
             .iter()
@@ -312,10 +313,10 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
     /// materialized in confirmed history.
     ///
     /// While this is true, the effective authoritative value at `tick` is not known yet. A
-    /// completed checkpoint must therefore not add a `SameAsPrecedent` history entry at `tick`:
+    /// completed confirmed tick must therefore not add a `SameAsPrecedent` history entry at `tick`:
     /// that marker would resolve past the missing diff to an older, potentially incorrect value.
     /// Pending ranges superseded by a later materialized cursor are removed by
-    /// [`Self::record_cursor`], so they do not keep later checkpoints unresolved.
+    /// [`Self::record_cursor`], so they do not keep later confirmed ticks unresolved.
     pub fn has_pending_diff_at_or_before(&self, tick: NetTick) -> bool {
         self.earliest_pending_tick_at_or_before(tick).is_some()
     }
@@ -434,12 +435,13 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
             .is_some_and(|base_cursor| cursor == base_cursor || !cursor.is_newer(base_cursor))
     }
 
-    /// Keep diff cursor history aligned with the oldest value retained in [`ConfirmedHistory`].
+    /// Keep diff cursor history aligned with the oldest value retained in [`ConfirmedHistory`]
+    /// (13-net-stack/replication.md, Each frame prunes every diff receiver to its history's front).
     ///
-    /// Prediction and interpolation own their value-retention policies. This system, the receiver's
-    /// one pruner, runs afterwards and promotes the matching cursor to the receiver's retained base.
-    /// Pending diffs keep both their cursor state and historical base until they materialize, are
-    /// superseded, or fall behind the kept history.
+    /// Prediction and interpolation hold their value-retention policies. This system, the
+    /// receiver's one pruner, runs afterwards and promotes the matching cursor to the receiver's
+    /// retained base. Pending diffs keep both their cursor state and historical base until they
+    /// materialize, are superseded, or fall behind the kept history.
     pub(crate) fn prune(
         storage: Option<ResMut<'_, ReplicationStorage>>,
         query: Query<'_, '_, (Entity, &ConfirmedHistory<C>)>,

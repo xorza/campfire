@@ -5,7 +5,7 @@
 use campfire_measure::Kind;
 use campfire_measure::Scale;
 use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperConfig;
+use campfire_net_stepper::StepperSetup;
 use campfire_net_transport::internals::Channel1;
 use criterion::{BatchSize, BenchmarkId, Criterion};
 
@@ -28,7 +28,7 @@ fn send_receive(criterion: &mut Criterion) {
             |bencher| {
                 bencher.iter_batched_ref(
                     || {
-                        let stepper = Stepper::new(MessagesStack, StepperConfig::single());
+                        let stepper = Stepper::new(MessagesStack, StepperSetup::single());
                         let batch = vec![StringMessage("a".to_owned()); messages];
                         (stepper, batch)
                     },

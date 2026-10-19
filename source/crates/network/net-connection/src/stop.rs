@@ -1,7 +1,7 @@
 use bevy_ecs::prelude::*;
 use campfire_net_payload::AppCode;
 
-/// Trigger to stop the server
+/// Stops a server.
 #[derive(Debug, EntityEvent)]
 pub struct Stop {
     pub entity: Entity,

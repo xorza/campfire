@@ -8,7 +8,8 @@ use campfire_net_bytes::WriteInteger;
 use campfire_net_bytes::{ReadInteger, Reader};
 use serde::{Deserialize, Serialize};
 
-/// Monotonically increasing simulation tick shared by the server and clients.
+/// Monotonically increasing simulation tick shared by the server and clients (13-net-stack/time.md,
+/// The tick family saturates).
 ///
 /// Unlike packet and message sequence IDs, ticks are numerically ordered and do not wrap. At
 /// 60 Hz, exhausting the `u32` range takes more than two years of continuous runtime. Arithmetic
@@ -85,7 +86,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tick_uses_numeric_ordering_and_saturating_arithmetic() {
+    fn a_tick_orders_by_its_number_and_saturates() {
         assert!(NetTick(u32::MAX) > NetTick(0));
         assert_eq!(NetTick(0) - 1, NetTick(0));
         assert_eq!(NetTick(u32::MAX) + 1, NetTick(u32::MAX));

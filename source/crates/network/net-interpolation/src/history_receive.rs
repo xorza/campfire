@@ -10,7 +10,7 @@ use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
 use bevy_replicon::shared::replication::registry::ctx::{RemoveCtx, WriteCtx};
 use bevy_replicon::shared::replication::registry::receive_fns::WriteFn;
 use bytes::Bytes;
-use campfire_net_replication::ComponentKind;
+use campfire_net_replication::ComponentTypeId;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::Interpolated;
 use campfire_net_replication::InterpolatedSend;
@@ -19,7 +19,7 @@ use tracing::debug;
 
 /// The components whose receive fns are set under the interpolation markers.
 #[derive(Resource, Debug, Default)]
-pub(crate) struct InterpolatedMarkerFns(pub(crate) Vec<ComponentKind>);
+pub(crate) struct InterpolatedMarkerFns(pub(crate) Vec<ComponentTypeId>);
 
 pub(crate) fn register_marker_fns<C: HistoryComponent>(app: &mut App) {
     register_interpolated_marker_fns::<C>(app, write_history::<C>);
@@ -31,14 +31,14 @@ pub(crate) fn register_diff_marker_fns<C: HistoryComponent + RepliconDiffable>(a
 
 /// Sets `C`'s receive fns under the interpolation markers, once.
 fn register_interpolated_marker_fns<C: HistoryComponent>(app: &mut App, write: WriteFn<C>) {
-    let kind = ComponentKind::of::<C>();
+    let type_id = ComponentTypeId::of::<C>();
     let mut registered = app
         .world_mut()
         .get_resource_or_init::<InterpolatedMarkerFns>();
-    if registered.0.contains(&kind) {
+    if registered.0.contains(&type_id) {
         return;
     }
-    registered.0.push(kind);
+    registered.0.push(type_id);
     app.set_marker_fns::<Interpolated, C>(write, remove_history::<C>);
     app.set_marker_fns::<InterpolatedSend, C>(write, remove_history::<C>);
 }
@@ -54,7 +54,7 @@ fn write_history<C: HistoryComponent>(
     let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
         debug!(
             message_tick = ?ctx.message_tick,
-            "dropping an interpolated value that no checkpoint maps"
+            "dropping an interpolated value that no confirmed tick maps"
         );
         return Ok(());
     };
@@ -88,7 +88,7 @@ pub(crate) fn remove_history<C: HistoryComponent>(
     let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
         debug!(
             message_tick = ?ctx.message_tick,
-            "dropping an interpolated removal that no checkpoint maps"
+            "dropping an interpolated removal that no confirmed tick maps"
         );
         return;
     };

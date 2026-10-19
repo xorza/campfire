@@ -1,18 +1,16 @@
-use crate::endpoint_side::EndpointSide;
+use crate::endpoint_user::EndpointUser;
+use crate::link_messages::LinkMessages;
+use crate::link_messages::{EndpointList, ListedEndpoint};
 use crate::message::Message;
 use crate::message_error::MessageError;
-use crate::message_kind::MessageKind;
-use crate::message_manager::Endpoint;
-use crate::message_manager::MessageManager;
-use crate::message_receive_context::MessageReceiveContext;
-use crate::message_receive_context::ReceivedMessageHeader;
+use crate::message_receive_cx::MessageReceiveCx;
+use crate::message_receive_cx::ReceivedMessageHeader;
+use crate::message_type_id::MessageTypeId;
 use crate::received_message::ReceivedMessage;
 use bevy_ecs::change_detection::Mut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::system::ParallelCommands;
-use bevy_ecs::world::DeferredWorld;
 use bevy_ecs::world::FilteredEntityMut;
 use bevy_ecs::world::World;
 use bevy_utils::prelude::DebugName;
@@ -21,15 +19,11 @@ use core::ops::DerefMut;
 use tracing::trace;
 use tracing::warn;
 
-/// A component that receives messages of type `M` from the network.
-///
-/// Messages received from the network are stored in this receiver's ready
-/// buffer. Call [`receive`](Self::receive) to drain and process them.
-///
-/// The messages will be cleared every frame in the `Last` schedule.
+/// The messages of type `M` a link received this frame, which [`receive`](Self::receive) drains
+/// and `Last` clears.
 #[derive(Debug, Component)]
-#[require(MessageManager)]
-#[component(on_add = MessageReceiver::<M>::on_add_hook, on_remove = MessageReceiver::<M>::on_remove_hook)]
+#[require(LinkMessages)]
+#[component(on_add = LinkMessages::list::<MessageReceiver<M>>, on_remove = LinkMessages::unlist::<MessageReceiver<M>>)]
 pub struct MessageReceiver<M: Message> {
     ready: Vec<ReceivedMessage<M>>,
 }
@@ -93,47 +87,33 @@ impl<M: Message> MessageReceiver<M> {
         self.ready_mut().retain_mut(|received| {
             let header = ReceivedMessageHeader {
                 remote_tick: received.remote_tick,
-                channel_kind: received.channel_kind,
+                channel_type_id: received.channel_type_id,
                 message_id: received.message_id,
             };
             keep(header, &mut received.data)
         });
     }
 
-    pub const fn num_messages(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.ready().len()
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.ready().is_empty()
     }
 
     pub(crate) fn push_received(&mut self, message: ReceivedMessage<M>) {
         self.ready.push(message);
     }
-
-    fn on_add_hook(world: DeferredWorld<'_>, context: HookContext) {
-        MessageManager::on_endpoint_add(
-            world,
-            context,
-            Endpoint::Receive(EndpointSide::Link),
-            MessageKind::of::<M>(),
-        );
-    }
-
-    fn on_remove_hook(world: DeferredWorld<'_>, context: HookContext) {
-        MessageManager::on_endpoint_remove(
-            world,
-            context,
-            Endpoint::Receive(EndpointSide::Link),
-            MessageKind::of::<M>(),
-        );
-    }
 }
 
 impl<M: Message> MessageReceiver<M> {
-    /// Pushes `message` into the receiver of `side`, which goes on the entity first if it is not
+    /// Pushes `message` into the receiver of `user`, which goes on the entity first if it is not
     /// there yet.
     fn queue_received(
         commands: &ParallelCommands<'_, '_>,
         entity: Entity,
-        side: EndpointSide,
+        user: EndpointUser,
         message: ReceivedMessage<M>,
     ) {
         commands.command_scope(|mut commands| {
@@ -141,13 +121,13 @@ impl<M: Message> MessageReceiver<M> {
                 let Ok(mut entity_mut) = world.get_entity_mut(entity) else {
                     return;
                 };
-                match side {
-                    EndpointSide::Link => entity_mut
+                match user {
+                    EndpointUser::Link => entity_mut
                         .entry::<Self>()
                         .or_default()
                         .get_mut()
                         .push_received(message),
-                    EndpointSide::HostClient => entity_mut
+                    EndpointUser::HostClient => entity_mut
                         .entry::<HostMessageReceiver<M>>()
                         .or_default()
                         .get_mut()
@@ -157,57 +137,57 @@ impl<M: Message> MessageReceiver<M> {
         });
     }
 
-    /// The receiver of `side` among `receivers`.
-    fn of_side<'a>(
+    /// The receiver of `user` among `receivers`.
+    fn of_user<'a>(
         receivers: &'a mut FilteredEntityMut<'_, '_>,
-        side: EndpointSide,
+        user: EndpointUser,
     ) -> Option<Mut<'a, Self>> {
-        match side {
-            EndpointSide::Link => receivers.get_mut::<Self>(),
-            EndpointSide::HostClient => receivers
+        match user {
+            EndpointUser::Link => receivers.get_mut::<Self>(),
+            EndpointUser::HostClient => receivers
                 .get_mut::<HostMessageReceiver<M>>()
                 .map(|receiver| receiver.map_unchanged(|receiver| &mut **receiver)),
         }
     }
 
-    /// Receive a single message of type `M` from the channel, into its side's receiver among
+    /// Receive a single message of type `M` from the channel, into its user's receiver among
     /// `receivers`, or into one that goes on with the commands when absent.
     pub(crate) fn receive_message_typed(
         receivers: &mut FilteredEntityMut<'_, '_>,
-        context: MessageReceiveContext<'_, '_, '_>,
+        cx: MessageReceiveCx<'_, '_, '_>,
     ) -> Result<(), MessageError> {
-        let MessageReceiveContext {
+        let MessageReceiveCx {
             commands,
             link: entity,
-            side,
+            user,
             reader,
             header:
                 ReceivedMessageHeader {
                     remote_tick,
-                    channel_kind,
+                    channel_type_id,
                     message_id,
                 },
             channel_name,
             serialize_fns,
             entity_map,
             ..
-        } = context;
-        let receiver = Self::of_side(receivers, side);
+        } = cx;
+        let receiver = Self::of_user(receivers, user);
         let insert_receiver = receiver.is_none();
         let data = serialize_fns.deserialize::<M>(reader, entity_map)?;
         let message = ReceivedMessage {
             data,
             remote_tick,
-            channel_kind,
+            channel_type_id,
             message_id,
         };
         if let Some(mut receiver) = receiver {
             receiver.push_received(message);
         } else {
-            Self::queue_received(commands, entity, side, message);
+            Self::queue_received(commands, entity, user, message);
         }
         trace!(
-            "Received message {:?} on channel {channel_kind:?}",
+            "Received message {:?} on channel {channel_type_id:?}",
             DebugName::type_name::<M>()
         );
         trace!(
@@ -225,10 +205,10 @@ impl<M: Message> MessageReceiver<M> {
         Ok(())
     }
 
-    /// Clears `side`'s receiver among `receivers`, which the link lists.
-    pub(crate) fn clear_typed(receivers: &mut FilteredEntityMut<'_, '_>, side: EndpointSide) {
+    /// Clears `user`'s receiver among `receivers`, which the link lists.
+    pub(crate) fn clear_typed(receivers: &mut FilteredEntityMut<'_, '_>, user: EndpointUser) {
         let mut receiver =
-            Self::of_side(receivers, side).expect("a link holds each receiver it lists");
+            Self::of_user(receivers, user).expect("a link holds each receiver it lists");
         if receiver.has_messages() {
             warn!(
                 "Unhandled messages {:?}. Clearing to avoid accumulating messages...",
@@ -245,8 +225,8 @@ impl<M: Message> MessageReceiver<M> {
 /// host client sends its server, so the host client's systems read this one. It has the API of
 /// [`MessageReceiver<M>`].
 #[derive(Debug, Component)]
-#[require(MessageManager)]
-#[component(on_add = HostMessageReceiver::<M>::on_add_hook, on_remove = HostMessageReceiver::<M>::on_remove_hook)]
+#[require(LinkMessages)]
+#[component(on_add = LinkMessages::list::<HostMessageReceiver<M>>, on_remove = LinkMessages::unlist::<HostMessageReceiver<M>>)]
 pub struct HostMessageReceiver<M: Message>(MessageReceiver<M>);
 
 impl<M: Message> Default for HostMessageReceiver<M> {
@@ -269,23 +249,21 @@ impl<M: Message> DerefMut for HostMessageReceiver<M> {
     }
 }
 
-impl<M: Message> HostMessageReceiver<M> {
-    fn on_add_hook(world: DeferredWorld<'_>, context: HookContext) {
-        MessageManager::on_endpoint_add(
-            world,
-            context,
-            Endpoint::Receive(EndpointSide::HostClient),
-            MessageKind::of::<M>(),
-        );
-    }
+impl<M: Message> HostMessageReceiver<M> {}
 
-    fn on_remove_hook(world: DeferredWorld<'_>, context: HookContext) {
-        MessageManager::on_endpoint_remove(
-            world,
-            context,
-            Endpoint::Receive(EndpointSide::HostClient),
-            MessageKind::of::<M>(),
-        );
+impl<M: Message> ListedEndpoint for MessageReceiver<M> {
+    const LIST: EndpointList = EndpointList::Receive(EndpointUser::Link);
+
+    fn message_type_id() -> MessageTypeId {
+        MessageTypeId::of::<M>()
+    }
+}
+
+impl<M: Message> ListedEndpoint for HostMessageReceiver<M> {
+    const LIST: EndpointList = EndpointList::Receive(EndpointUser::HostClient);
+
+    fn message_type_id() -> MessageTypeId {
+        MessageTypeId::of::<M>()
     }
 }
 

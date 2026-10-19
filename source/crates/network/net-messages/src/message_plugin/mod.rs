@@ -1,8 +1,8 @@
-use crate::endpoint_side::EndpointSide;
+use crate::endpoint_user::EndpointUser;
+use crate::link_messages::LinkMessages;
 use crate::message_error::MessageError;
-use crate::message_manager::MessageManager;
-use crate::message_receive_context::MessageReceiveContext;
-use crate::message_receive_context::ReceivedMessageHeader;
+use crate::message_receive_cx::MessageReceiveCx;
+use crate::message_receive_cx::ReceivedMessageHeader;
 use crate::message_registry::MessageModeFns;
 use crate::message_registry::MessageRegistry;
 use crate::message_systems::MessageSystems;
@@ -34,8 +34,8 @@ use bevy_ecs::world::World;
 use bytes::Bytes;
 use campfire_net_bytes::Reader;
 use campfire_net_bytes::ToBytes;
-use campfire_net_channels::ChannelKind;
 use campfire_net_channels::ChannelMessage;
+use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::MessageId;
 use campfire_net_connection::Client;
 use campfire_net_connection::ClientOf;
@@ -43,7 +43,7 @@ use campfire_net_connection::Connected;
 use campfire_net_connection::Disconnected;
 use campfire_net_connection::HostClient;
 use campfire_net_connection::RemoteId;
-use campfire_net_core::Direction;
+use campfire_net_core::LinkDirection;
 use campfire_net_core::NetId;
 use campfire_net_core::NetTick;
 use campfire_net_core::PeerId;
@@ -68,9 +68,9 @@ impl Plugin for MessagePlugin {
         app.init_resource::<MessageRegistry>();
         app.add_observer(Self::handle_disconnection);
 
-        app.register_required_components::<Client, MessageManager>();
+        app.register_required_components::<Client, LinkMessages>();
 
-        app.register_required_components::<ClientOf, MessageManager>();
+        app.register_required_components::<ClientOf, LinkMessages>();
     }
 
     // NOTE: this should only be called once all messages are registered, because we use the list of
@@ -153,11 +153,11 @@ impl Plugin for MessagePlugin {
 /// The link a pass of [`MessagePlugin::receive`] reads, and what every message on it shares.
 struct ReceiveLink<'a, 'w, 's> {
     entity: Entity,
-    /// The side of the entity whose receivers the messages land on.
-    side: EndpointSide,
+    /// The user of the entity whose receivers the messages land on.
+    user: EndpointUser,
     peer: PeerId,
     /// The direction every message on this link travels: toward a client or toward a server.
-    arriving: Direction,
+    arriving: LinkDirection,
     registry: &'a MessageRegistry,
     entity_map: &'a ReceiveMapView<'a>,
     commands: &'a ParallelCommands<'w, 's>,
@@ -167,7 +167,7 @@ impl core::fmt::Debug for ReceiveLink<'_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ReceiveLink")
             .field("entity", &self.entity)
-            .field("side", &self.side)
+            .field("user", &self.user)
             .field("peer", &self.peer)
             .field("arriving", &self.arriving)
             .finish_non_exhaustive()
@@ -178,7 +178,7 @@ impl core::fmt::Debug for ReceiveLink<'_, '_, '_> {
 #[derive(Debug)]
 struct ArrivedMessage {
     bytes: Bytes,
-    channel_kind: ChannelKind,
+    channel_type_id: ChannelTypeId,
     channel_name: &'static str,
     tick: NetTick,
     message_id: Option<MessageId>,
@@ -203,8 +203,8 @@ impl MessagePlugin {
             let Ok(mut entity_mut) = world.get_entity_mut(entity) else {
                 return;
             };
-            if let Some(mut manager) = entity_mut.get_mut::<MessageManager>() {
-                manager.entity_mapper.clear();
+            if let Some(mut link_messages) = entity_mut.get_mut::<LinkMessages>() {
+                link_messages.entity_mapper.clear();
             }
             entity_mut.remove_by_ids(&receive_component_ids);
         });
@@ -218,7 +218,7 @@ impl MessagePlugin {
     ) -> Result<(), MessageError> {
         let ReceiveLink {
             entity,
-            side,
+            user,
             peer,
             arriving,
             registry,
@@ -227,13 +227,13 @@ impl MessagePlugin {
         } = *link;
         let ArrivedMessage {
             bytes,
-            channel_kind,
+            channel_type_id,
             channel_name,
             tick,
             message_id,
         } = message;
         trace!(
-            "Received message (id:{message_id:?}) from peer {:?} on channel {channel_kind:?}. {entity:?}",
+            "Received message (id:{message_id:?}) from peer {:?} on channel {channel_type_id:?}. {entity:?}",
             peer
         );
         let mut reader = Reader::from(bytes);
@@ -258,15 +258,15 @@ impl MessagePlugin {
         if !registered.travels(arriving) {
             return Err(MessageError::WrongDirection(net_id));
         }
-        let context = MessageReceiveContext {
+        let cx = MessageReceiveCx {
             commands,
             link: entity,
-            side,
+            user,
             peer,
             reader: &mut reader,
             header: ReceivedMessageHeader {
                 remote_tick: tick,
-                channel_kind,
+                channel_type_id,
                 message_id,
             },
             channel_name,
@@ -274,10 +274,8 @@ impl MessagePlugin {
             entity_map,
         };
         match &registered.mode {
-            MessageModeFns::Message { receive, .. } => {
-                (receive.receive_message_fn)(receivers, context)
-            }
-            MessageModeFns::Event { receive, .. } => (receive.receive_event_fn)(context),
+            MessageModeFns::Message { receive, .. } => (receive.receive_message_fn)(receivers, cx),
+            MessageModeFns::Event { receive, .. } => (receive.receive_event_fn)(cx),
         }
     }
 
@@ -291,7 +289,7 @@ impl MessagePlugin {
             '_,
             (
                 Entity,
-                &MessageManager,
+                &LinkMessages,
                 &mut Transport,
                 &RemoteId,
                 Option<&mut HostClient>,
@@ -310,7 +308,7 @@ impl MessagePlugin {
         AdaptiveQueryIterMut::new(&mut links).for_each(
             |(
                 entity,
-                message_manager,
+                link_messages,
                 mut transport,
                 peer,
                 host_client,
@@ -320,16 +318,16 @@ impl MessagePlugin {
                 if let Some(mut host_client) = host_client {
                     // A host client shares its server's world, so its entities need no map.
                     for payload in host_client.buffer.drain(..) {
-                        let side = EndpointSide::receiving(payload.direction);
+                        let user = EndpointUser::receiving(payload.direction);
                         // What the server's link sends comes from the server, and what the host
                         // client sends from the host client.
-                        let from = match side {
-                            EndpointSide::HostClient => PeerId::Server,
-                            EndpointSide::Link => peer.0,
+                        let from = match user {
+                            EndpointUser::HostClient => PeerId::Server,
+                            EndpointUser::Link => peer.0,
                         };
                         let link = ReceiveLink {
                             entity,
-                            side,
+                            user,
                             peer: from,
                             arriving: payload.direction,
                             registry: &registry,
@@ -338,8 +336,8 @@ impl MessagePlugin {
                         };
                         let message = ArrivedMessage {
                             bytes: payload.bytes,
-                            channel_kind: channel_registry
-                                .kind(payload.channel)
+                            channel_type_id: channel_registry
+                                .type_id(payload.channel)
                                 .expect("a host client's message names a registered channel"),
                             channel_name: channel_registry.name(payload.channel),
                             tick: payload.tick,
@@ -355,7 +353,7 @@ impl MessagePlugin {
                     }
                     return;
                 }
-                let map = &message_manager.entity_mapper;
+                let map = &link_messages.entity_mapper;
                 let view = if is_client {
                     replicon.receive_view(map.remote_to_local())
                 } else {
@@ -363,19 +361,19 @@ impl MessagePlugin {
                 };
                 let link = ReceiveLink {
                     entity,
-                    side: EndpointSide::Link,
+                    user: EndpointUser::Link,
                     peer: peer.0,
                     arriving: if is_client {
-                        Direction::ServerToClient
+                        LinkDirection::ServerToClient
                     } else {
-                        Direction::ClientToServer
+                        LinkDirection::ClientToServer
                     },
                     registry: &registry,
                     entity_map: &view,
                     commands: &commands,
                 };
                 for channel_receiver in transport.channel_receivers_mut() {
-                    let channel_kind = channel_receiver.channel_kind();
+                    let channel_type_id = channel_receiver.channel_type_id();
                     let channel_name = channel_receiver.name();
                     while let Some(ChannelMessage {
                         tick,
@@ -385,7 +383,7 @@ impl MessagePlugin {
                     {
                         let message = ArrivedMessage {
                             bytes,
-                            channel_kind,
+                            channel_type_id,
                             channel_name,
                             tick,
                             message_id,
@@ -414,7 +412,7 @@ impl MessagePlugin {
             '_,
             '_,
             (
-                &MessageManager,
+                &LinkMessages,
                 // The link's receivers of every registered message.
                 FilteredEntityMut<'_, '_>,
             ),
@@ -422,13 +420,13 @@ impl MessagePlugin {
         >,
         registry: Res<'_, MessageRegistry>,
     ) {
-        for (manager, mut receivers) in &mut links {
-            for receiver in &manager.receivers {
+        for (link_messages, mut receivers) in &mut links {
+            for receiver in &link_messages.receivers {
                 let receive = registry
                     .message(receiver.net_id)
                     .receive_message()
                     .expect("only a message has a receiver");
-                (receive.message_clear_fn)(&mut receivers, receiver.side);
+                (receive.message_clear_fn)(&mut receivers, receiver.user);
             }
         }
     }
@@ -437,8 +435,8 @@ impl MessagePlugin {
     /// entity receives from.
     ///
     /// A link that is not connected when the frame sends, before it connects or after it
-    /// disconnects, sends nothing: its queues are dropped, so that they do not outlive a session
-    /// or grow while there is none.
+    /// disconnects, sends nothing: its queues are dropped, so that they do not outlive a packet
+    /// session or grow while there is none.
     pub(crate) fn send(
         timeline: Res<'_, LocalTimeline>,
         mut links: Query<
@@ -447,7 +445,7 @@ impl MessagePlugin {
             (
                 Entity,
                 &mut Transport,
-                &mut MessageManager,
+                &mut LinkMessages,
                 Has<Client>,
                 Has<Connected>,
                 Option<&mut HostClient>,
@@ -467,22 +465,22 @@ impl MessagePlugin {
             |(
                 entity,
                 mut transport,
-                mut message_manager,
+                mut link_messages,
                 is_client,
                 connected,
                 mut host_client,
                 mut endpoints,
             )| {
                 if !connected {
-                    Self::discard_unsent(&mut endpoints, entity, &message_manager, registry);
+                    Self::discard_unsent(&mut endpoints, entity, &link_messages, registry);
                     return;
                 }
-                let MessageManager {
+                let LinkMessages {
                     senders,
                     writer,
                     entity_mapper,
                     ..
-                } = &mut *message_manager;
+                } = &mut *link_messages;
                 // A host client shares its server's world, so its entities need no map.
                 let view = if is_client && host_client.is_none() {
                     replicon.send_view(entity_mapper.local_to_remote())
@@ -493,14 +491,14 @@ impl MessagePlugin {
                 // A sender that fails is skipped alone; the senders after it still send.
                 for sender in senders.iter() {
                     let registered = registry.message(sender.net_id);
-                    let fns = registered.send().side(sender.side);
+                    let fns = registered.send().of(sender.user);
                     // Only a host client sends from its own side.
-                    if host_client.is_none() && sender.side == EndpointSide::HostClient {
+                    if host_client.is_none() && sender.user == EndpointUser::HostClient {
                         let _ = (fns.discard_fn)(&mut endpoints);
                         continue;
                     }
-                    let direction = sender.side.sends(is_client && host_client.is_none());
-                    // A host client holds the senders of both its roles, so the side that does
+                    let direction = sender.user.sends(is_client && host_client.is_none());
+                    // A host client holds the senders of both its sides, so the side that does
                     // not send a message keeps an empty sender of it.
                     if !registered.travels(direction) {
                         let dropped = (fns.discard_fn)(&mut endpoints);
@@ -541,11 +539,11 @@ impl MessagePlugin {
     fn discard_unsent(
         endpoints: &mut FilteredEntityMut<'_, '_>,
         entity: Entity,
-        message_manager: &MessageManager,
+        link_messages: &LinkMessages,
         registry: &MessageRegistry,
     ) {
-        for sender in &message_manager.senders {
-            let fns = registry.message(sender.net_id).send().side(sender.side);
+        for sender in &link_messages.senders {
+            let fns = registry.message(sender.net_id).send().of(sender.user);
             let dropped = (fns.discard_fn)(endpoints);
             if dropped > 0 {
                 trace!(

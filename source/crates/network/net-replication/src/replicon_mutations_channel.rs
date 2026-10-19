@@ -1,5 +1,5 @@
 use campfire_net_channels::Channel;
-/// Marker type for replicon's ServerChannel::Mutations (Unreliable, ServerToClient)
+/// Replicon's `ServerChannel::Mutations`, unreliable, from the server.
 #[derive(Debug)]
 pub(crate) struct RepliconMutationsChannel;
 impl Channel for RepliconMutationsChannel {}

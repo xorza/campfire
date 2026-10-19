@@ -1,4 +1,4 @@
-//! The latency estimate of a link, from the RTT samples its session takes from each ACK.
+//! The latency estimate of a link, from the RTT samples its packet session takes from each ACK.
 
 use bevy_ecs::prelude::*;
 use campfire_net_connection::{Connected, HostClient};
@@ -8,18 +8,18 @@ use core::time::Duration;
 use tracing::trace;
 
 use crate::link_estimate::LinkEstimate;
-use crate::link_estimator_config::LinkEstimatorConfig;
+use crate::link_estimator_setup::LinkEstimatorSetup;
 use crate::rtt_estimator_ewma::RttEstimatorEwma;
 
-/// Filters the RTT samples of a link's session into the estimate that timeline sync reads.
+/// Filters the RTT samples of a link's packet session into the estimate that timeline sync reads.
 ///
-/// The session keeps its own estimate for its timers; this one keeps a stable input delay, so it
-/// takes one sample each [`LinkEstimatorConfig::sample_interval`] after the first
-/// [`LinkEstimatorConfig::handshake_samples`], however often the session acknowledges
-/// (13-net-stack/session.md, The RTT comes from the ACKs).
+/// The packet session keeps its own estimate for its timers; this one keeps a stable input delay,
+/// so it takes one sample each [`LinkEstimatorSetup::sample_interval`] after the first
+/// [`LinkEstimatorSetup::handshake_samples`], however often the packet session acknowledges
+/// (13-net-stack/packet-session.md, The RTT comes from the ACKs).
 #[derive(Debug, Component)]
 pub struct LinkEstimator {
-    config: LinkEstimatorConfig,
+    setup: LinkEstimatorSetup,
     /// The time since the last sample the estimate took, less the intervals it covered.
     since_sample: Duration,
     rtt_estimator_ewma: RttEstimatorEwma,
@@ -27,23 +27,23 @@ pub struct LinkEstimator {
 
 impl Default for LinkEstimator {
     fn default() -> Self {
-        Self::new(LinkEstimatorConfig::default())
+        Self::new(LinkEstimatorSetup::default())
     }
 }
 
 impl LinkEstimator {
-    pub fn new(config: LinkEstimatorConfig) -> Self {
+    pub fn new(setup: LinkEstimatorSetup) -> Self {
         Self {
-            config,
+            setup,
             since_sample: Duration::ZERO,
             rtt_estimator_ewma: RttEstimatorEwma::default(),
         }
     }
 
-    /// The estimate once it holds the samples [`LinkEstimatorConfig::handshake_samples`] asks
-    /// for.
+    /// The estimate once it holds the samples [`LinkEstimatorSetup::handshake_samples`] asks for
+    /// (13-net-stack/time.md, An unknown estimate is `None`).
     pub fn estimate(&self) -> Option<LinkEstimate> {
-        if self.samples() < u32::from(self.config.handshake_samples) {
+        if self.samples() < u32::from(self.setup.handshake_samples) {
             return None;
         }
         self.rtt_estimator_ewma.estimate()
@@ -54,7 +54,7 @@ impl LinkEstimator {
         self.rtt_estimator_ewma.samples()
     }
 
-    /// Keeps the config.
+    /// Keeps the setup.
     pub(crate) const fn reset(&mut self) {
         self.since_sample = Duration::ZERO;
         self.rtt_estimator_ewma.reset();
@@ -66,9 +66,9 @@ impl LinkEstimator {
     /// sample, not a burst.
     pub(crate) fn take(&mut self, delta: Duration, samples: &[Duration]) {
         self.since_sample += delta;
-        let interval = self.config.sample_interval;
+        let interval = self.setup.sample_interval;
         for &sample in samples {
-            let handshake = self.samples() < u32::from(self.config.handshake_samples);
+            let handshake = self.samples() < u32::from(self.setup.handshake_samples);
             if !handshake && self.since_sample < interval {
                 continue;
             }
@@ -96,14 +96,14 @@ impl LinkEstimator {
         }
     }
 
-    /// Takes each connected link's samples of the frame, which its session handed over.
+    /// Takes each connected link's samples of the frame, which its packet session handed over.
     pub(crate) fn sample(
         clock: Res<'_, Clock>,
         mut links: Query<'_, '_, (&Link, &mut Self), (With<Connected>, Without<HostClient>)>,
     ) {
         let delta = clock.delta();
         for (link, mut estimator) in &mut links {
-            estimator.take(delta, link.session.rtt_samples());
+            estimator.take(delta, link.packet_session.rtt_samples());
         }
     }
 
@@ -174,9 +174,9 @@ mod tests {
         estimator.take(Duration::from_secs(1), &[ms(50); 4]);
         assert_eq!(estimator.samples(), 4);
 
-        let mut every = LinkEstimator::new(LinkEstimatorConfig {
+        let mut every = LinkEstimator::new(LinkEstimatorSetup {
             sample_interval: Duration::ZERO,
-            ..LinkEstimatorConfig::default()
+            ..LinkEstimatorSetup::default()
         });
         every.take(ms(0), &[ms(50); 7]);
         assert_eq!(every.samples(), 7);
