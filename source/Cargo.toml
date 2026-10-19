@@ -74,6 +74,43 @@ default-members = [
     "crates/test/rules",
 ]
 
+# The driver's lanes and the workspace's own commands, which `cargo drive` runs (drive/src/main.rs).
+[workspace.metadata.drive]
+# Each bench case once, so a bench that no longer runs fails the gate (02-engine-core.md, The gate
+# runs each case once).
+gate-benches = true
+# Windows from Linux in a local gate, as CI lints Windows on Windows.
+cross-lint = { linux = ["x86_64-pc-windows-gnu"] }
+# The binaries a release ships (02-engine-core.md, A release keeps its debug info beside its
+# binaries).
+package = ["campfire-client", "campfire-server", "campfire-verifier", "campfire-import"]
+reads = [
+    # The workspace's rules read every crate's files, the design documents, and AGENTS.md's titles.
+    { member = "campfire-rules", paths = [".", "../docs/design", "../AGENTS.md"] },
+    # The script API's reference and the overview's decisions.
+    { member = "campfire-capabilities", paths = ["../docs/design"] },
+]
+
+# The one test that compares each workspace package with its `package.index` writes the index
+# again from the package's files, before the tests that load the packages: `package-disk` alone
+# reads the packages' directories, by the format `package` holds.
+[workspace.metadata.drive.commands.index]
+joins = "test"
+steps = [{ tests = "package(=campfire-package-disk) & test(=package_dir::tests::every_workspace_package_holds_the_index_of_its_files)", env = { CAMPFIRE_BLESS = "1" } }]
+
+# The LAN check, with the processes it starts built beside it as they ship, in one build of the
+# four, after the tests, whose build writes the server and the verifier there with every feature.
+[workspace.metadata.drive.commands.lan]
+joins = "gate"
+steps = [
+    { build = "build --bins -p campfire-lan-check -p campfire-server -p campfire-client -p campfire-verifier" },
+    { program = ["{target}/debug/campfire-lan-check{exe}", "{target}/drive/lan-check"] },
+]
+
+# The Zero Hour check, which needs `GENERALSZH_DATA`: its arguments are the check's own.
+[workspace.metadata.drive.commands.zero-hour]
+steps = [{ cargo = "run --profile release-dev -p campfire-zero-hour-check", args = true }]
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

@@ -23,9 +23,9 @@
 //! imported mode. It fails when `GENERALSZH_DATA` names no install, so a machine with no copy
 //! never passes as one that checked.
 //!
-//! Run it with `./drive.py zero-hour [--bless] [out]`, which builds it with the `release-dev`
-//! profile and writes to `~/zh-package` unless `out` names another directory; `--bless` writes
-//! the golden file again of what the run measured.
+//! Run it with `cargo drive run zero-hour [out]`, which builds it with the `release-dev` profile;
+//! it writes to `~/zh-package` unless `out` names another directory. `CAMPFIRE_BLESS=1` before
+//! it writes the golden file again of what the run measured.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -62,9 +62,13 @@ fn main() -> ExitCode {
         file: "info",
     }
     .start();
-    let out = match Logging::command_line::<CommandLine>(env::args_os()) {
-        Ok(line) => line.out,
+    let line = match Logging::command_line::<CommandLine>(env::args_os()) {
+        Ok(line) => line,
         Err(status) => return ExitCode::from(status),
+    };
+    let Some(out) = line.out_dir(env::home_dir()) else {
+        error!("no directory for the packages: the line names none, and there is no home");
+        return ExitCode::from(ExitStatus::Usage);
     };
     match run(&out) {
         Ok(failures) if failures.is_empty() => {

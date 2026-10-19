@@ -35,21 +35,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     steps:
+      # The driver, `source/drive`, is a submodule.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          submodules: true
       - uses: ./.github/actions/setup
       # Nextest runs each test in its own process, and ends one that runs past its bound in
       # source/.config/nextest.toml: libtest can end no test.
       - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
         with:
           tool: nextest@0.9.135
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.14"
-      # Every check CI runs is a step of the gate, the list a local `./drive.py gate` runs too.
+      # Every check CI runs is a step of the gate, the list a local `cargo drive gate` runs too;
+      # nextest's `ci` profile gives a slower runner's tests their longer bound.
       - name: Gate
-        run: python drive.py gate
+        run: cargo drive gate --ci
+        env:
+          NEXTEST_PROFILE: ci
       - name: Keep the LAN match
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

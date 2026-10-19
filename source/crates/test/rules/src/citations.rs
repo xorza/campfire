@@ -10,12 +10,7 @@ use crate::workspace::{source, sources};
 const DOC_LEN: usize = 1 << 20;
 
 /// The workspace's files outside `crates/` and `checks/` whose comments cite the design.
-const OTHER_FILES: [&str; 4] = [
-    "Cargo.toml",
-    "clippy.toml",
-    ".config/nextest.toml",
-    "drive.py",
-];
+const OTHER_FILES: [&str; 3] = ["Cargo.toml", "clippy.toml", ".config/nextest.toml"];
 
 /// `text` with each comment's lines joined, so a citation a comment wraps reads whole.
 fn joined(text: &str) -> String {

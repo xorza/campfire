@@ -8,7 +8,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
 - `docs/research/` — what the design is taken from: measurements and sources read, facts only.
 - `PLAN.md` — the one plan: every open step, in the order it is done, in batches of one commit each, and the foundations ([Workflow](#workflow)). It lists open items only.
 - `.notes/ISSUES.md` — the issue log: every open problem ([Issue log](#issue-log)).
-- `source/` — engine and game code, and `drive.py`, the driver of every check ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, the MOBA test content among them; `source/packages/<game>/` an imported game's rules package.
+- `source/` — engine and game code, and `drive/`, the driver of every check, a submodule ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, the MOBA test content among them; `source/packages/<game>/` an imported game's rules package.
 - `../GeneralsX/` — beside this repository, not in it: [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS: the reference for Zero Hour's formats and rules. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/12-zero-hour.md#decisions)).
 
 When code and design disagree, fix one of them, and state which one.
@@ -47,12 +47,12 @@ Work goes in vertical slices. A slice ends with something new that the user play
 1. **Decide** the slice: what the player does or sees at its end, in one or two sentences.
 2. **Investigate** the code it touches, and how established engines and games solve the problem and why.
 3. **Propose** its design in a document of its own under `docs/design/` ([Documents](#documents)), and its plan in `PLAN.md`, naming every system it changes, for review.
-4. **Implement** the plan as reviewed, step by step, each step ending with `./drive.py check` passing. The slice ends when the user plays it in the client and a scripted match keeps it working; its decisions then fold into the system documents.
+4. **Implement** the plan as reviewed, step by step, each step ending with `cargo drive check` and `cargo drive test` passing. The slice ends when the user plays it in the client and a scripted match keeps it working; its decisions then fold into the system documents.
 
 No changes to systems outside the plan along the way: a problem outside the slice, or depth it does not need, goes to the issue log.
 
-- **Batches.** A batch is one commit: the steps that change the same systems. It says what it touches and why it stands where it does, and ends with `./drive.py check` passing and a stop for review.
-- **Steps.** A step names what the code lacks against its design, and the part of the [Direction](#direction) it builds; an issue it takes carries the step's tag. A step's line numbers point to the code as it was written, and the step refreshes them as it starts. A step that states no check holds this one: no golden moves, and `./drive.py check` passes.
+- **Batches.** A batch is one commit: the steps that change the same systems. It says what it touches and why it stands where it does, and ends with `cargo drive gate` passing and a stop for review.
+- **Steps.** A step names what the code lacks against its design, and the part of the [Direction](#direction) it builds; an issue it takes carries the step's tag. A step's line numbers point to the code as it was written, and the step refreshes them as it starts. A step that states no check holds this one: no golden moves, and `cargo drive check` and `cargo drive test` pass.
 - **A step goes when it is done.**
 
 ## Issue log
@@ -67,17 +67,19 @@ The issue log is `.notes/ISSUES.md`, every open problem of the project.
 
 ## Checks
 
-Every check, test and bench runs through `source/drive.py` ([The driver](docs/design/02-engine-core.md#the-driver)), never `cargo clippy`, `cargo test`, `cargo nextest`, `cargo doc` or `cargo bench` by hand: each shape of a cargo command keeps a cache of its own. No command takes `-p` or a crate list, and none runs with its own `CARGO_TARGET_DIR`, `RUSTFLAGS` or `CARGO_PROFILE_*` but the profiling build of [Benches](docs/design/02-engine-core.md#benches).
+Every check, test and bench runs through `cargo drive`, from `source/` ([The driver](docs/design/02-engine-core.md#the-driver)): the `drive` submodule, the same driver in every project, whose lanes and the workspace's own commands are in `source/Cargo.toml`'s `[workspace.metadata.drive]`. Never `cargo clippy`, `cargo test`, `cargo nextest`, `cargo doc` or `cargo bench` by hand: each shape of a cargo command keeps a cache of its own. No command takes `-p` or a crate list, and none runs with its own `CARGO_TARGET_DIR`, `RUSTFLAGS` or `CARGO_PROFILE_*` but the profiling build of [Benches](docs/design/02-engine-core.md#benches).
 
 | Command | Runs |
 | --- | --- |
-| `./drive.py check` | `cargo fmt`, the lint of every target, the lint of the build that ships, each package's index, and the tests of the crates the change reaches: a step's check |
-| `./drive.py index` | each workspace package's `package.index`, after a change to a package |
-| `./drive.py test [--bless] [nextest arguments]` | the suite or a part of it; `--bless` writes the pinned files again |
-| `./drive.py bench [cargo bench arguments]` | the benches, only when the task asks for them |
-| `./drive.py lan`, `./drive.py zero-hour [--bless] [out]` | the LAN check and the Zero Hour check, on request; `--bless` writes the Zero Hour check's golden file again |
-| `./drive.py gate` | every step CI runs, each bench case once among them, and the Windows lint on Linux |
-| `./drive.py package` | the release build of the shipped binaries, stripped, each with its debug info beside it in `target/package` |
+| `cargo drive check` | `cargo fmt`, then the lint of every target with every feature, to the first failure: after each change |
+| `cargo drive test [nextest arguments]` | each workspace package's `package.index` written again, then the tests, each time; with arguments, those nextest selects |
+| `cargo drive bench [criterion arguments]` | the benches, only when the task asks for them |
+| `cargo drive run lan`, `cargo drive run zero-hour [out]` | the LAN check and the Zero Hour check, on request |
+| `cargo drive run index` | each workspace package's `package.index`, after a change to a package |
+| `cargo drive gate` | `fmt`, the lints, the build that ships, the Windows lint on Linux, the tests, the LAN check and each bench case once, to the first failure; CI runs `gate --ci`, which checks the format and runs every step |
+| `cargo drive package` | the release build of the shipped binaries, stripped, each with its debug info beside it in `target/package` |
+
+A step runs again only when one of its inputs changed since it passed, and the tests only for the crates a change reaches. `CAMPFIRE_BLESS=1` before `cargo drive test` writes the tests' pinned files again, `CAMPFIRE_BLESS=1 cargo drive test <test>` those of one test; before `cargo drive run zero-hour`, the check's golden file.
 
 Each step prints one line; a failed step names its log, `target/drive/log/<step>.log`. Read the log, rather than run cargo again or pipe the driver through `grep` or `head`.
 
@@ -90,4 +92,4 @@ Each step prints one line; a failed step names its log, `target/drive/log/<step>
 - **All file I/O goes through `store`**, in production code, tests and checks alike: no `std::fs`, no `Path::exists`, no `tempfile`. A read names its bound, and no code asks whether a path exists: it reads or lists, and takes `Missing`.
 - **Game-bound code lives in a module named after its game**, `zero_hour`, in the crate whose interface it serves.
 - **Tests run on nextest.** A new rule of a mode joins its scripted match, in a module named `scripted_match`, the one test exempt from the bound of 1 s.
-- **Benches run only when the user's task asks for them.** A case's id is `<kind>/<group>/<case>`, its code a `bench.rs` beside what it measures, behind `internals`; `./drive.py bench -- --exact <id>` runs one, `-- --list` lists them.
+- **Benches run only when the user's task asks for them.** A case's id is `<kind>/<group>/<case>`, its code a `bench.rs` beside what it measures, behind `internals`; `cargo drive bench --exact <id>` runs one, `--list` lists them.

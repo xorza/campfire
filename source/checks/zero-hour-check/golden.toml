@@ -1,4 +1,4 @@
-# What the Zero Hour check measured, which it pins: `./drive.py zero-hour --bless` writes it again.
+# What the Zero Hour check measured, which it pins: `CAMPFIRE_BLESS=1 cargo drive run zero-hour` writes it again.
 
 drive_ticks = 1717
 

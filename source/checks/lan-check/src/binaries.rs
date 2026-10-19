@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use crate::error::CheckError;
 
-/// The executables the check runs: those beside its own, which `./drive.py` builds with it in the
-/// tests' build, so the workspace compiles once.
+/// The executables the check runs: those beside its own, which `cargo drive run lan` builds with it
+/// in one build.
 #[derive(Debug)]
 pub(crate) struct Binaries {
     pub(crate) server: PathBuf,
@@ -14,8 +14,9 @@ pub(crate) struct Binaries {
 }
 
 impl Binaries {
-    /// The server's, client's and verifier's binaries, each its package's name, which the
-    /// driver's `LAN_BINARIES` builds with the check: one it left out would be an old build.
+    /// The server's, client's and verifier's binaries, each its package's name, which the `lan`
+    /// command of the workspace's drive table builds with the check: one it left out would be an
+    /// old build.
     const NAMES: [&str; 3] = ["campfire-server", "campfire-client", "campfire-verifier"];
 
     /// The server, client and verifier in the folder of the check's own executable.
@@ -34,20 +35,29 @@ impl Binaries {
 
 #[cfg(test)]
 mod tests {
+    use campfire_codec::{Toml, TomlTable};
+
     use super::*;
 
     #[test]
     fn the_driver_builds_the_check_and_each_binary_it_runs() {
-        let driver = include_str!("../../../drive.py");
-        let list = driver
-            .split_once("LAN_BINARIES = (")
-            .and_then(|(_, rest)| rest.split_once(')'))
-            .map(|(list, _)| list)
-            .expect("the driver lists the LAN binaries");
-        let mut built: Vec<&str> = list
-            .split(',')
-            .map(|name| name.trim().trim_matches('"'))
-            .filter(|name| !name.is_empty())
+        let mut lan: TomlTable = Toml::parse(include_str!("../../../Cargo.toml")).unwrap();
+        for key in ["workspace", "metadata", "drive", "commands", "lan"] {
+            lan = lan
+                .take(key)
+                .expect("the drive table holds the `lan` command")
+                .unwrap();
+        }
+        let mut steps: Vec<TomlTable> = lan.take("steps").unwrap().unwrap();
+        let build: String = steps[0]
+            .take("build")
+            .expect("the `lan` command builds first")
+            .unwrap();
+        let words: Vec<&str> = build.split_whitespace().collect();
+        let mut built: Vec<&str> = words
+            .windows(2)
+            .filter(|pair| pair[0] == "-p")
+            .map(|pair| pair[1])
             .collect();
         built.sort_unstable();
         let mut run = vec!["campfire-lan-check"];

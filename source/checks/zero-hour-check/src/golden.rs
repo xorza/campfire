@@ -54,7 +54,8 @@ impl Golden {
 
     /// What the file says first: what it is, and how it is written again.
     const HEADER: &'static str = "# What the Zero Hour check measured, which it pins: \
-                                  `./drive.py zero-hour --bless` writes it again.\n\n";
+                                  `CAMPFIRE_BLESS=1 cargo drive run zero-hour` writes it \
+                                  again.\n\n";
 
     /// The file beside the check's manifest.
     fn path() -> &'static Path {
