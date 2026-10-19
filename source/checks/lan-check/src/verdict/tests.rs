@@ -224,10 +224,10 @@ fn the_impostor_and_each_process_fail_by_their_own_flaws() {
     let mut verdict = Verdict::default();
     verdict.impostor(
         failed,
-        &[lost(LinkLossCause::Link(LinkEnd::WrongServerKey))],
+        &[lost(LinkLossCause::Link(UnlinkReason::WrongTlsKey))],
     );
     assert_eq!(found(&verdict), []);
-    let timed_out = LinkLossCause::Link(LinkEnd::TimedOut);
+    let timed_out = LinkLossCause::Link(UnlinkReason::TimedOut);
     let mut verdict = Verdict::default();
     verdict.impostor(failed, &[lost(timed_out)]);
     assert_eq!(

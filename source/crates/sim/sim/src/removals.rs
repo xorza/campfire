@@ -36,7 +36,7 @@ impl<C: Component> Removals<'_, '_, C> {
         }
         world.init_resource::<Messages<Removed<C>>>();
         world.add_observer(
-            |removal: On<'_, '_, Remove, C>, mut removed: ResMut<'_, Messages<Removed<C>>>| {
+            |removal: On<'_, '_, Remove<C>>, mut removed: ResMut<'_, Messages<Removed<C>>>| {
                 removed.write(Removed {
                     entity: removal.entity,
                     part: PhantomData,

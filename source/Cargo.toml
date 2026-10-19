@@ -77,13 +77,13 @@ default-members = [
     "crates/network/net-port-map",
     "crates/network/net-prediction",
     "crates/network/net-replication",
+    "crates/network/net-socket",
     "crates/network/net-stack",
     "crates/network/net-stepper",
     "crates/network/net-sync",
     "crates/network/net-timeline",
     "crates/network/net-transport",
     "crates/network/net-udp",
-    "crates/network/quic",
     "crates/session/bots",
     "crates/session/client-files",
     "crates/session/package",
@@ -99,8 +99,8 @@ default-members = [
 
 # The driver's lanes and the workspace's own commands, which `cargo drive` runs (drive/src/main.rs).
 [workspace.metadata.drive]
-# Each bench case once, so a bench that no longer runs fails the gate (02-engine-core.md, The gate
-# runs each case once).
+# Every bench built, so a bench that no longer builds fails the gate (02-engine-core.md, The gate
+# builds every bench).
 gate-benches = true
 # Windows from Linux in a local gate, as CI lints Windows on Windows.
 cross-lint = { linux = ["x86_64-pc-windows-gnu"] }
@@ -191,8 +191,10 @@ campfire-net-link = { path = "crates/network/net-link" }
 campfire-net-messages = { path = "crates/network/net-messages" }
 campfire-net-packets = { path = "crates/network/net-packets" }
 campfire-net-payload = { path = "crates/network/net-payload" }
+campfire-net-port-map = { path = "crates/network/net-port-map" }
 campfire-net-prediction = { path = "crates/network/net-prediction" }
 campfire-net-replication = { path = "crates/network/net-replication" }
+campfire-net-socket = { path = "crates/network/net-socket" }
 campfire-net-stack = { path = "crates/network/net-stack" }
 campfire-net-stepper = { path = "crates/network/net-stepper" }
 campfire-net-sync = { path = "crates/network/net-sync" }
@@ -203,7 +205,6 @@ campfire-client-files = { path = "crates/session/client-files" }
 campfire-package = { path = "crates/session/package" }
 campfire-package-disk = { path = "crates/session/package-disk" }
 campfire-protocol = { path = "crates/session/protocol" }
-campfire-quic = { path = "crates/network/quic" }
 campfire-runner = { path = "crates/session/runner" }
 campfire-schedule = { path = "crates/base/schedule" }
 campfire-script = { path = "crates/capabilities/core/script" }
@@ -215,44 +216,20 @@ campfire-verifier = { path = "crates/session/verifier" }
 arrayvec = { version = "=0.7.8", default-features = false }
 async-lock = "=3.4.2"
 backtrace = "=0.3.76"
-bevy = { version = "=0.19.1", default-features = false, features = [
-    "std",
-    "multi_threaded",
-    "async_executor",
-    "bevy_asset",
-    "bevy_log",
-    "bevy_state",
-    "bevy_window",
-    "bevy_winit",
-    "x11",
-    "wayland",
-    "bevy_render",
-    "bevy_core_pipeline",
-    "bevy_pbr",
-    "bevy_mesh",
-    "bevy_camera",
-    "bevy_light",
-    "bevy_color",
-    "bevy_gltf",
-    "ktx2",
-    "png",
-    # A world asset, as a model's glTF scene, spawns its components by reflection, which needs each
-    # type registered, and Bevy's own plugins register theirs only through it.
-    "reflect_auto_register",
-    "bevy_ui",
-    "bevy_ui_render",
-    "bevy_text",
-    "default_font",
-    "bevy_picking",
-    "ui_picking",
-] }
-attohttpc = { version = "=0.30.1", default-features = false }
-bevy_app = "=0.19.1"
-bevy_replicon = { version = "=0.44.2", default-features = false, features = ["server"] }
-bevy_ecs = { version = "=0.19.1", default-features = false, features = ["std", "debug"] }
-bevy_math = { version = "=0.19.1", default-features = false, features = ["std", "serialize"] }
-bevy_state = "=0.19.1"
-bevy_time = "=0.19.1"
+bevy = { version = "=0.20.0", default-features = false }
+bevy_app = { version = "=0.20.0", default-features = false }
+bevy_curve = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_derive = { version = "=0.20.0", default-features = false }
+bevy_diagnostic = { version = "=0.20.0", default-features = false }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_math = { version = "=0.20.0", default-features = false, features = ["std", "serialize"] }
+bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
+bevy_replicon = { version = "=0.45.2", default-features = false }
+bevy_state = { version = "=0.20.0", default-features = false }
+bevy_time = { version = "=0.20.0", default-features = false }
+bevy_transform = { version = "=0.20.0", default-features = false }
+bevy_utils = { version = "=0.20.0", default-features = false }
 blake3 = "=1.8.7"
 bytes = "=1.12.1"
 clap = { version = "=4.6.7", default-features = false, features = [
@@ -268,18 +245,7 @@ derive_more = { version = "=2.1.1", default-features = false, features = ["displ
 fluent-bundle = "=0.16.0"
 fluent-syntax = "=0.12.0"
 getrandom = "=0.3.4"
-igd-next = "=0.18.0"
 libc = "=0.2.190"
-lightyear = { version = "=0.30.1", default-features = false, features = [
-    "std",
-    "client",
-    "server",
-    "replication",
-    "prediction",
-    "crossbeam",
-    "raw_connection",
-] }
-lightyear_serde = "=0.30.1"
 lz4_flex = { version = "=0.14.0", default-features = false, features = ["safe-encode", "safe-decode", "checked-decode"] }
 miniz_oxide = "=0.8.9"
 netdev = { version = "=0.46.3", default-features = false, features = ["gateway"] }
@@ -288,8 +254,7 @@ polling = "=3.11.0"
 postcard = { version = "=1.1.3", features = ["use-std"] }
 proc-macro2 = { version = "=1.0.107", default-features = false }
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
-quinn-proto = { version = "=0.11.19", default-features = false, features = ["rustls-ring"] }
-quinn-udp = "=0.5.16"
+quinn-udp = "=0.6.3"
 quote = { version = "=1.0.47", default-features = false }
 rhai = { version = "=1.26.1", default-features = false, features = ["std", "no_float", "no_time", "no_closure", "internals"] }
 ring = "=0.17.14"
@@ -333,7 +298,7 @@ windows = { version = "=0.62.2", features = [
     "Win32_System_SystemServices",
     "Win32_System_Threading",
 ] }
-xmltree = "=0.10.3"
+xmltree = "=0.12.0"
 zeroize = "=1.9.0"
 
 [profile.dev]
@@ -471,36 +436,3 @@ broken_intra_doc_links = "warn"
 private_intra_doc_links = "warn"
 redundant_explicit_links = "warn"
 unescaped_backticks = "warn"
-
-
-[patch.crates-io]
-bevy_replicon = { git = "https://github.com/xorza/bevy_replicon", rev = "44fa66127b21c5523855cc17cca83793802a2041" }
-lightyear = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_aeronet = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_connection = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_core = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_crossbeam = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_deterministic_replication = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_frame_interpolation = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_inputs = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_inputs_bei = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_inputs_leafwing = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_inputs_native = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_interpolation = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_link = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_messages = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_metrics = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_netcode = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_prediction = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_raw_connection = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_replication = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_serde = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_steam = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_sync = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_tools = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_transport = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_udp = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_utils = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_web = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_websocket = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
-lightyear_webtransport = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }

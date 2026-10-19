@@ -12,7 +12,7 @@ use bevy::ecs::query::{Allow, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
-use bevy::picking::events::{Click, Pointer};
+use bevy::picking::events::PointerClick;
 use bevy::picking::pointer::PointerButton;
 use bevy::state::state::NextState;
 use bevy::text::TextColor;
@@ -280,7 +280,7 @@ impl CommandPanel {
     /// A left click on a button's row trains with its slot, or starts the build preview of its
     /// build at its building's angle.
     fn press(
-        click: On<'_, '_, Pointer<Click>>,
+        click: On<'_, '_, PointerClick>,
         rows: Query<'_, '_, &ButtonRow>,
         shown: Res<'_, Shown>,
         looks: Res<'_, UnitLooks>,
@@ -312,14 +312,14 @@ impl CommandPanel {
                     building,
                     angle,
                 });
-                NextState::set_if_neq(&mut mode, InputMode::Place);
+                mode.set_if_different(InputMode::Place);
             }
         }
     }
 
     /// A left click on a row of the queue cancels its entry.
     fn cancel_train(
-        click: On<'_, '_, Pointer<Click>>,
+        click: On<'_, '_, PointerClick>,
         rows: Query<'_, '_, &QueueRow>,
         shown: Res<'_, Shown>,
         orders: ResMut<'_, PendingOrders>,
@@ -332,7 +332,7 @@ impl CommandPanel {
 
     /// A left click on a site's row cancels the site.
     fn cancel_build(
-        click: On<'_, '_, Pointer<Click>>,
+        click: On<'_, '_, PointerClick>,
         shown: Res<'_, Shown>,
         orders: ResMut<'_, PendingOrders>,
     ) {
@@ -344,7 +344,7 @@ impl Shown {
     /// Orders the shown unit to `action`, for a left click.
     fn order(
         &self,
-        click: &Pointer<Click>,
+        click: &PointerClick,
         mut orders: ResMut<'_, PendingOrders>,
         action: ProductionAction,
     ) {

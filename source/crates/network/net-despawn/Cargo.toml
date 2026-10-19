@@ -8,8 +8,8 @@ license.workspace = true
 kind = "proxy"
 
 [dependencies]
-bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
-bevy_replicon = { version = "=0.45.2", default-features = false }
+bevy_ecs = { workspace = true, features = ["std"] }
+bevy_replicon.workspace = true
 
 [lints]
 workspace = true

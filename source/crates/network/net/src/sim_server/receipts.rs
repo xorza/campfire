@@ -4,9 +4,9 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut};
 use bevy_time::{Real, Time};
 use campfire_common::{Seat, Tick};
+use campfire_net_messages::MessageSender;
 use campfire_protocol::{DurableHead, Receipt, SessionId, SignedReceipt};
 use campfire_runner::Session;
-use lightyear::prelude::MessageSender;
 
 use crate::net_protocol::MatchChannel;
 use crate::sim_server::journal_watch::JournalWatch;

@@ -1,4 +1,5 @@
-//! Lightyear transport, handshake and replication.
+//! Campfire's game networking on the stack: the protocol, the handshake, the server's and the
+//! client's sessions, and their links.
 
 #![expect(
     clippy::needless_pass_by_value,
@@ -20,6 +21,7 @@ mod process_exit;
 mod session_times;
 mod sim_client;
 mod sim_server;
+mod udp_links;
 
 pub use crate::close_code::CloseCode;
 pub use crate::error::{JoinError, ReceiptRefusal, SaveRefusal};
@@ -86,6 +88,7 @@ pub use crate::sim_server::session_journal::SessionJournal;
 pub use crate::sim_server::sim_server_plugins::SimServerPlugins;
 pub use crate::sim_server::sim_server_world::{SessionOpening, SimServerWorld, StopRequest};
 pub use crate::sim_server::snapshot_dir::SnapshotDir;
+pub use crate::udp_links::UdpLinks;
 
 #[cfg(feature = "internals")]
 pub mod internals {

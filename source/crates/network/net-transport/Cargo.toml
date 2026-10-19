@@ -39,11 +39,11 @@ campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 tracing.workspace = true
 
-bevy_app = { version = "=0.20.0", default-features = false }
-bevy_derive = { version = "=0.20.0", default-features = false }
-bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
-bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
-bevy_utils = { version = "=0.20.0", default-features = false, features = ["debug"], optional = true }
+bevy_app.workspace = true
+bevy_derive.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
+bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
+bevy_utils = { workspace = true, features = ["debug"], optional = true }
 
 [dev-dependencies]
 campfire-net-transport = { workspace = true, features = ["internals"] }

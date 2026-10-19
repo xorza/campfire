@@ -15,21 +15,21 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::light::DirectionalLight;
-use bevy::math::primitives::{Capsule3d, Cuboid, Plane3d, Sphere};
 use bevy::math::{EulerRot, Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
+use bevy::shape::{Capsule3d, Cuboid, Plane3d, Sphere};
 use bevy::time::{Fixed, Time};
 use bevy::transform::components::Transform;
 use bevy::window::Window;
 use campfire_actions::ActionProgress;
 use campfire_mode::{MatchEnd, MatchResult};
 use campfire_net::JoinState;
+use campfire_net_replication::Predicted;
 use campfire_projectiles::Projectile;
 use campfire_sim::{EntityIndex, Position, Unpredicted};
 use campfire_units::{Avatar, Body, BodyUnit, Dead, Facing, MapBook, MoveStep};
 use campfire_values::{Team, UnitType};
-use lightyear::prelude::Predicted;
 
 use crate::engine_text::{EngineMessage, EngineText};
 use crate::view::client_data::ClientData;
@@ -609,7 +609,7 @@ impl View {
     /// title names it in the engine's text, and the view's own ground turns gold for a victory,
     /// dark red for a defeat and gray for a draw.
     fn show_end(
-        added: On<'_, '_, Add, MatchEnd>,
+        added: On<'_, '_, Add<MatchEnd>>,
         (ends, state, text): (
             Query<'_, '_, &MatchEnd, Allow<Unpredicted>>,
             Res<'_, JoinState>,

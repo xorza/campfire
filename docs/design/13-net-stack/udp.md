@@ -1,7 +1,7 @@
 # UDP
 
-How `net-udp` makes a sealed packet session over a network: its handshake, its trust, and how a
-server guards itself. The packet session that it seals is in [packet session](packet-session.md).
+How `net-udp` makes a sealed packet session over a network, and `net-socket` carries it on the OS's
+socket: its handshake, its trust, and how a server guards itself. The packet session that it seals is in [packet session](packet-session.md).
 
 ## Handshake
 

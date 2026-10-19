@@ -15,10 +15,10 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::ecs::world::Ref;
-use bevy::math::primitives::{Annulus, Plane3d};
 use bevy::math::{Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
+use bevy::shape::{Annulus, Plane3d};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
 use bevy::window::{PrimaryWindow, Window};
@@ -580,7 +580,10 @@ impl Hud {
                 continue;
             };
             let mut gauges = gauges.iter_many_mut(children);
-            while let Some(mut gauge) = gauges.fetch_next() {
+            while let Some(gauge) = gauges.fetch_next() {
+                let Ok(mut gauge) = gauge else {
+                    continue;
+                };
                 let GaugeKind::Life { shown } = &mut gauge.kind else {
                     continue;
                 };
@@ -648,7 +651,10 @@ impl Hud {
                 continue;
             };
             let mut gauges = gauges.iter_many_mut(children);
-            while let Some((mut gauge, mut visibility)) = gauges.fetch_next() {
+            while let Some(gauge) = gauges.fetch_next() {
+                let Ok((mut gauge, mut visibility)) = gauge else {
+                    continue;
+                };
                 let fill = |pool| {
                     let pools = pools?;
                     Some(Gauge::share(pools.current(pool)?, pools.max(pool)?))

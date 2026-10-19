@@ -79,7 +79,7 @@ impl NextThink {
     /// Pushes the unit of `revived`, which lives again, into the index of the thinks, as its AI,
     /// which waited while it was dead, is due again.
     pub(crate) fn revived(
-        revived: On<'_, '_, Remove, Dead>,
+        revived: On<'_, '_, Remove<Dead>>,
         units: Query<'_, '_, (&StableId, &UnitType, &Self)>,
         (book, tick): (Option<Res<'_, ByType<Ai>>>, Res<'_, SimTick>),
         index: Option<ResMut<'_, DueIndex<Self>>>,

@@ -714,7 +714,7 @@ fn apply_component<C: SimComponent>(world: &mut World, mut body: &[u8], pass: Pa
 
 fn watch_component<C: SimComponent>(world: &mut World, entry: u16) {
     world.add_observer(
-        move |removed: On<'_, '_, Remove, C>,
+        move |removed: On<'_, '_, Remove<C>>,
               ids: Query<'_, '_, &StableId>,
               mut changes: ResMut<'_, StateChanges>| {
             if let Ok(&id) = ids.get(removed.entity) {

@@ -6,7 +6,8 @@ use bevy::ecs::system::{Commands, Res, ResMut, Single};
 use campfire_bots::BotScript;
 use campfire_common::Tick;
 use campfire_net::{JoinState, LeaveRequest};
-use lightyear::prelude::{Client, Disconnected, SyncedLocalTimeline};
+use campfire_net_connection::{Client, Disconnected};
+use campfire_net_sync::SyncedLocalTimeline;
 use tracing::info;
 
 /// Plays an order script for the player, and leaves after the script's end tick when it names

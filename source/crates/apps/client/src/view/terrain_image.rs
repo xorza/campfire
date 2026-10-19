@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
-use bevy::math::{USizeVec2, UVec2};
+use bevy::math::UVec2;
 use bevy::render::render_resource::{Extent3d, TextureDataOrder, TextureDimension, TextureFormat};
 use campfire_client_files::{BorderWrap, TerrainTexture, TextureCopy, TextureLevels};
 use campfire_package::PackageReader;
@@ -114,9 +114,9 @@ impl TerrainImage {
             }
             return;
         };
-        let from = (copy.from >> level).as_usizevec2();
-        let to = (copy.to >> level).as_usizevec2();
-        let size = (copy.size >> level).as_usizevec2();
+        let from = texels_at(copy.from >> level);
+        let to = texels_at(copy.to >> level);
+        let size = texels_at(copy.size >> level);
         let side = (source.size().x >> level).max(1) as usize;
         let data = source.level(level);
         for row in 0..size.y {
@@ -135,11 +135,11 @@ impl TerrainImage {
             level,
         } = target;
         let (width, level) = (*width, *level);
-        let USizeVec2 { x, y } = (wrap.at >> level).as_usizevec2();
-        let USizeVec2 {
+        let Texels { x, y } = texels_at(wrap.at >> level);
+        let Texels {
             x: columns,
             y: rows,
-        } = (wrap.size >> level).as_usizevec2();
+        } = texels_at(wrap.size >> level);
         let border = (wrap.border >> level) as usize;
         let texel = |column: usize, row: usize| (row * width + column) * 4;
         for row in y..y + rows {
@@ -157,6 +157,22 @@ impl TerrainImage {
             texels.copy_within(full(y + rows - 1 - line), texel(x - border, y - 1 - line));
             texels.copy_within(full(y + line), texel(x - border, y + rows + line));
         }
+    }
+}
+
+/// A texel position or size as indices into a texture's rows.
+#[derive(Debug, Clone, Copy)]
+struct Texels {
+    x: usize,
+    y: usize,
+}
+
+/// `at` as indices: a texture's side fits `usize` on every target.
+fn texels_at(at: UVec2) -> Texels {
+    let index = |value: u32| usize::try_from(value).expect("a texel index fits usize");
+    Texels {
+        x: index(at.x),
+        y: index(at.y),
     }
 }
 

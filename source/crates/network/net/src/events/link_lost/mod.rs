@@ -1,5 +1,5 @@
 use campfire_log::{JsonText, LogEvent, LogLine};
-use campfire_quic::LinkEnd;
+use campfire_net_payload::UnlinkReason;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
@@ -19,28 +19,23 @@ pub enum LinkLossCause {
     ServerClosed(CloseCode),
     /// The client closed the link, for this reason.
     ClientClosed(CloseCode),
-    /// The link ended as its transport tells.
-    Link(LinkEnd),
-    /// An in-process link ended, which tells no end.
-    InProcess,
+    /// The link ended as the stack tells.
+    Link(UnlinkReason),
     /// The server's grace period and restore window passed while the client tried again.
     RetriesEnded,
 }
 
 impl LinkLossCause {
-    /// The cause a link's `end` gives, Campfire's own codes named; none for an in-process link.
-    pub(crate) fn of(end: Option<&LinkEnd>) -> Self {
-        match end {
-            None => Self::InProcess,
-            Some(&LinkEnd::ClosedByPeer(code)) => CloseCode::of(code).map_or(
-                Self::Link(LinkEnd::ClosedByPeer(code)),
-                LinkLossCause::ServerClosed,
-            ),
-            Some(&LinkEnd::Closed(code)) => CloseCode::of(code).map_or(
-                Self::Link(LinkEnd::Closed(code)),
-                LinkLossCause::ClientClosed,
-            ),
-            Some(&end) => Self::Link(end),
+    /// The cause a link's unlink `reason` gives, Campfire's own codes named.
+    pub(crate) fn of(reason: UnlinkReason) -> Self {
+        match reason {
+            UnlinkReason::ClosedByPeer(code) => {
+                CloseCode::of(code).map_or(Self::Link(reason), LinkLossCause::ServerClosed)
+            }
+            UnlinkReason::Closed(code) => {
+                CloseCode::of(code).map_or(Self::Link(reason), LinkLossCause::ClientClosed)
+            }
+            reason => Self::Link(reason),
         }
     }
 }

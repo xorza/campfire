@@ -15,10 +15,10 @@ use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::MouseButton;
 use bevy::material::AlphaMode;
-use bevy::math::primitives::Cuboid;
 use bevy::math::{Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
+use bevy::shape::Cuboid;
 use bevy::state::condition::in_state;
 use bevy::state::state::{NextState, OnExit};
 use bevy::transform::components::Transform;
@@ -144,7 +144,7 @@ impl BuildPreview {
         mut mode: ResMut<'_, NextState<InputMode>>,
     ) {
         if index.get(placing.builder).is_none() {
-            NextState::set_if_neq(&mut mode, InputMode::Select);
+            mode.set_if_different(InputMode::Select);
         }
     }
 
@@ -290,8 +290,10 @@ impl BuildPreview {
             .copied();
         let paint = ghost.fit.paint(team);
         let mut models = paints.iter_many_mut(models);
-        while let Some(mut model) = models.fetch_next() {
-            model.set_if_neq(paint);
+        while let Some(model) = models.fetch_next() {
+            if let Ok(mut model) = model {
+                model.set_if_neq(paint);
+            }
         }
     }
 
@@ -306,7 +308,7 @@ impl BuildPreview {
         mut mode: ResMut<'_, NextState<InputMode>>,
     ) {
         if buttons.just_pressed(MouseButton::Right) || input.pressed(Act::DropBuild, &keys) {
-            NextState::set_if_neq(&mut mode, InputMode::Select);
+            mode.set_if_different(InputMode::Select);
             return;
         }
         if !buttons.just_pressed(MouseButton::Left) || pointer.is_over_ui() {
@@ -326,7 +328,7 @@ impl BuildPreview {
             angle,
         };
         orders.push(Order::one(builder, OrdersAction::Build { slot, target }));
-        NextState::set_if_neq(&mut mode, InputMode::Select);
+        mode.set_if_different(InputMode::Select);
     }
 
     /// Ends the placing as the input's mode leaves `InputMode::Place`, so the preview's drawing
@@ -378,7 +380,7 @@ mod tests {
         let mode = |app: &App| *app.world().resource::<State<InputMode>>().get();
         let set = |app: &mut App, mode| {
             let mut next = app.world_mut().resource_mut::<NextState<InputMode>>();
-            NextState::set_if_neq(&mut next, mode);
+            next.set_if_different(mode);
         };
         app.insert_resource(placing);
         set(&mut app, InputMode::Place);

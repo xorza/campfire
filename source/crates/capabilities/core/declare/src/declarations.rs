@@ -1,6 +1,5 @@
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
-use bevy_ecs::event::Event;
+use bevy_ecs::event::EventPattern;
 use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::resource::Resource;
@@ -127,7 +126,7 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     fn plan_hook<H: HookDecl>(&mut self, planned: PlannedCapability);
 
     /// `observer`, which runs as each event `E` of `B` reaches it.
-    fn observer<E: Event, B: Bundle, M>(&mut self, observer: impl IntoObserverSystem<E, B, M>);
+    fn observer<E: EventPattern, M>(&mut self, observer: impl IntoObserverSystem<E, M>);
 
     /// The removals of `C`, which a system of the module reads through `Removals<C>`, recorded as
     /// each happens and aged by the tick, alike on every host.

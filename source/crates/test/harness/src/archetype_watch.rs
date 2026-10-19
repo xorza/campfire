@@ -5,9 +5,9 @@ use std::mem;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::archetype::{Archetype, ArchetypeId};
-use bevy_ecs::component::{Component, ComponentId, ComponentInfo};
+use bevy_ecs::component::{Component, ComponentId};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::Add;
+use bevy_ecs::lifecycle::AddEvent;
 use bevy_ecs::observer::{Observer, On};
 use bevy_ecs::world::World;
 use campfire_capabilities::Release;
@@ -69,7 +69,7 @@ impl ArchetypeWatch {
         // an observer of many parts once for each of them a move adds: so it observes each part
         // the world registered, and counts a move once by the archetype it left.
         let moves = Arc::clone(&watch.moves);
-        let observer = Observer::new(move |added: On<'_, '_, Add>| {
+        let observer = Observer::new(move |added: On<'_, '_, AddEvent>| {
             let trigger = added.trigger();
             let left = trigger.old_archetype.map(Archetype::id);
             let mut moves = moves.lock().unwrap();
@@ -81,7 +81,7 @@ impl ArchetypeWatch {
         let parts: Vec<ComponentId> = world
             .components()
             .iter_registered()
-            .map(ComponentInfo::id)
+            .map(|(id, _)| id)
             .collect();
         world.spawn(observer.with_components(parts));
         watch

@@ -6,7 +6,7 @@ use campfire_net::{
     InputsDiscarded, LinkLossCause, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten,
     TicksCaughtUp,
 };
-use campfire_quic::LinkEnd;
+use campfire_net_payload::UnlinkReason;
 use campfire_verifier::Verified;
 
 use crate::error::CheckError;
@@ -107,7 +107,7 @@ impl Verdict {
         if lost.is_empty() {
             self.failures.push(Failure::ImpostorSilent);
         }
-        let wrong_key = LinkLossCause::Link(LinkEnd::WrongServerKey);
+        let wrong_key = LinkLossCause::Link(UnlinkReason::WrongTlsKey);
         for &LinkLost { cause } in lost {
             if cause != wrong_key {
                 self.failures.push(Failure::ImpostorNotWrongKey { cause });

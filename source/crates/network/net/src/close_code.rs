@@ -1,8 +1,8 @@
 use campfire_common::EnumAll;
-use campfire_quic::AppCode;
+use campfire_net_payload::AppCode;
 use serde::{Deserialize, Serialize};
 
-/// Why Campfire ends a link, which `quic` carries as an `AppCode` and the peer reads back
+/// Why Campfire ends a link, which the stack carries as an `AppCode` and the peer reads back
 /// (11-quic-transport.md, A link's end is a type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumAll)]
 #[repr(u32)]

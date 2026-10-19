@@ -43,16 +43,16 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `runner` | built | glue | Builds and feeds a match; replays a published log |
 | `bots` | built | glue | The bots' order scripts |
 | `verifier` | built | app | CLI that replays a session log and checks it |
-| `lan-check` | built | check | The real server and bot clients over QUIC on localhost, on request |
+| `lan-check` | built | check | The real server and bot clients over the stack's UDP on localhost, on request |
 | `zero-hour-check` | built | check | Imports and checks a Zero Hour install, on request |
 | `vocabulary` | built | check | Writes the repository's layout and the names its Rust files declare to one text file for review, on request |
-| `harness` | built | test | The session and network tests' match harness; never shipped |
+| `harness` | built | test | The session tests' match harness, with no network; never shipped |
+| `net-harness` | built | test | The network tests' match harness: a server and its clients in process over the emulated network; never shipped |
 | `rules` | built | test | The workspace's structural rules as tests; never shipped |
 | `test-packages` | built | test | The workspace's test packages; never shipped |
 | `measure` | built | test | What the tests and benches measure with: the counting allocator and the allocation audit, criterion's measure of allocations, and every bench's kinds and sampling; never shipped |
 | `server` | built | app | The dedicated server's binary |
-| `net` | built | glue | Lightyear over `quic`, and the session host ([Networking](#networking)) |
-| `quic` | built | glue | QUIC under Lightyear's link ([QUIC transport](11-quic-transport.md)) |
+| `net` | built | glue | The session over the network stack, and the session host ([Networking](#networking)) |
 | `net-core` | built | problem | The network stack's vocabulary, with no engine in it: the app's instant, a link's direction, network ticks, peer and network ids, and the source of a link's random bytes |
 | `net-bytes` | built | problem | The network stack's byte buffers: a writer that reuses its chunks, a reader, varints, and `ToBytes` for the stack's own headers |
 | `net-timeline` | built | glue | The app's network clock and its timelines |
@@ -61,7 +61,8 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `net-link` | built | glue | A link's state and its lifecycle, with no transport in it |
 | `net-connection` | built | glue | A client's and a server's connection on a link, and an app's networking topology |
 | `net-packets` | built | problem | Each link's packet session: numbered, acknowledged and, on a network, sealed packets |
-| `net-udp` | built | io | The stack's own UDP protocol: sealed sessions by a TLS 1.3 handshake in its own packets |
+| `net-udp` | built | problem | The stack's own UDP protocol: sealed sessions by a TLS 1.3 handshake in its own packets, over any datagram IO |
+| `net-socket` | built | io | The OS's UDP sockets that carry the stack's own protocol |
 | `net-endpoint` | built | glue | Each IO's endpoints as components, and the frame's steps between the link queues and the sessions |
 | `net-stepper` | built | test | The stack's test stepper: a server and clients on the emulated network on one virtual time; never shipped |
 | `net-channels` | built | problem | Messages over a link's packets: channels and their delivery, fragments, priority and compression |
@@ -305,7 +306,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 ## Benches
 
 - **One bench target for each crate,** whose cases share one id scheme, `<kind>/<group>/<case>`, chosen by criterion's filter.
-- **The gate runs each case once.** The gate runs the bench lane with Criterion's `--test`, which runs each case once, so a bench that no longer builds or runs fails it, on the build `cargo drive bench` shares. Refused: the benches outside the gate, where two breaks of the gather bench went unseen, and a run of the bench targets as tests, a new cache shape built without the bench profile's optimizations.
+- **The gate builds every bench.** The gate builds the bench targets in the dev profile under the test lane's features, on the units the tests built, so a bench that no longer builds fails it, and it runs no case. Refused: the benches outside the gate, where two breaks of the gather bench went unseen, and the bench lane's run of each case with Criterion's `--test`, whose bench profile inherits the release's fat LTO and took 130 to 450 s of each gate to link the benches again.
 - **One selection for every run.** The bench lane builds exactly the crates with a `[[bench]]`, each with `internals`, so a case builds with the same features whichever cases run.
 - **One sampling policy.** A group takes its kind from `campfire-measure`'s `Kind` and its sampling from its `Scale`, a case of microseconds or a frame of milliseconds, the one place a group's sampling is set. Refused: a kind spelled in each group's name and a sample size set by hand, which gave each group a sampling of its own and the workspace two schemes of ids.
 - **Atomic and integration cases.** An atomic case runs one operation over 4,096 inputs; an integration case runs a system for a tick on a scene of 1,000 units, the scale of a large Zero Hour battle, or one end on the test packages.
@@ -328,7 +329,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 
 ## Networking
 
-- **The protocol is apart from the transport.** `protocol` is the versioned, documented format a replay needs; `net` uses Lightyear over `bevy_replicon` for transport, replication, prediction and interest, and links over QUIC alone ([QUIC transport](11-quic-transport.md)).
+- **The protocol is apart from the transport.** `protocol` is the versioned, documented format a replay needs; `net` uses the network stack over `bevy_replicon` for transport, replication, prediction and interest, and links over the stack's sealed UDP alone ([The stack's UDP](13-net-stack/udp.md)).
 - **One release on both ends.** Client and server always run the same engine release.
 
 ## Libraries
@@ -345,9 +346,9 @@ Exact versions are pinned; each release tag pins its toolchain and `Cargo.lock`,
 | State hashes | `blake3` | |
 | File and package fingerprints | `sha2` | SHA-256, as Blossom addresses blobs |
 | Secret buffers | `zeroize` | Already in the build through `rustls` |
-| QUIC | `quinn-proto`, `quinn-udp`, `polling` | QUIC with no IO and no async runtime ([QUIC transport](11-quic-transport.md)) |
+| UDP sockets | `quinn-udp`, `polling` | The OS's batched UDP calls with no async runtime ([The stack's UDP](13-net-stack/udp.md)) |
 | Stop signals | `signal-hook` | A handler that does only what POSIX allows |
-| Port mapping | `igd-next`, `netdev`, `socket2` | UPnP-IGD by its blocking API, and the default gateway for PCP and NAT-PMP |
+| Port mapping | `ureq`, `xmltree`, `netdev` | UPnP-IGD's SOAP calls and descriptions, and the default gateway for PCP and NAT-PMP ([Port mapping](13-net-stack/port-map.md)) |
 | TLS | `rustls` over `ring` | TLS 1.3 alone, a raw pinned Ed25519 key |
 | Errors, `Display` | `thiserror`, `derive_more` | |
 | Command lines | `clap` | |

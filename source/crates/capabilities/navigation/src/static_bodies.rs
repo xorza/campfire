@@ -33,7 +33,7 @@ impl TrackedUnits for StaticBodies {
 impl StaticBodies {
     /// A static body loses a part it needs, or is despawned.
     pub(super) fn part_removed(
-        removed: On<'_, '_, Remove, (Position, Body, StableId)>,
+        removed: On<'_, '_, Remove<(Position, Body, StableId)>>,
         parts: BodyParts<'_, '_>,
         mut tracker: ResMut<'_, UnitTracker<Self>>,
     ) {
@@ -47,7 +47,7 @@ impl StaticBodies {
 
     /// A unit dies or walks: it was static if, as it is now, it lacks the other of the two.
     pub(super) fn state_inserted(
-        inserted: On<'_, '_, Insert, (MoveStep, Dead)>,
+        inserted: On<'_, '_, Insert<(MoveStep, Dead)>>,
         parts: BodyParts<'_, '_>,
         tracker: ResMut<'_, UnitTracker<Self>>,
     ) {
@@ -57,7 +57,7 @@ impl StaticBodies {
     /// A unit lives again or stops walking: it becomes static if it lacks the other of the two.
     /// The removed one is still on it as the observer runs.
     pub(super) fn state_removed(
-        removed: On<'_, '_, Remove, (MoveStep, Dead)>,
+        removed: On<'_, '_, Remove<(MoveStep, Dead)>>,
         parts: BodyParts<'_, '_>,
         tracker: ResMut<'_, UnitTracker<Self>>,
     ) {

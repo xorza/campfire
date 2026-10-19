@@ -1,5 +1,5 @@
 //! Headless game server: opens a session of a mode on an address, lets its players join over
-//! QUIC, runs the match, and writes the session log once every player left. Its data
+//! the stack's UDP, runs the match, and writes the session log once every player left. Its data
 //! directory, which it holds locked while it runs, keeps its key. Ctrl-C, `SIGTERM` or `SIGHUP`,
 //! each unless its start ignored it, stops it by an exit with code 130: its links close and its
 //! port mapping goes, and its session waits in the journal for the next start to restore; a
@@ -30,13 +30,15 @@ use campfire_log::{LogEvent, Logging};
 use campfire_net::{
     Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, Publisher,
     RestoredSession, ServerBots, ServerDir, ServerFrameSystems, ServerSetup, SessionOpening,
-    SimServerPlugins, SimServerWorld, StopRequest, exit_code,
+    SimServerPlugins, SimServerWorld, StopRequest, UdpLinks, exit_code,
 };
+use campfire_net_connection::Start;
+use campfire_net_endpoint::Endpoint;
+use campfire_net_link::{Linked, Server};
+use campfire_net_port_map::PortMap;
+use campfire_net_socket::ServerSocket;
 use campfire_package_disk::PackageDir;
-use campfire_quic::{AddressLimit, LinkTimes, PortMap, ServerSocket};
 use campfire_store::StopSignals;
-use lightyear::prelude::Linked;
-use lightyear::prelude::server::{RawServer, Start};
 use tracing::{error, info};
 
 use crate::command_line::{Args, CommandLine};
@@ -51,9 +53,9 @@ mod opening;
 /// What the terminal shows when `RUST_LOG` does not say.
 const TERMINAL_FILTER: &str = "info";
 /// What the log file holds when `CAMPFIRE_LOG_FILTER` does not say: Campfire's messages down to
-/// `debug`, and Lightyear's rollbacks; of the rest, `info` and above.
+/// `debug`, and the stack's rollbacks; of the rest, `info` and above.
 const FILE_FILTER: &str = "info,campfire_server=debug,campfire_net=debug,campfire_runner=debug,\
-                           campfire_script=debug,lightyear_prediction=debug";
+                           campfire_script=debug,campfire_net_prediction=debug";
 
 fn main() -> ExitCode {
     let _log = Logging {
@@ -96,10 +98,8 @@ fn run() -> Result<ExitCode, StartError> {
     )?);
     // The socket binds before any session opens, so a port in use ends the start and leaves the
     // data as it was.
-    let secret = signer.secret_bytes();
-    let socket = ServerSocket::bind(address, &secret, LinkTimes::CAMPFIRE)?;
-    drop(secret);
-    let tls_key = socket.tls_key();
+    let socket = ServerSocket::bind(address, UdpLinks::server(&signer))?;
+    let tls_key = socket.tls_key().expect("a raw key's identity");
     let no_session = |error| StartError::Session {
         data: data.layout().path().to_owned(),
         error,
@@ -125,12 +125,15 @@ fn run() -> Result<ExitCode, StartError> {
     };
     let opening = open(waiting, setup).map_err(no_session)?;
     let local = socket.local_address();
-    let limit = AddressLimit::new(opening.seats(), opening.server().times.grace);
+    let admission = UdpLinks::admission(opening.seats(), opening.server().times.grace);
     let listening = announce(&opening, &mode, local, tls_key);
     let session = opening.session.span();
     let mut app = server_app(opening, data, listening, capabilities, stop);
-    let port_map = port_map.then(|| PortMap::start(local)).flatten();
-    let server = app.world_mut().spawn((RawServer, socket.serve(limit))).id();
+    let port_map = port_map
+        .then(|| PortMap::start(local, "campfire"))
+        .flatten();
+    let endpoint = Endpoint::from(socket.serve(admission));
+    let server = app.world_mut().spawn((Server::default(), endpoint)).id();
     app.world_mut().trigger(Start { entity: server });
     let exit = session.in_scope(|| app.run());
     // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP
@@ -198,7 +201,7 @@ fn server_app(
     app.world_mut().open_session(opening.session);
     app.insert_resource(data);
     app.add_observer(
-        move |added: On<'_, '_, Add, Linked>, servers: Query<'_, '_, (), With<RawServer>>| {
+        move |added: On<'_, '_, Add<Linked>>, servers: Query<'_, '_, (), With<Server>>| {
             if servers.contains(added.entity) {
                 listening.log();
             }

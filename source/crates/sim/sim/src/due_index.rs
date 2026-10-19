@@ -3,7 +3,6 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::Allow;
 use bevy_ecs::resource::Resource;
@@ -12,6 +11,7 @@ use bevy_ecs::system::{Query, Res, ResMut, StaticSystemParam};
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 
+use crate::prediction_started::PredictionStarted;
 use crate::sim_update::{TickEnd, end_tick};
 use crate::stable_id::StableId;
 use crate::state_rewritten::StateRewritten;
@@ -160,15 +160,14 @@ impl<P: TimedProcess> DueIndex<P> {
         }
     }
 
-    /// Pushes a unit a predicting client starts to predict, whose parts replication wrote while
-    /// the client held it unpredicted.
+    /// Pushes a unit a predicting client starts to predict, whose parts replication wrote.
     fn predicted(
-        removed: On<'_, '_, Remove, Unpredicted>,
+        started: On<'_, '_, PredictionStarted>,
         books: StaticSystemParam<'_, '_, P::Books>,
         units: Query<'_, '_, (&StableId, P::Parts), Allow<Unpredicted>>,
         index: Option<ResMut<'_, Self>>,
     ) {
-        let entity = removed.entity;
+        let entity = started.entity;
         let (Some(mut index), Ok((&id, parts))) = (index, units.get(entity)) else {
             return;
         };
@@ -278,6 +277,7 @@ mod tests {
             (1, Some(Tick::new(4)), None)
         );
         world.entity_mut(hidden).remove::<Unpredicted>();
+        world.trigger(PredictionStarted { entity: hidden });
         assert_eq!(
             world.resource::<DueIndex<Probe>>().due_at(c),
             Some(Tick::new(2))

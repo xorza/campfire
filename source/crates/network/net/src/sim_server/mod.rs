@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use bevy_app::{
     App, FixedUpdate, Last, Plugin, PostUpdate, RunFixedMainLoop, RunFixedMainLoopSystems, Update,
 };
@@ -17,18 +15,19 @@ use campfire_common::ErrorReport;
 use campfire_common::{Seat, Tick};
 use campfire_declare::CapabilitySet;
 use campfire_log::LogEvent;
+use campfire_math::TickRate;
 use campfire_mode::MatchEnd;
+use campfire_net_connection::Disconnect;
+use campfire_net_link::{LinkOf, LinkSystems};
+use campfire_net_messages::{MessageReceiver, MessageSender};
+use campfire_net_replication::{ReplicationSender, RoomAllocator, RoomPlugin};
+use campfire_net_stack::ServerPlugins;
+use campfire_net_timeline::LocalTimeline;
 use campfire_protocol::{Applied, Controller, InputError, PlayerPacket};
-use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, SessionWorld};
 use campfire_script::ScriptPrints;
 use campfire_sim::SimTick;
 use campfire_units::Deaths;
-use lightyear::prelude::server::ServerPlugins;
-use lightyear::prelude::{
-    LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, ReplicationSender,
-    RoomAllocator, RoomPlugin,
-};
 use tracing::trace_span;
 
 use crate::close_code::CloseCode;
@@ -109,7 +108,7 @@ pub(crate) mod viewer;
 /// protocol, and the replication to each new link; `SimServerPlugins` adds it.
 #[derive(Debug)]
 pub(crate) struct SimServer {
-    pub(crate) tick: Duration,
+    pub(crate) rate: TickRate,
     /// The mode's declared capabilities, whose components alone replicate.
     pub(crate) capabilities: CapabilitySet,
     pub(crate) hosting: Hosting,
@@ -118,14 +117,13 @@ pub(crate) struct SimServer {
 impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
         app.add_plugins(ServerPlugins {
-            tick_duration: self.tick,
+            tick_rate: self.rate,
         });
         app.add_plugins((
             NetProtocol {
                 capabilities: self.capabilities,
             },
             RoomPlugin,
-            QuicPlugin,
         ));
         DataFilters::register(app, self.capabilities);
         KindShows::register(app);
@@ -428,9 +426,9 @@ fn record_inputs(
 fn refuse_link(commands: &mut Commands<'_, '_>, entity: Entity, link: PlayerLink) -> PlayerLink {
     let refused = link.into_refused();
     commands.entity(entity).insert(refused);
-    commands.trigger(CloseLink {
+    commands.trigger(Disconnect {
         entity,
-        code: CloseCode::InputRefused.app(),
+        reason: CloseCode::InputRefused.app(),
     });
     refused
 }

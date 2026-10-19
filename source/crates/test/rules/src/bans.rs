@@ -232,16 +232,12 @@ pub(crate) const PROXIES: [Proxy; 4] = [
 ];
 
 /// The bans with no proxy, which nothing may exempt: each lets two conflicting sim systems run in
-/// either order, takes Lightyear's own encoding past the codec, or seeds a map at random.
-const UNOWNED_METHODS: [&str; 8] = [
+/// either order, or seeds a map at random.
+const UNOWNED_METHODS: [&str; 4] = [
     "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with",
     "bevy_ecs::schedule::Schedule::ignore_ambiguity",
     "bevy_ecs::schedule::Schedules::allow_ambiguous_component",
     "bevy_ecs::world::World::allow_ambiguous_resource",
-    "lightyear_messages::registry::AppMessageExt::register_message",
-    "lightyear_replication::registry::replication::AppComponentExt::register_component",
-    "lightyear_replication::registry::replication::ComponentRegistration::replicate",
-    "lightyear_replication::registry::replication::ComponentRegistration::replicate_once",
 ];
 const UNOWNED_TYPES: [&str; 3] = [
     "std::collections::HashMap",
@@ -251,13 +247,10 @@ const UNOWNED_TYPES: [&str; 3] = [
 
 /// What names a call of no proxy's group in source, which no proxy's source holds, as its
 /// exemption would cover it.
-const UNOWNED_NAMES: [&str; 9] = [
+const UNOWNED_NAMES: [&str; 6] = [
     "ambiguous_with",
     "ignore_ambiguity",
     "allow_ambiguous",
-    "register_message",
-    "register_component",
-    ".replicate",
     "HashMap",
     "HashSet",
     "RandomState",

@@ -1,9 +1,8 @@
 use std::any::{TypeId, type_name};
 use std::fmt::Debug;
 
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
-use bevy_ecs::event::Event;
+use bevy_ecs::event::EventPattern;
 use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::message::Messages;
 use bevy_ecs::resource::Resource;
@@ -63,7 +62,7 @@ impl DeclaredResources {
             .filter_map(|(id, _)| components.get_info(id));
         let mut unlisted: Vec<String> = world
             .iter_resources()
-            .map(|(info, _)| info)
+            .map(|(_, info, _)| info)
             .chain(non_sends)
             .filter(|info| info.type_id().is_none_or(|id| !declared.ids.contains(&id)))
             .map(|info| info.name().to_string())
@@ -180,7 +179,7 @@ impl Declarations for DeclaredResources {
 
     fn plan_hook<H: HookDecl>(&mut self, _: PlannedCapability) {}
 
-    fn observer<E: Event, B: Bundle, M>(&mut self, _: impl IntoObserverSystem<E, B, M>) {}
+    fn observer<E: EventPattern, M>(&mut self, _: impl IntoObserverSystem<E, M>) {}
 
     fn removals<C: Component>(&mut self) {
         self.ids.push(TypeId::of::<Messages<Removed<C>>>());

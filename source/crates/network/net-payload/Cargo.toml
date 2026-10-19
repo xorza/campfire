@@ -17,7 +17,7 @@ reflect = ["dep:bevy_reflect"]
 bytes.workspace = true
 serde.workspace = true
 
-bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"], optional = true }
+bevy_reflect = { workspace = true, features = ["std", "smallvec"], optional = true }
 
 [dev-dependencies]
 campfire-net-payload = { workspace = true, features = ["internals"] }

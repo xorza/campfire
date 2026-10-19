@@ -3,7 +3,7 @@ use std::{fmt, mem};
 
 use bevy_ecs::change_detection::Mut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::Remove;
+use bevy_ecs::lifecycle::RemoveEvent;
 use bevy_ecs::observer::{Observer, On};
 use bevy_ecs::query::{QueryState, ROQueryItem};
 use bevy_ecs::resource::Resource;
@@ -112,7 +112,7 @@ impl ViewReader {
     /// The observer of the removal of a part the core or a source reads, or of a unit's stable
     /// id, as it despawns: the next read visits the unit, every source filling its row.
     fn part_removed(
-        removed: On<'_, '_, Remove>,
+        removed: On<'_, '_, RemoveEvent>,
         ids: Query<'_, '_, &StableId>,
         mut reader: ResMut<'_, Self>,
     ) {

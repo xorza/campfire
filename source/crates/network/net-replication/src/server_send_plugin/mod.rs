@@ -51,6 +51,9 @@ impl Plugin for ServerSendPlugin {
         app.add_observer(ReplicationTarget::<InterpolatedSend>::sync_host_markers_on_host_removed);
         app.add_observer(Self::sync_host_interpolated_on_prediction);
         app.add_observer(Self::sync_host_interpolated_on_prediction_removed);
+        app.register_required_components_with::<PredictionTarget, InterpolationYield>(
+            InterpolationYield::hiding_nothing,
+        );
         app.add_observer(InterpolationYield::follow_prediction);
         app.add_observer(InterpolationYield::warn_on_interpolation);
         app.add_observer(InterpolationYield::leave_with_prediction);

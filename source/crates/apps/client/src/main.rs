@@ -1,4 +1,4 @@
-//! Game client: joins a session over QUIC, predicts the player's own avatar, and draws the
+//! Game client: joins a session over the stack's UDP, predicts the player's own avatar, and draws the
 //! match; a left click or drag selects the player's own units, and a right click orders them.
 //! With `--bot <orders file>`, it opens no window and renders nothing, and plays the file's
 //! `OrderScript` instead. With `--key <file>`, the player's main key is the file's, made when
@@ -26,17 +26,16 @@ use std::sync::Arc;
 
 use bevy::app::App;
 use campfire_bots::{BotNames, BotScript, OrderScript};
-use campfire_common::ErrorReport;
-use campfire_common::ExitStatus;
+use campfire_common::{ErrorReport, ExitStatus};
 use campfire_log::Logging;
 use campfire_net::{Hosting, KeyFile, Os, Pace, SimClient, WatchRequest, exit_code};
+use campfire_net_connection::Connect;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
 use campfire_protocol::Signer;
 use campfire_sim::MatchRate;
 use campfire_store::SecretFile;
 use campfire_values::{Team, TeamSet};
-use lightyear::prelude::Connect;
 use tracing::error;
 
 use crate::client_module::ClientEnd;
@@ -80,7 +79,7 @@ const TERMINAL_FILTER: &str = "info,wgpu=error,wgpu_hal=off,naga=warn";
 /// `debug`, and Lightyear's rollbacks; of the rest, `info` and above, without the renderer's
 /// validation layers.
 const FILE_FILTER: &str = "info,campfire_client=debug,campfire_net=debug,campfire_script=debug,\
-                           lightyear_prediction=debug,wgpu=warn,wgpu_hal=off,naga=warn";
+                           campfire_net_prediction=debug,wgpu=warn,wgpu_hal=off,naga=warn";
 
 fn main() -> ExitCode {
     let _log = Logging {
@@ -127,7 +126,7 @@ fn main() -> ExitCode {
         Err(code) => return code,
     };
     let pin = connection.pin();
-    let tick = MatchRate::new(pin.tick_hz).length();
+    let rate = MatchRate::new(pin.tick_hz).rate();
     let sim_client = SimClient {
         main,
         session_key: Os::SYSTEM.entropy.keypair(),
@@ -159,7 +158,7 @@ fn main() -> ExitCode {
     end.add(&mut app, &packages);
     app.add_plugins((sim_client, LinkWatch));
     let client = SimClient::spawn(app.world_mut());
-    if let Err(code) = connection.link(&mut app, client, &pace, tick) {
+    if let Err(code) = connection.link(&mut app, client, &pace, rate) {
         return code;
     }
     app.world_mut().trigger(Connect { entity: client });

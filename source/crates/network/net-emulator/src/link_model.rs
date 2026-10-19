@@ -11,7 +11,7 @@ use crate::rate_limit::RateLimit;
 /// MTU and the seed are the link's, in a `DuplexModel` or a `LinkConditioning`. Its probabilities
 /// are `Num`s, which a draw compares against 24 bits of a word, as `Rng::chance` does
 /// (12-lightyear-in-tree.md, One number type).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LinkModel {
     /// One-way delay of every packet. For a symmetric link this is half the round-trip time.
     pub latency: Duration,
@@ -45,10 +45,26 @@ pub struct LinkModel {
     pub rate: Option<RateLimit>,
 }
 
+impl Default for LinkModel {
+    fn default() -> Self {
+        Self::perfect()
+    }
+}
+
 impl LinkModel {
     /// A link that delivers every packet at once.
-    pub fn perfect() -> Self {
-        Self::default()
+    pub const fn perfect() -> Self {
+        Self {
+            latency: Duration::ZERO,
+            jitter: Duration::ZERO,
+            good_loss: Num::ZERO,
+            bad_loss: Num::ZERO,
+            good_to_bad: Num::ZERO,
+            bad_to_good: Num::ZERO,
+            duplicate: Num::ZERO,
+            reorder: Num::ZERO,
+            rate: None,
+        }
     }
 
     /// Replaces [`latency`](Self::latency).

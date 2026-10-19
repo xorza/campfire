@@ -7,6 +7,7 @@ mod app_id;
 mod app_schedule;
 mod client_kind;
 mod connection_stack;
+mod fixed_run;
 mod remote_client;
 mod stack;
 mod stepper;

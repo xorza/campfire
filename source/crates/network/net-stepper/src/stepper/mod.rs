@@ -1,8 +1,11 @@
-use bevy_app::{App, FixedUpdate, PluginsState, TaskPoolPlugin};
+use bevy_app::{
+    App, FixedMainScheduleOrder, FixedUpdate, PluginsState, TaskPoolOptions, TaskPoolPlugin, Update,
+};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::With;
+use bevy_ecs::schedule::{Schedules, SingleThreadedExecutor};
 use bevy_ecs::system::{Commands, Query};
 use bevy_ecs::world::{EntityRef, EntityWorldMut, World};
 use bevy_time::{Real, Time, TimePlugin, TimeUpdateStrategy};
@@ -20,8 +23,9 @@ use campfire_net_link::{Link, LinkOf, Linked, RemoteAddress, Server, Unlinked};
 use campfire_net_packets::{EmulatedWires, EndpointPieces, EndpointSetup, PacketSessionSetup};
 use campfire_net_timeline::LocalTimeline;
 use campfire_net_udp::{
-    AdmissionSetup, EmulatedServer, ServerIdentity, ServerSecret, ServerTrust, UdpSetup,
+    AdmissionSetup, ServerIdentity, ServerSecret, ServerTrust, UdpClient, UdpServer, UdpSetup,
 };
+use campfire_schedule::StrictSchedule;
 use core::num::NonZeroU32;
 use core::time::Duration;
 use std::sync::{Arc, Mutex};
@@ -31,6 +35,7 @@ use tracing::error_span;
 use crate::app_id::AppId;
 use crate::app_schedule::AppSchedule;
 use crate::client_kind::ClientKind;
+use crate::fixed_run::{AfterFixedUpdate, FixedRun};
 use crate::remote_client::RemoteClient;
 use crate::stack::Stack;
 use crate::stepper_setup::{Init, StepperSetup};
@@ -114,7 +119,7 @@ impl<S: Stack> Stepper<S> {
             ClientKind::Plain
         };
         let mut server_app = App::new();
-        server_app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
+        server_app.add_plugins((Self::task_pools(), TimePlugin));
         stack.add_server(&mut server_app, setup.tick_rate);
         // The links the server's endpoint spawns take the stack's components before they link: a
         // queued command runs before the endpoint's `Linked`, which comes in a later command.
@@ -135,12 +140,13 @@ impl<S: Stack> Stepper<S> {
         }
         stack.add_protocol(&mut server_app);
         let endpoint = Endpoint::from(match remote {
-            ClientKind::Udp => EmulatedServer::new(
-                Self::udp_identity(),
-                Self::udp_setup(setup.packet_session),
-                setup.seed,
-            )
-            .serve(AdmissionSetup::new(NonZeroU32::MAX, Duration::from_secs(1))),
+            ClientKind::Udp => {
+                UdpServer::new(Self::udp_identity(), Self::udp_setup(setup.packet_session))
+                    .emulated(
+                        AdmissionSetup::new(NonZeroU32::MAX, Duration::from_secs(1)),
+                        setup.seed,
+                    )
+            }
             ClientKind::Plain | ClientKind::Host => EndpointPieces::plain_server(EndpointSetup {
                 packet_session: setup.packet_session,
                 conditioner: None,
@@ -232,12 +238,7 @@ impl<S: Stack> Stepper<S> {
                 );
                 let seed = self.seed.wrapping_add(u64::try_from(client_id).unwrap());
                 let setup = Self::udp_setup(self.packet_session);
-                Endpoint::from(campfire_net_udp::emulated_client(
-                    pair.client,
-                    &trust,
-                    &setup,
-                    seed,
-                ))
+                Endpoint::from(UdpClient::new(trust, setup).emulated(pair.client, seed))
             }
             ClientKind::Plain | ClientKind::Host => Endpoint::from(EndpointPieces::plain_client(
                 pair.client,
@@ -264,12 +265,43 @@ impl<S: Stack> Stepper<S> {
     /// A remote client's app with the stack's plugins and protocol, finished.
     fn new_client_app(&self) -> App {
         let mut client_app = App::new();
-        client_app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
+        client_app.add_plugins((Self::task_pools(), TimePlugin));
         self.stack.add_client(&mut client_app, self.tick_rate);
         self.stack.add_protocol(&mut client_app);
+        client_app
+            .init_resource::<FixedRun>()
+            .add_systems(AfterFixedUpdate, FixedRun::run)
+            .world_mut()
+            .resource_mut::<FixedMainScheduleOrder>()
+            .insert_after(FixedUpdate, AfterFixedUpdate);
         client_app.finish();
         client_app.cleanup();
+        Self::run_strictly(&mut client_app);
         client_app
+    }
+
+    /// Task pools of one thread each, so a parallel query runs on the frame's thread, in one
+    /// order in every run, and spawns no task: the compute pool is the process's, which the first
+    /// app of a stepper's test makes.
+    fn task_pools() -> TaskPoolPlugin {
+        TaskPoolPlugin {
+            task_pool_options: TaskPoolOptions::with_num_threads(1),
+        }
+    }
+
+    /// Makes `app`'s `Update` and `FixedUpdate` strict, so an ambiguity of the stack or a test
+    /// fails the build of its schedule, and runs each schedule of `app` on one thread, so systems
+    /// with no order between them keep one order in every run, and a frame allocates nothing for
+    /// a task: Bevy's parallel executor, which its `multi_threaded` feature turns on wherever a
+    /// workspace build enables it, orders them by timing and spawns a task for each
+    /// (14-workspace-alignment.md, The stepper runs Campfire's strict schedules).
+    fn run_strictly(app: &mut App) {
+        app.edit_schedule(Update, StrictSchedule::apply);
+        app.edit_schedule(FixedUpdate, StrictSchedule::apply);
+        let mut schedules = app.world_mut().resource_mut::<Schedules>();
+        for (_, schedule) in schedules.iter_mut() {
+            schedule.set_executor(SingleThreadedExecutor::new());
+        }
     }
 
     /// A new emulated link for remote client `client_id`, its models seeded by the index.
@@ -394,6 +426,7 @@ impl<S: Stack> Stepper<S> {
             self.server_app.finish();
             self.server_app.cleanup();
         }
+        Self::run_strictly(&mut self.server_app);
         // Initialize Real time (needed only for the first TimeSystem run)
         let now = self.instant(AppId::Server);
         self.server_app
@@ -435,33 +468,32 @@ impl<S: Stack> Stepper<S> {
         self.step(n, self.frame_interval, StepOrder::ClientsFirst);
     }
 
-    /// Runs `run` on client `client`'s world in its next `FixedUpdate`, as a game spawns from its
-    /// simulation, where the tick is the one both peers agree on, and returns what it returned:
+    /// Runs `run` on client `client`'s world in its next `FixedUpdate`, in `StepperSystems`, as a
+    /// game spawns from its    /// simulation, where the tick is the one both peers agree on, and returns what it returned:
     /// the next frame runs it.
     ///
     /// # Panics
     ///
-    /// When the frame runs no `FixedUpdate` on the client, as when its schedule stalls it.
+    /// When the frame runs no fixed tick on the client, as when its schedule stalls it.
     pub fn client_fixed_update<R: Send + 'static>(
         &mut self,
         client: usize,
         run: impl FnOnce(&mut World) -> R + Send + 'static,
     ) -> R {
-        let run = Mutex::new(Some(run));
         let out = Arc::new(Mutex::new(None));
         let sink = Arc::clone(&out);
         self.clients[client]
             .app
-            .add_systems(FixedUpdate, move |world: &mut World| {
-                if let Some(run) = run.lock().unwrap().take() {
-                    *sink.lock().unwrap() = Some(run(world));
-                }
-            });
+            .world()
+            .resource::<FixedRun>()
+            .set(Box::new(move |world: &mut World| {
+                *sink.lock().unwrap() = Some(run(world));
+            }));
         self.frame_step(1);
         out.lock()
             .unwrap()
             .take()
-            .expect("the client's frame runs a FixedUpdate")
+            .expect("the client's frame runs a fixed tick")
     }
 
     fn update(&mut self, app: AppId) {

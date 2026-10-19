@@ -187,9 +187,11 @@ impl UnitModels {
             };
             let mut models = paints.iter_many_mut(models);
             while let Some(paint) = models.fetch_next() {
-                paint
-                    .map_unchanged(|paint| &mut paint.team)
-                    .set_if_neq(Some(team));
+                if let Ok(paint) = paint {
+                    paint
+                        .map_unchanged(|paint| &mut paint.team)
+                        .set_if_neq(Some(team));
+                }
             }
         }
     }
@@ -441,7 +443,7 @@ mod tests {
         let node = world.spawn(ChildOf(model)).id();
         let mesh = world.spawn((Mesh3d::default(), ChildOf(node))).id();
         app.update();
-        let tag = |app: &App, entity| app.world().get::<MeshTag>(entity).map(|tag| tag.0);
+        let tag = |app: &App, entity| app.world().get::<MeshTag>(entity).map(|tag| tag.value);
         assert_eq!((tag(&app, mesh), tag(&app, node)), (Some(1), None));
         app.world_mut().entity_mut(unit).insert(Team::new(1));
         app.update();

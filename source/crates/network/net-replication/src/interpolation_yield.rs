@@ -4,7 +4,7 @@ use crate::replication_target::InterpolationTarget;
 use crate::replication_target::PredictionTarget;
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::{ScopeLifetime, SingleComponent, VisibilityFilter};
-use campfire_net_connection::RemoteId;
+use campfire_net_connection::{NetworkTarget, RemoteId};
 use tracing::warn;
 
 /// Hides [`InterpolatedSend`] on each link the entity's [`PredictionTarget`] names, so a client
@@ -13,12 +13,18 @@ use tracing::warn;
 /// alone).
 ///
 /// It mirrors the prediction target's mode, kept in step by [`Self::follow_prediction`] and
-/// [`Self::leave_with_prediction`].
+/// [`Self::leave_with_prediction`]. The prediction target requires it, hiding nothing, so an
+/// entity spawns with it and a mirror replaces it in its archetype.
 #[derive(Component, Clone, Debug, PartialEq, Eq)]
 #[component(immutable)]
 pub(crate) struct InterpolationYield(ReplicationMode);
 
 impl InterpolationYield {
+    /// The mirror of a prediction target that names no link, as the target's spawn requires it.
+    pub(crate) const fn hiding_nothing() -> Self {
+        Self(ReplicationMode::Target(NetworkTarget::None))
+    }
+
     /// A prediction target, inserted or replaced, gives the entity its mirror, and a link both
     /// targets name logs a warning.
     pub(crate) fn follow_prediction(

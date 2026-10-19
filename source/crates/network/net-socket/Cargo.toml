@@ -1,0 +1,35 @@
+[package]
+name = "campfire-net-socket"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata.campfire]
+kind = "io"
+
+[features]
+internals = [
+    "campfire-net-bytes/internals",
+    "campfire-net-packets/internals",
+    "campfire-net-payload/internals",
+    "campfire-net-udp/internals",
+]
+
+[dependencies]
+campfire-common.workspace = true
+campfire-net-bytes.workspace = true
+campfire-net-core.workspace = true
+campfire-net-packets.workspace = true
+campfire-net-payload.workspace = true
+campfire-net-udp.workspace = true
+
+polling.workspace = true
+quinn-udp.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+campfire-net-socket = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

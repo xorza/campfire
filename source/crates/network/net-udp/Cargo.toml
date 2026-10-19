@@ -5,14 +5,14 @@ edition.workspace = true
 license.workspace = true
 
 [package.metadata.campfire]
-kind = "io"
+kind = "problem"
 
 [features]
-# The admission bench, for the benches of every layer above
+# The admission bench, for the benches of every layer above, and the test link that the tests of
+# the sockets share
 internals = [
     "dep:campfire-measure",
     "dep:criterion",
-    "campfire-net-bytes/internals",
     "campfire-net-packets/internals",
     "campfire-net-emulator/internals",
     "campfire-net-payload/internals",
@@ -21,7 +21,6 @@ internals = [
 [dependencies]
 campfire-common.workspace = true
 campfire-net-core.workspace = true
-campfire-net-bytes.workspace = true
 campfire-net-emulator.workspace = true
 campfire-net-packets.workspace = true
 campfire-net-payload.workspace = true
@@ -29,16 +28,14 @@ campfire-net-payload.workspace = true
 bytes.workspace = true
 campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
-polling.workspace = true
-quinn-udp = "=0.6.3"
 ring.workspace = true
 rustls.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
 webpki-roots.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+campfire-net-bytes = { workspace = true, features = ["internals"] }
 campfire-net-udp = { workspace = true, features = ["internals"] }
 
 [lib]

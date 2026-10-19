@@ -1,8 +1,8 @@
 use bevy_ecs::resource::Resource;
+use campfire_net_replication::{RoomAllocator, RoomId, Rooms};
 use campfire_units::SeenBy;
 use campfire_values::{NameId, Team, TeamSet};
 use campfire_visibility::{OutView, SpectatorFog, Visibility};
-use lightyear::prelude::{RoomAllocator, RoomId, Rooms};
 
 /// A Lightyear room for each team: a unit stands in the rooms of the teams that see it, and a
 /// seated link in its team's, so Lightyear sends a link exactly the units its team sees, from the
@@ -41,16 +41,14 @@ impl TeamRooms {
     /// its team's and the spectators', every unit's, or every team's view.
     pub(crate) fn out_of_play(&self, team: Team, visibility: &Visibility) -> Rooms {
         match visibility.spectators() {
-            SpectatorFog::All => {
-                Rooms::from([self.rooms[team.index()], self.everything].into_iter())
-            }
+            SpectatorFog::All => Rooms::from([self.rooms[team.index()], self.everything]),
             SpectatorFog::Teams => self.watching(TeamSet::ALL),
         }
     }
 
     /// The rooms of a spectator that watches `teams`.
     pub(crate) fn watching(&self, teams: TeamSet) -> Rooms {
-        Rooms::from(teams.iter().map(|team| self.rooms[team.index()]))
+        teams.iter().map(|team| self.rooms[team.index()]).collect()
     }
 
     /// The rooms of a unit that `seen` says which teams see: every team's for a unit of which
@@ -63,6 +61,6 @@ impl TeamRooms {
         let all = visibility.spectators() == SpectatorFog::All && watched;
         let everything = all.then_some(self.everything);
         let rooms = teams.iter().map(|team| self.rooms[team.index()]);
-        Rooms::from(rooms.chain(everything))
+        rooms.chain(everything).collect()
     }
 }

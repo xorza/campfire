@@ -320,7 +320,7 @@ impl<K: FilteredKind> DataFilter<K> {
         Self::follow_insert::<Team>(app);
         // A remove's observer runs while its entity holds the component still.
         app.add_observer(
-            |removed: On<'_, '_, Remove, Owner>,
+            |removed: On<'_, '_, Remove<Owner>>,
              units: Owners<'_, '_, K>,
              visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
@@ -335,7 +335,7 @@ impl<K: FilteredKind> DataFilter<K> {
             },
         );
         app.add_observer(
-            |removed: On<'_, '_, Remove, Team>,
+            |removed: On<'_, '_, Remove<Team>>,
              units: Owners<'_, '_, K>,
              visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
@@ -354,7 +354,7 @@ impl<K: FilteredKind> DataFilter<K> {
     /// Inserts the filter of `K` again as its entity's `C`, its owner or its team, is inserted.
     fn follow_insert<C: Component>(app: &mut App) {
         app.add_observer(
-            |inserted: On<'_, '_, Insert, C>,
+            |inserted: On<'_, '_, Insert<C>>,
              units: Owners<'_, '_, K>,
              visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {

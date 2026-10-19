@@ -18,9 +18,14 @@ use crate::server_plugins::ServerPlugins;
 pub struct FullStack;
 
 impl FullStack {
+    /// Bevy's transforms, without the marks of changed trees: with `multi_threaded`, which the
+    /// workspace's Bevy has, the mark spawns its tasks in every frame, Bevy's allocations and not
+    /// the stack's, which the allocation audits would count; a full propagation gives the same
+    /// transforms.
     fn add_bevy(app: &mut App) {
         if !app.is_plugin_added::<TransformPlugin>() {
-            app.add_plugins((TransformPlugin, StatesPlugin));
+            app.add_plugins((TransformPlugin, StatesPlugin))
+                .insert_resource(StaticTransformOptimizations::Disabled);
         }
     }
 }

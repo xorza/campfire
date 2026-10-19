@@ -12,8 +12,9 @@ compression_lz4 = ["campfire-net-transport/compression_lz4"]
 # The endpoint of an emulated network's wires, `net-packets`' `EmulatedWires`, which the plugin
 # groups add; the caller makes the `EmulatedNetwork` through `net-emulator`
 sim = ["dep:campfire-net-endpoint", "dep:campfire-net-packets"]
-# The stack's own UDP protocol, `net-udp`, whose socket endpoints the plugin groups add
-udp = ["dep:campfire-net-endpoint", "dep:campfire-net-packets", "dep:campfire-net-udp"]
+# The OS's sockets of the stack's own UDP protocol, `net-socket`, whose endpoints the plugin groups
+# add
+udp = ["dep:campfire-net-endpoint", "dep:campfire-net-packets", "dep:campfire-net-socket"]
 # The full stack and the test protocol, for every layer's tests
 internals = [
     "sim",
@@ -29,7 +30,7 @@ internals = [
     "campfire-net-packets/internals",
     "campfire-net-sync/internals",
     "campfire-net-transport/internals",
-    "campfire-net-udp/internals",
+    "campfire-net-socket/internals",
     "campfire-net-timeline/internals",
     "campfire-net-payload/internals",
     "campfire-math/internals",
@@ -50,15 +51,15 @@ campfire-net-interpolation.workspace = true
 campfire-net-prediction.workspace = true
 campfire-net-endpoint = { workspace = true, optional = true }
 campfire-net-packets = { workspace = true, optional = true }
-campfire-net-udp = { workspace = true, optional = true }
+campfire-net-socket = { workspace = true, optional = true }
 campfire-net-payload.workspace = true
 
 serde.workspace = true
 tracing.workspace = true
 
-bevy = { version = "=0.20.0", default-features = false, features = ["bevy_state"], optional = true }
-bevy_app = { version = "=0.20.0", default-features = false }
-bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy = { workspace = true, features = ["bevy_state"], optional = true }
+bevy_app.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-log = { workspace = true, features = ["internals"] }
@@ -71,7 +72,7 @@ campfire-net-stack = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
 
-bevy_replicon = { version = "=0.45.2", default-features = false, features = ["client", "server"] }
+bevy_replicon = { workspace = true, features = ["client", "server"] }
 
 [lints]
 workspace = true

@@ -35,7 +35,7 @@ impl ShopIndex {
 
     /// Adds a unit whose type, inserted, has a shop.
     pub(crate) fn typed(
-        inserted: On<'_, '_, Insert, UnitType>,
+        inserted: On<'_, '_, Insert<UnitType>>,
         units: Query<'_, '_, (&StableId, &UnitType), Allow<Unpredicted>>,
         shops: Res<'_, ByType<Shop>>,
         mut index: ResMut<'_, Self>,
@@ -52,7 +52,7 @@ impl ShopIndex {
     }
 
     /// Drops a unit whose type goes, as it despawns.
-    pub(crate) fn untyped(removed: On<'_, '_, Remove, UnitType>, mut index: ResMut<'_, Self>) {
+    pub(crate) fn untyped(removed: On<'_, '_, Remove<UnitType>>, mut index: ResMut<'_, Self>) {
         let entity = removed.entity;
         index.units.retain(|unit| unit.entity != entity);
     }

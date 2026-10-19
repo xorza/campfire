@@ -12,9 +12,10 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, If, Query, Res, ResMut, SystemParam};
 use campfire_capabilities::Release;
 use campfire_declare::{EntityKind, KindAudience, KindVisitor};
+use campfire_net_connection::NetworkTarget;
+use campfire_net_replication::{PredictionTarget, Replicate, Rooms};
 use campfire_sim::StableId;
 use campfire_units::{Owner, SeenBy};
-use lightyear::prelude::{NetworkTarget, PredictionTarget, Replicate, Rooms};
 use tracing::debug;
 
 use crate::sim_server::match_visibility::MatchVisibility;
@@ -97,7 +98,7 @@ impl KindShows<'_> {
 
     /// Lists each new entity of `K` as its marker comes, for its show: it came with `Replicate`
     /// and no rooms, so no link receives it before its show puts it in its rooms.
-    fn listed<K: EntityKind>(added: On<'_, '_, Add, K>, mut unshown: ResMut<'_, Unshown<K>>) {
+    fn listed<K: EntityKind>(added: On<'_, '_, Add<K>>, mut unshown: ResMut<'_, Unshown<K>>) {
         unshown.entities.push(added.entity);
     }
 
@@ -137,7 +138,7 @@ impl KindShows<'_> {
                 .filter(|_| K::OWNER_PREDICTS)
                 .and_then(|owner| KindShows::link_of(&links, *owner));
             if let Some(link) = link {
-                replicated.insert(PredictionTarget::manual(vec![link]));
+                replicated.insert(PredictionTarget::to_links([link]));
             }
         }
         if K::AUDIENCE == KindAudience::Seers {
@@ -150,16 +151,17 @@ impl KindShows<'_> {
         }
         if K::OWNER_PREDICTS {
             for (entity, owner) in &owners.changed {
-                let links = KindShows::link_of(&links, *owner).into_iter().collect();
                 commands
                     .entity(entity)
-                    .insert(PredictionTarget::manual(links));
+                    .insert(PredictionTarget::to_links(KindShows::link_of(
+                        &links, *owner,
+                    )));
             }
             for entity in owners.removed.read() {
                 if owners.replicated.contains(entity) {
                     commands
                         .entity(entity)
-                        .insert(PredictionTarget::manual(Vec::new()));
+                        .insert(PredictionTarget::to_links([]));
                 }
             }
         }
@@ -176,7 +178,7 @@ impl KindShows<'_> {
     /// Makes the link seated as `added` says the client that predicts each replicated entity of
     /// `K` its seat owns, as a player takes their seat again.
     fn predict_seated<K: EntityKind>(
-        added: On<'_, '_, Add, PlayerLink>,
+        added: On<'_, '_, Add<PlayerLink>>,
         links: Query<'_, '_, &PlayerLink>,
         owned: OwnedOfKind<'_, '_, K>,
         mut commands: Commands<'_, '_>,
@@ -187,7 +189,7 @@ impl KindShows<'_> {
             if owner.seat() == seat {
                 commands
                     .entity(entity)
-                    .insert(PredictionTarget::manual(vec![link]));
+                    .insert(PredictionTarget::to_links([link]));
             }
         }
     }
@@ -202,7 +204,7 @@ impl KindVisitor for KindShows<'_> {
         world.register_required_components::<K, Rooms>();
         if K::OWNER_PREDICTS {
             world.register_required_components_with::<K, PredictionTarget>(|| {
-                PredictionTarget::manual(Vec::new())
+                PredictionTarget::to_links([])
             });
         }
         world.init_resource::<Unshown<K>>();

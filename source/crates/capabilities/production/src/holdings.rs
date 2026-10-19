@@ -167,7 +167,7 @@ impl Holdings {
 
     /// Marks each unit that gains a part the holdings count, or that a client starts to hide.
     pub(crate) fn inserted(
-        inserted: On<'_, '_, Insert, (Owner, UnitType, Dead, Site, TrainQueue, Unpredicted)>,
+        inserted: On<'_, '_, Insert<(Owner, UnitType, Dead, Site, TrainQueue, Unpredicted)>>,
         mut holdings: ResMut<'_, Self>,
     ) {
         holdings.mark(inserted.entity);
@@ -176,7 +176,7 @@ impl Holdings {
     /// Marks each unit that loses a part the holdings count, is despawned, or that a client
     /// starts to predict.
     pub(crate) fn removed(
-        removed: On<'_, '_, Remove, (Owner, UnitType, Dead, Site, TrainQueue, Unpredicted)>,
+        removed: On<'_, '_, Remove<(Owner, UnitType, Dead, Site, TrainQueue, Unpredicted)>>,
         mut holdings: ResMut<'_, Self>,
     ) {
         holdings.mark(removed.entity);

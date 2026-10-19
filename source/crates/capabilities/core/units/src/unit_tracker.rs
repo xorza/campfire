@@ -123,7 +123,7 @@ impl<T: TrackedUnits> UnitTracker<T> {
 
     /// The observer of a body lost, which no change tick shows: a unit of the group that holds
     /// its body as a part it may lack.
-    pub fn lost_body(_: On<'_, '_, Remove, Body>, mut tracker: ResMut<'_, Self>) {
+    pub fn lost_body(_: On<'_, '_, Remove<Body>>, mut tracker: ResMut<'_, Self>) {
         tracker.marked = true;
     }
 }

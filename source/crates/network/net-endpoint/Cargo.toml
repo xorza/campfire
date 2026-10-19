@@ -24,15 +24,15 @@ campfire-net-link.workspace = true
 campfire-net-payload.workspace = true
 campfire-net-packets.workspace = true
 
-bevy_app = { version = "=0.20.0", default-features = false }
-bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_app.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-net-core.workspace = true
 campfire-net-endpoint = { workspace = true, features = ["internals"] }
 campfire-net-emulator = { workspace = true, features = ["internals"] }
 
-bevy_time = { version = "=0.20.0", default-features = false }
+bevy_time.workspace = true
 bytes.workspace = true
 
 [lints]

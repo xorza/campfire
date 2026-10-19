@@ -253,7 +253,7 @@ fn a_map_of_no_terrain_is_drawn_on_a_plane_over_its_bounds() {
         .resource::<Assets<Mesh>>()
         .get(&mesh.0)
         .unwrap()
-        .compute_aabb()
+        .get_aabb()
         .unwrap();
     assert_eq!(aabb.half_extents, Vec3A::new(20.0, 0.0, 5.0));
 }

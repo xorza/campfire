@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use campfire_bots::{BotScriptError, OrderScriptReadError};
 use campfire_common::ExitStatus;
 use campfire_net::{KeyFileError, LobbyOpenError};
+use campfire_net_socket::BindError;
 use campfire_package::LoadError;
-use campfire_quic::BindError;
 use campfire_store::DataDirError;
 use thiserror::Error;
 

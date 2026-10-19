@@ -8,6 +8,7 @@ use bevy_ecs::system::{Commands, Local, Query, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::Seat;
 use campfire_mode::{OptionPicks, OptionValue};
+use campfire_net_connection::Connected;
 use campfire_package::ModePackages;
 use campfire_protocol::{
     Delegation, InputRules, SeatPlan, SeatStart, SeedChain, SessionHeader, SessionLog,
@@ -15,7 +16,6 @@ use campfire_protocol::{
 };
 use campfire_runner::{CheckedTerms, HostChoices, SessionRules};
 use campfire_visibility::HostVisibility;
-use lightyear::prelude::Connected;
 use tracing::info;
 
 use crate::error::JoinError;

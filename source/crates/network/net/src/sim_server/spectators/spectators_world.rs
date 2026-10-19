@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_net_messages::MessageSender;
 use campfire_runner::SessionWorld;
-use lightyear::prelude::MessageSender;
 
 use crate::match_clock::MatchClock;
 use crate::net_protocol::watch_start::WatchStart;

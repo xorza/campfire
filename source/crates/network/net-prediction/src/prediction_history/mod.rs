@@ -9,6 +9,7 @@ use crate::prediction_setup::PredictionSetup;
 use bevy_ecs::component::ComponentIdFor;
 use bevy_ecs::prelude::*;
 use bevy_ecs::resource::IsResource;
+use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::Reflect;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
 use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
@@ -295,38 +296,26 @@ impl<C: Component + Clone> PredictionHistory<C> {
     /// this observer for unrelated resource types.
     pub(crate) fn add_on_prediction(
         trigger: On<'_, '_, Add<(C, Predicted, PreSpawned, LocallyPredicted)>>,
-        query: Query<
-            '_,
-            '_,
-            (),
-            (
-                With<C>,
-                Or<(
-                    With<Predicted>,
-                    With<PreSpawned>,
-                    With<LocallyPredicted>,
-                    With<IsResource>,
-                )>,
-            ),
-        >,
-        mut commands: Commands<'_, '_>,
+        mut world: DeferredWorld<'_>,
     ) {
-        if query.get(trigger.entity).is_err() {
+        let entity = trigger.entity;
+        let Ok(found) = world.get_entity(entity) else {
+            return;
+        };
+        if !(found.contains::<C>() && (is_predicted(found) || found.contains::<IsResource>())) {
             return;
         }
         trace!(
             target: "campfire_net_debug::prediction",
             kind = "prediction_history_insert",
-            entity = ?trigger.entity,
+            ?entity,
             component = ?DebugName::type_name::<C>(),
             "inserted prediction history component"
         );
-        let entity = trigger.entity;
-        commands.queue(move |world: &mut World| {
-            let Ok(mut entity_mut) = world.get_entity_mut(entity) else {
-                return;
-            };
-            entity_mut.insert_if_new(Self::default());
+        world.commands().queue(move |world: &mut World| {
+            if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
+                entity_mut.insert_if_new(Self::default());
+            }
         });
     }
 }
@@ -344,21 +333,28 @@ impl<C: HistoryComponent> PredictionHistory<C> {
     /// at later completed server ticks.
     pub(crate) fn backfill_confirmed(
         trigger: On<'_, '_, Add<Predicted>>,
-        query: Query<'_, '_, (&C, &ConfirmHistory), Without<ConfirmedHistory<C>>>,
         component_id: ComponentIdFor<'_, C>,
-        confirmed_ticks: Option<Res<'_, ConfirmedTickMap>>,
-        mut commands: Commands<'_, '_>,
+        mut world: DeferredWorld<'_>,
     ) {
         // A component added together with Predicted is a new local value, not a
         // previously replicated authoritative baseline.
         if trigger.trigger().components.contains(&component_id.get()) {
             return;
         }
-        let Ok((component, confirm_history)) = query.get(trigger.entity) else {
+        let entity = trigger.entity;
+        let Ok(found) = world.get_entity(entity) else {
             return;
         };
-        let Some(tick) = confirmed_ticks
-            .as_deref()
+        if found.contains::<ConfirmedHistory<C>>() {
+            return;
+        }
+        let (Some(component), Some(confirm_history)) =
+            (found.get::<C>(), found.get::<ConfirmHistory>())
+        else {
+            return;
+        };
+        let Some(tick) = world
+            .get_resource::<ConfirmedTickMap>()
             .and_then(|confirmed_ticks| confirmed_ticks.confirmed_state_tick(confirm_history))
         else {
             return;
@@ -366,12 +362,12 @@ impl<C: HistoryComponent> PredictionHistory<C> {
         let mut history = ConfirmedHistory::<C>::default();
         history.insert_present_explicit(tick, component.clone());
         trace!(
-            entity = ?trigger.entity,
+            ?entity,
             ?tick,
             component = ?DebugName::type_name::<C>(),
             "backfilled confirmed history for late prediction opt-in"
         );
-        commands.entity(trigger.entity).insert(history);
+        world.commands().entity(entity).insert(history);
     }
 
     /// During rollback re-simulation, check if we have a confirmed value for this tick.
@@ -468,22 +464,16 @@ impl<C: HistoryComponent> PredictionHistory<C> {
 impl<C: HistoryComponent + RepliconDiffable> PredictionHistory<C> {
     pub(crate) fn add_diff_receiver(
         trigger: On<'_, '_, Add<(C, Predicted, PreSpawned, LocallyPredicted)>>,
-        query: Query<
-            '_,
-            '_,
-            (),
-            (
-                With<C>,
-                Or<(With<Predicted>, With<PreSpawned>, With<LocallyPredicted>)>,
-            ),
-        >,
-        mut commands: Commands<'_, '_>,
+        mut world: DeferredWorld<'_>,
     ) {
-        if query.get(trigger.entity).is_err() {
+        let entity = trigger.entity;
+        let Ok(found) = world.get_entity(entity) else {
+            return;
+        };
+        if !(found.contains::<C>() && is_predicted(found)) {
             return;
         }
-        let entity = trigger.entity;
-        commands.queue(move |world: &mut World| {
+        world.commands().queue(move |world: &mut World| {
             let Some(tick) = world
                 .get::<ConfirmHistory>(entity)
                 .and_then(|confirm_history| {
@@ -499,6 +489,15 @@ impl<C: HistoryComponent + RepliconDiffable> PredictionHistory<C> {
             }
         });
     }
+}
+
+/// Whether `entity` is predicted, pre-spawned or locally predicted. An observer reads the entity
+/// itself, which no app's disabling component hides, where a query would miss an entity an app
+/// hides until its prediction starts.
+fn is_predicted(entity: EntityRef<'_>) -> bool {
+    entity.contains::<Predicted>()
+        || entity.contains::<PreSpawned>()
+        || entity.contains::<LocallyPredicted>()
 }
 
 #[cfg(test)]

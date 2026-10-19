@@ -6,7 +6,7 @@
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::query::{ComponentAccessKind, FilteredAccess, FilteredAccessSet};
 use bevy_ecs::schedule::SystemSet;
-use bevy_ecs::system::System;
+use bevy_ecs::system::{System, SystemAccess};
 use campfire_declare::ServerOnly;
 use campfire_stats::{Modifiers, UnitStats};
 
@@ -104,15 +104,20 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
             let mut accesses = Vec::new();
             let system = systems.get_mut(key).unwrap();
             let name = system.name().to_string();
-            if system.is_exclusive() {
+            let access = system.initialize(world);
+            if access.is_exclusive() {
                 exclusive.push(name.replace("campfire_capabilities::", ""));
             }
-            accesses.push(system.initialize(world));
+            accesses.push(access);
             for condition in systems.get_conditions_mut(key).into_iter().flatten() {
                 accesses.push(condition.condition.initialize(world));
             }
             let filtered = accesses
                 .iter()
+                .filter_map(|access| match access {
+                    SystemAccess::Shared(set) => Some(set),
+                    SystemAccess::None | SystemAccess::Exclusive => None,
+                })
                 .flat_map(FilteredAccessSet::filtered_accesses);
             for filtered in filtered {
                 let Some((reads, predicted)) = reads(filtered, unpredicted) else {

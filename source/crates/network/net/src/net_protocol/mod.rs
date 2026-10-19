@@ -5,13 +5,15 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::component::{Component, Immutable, Mutable};
 use campfire_capabilities::Release;
 use campfire_declare::CapabilitySet;
+use campfire_net_channels::{Channel, ChannelMode, ChannelSetup};
+use campfire_net_core::LinkDirection;
+use campfire_net_messages::AppMessageExt;
+use campfire_net_prediction::PredictionRegistrationExt;
+use campfire_net_replication::AppComponentExt;
+use campfire_net_transport::AppChannelExt;
 use campfire_protocol::SignedReceipt;
 use campfire_sim::{SimResource, StableId};
 use campfire_state_types::{Declared, Replication, Sending, SendingWays, StateTypes};
-use lightyear::prelude::{
-    AppChannelExt, AppComponentExt, AppMessageExt, ChannelMode, ChannelSettings, NetworkDirection,
-    PredictionBuilderExt, ReliableSettings,
-};
 
 use crate::net_protocol::dismissed::Dismissed;
 use crate::net_protocol::input_ack::InputAck;
@@ -23,7 +25,6 @@ use crate::net_protocol::offer::Offer;
 use crate::net_protocol::save_command::SaveCommand;
 use crate::net_protocol::watch_start::WatchStart;
 use crate::net_protocol::watch_teams::WatchTeams;
-use crate::net_protocol::wire_codec::WireCodec;
 
 pub(crate) mod dismissed;
 pub(crate) mod input_ack;
@@ -35,22 +36,27 @@ pub(crate) mod offer;
 pub(crate) mod save_command;
 pub(crate) mod watch_start;
 pub(crate) mod watch_teams;
-pub(crate) mod wire_codec;
 
 /// Carries player inputs to the server. Reliable and ordered: the log refuses an input that does
 /// not link to the one before it.
 #[derive(Debug)]
 pub struct InputChannel;
 
+impl Channel for InputChannel {}
+
 /// Carries the offer, the match start and a spectator's, the receipts, and the word that the
 /// server ends the link, to the client.
 #[derive(Debug)]
 pub(crate) struct MatchChannel;
 
+impl Channel for MatchChannel {}
+
 /// Carries a player's join to the server, their word that they leave, and a spectator's choice
 /// of teams.
 #[derive(Debug)]
 pub(crate) struct JoinChannel;
+
+impl Channel for JoinChannel {}
 
 /// What the server and the client must register alike, in the same order: the messages, their
 /// channels, and the sim components that replicate, as the capabilities' lists name them, the
@@ -77,48 +83,41 @@ impl NetProtocol {
 
 impl Plugin for NetProtocol {
     fn build(&self, app: &mut App) {
-        // Lightyear resends a message 1.5 round trips after it went out unacknowledged, and never
-        // when that is zero, as a round trip measured in process reads; the floor keeps a resend
-        // on such a link, and is below 1.5 round trips of any link across a network.
-        let reliable = || ChannelSettings {
-            mode: ChannelMode::OrderedReliable(ReliableSettings {
-                rtt_resend_min_delay: Duration::from_millis(20),
-                ..ReliableSettings::default()
-            }),
-            ..ChannelSettings::default()
+        let reliable = ChannelSetup {
+            mode: ChannelMode::OrderedReliable,
+            ..ChannelSetup::default()
         };
-        app.add_channel::<InputChannel>(reliable())
-            .add_direction(NetworkDirection::ClientToServer);
-        app.add_channel::<MatchChannel>(reliable())
-            .add_direction(NetworkDirection::ServerToClient);
-        app.add_channel::<JoinChannel>(reliable())
-            .add_direction(NetworkDirection::ClientToServer);
-        app.register_message_custom_serde::<InputMessage>(WireCodec::message())
-            .add_direction(NetworkDirection::ClientToServer);
-        app.register_message_custom_serde::<InputAck>(WireCodec::message())
-            .add_direction(NetworkDirection::ServerToClient);
-        app.register_message_custom_serde::<MatchStart>(WireCodec::message())
-            .add_direction(NetworkDirection::ServerToClient);
-        app.register_message_custom_serde::<Offer>(WireCodec::message())
-            .add_direction(NetworkDirection::ServerToClient);
-        app.register_message_custom_serde::<Dismissed>(WireCodec::message())
-            .add_direction(NetworkDirection::ServerToClient);
-        app.register_message_custom_serde::<SignedReceipt>(WireCodec::message())
-            .add_direction(NetworkDirection::ServerToClient);
-        app.register_message_custom_serde::<Join>(WireCodec::message())
-            .add_direction(NetworkDirection::ClientToServer);
-        app.register_message_custom_serde::<SaveCommand>(WireCodec::message())
-            .add_direction(NetworkDirection::ClientToServer);
-        app.register_message_custom_serde::<LeaveMatch>(WireCodec::message())
-            .add_direction(NetworkDirection::ClientToServer);
-        app.register_message_custom_serde::<WatchStart>(WireCodec::message())
-            .add_direction(NetworkDirection::ServerToClient);
-        app.register_message_custom_serde::<WatchTeams>(WireCodec::message())
-            .add_direction(NetworkDirection::ClientToServer);
+        app.register_channel::<InputChannel>(reliable)
+            .add_direction(LinkDirection::ClientToServer);
+        app.register_channel::<MatchChannel>(reliable)
+            .add_direction(LinkDirection::ServerToClient);
+        app.register_channel::<JoinChannel>(reliable)
+            .add_direction(LinkDirection::ClientToServer);
+        app.register_message::<InputMessage>()
+            .add_direction(LinkDirection::ClientToServer);
+        app.register_message::<InputAck>()
+            .add_direction(LinkDirection::ServerToClient);
+        app.register_message::<MatchStart>()
+            .add_direction(LinkDirection::ServerToClient);
+        app.register_message::<Offer>()
+            .add_direction(LinkDirection::ServerToClient);
+        app.register_message::<Dismissed>()
+            .add_direction(LinkDirection::ServerToClient);
+        app.register_message::<SignedReceipt>()
+            .add_direction(LinkDirection::ServerToClient);
+        app.register_message::<Join>()
+            .add_direction(LinkDirection::ClientToServer);
+        app.register_message::<SaveCommand>()
+            .add_direction(LinkDirection::ClientToServer);
+        app.register_message::<LeaveMatch>()
+            .add_direction(LinkDirection::ClientToServer);
+        app.register_message::<WatchStart>()
+            .add_direction(LinkDirection::ServerToClient);
+        app.register_message::<WatchTeams>()
+            .add_direction(LinkDirection::ClientToServer);
 
         // A unit's identity, which no state type holds: the entity list holds it.
-        app.component::<StableId>()
-            .replicate_once_with(WireCodec::component());
+        app.register_component::<StableId>().replicate_once();
         Release::state_types(self.capabilities, &mut Replicated(app));
     }
 }
@@ -140,9 +139,7 @@ impl StateTypes for Replicated<'_> {
     fn derived<C: Component>(&mut self) {}
 
     fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
-        self.0
-            .component::<C>()
-            .replicate_with(WireCodec::component());
+        self.0.register_component::<C>().replicate();
     }
 
     fn resource<R: SimResource + Default>(&mut self) {}
@@ -150,31 +147,22 @@ impl StateTypes for Replicated<'_> {
 
 impl SendingWays for Replicated<'_> {
     fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.0
-            .component::<C>()
-            .replicate_once_with(WireCodec::component());
+        self.0.register_component::<C>().replicate_once();
     }
 
     fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.0
-            .component::<C>()
-            .replicate_with(WireCodec::component());
+        self.0.register_component::<C>().replicate();
     }
 
     fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
-        self.0
-            .component::<C>()
-            .replicate_with(WireCodec::component());
+        self.0.register_component::<C>().replicate();
     }
 
     fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
         &mut self,
         _: Declared,
     ) {
-        self.0
-            .component::<C>()
-            .replicate_with(WireCodec::component())
-            .predict();
+        self.0.register_component::<C>().replicate().predict();
     }
 
     fn server<C: Replication>(&mut self, _: Declared) {}
@@ -187,8 +175,9 @@ mod tests {
     use bevy_app::TaskPoolPlugin;
     use bevy_state::app::StatesPlugin;
     use bevy_time::TimePlugin;
-    use lightyear::prelude::ComponentRegistry;
-    use lightyear::prelude::server::ServerPlugins;
+    use campfire_math::TickRate;
+    use campfire_net_replication::ComponentRegistry;
+    use campfire_net_stack::ServerPlugins;
 
     use super::*;
 
@@ -263,7 +252,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
         app.add_plugins(ServerPlugins {
-            tick_duration: Duration::from_millis(50),
+            tick_rate: TickRate::try_from(20).unwrap(),
         });
         app.add_plugins(NetProtocol { capabilities: set });
         app

@@ -4,13 +4,12 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use bevy_time::{Real, Time, Virtual};
 use campfire_common::Seat;
+use campfire_net_timeline::{LocalTimeline, TimelineRate};
 use campfire_package::ModePackages;
 use campfire_protocol::{ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_runner::{CheckedTerms, Session, SessionSource};
 use campfire_sim::MatchRate;
 use campfire_visibility::Visibility;
-use lightyear::core::tick::TickDuration;
-use lightyear::prelude::LocalTimeline;
 
 use crate::match_clock::MatchClock;
 use crate::pace::PaceSpeed;
@@ -190,14 +189,15 @@ impl ServerMatch {
     /// keeps their `visibility`, the one copy of it, which each data filter takes its audience
     /// from as the match's entities spawn.
     fn take_terms(world: &mut World, terms: &SessionTerms, visibility: Visibility) {
-        let session = MatchRate::new(terms.tick_hz).length();
-        let tick = world.resource::<TickDuration>().0;
+        let session = MatchRate::new(terms.tick_hz).rate();
+        let rate = world.resource::<TimelineRate>().0;
         assert!(
             PaceSpeed::ALL
                 .iter()
-                .any(|speed| speed.tick(session) == tick),
-            "the server ticks at the session's rate at a speed, not every {tick:?}"
+                .any(|speed| speed.rate(session) == rate),
+            "the server ticks at the session's rate at a speed, not at {rate:?}"
         );
+        let tick = rate.period();
         let burst = terms.inputs.max_delay.get().saturating_sub(1).max(1);
         let burst = u32::try_from(burst).expect("a max input delay of a LAN session fits u32");
         world

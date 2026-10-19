@@ -11,7 +11,7 @@ use bevy::ecs::query::{Allow, With};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
-use bevy::picking::events::{Click, Pointer};
+use bevy::picking::events::PointerClick;
 use bevy::picking::pointer::PointerButton;
 use bevy::text::TextColor;
 use bevy::ui::widget::Text;
@@ -172,7 +172,7 @@ impl ShopPanel {
 
     /// A left click on a row buys its item at the shop the panel shows.
     fn buy(
-        click: On<'_, '_, Pointer<Click>>,
+        click: On<'_, '_, PointerClick>,
         rows: Query<'_, '_, &ShopRow>,
         shown: Res<'_, Shown>,
         own: OwnPlayer<'_, '_>,

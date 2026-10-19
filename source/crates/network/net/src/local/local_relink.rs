@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Res, Single};
-use lightyear::prelude::{Client, Connected};
+use campfire_net_connection::{Client, Connected};
 
 use crate::local::local_server::Relinks;
 

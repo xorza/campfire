@@ -5,6 +5,8 @@ use bevy_ecs::system::RunSystemOnce;
 use campfire_bots::OrderScript;
 use campfire_common::{ChannelBinding, DeclaredName};
 use campfire_mode::PickError;
+use campfire_net_connection::RemoteId;
+use campfire_net_core::{NetTick, PeerId};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
     ConnectAnswer, ConnectChallenge, ConnectError, DelegationError, DelegationTerms, Entropy,
@@ -15,7 +17,6 @@ use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
 use campfire_values::Scalar;
 use campfire_visibility::{OutView, Setting, SpectatorFog, Visibility, VisibilityError};
-use lightyear::prelude::{PeerId, RemoteId, Tick};
 
 use super::*;
 use crate::net_protocol::join::{Join, JoinRole};
@@ -159,7 +160,7 @@ impl Joining {
             offered: Offered {
                 challenge: ConnectChallenge::new([9; 32]),
                 binding: ChannelBinding::new([3; 32]),
-                sent: Tick(0),
+                sent: NetTick(0),
                 first: Duration::ZERO,
             },
         }

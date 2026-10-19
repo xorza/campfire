@@ -28,7 +28,7 @@ campfire-net-payload.workspace = true
 bytes.workspace = true
 thiserror.workspace = true
 
-bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_platform = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-math = { workspace = true, features = ["internals"] }

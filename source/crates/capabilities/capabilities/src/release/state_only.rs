@@ -1,8 +1,7 @@
 use std::fmt::Debug;
 
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
-use bevy_ecs::event::Event;
+use bevy_ecs::event::EventPattern;
 use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
@@ -110,7 +109,7 @@ impl<T: StateTypes> Declarations for StateOnly<'_, T> {
 
     fn plan_hook<H: HookDecl>(&mut self, _: PlannedCapability) {}
 
-    fn observer<E: Event, B: Bundle, M>(&mut self, _: impl IntoObserverSystem<E, B, M>) {}
+    fn observer<E: EventPattern, M>(&mut self, _: impl IntoObserverSystem<E, M>) {}
 
     fn removals<C: Component>(&mut self) {}
 

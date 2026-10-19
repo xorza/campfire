@@ -1,5 +1,4 @@
 use std::fmt;
-use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,17 +8,16 @@ use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
-use campfire_common::ErrorReport;
-use campfire_common::{ChannelBinding, Seat, TlsKey};
+use campfire_common::{ErrorReport, Seat};
 use campfire_mode::OptionValue;
+use campfire_net_connection::Start;
+use campfire_net_endpoint::Endpoint;
+use campfire_net_link::Server;
+use campfire_net_packets::EmulatedWires;
 use campfire_package::ModePackages;
-use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_sim::MatchRate;
 use campfire_store::Worker;
 use campfire_visibility::HostVisibility;
-use lightyear::crossbeam::CrossbeamIo;
-use lightyear::prelude::server::RawServer;
-use lightyear::prelude::{LinkOf, Linked, PeerAddr};
 use tracing::error;
 
 use crate::hosting::Hosting;
@@ -41,15 +39,13 @@ use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{Publisher, SessionDir};
 use crate::sim_server::sim_server_plugins::SimServerPlugins;
 use crate::sim_server::sim_server_world::{SessionOpening, SimServerWorld, StopRequest};
+use crate::udp_links::{LocalPair, UdpLinks};
 
 pub(crate) mod error;
 
-/// In-process channels have no TLS; the client pins this as the server's TLS key.
-const TLS_KEY: TlsKey = TlsKey::new([0; 32]);
-
-/// A session's server on a thread of a singleplayer client's process, linked to the client by
-/// in-process channels: the client's player in seat 0, in each other seat the server's bot its
-/// setup names, or none, open for a late join. Its data directory holds what a dedicated
+/// A session's server on a thread of a singleplayer client's process, linked to the client by a
+/// sealed link over the emulator: the client's player in seat 0, in each other seat the server's
+/// bot its setup names, or none, open for a late join. Its data directory holds what a dedicated
 /// server's does; a session an earlier start left ends aborted, its log published, and each start
 /// opens a new one. It runs until it drops: it then ends the session, as the mode ended the
 /// match or aborted, publishes its log, and its thread ends. Both ends follow the setup's pace.
@@ -57,7 +53,7 @@ pub struct LocalServer {
     stop: Arc<AtomicBool>,
     pin: ServerPin,
     /// The client's end of the link, until the client takes it.
-    link: Option<CrossbeamIo>,
+    link: Option<LocalLink>,
     relinks: Relinks,
     /// Dropped after the server's `Drop` asks it to stop.
     _worker: Worker,
@@ -66,7 +62,7 @@ pub struct LocalServer {
 /// The client's end of the new link a local server makes once it starts again after a load,
 /// which the client takes; see `LocalRelink`.
 #[derive(Clone, Default)]
-pub struct Relinks(Arc<Mutex<Option<CrossbeamIo>>>);
+pub struct Relinks(Arc<Mutex<Option<LocalLink>>>);
 
 /// What the local server's thread keeps across the apps it runs: one, then a new one after each
 /// load, which restores the session from its data.
@@ -107,10 +103,6 @@ pub struct LocalServerSetup {
 struct Stop(Arc<AtomicBool>);
 
 impl LocalServer {
-    /// In-process channels have no TLS session: both ends of a local link take this binding
-    /// (11-quic-transport.md, The answer binds to the TLS session).
-    const BINDING: ChannelBinding = ChannelBinding::new([0; 32]);
-
     /// Opens the local server's data directory and session, and starts its thread. An error when
     /// the directory does not open, a session an earlier start left does not end, or the new
     /// one does not open.
@@ -128,6 +120,9 @@ impl LocalServer {
             .map_err(LocalServerError::Key)?;
         let signer = Arc::new(signer);
         let key = signer.public_key();
+        let tls_key = UdpLinks::server(&signer)
+            .tls_key()
+            .expect("a raw key's identity");
         Self::end_earlier(Publisher {
             data: &dir,
             packages: &packages,
@@ -154,7 +149,10 @@ impl LocalServer {
             server: server.clone(),
         };
         let lobby = Lobby::open(opening, &dir).map_err(LocalServerError::Open)?;
-        let (client_io, server_io) = CrossbeamIo::new_pair();
+        let LocalPair {
+            server: link,
+            client,
+        } = UdpLinks::local(&server.signer, server.os.entropy);
         let stop = Arc::new(AtomicBool::new(false));
         let relinks = Relinks::default();
         let runs = Runs {
@@ -172,7 +170,7 @@ impl LocalServer {
         let session = opening.span();
         let worker = Worker::start("local server", move || {
             let _session = session.entered();
-            let mut app = runs.app(server_io, dir);
+            let mut app = runs.app(link, dir);
             app.world_mut().open_session(opening);
             runs.run(app);
         });
@@ -180,10 +178,10 @@ impl LocalServer {
             stop,
             pin: ServerPin {
                 key,
-                tls_key: TLS_KEY,
+                tls_key,
                 tick_hz,
             },
-            link: Some(client_io),
+            link: Some(LocalLink::new(client)),
             relinks,
             _worker: worker,
         })
@@ -199,12 +197,9 @@ impl LocalServer {
         self.pin
     }
 
-    /// The client's end of the link, once, with the binding both ends take.
+    /// The client's end of the link, once.
     pub const fn take_link(&mut self) -> LocalLink {
-        LocalLink::new(
-            self.link.take().expect("the client takes the link once"),
-            LinkBinding(Self::BINDING),
-        )
+        self.link.take().expect("the client takes the link once")
     }
 
     /// Ends aborted a session an earlier start left under the publisher's data directory, and
@@ -280,8 +275,11 @@ impl Runs {
     fn restored(&self) -> Result<App, LocalServerError> {
         let dir = ServerDir::open(&self.data).map_err(LocalServerError::Data)?;
         let session = SessionDir::waiting(&dir).map_err(LocalServerError::Waiting)?;
-        let (client_io, server_io) = CrossbeamIo::new_pair();
-        let mut app = self.app(server_io, dir);
+        let LocalPair {
+            server: link,
+            client,
+        } = UdpLinks::local(&self.server.signer, self.server.os.entropy);
+        let mut app = self.app(link, dir);
         let restore = PendingRestore::check(UncheckedRestore {
             session: session.expect("the session that loaded, whose match started"),
             packages: Arc::clone(&self.packages),
@@ -291,13 +289,13 @@ impl Runs {
         .expect("the packages that ran the session admit its terms");
         app.world_mut()
             .open_session(SessionOpening::Restored(Box::new(restore)));
-        self.relinks.give(client_io);
+        self.relinks.give(LocalLink::new(client));
         Ok(app)
     }
 
-    /// An app of the server: its plugins, its end of the link `link`, and its data directory
-    /// `dir`, which it holds locked.
-    fn app(&self, link: CrossbeamIo, dir: ServerDir) -> App {
+    /// An app of the server: its plugins, its endpoint `link` of the link, started, and its data
+    /// directory `dir`, which it holds locked.
+    fn app(&self, link: Endpoint<EmulatedWires>, dir: ServerDir) -> App {
         let mut app = App::new();
         app.add_plugins((
             SimServerPlugins {
@@ -308,39 +306,30 @@ impl Runs {
             ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
             LocalPace {
                 pace: Arc::clone(&self.pace),
-                tick: MatchRate::new(self.tick_hz).length(),
+                rate: MatchRate::new(self.tick_hz).rate(),
             },
         ));
         app.insert_resource(dir);
         app.insert_resource(Stop(Arc::clone(&self.stop)));
         app.insert_resource(Restart(Arc::clone(&self.restart)));
         app.add_systems(Update, LocalServer::watch.after(ServerFrameSystems::Saves));
-        // A raw server starts once linked, and in-process channels have no socket to link it.
-        let server = app.world_mut().spawn((RawServer, Linked)).id();
-        let address = SocketAddr::from(([127, 0, 0, 1], 1));
-        app.world_mut().spawn((
-            LinkOf { server },
-            QuicEndpoint::link(),
-            PeerAddr(address),
-            LinkBinding(LocalServer::BINDING),
-            Linked,
-            link,
-        ));
+        let server = app.world_mut().spawn((Server::default(), link)).id();
+        app.world_mut().trigger(Start { entity: server });
         app
     }
 }
 
 impl Relinks {
-    fn give(&self, link: CrossbeamIo) {
+    fn give(&self, link: LocalLink) {
         *self.lock() = Some(link);
     }
 
     /// The new link, once the server made one and no client took it yet.
-    pub(crate) fn take(&self) -> Option<CrossbeamIo> {
+    pub(crate) fn take(&self) -> Option<LocalLink> {
         self.lock().take()
     }
 
-    fn lock(&self) -> MutexGuard<'_, Option<CrossbeamIo>> {
+    fn lock(&self) -> MutexGuard<'_, Option<LocalLink>> {
         self.0.lock().expect("no thread panics holding the link")
     }
 }

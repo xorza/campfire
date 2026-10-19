@@ -29,7 +29,7 @@ impl PluginGroup for SimServerPlugins {
             .add(TimePlugin)
             .add(StatesPlugin)
             .add(SimServer {
-                tick: MatchRate::new(self.tick_hz).length(),
+                rate: MatchRate::new(self.tick_hz).rate(),
                 capabilities: self.capabilities,
                 hosting: self.hosting,
             })

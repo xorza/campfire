@@ -8,7 +8,7 @@ use bevy::ecs::observer::On;
 use bevy::ecs::query::Allow;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut};
-use bevy::picking::events::{Click, DragDrop, Pointer};
+use bevy::picking::events::{PointerClick, PointerDragDrop};
 use bevy::picking::pointer::PointerButton;
 use bevy::text::TextColor;
 use bevy::ui::widget::Text;
@@ -135,7 +135,7 @@ impl InventoryBar {
     /// A right click on a slot sells its item at the nearest shop unit whose buyers select the
     /// avatar, which the sim refuses unless it serves the avatar.
     fn sell(
-        click: On<'_, '_, Pointer<Click>>,
+        click: On<'_, '_, PointerClick>,
         slots: Query<'_, '_, &BarSlot>,
         own: OwnPlayer<'_, '_>,
         shopping: Shopping<'_, '_>,
@@ -155,7 +155,7 @@ impl InventoryBar {
 
     /// A slot dropped onto another swaps the two.
     fn swap(
-        drop: On<'_, '_, Pointer<DragDrop>>,
+        drop: On<'_, '_, PointerDragDrop>,
         slots: Query<'_, '_, &BarSlot>,
         own: OwnPlayer<'_, '_>,
         mut orders: ResMut<'_, PendingOrders>,

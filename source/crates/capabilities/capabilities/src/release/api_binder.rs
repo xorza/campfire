@@ -1,8 +1,7 @@
 use std::fmt::Debug;
 
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
-use bevy_ecs::event::Event;
+use bevy_ecs::event::EventPattern;
 use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
@@ -117,7 +116,7 @@ impl Declarations for ApiBinder<'_, '_> {
         self.0.plan_hook::<H>(planned);
     }
 
-    fn observer<E: Event, B: Bundle, M>(&mut self, _: impl IntoObserverSystem<E, B, M>) {}
+    fn observer<E: EventPattern, M>(&mut self, _: impl IntoObserverSystem<E, M>) {}
 
     fn removals<C: Component>(&mut self) {}
 

@@ -344,7 +344,7 @@ fn take_input(ctx, player, name, value) {
     // The grant rides the spawn: the unit holds its 256 slots as its kind is added.
     game.init_resource::<SpawnedSlots>();
     game.add_observer(
-        |added: On<'_, '_, Add, BodyUnit>,
+        |added: On<'_, '_, Add<BodyUnit>>,
          slots: Query<'_, '_, &ActionSlots>,
          mut spawned: ResMut<'_, SpawnedSlots>| {
             let held = slots.get(added.entity).map_or(0, ActionSlots::len);

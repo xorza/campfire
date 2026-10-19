@@ -17,11 +17,11 @@ campfire-net-core = { workspace = true, features = ["reflect"] }
 
 tracing.workspace = true
 
-bevy_app = { version = "=0.20.0", default-features = false, features = ["bevy_reflect"] }
-bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
-bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
-bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
-bevy_time = { version = "=0.20.0", default-features = false }
+bevy_app = { workspace = true, features = ["bevy_reflect"] }
+bevy_ecs = { workspace = true, features = ["std"] }
+bevy_platform = { workspace = true, features = ["std"] }
+bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
+bevy_time.workspace = true
 
 [dev-dependencies]
 campfire-net-timeline = { workspace = true, features = ["internals"] }

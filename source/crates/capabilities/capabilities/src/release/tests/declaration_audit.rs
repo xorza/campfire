@@ -4,10 +4,9 @@
 use std::any::{TypeId, type_name};
 use std::fmt::Debug;
 
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::event::Event;
+use bevy_ecs::event::EventPattern;
 use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
@@ -445,7 +444,7 @@ impl Declarations for DeclarationAudit {
 
     fn plan_hook<H: HookDecl>(&mut self, _: PlannedCapability) {}
 
-    fn observer<E: Event, B: Bundle, M>(&mut self, observer: impl IntoObserverSystem<E, B, M>) {
+    fn observer<E: EventPattern, M>(&mut self, observer: impl IntoObserverSystem<E, M>) {
         let system = IntoObserverSystem::into_system(observer);
         self.observers.push(system.name().shortname().to_string());
     }

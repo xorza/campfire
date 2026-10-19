@@ -19,7 +19,7 @@ bytes.workspace = true
 campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 
-bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_platform = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-net-emulator = { workspace = true, features = ["internals"] }

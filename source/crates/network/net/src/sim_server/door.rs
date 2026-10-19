@@ -4,15 +4,14 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, SystemParam, SystemState};
 use bevy_ecs::world::World;
 use bevy_time::{Real, Time};
-use campfire_common::ErrorReport;
-use campfire_common::Seat;
+use campfire_common::{ErrorReport, Seat};
 use campfire_mode::MatchMode;
+use campfire_net_connection::{Connected, Disconnect};
+use campfire_net_messages::{MessageReceiver, MessageSender};
 use campfire_protocol::{
     Controller, Delegation, LeaveReason, ServerInput, ServerInputError, SessionLog,
 };
-use campfire_quic::CloseLink;
 use campfire_runner::{SeatRuleError, ServerInputRefusal, Session};
-use lightyear::prelude::{Connected, MessageReceiver, MessageSender};
 use tracing::info;
 
 use crate::close_code::CloseCode;
@@ -286,9 +285,9 @@ impl Door {
                     if let Ok(mut gone) = commands.get_entity(link) {
                         gone.try_remove::<PlayerLink>();
                     }
-                    commands.trigger(CloseLink {
+                    commands.trigger(Disconnect {
                         entity: link,
-                        code: CloseCode::Left.app(),
+                        reason: CloseCode::Left.app(),
                     });
                     continue;
                 }

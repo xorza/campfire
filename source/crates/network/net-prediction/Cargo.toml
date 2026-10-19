@@ -34,14 +34,14 @@ bytes.workspace = true
 serde = { workspace = true, optional = true }
 tracing.workspace = true
 
-bevy_app = { version = "=0.20.0", default-features = false }
-bevy_curve = { version = "=0.20.0", default-features = false, features = ["std"] }
-bevy_diagnostic = { version = "=0.20.0", default-features = false }
-bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
-bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
-bevy_replicon = { version = "=0.45.2", default-features = false, features = ["client", "server"] }
-bevy_time = { version = "=0.20.0", default-features = false }
-bevy_utils = { version = "=0.20.0", default-features = false, features = ["debug"] }
+bevy_app.workspace = true
+bevy_curve = { workspace = true, features = ["std"] }
+bevy_diagnostic.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
+bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
+bevy_replicon = { workspace = true, features = ["client", "server"] }
+bevy_time.workspace = true
+bevy_utils = { workspace = true, features = ["debug"] }
 
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }
@@ -50,8 +50,8 @@ campfire-net-prediction = { workspace = true, features = ["internals"] }
 
 serde.workspace = true
 
-bevy = { version = "=0.20.0", default-features = false }
-bevy_state = { version = "=0.20.0", default-features = false }
+bevy.workspace = true
+bevy_state.workspace = true
 
 [lints]
 workspace = true

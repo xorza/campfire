@@ -44,19 +44,19 @@ serde.workspace = true
 smallvec.workspace = true
 tracing.workspace = true
 
-bevy_app = { version = "=0.20.0", default-features = false }
-bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect", "serialize"] }
-bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
-bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
-bevy_replicon = { version = "=0.45.2", default-features = false, features = ["client", "server"] }
-bevy_state = { version = "=0.20.0", default-features = false }
-bevy_time = { version = "=0.20.0", default-features = false, features = ["bevy_reflect"] }
+bevy_app.workspace = true
+bevy_ecs = { workspace = true, features = ["std", "bevy_reflect", "serialize"] }
+bevy_platform = { workspace = true, features = ["std"] }
+bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
+bevy_replicon = { workspace = true, features = ["client", "server"] }
+bevy_state.workspace = true
+bevy_time = { workspace = true, features = ["bevy_reflect"] }
 
 [dev-dependencies]
 campfire-net-link.workspace = true
 campfire-net-replication = { workspace = true, features = ["internals"] }
 
-bevy = { version = "=0.20.0", default-features = false }
+bevy.workspace = true
 
 [lib]
 bench = false

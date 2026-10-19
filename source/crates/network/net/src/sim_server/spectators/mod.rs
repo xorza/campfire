@@ -3,9 +3,10 @@ use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
 use bevy_ecs::system::{Commands, Query};
 use campfire_common::Tick;
+use campfire_net_connection::Connected;
+use campfire_net_messages::{MessageReceiver, MessageSender};
 use campfire_values::TeamSet;
 use campfire_visibility::{SpectatorFog, Visibility};
-use lightyear::prelude::{Connected, MessageReceiver, MessageSender};
 use tracing::info;
 
 use crate::error::JoinError;
@@ -67,7 +68,7 @@ impl Spectators {
     /// and stands in no room: a link that fails can stay as an entity, and a spectator that
     /// joins again comes on a new one.
     pub(crate) fn leave(
-        removed: On<'_, '_, Remove, Connected>,
+        removed: On<'_, '_, Remove<Connected>>,
         viewers: Query<'_, '_, &Viewer>,
         mut commands: Commands<'_, '_>,
     ) {

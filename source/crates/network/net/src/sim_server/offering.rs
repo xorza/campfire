@@ -10,13 +10,14 @@ use bevy_ecs::world::Mut;
 use bevy_time::{Real, Time};
 use campfire_common::ChannelBinding;
 use campfire_log::LogEvent;
+use campfire_net_connection::{ClientOf, Connected, Disconnect};
+use campfire_net_core::NetTick;
+use campfire_net_endpoint::LinkBinding;
+use campfire_net_link::Unlinked;
+use campfire_net_messages::{MessageReceiver, MessageSender};
+use campfire_net_timeline::LocalTimeline;
 use campfire_protocol::{
     ConnectAnswer, ConnectChallenge, Delegation, Entropy, SessionTerms, Verifier,
-};
-use campfire_quic::{CloseLink, LinkBinding};
-use lightyear::prelude::server::ClientOf;
-use lightyear::prelude::{
-    Connected, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick, Unlinked,
 };
 use tracing::debug;
 
@@ -137,9 +138,9 @@ impl Dismissing {
                 .is_some_and(|told| now.saturating_sub(told) >= LINGER)
             {
                 commands.entity(link).remove::<Self>();
-                commands.trigger(CloseLink {
+                commands.trigger(Disconnect {
                     entity: link,
-                    code: dismissing.dismissed.code().app(),
+                    reason: dismissing.dismissed.code().app(),
                 });
             }
         }
@@ -185,9 +186,9 @@ impl Offered {
         for (link, offered) in &links {
             if now.saturating_sub(offered.first) >= ANSWER_WINDOW {
                 debug!(link = link.to_bits(), "the link left the offer unanswered");
-                commands.trigger(CloseLink {
+                commands.trigger(Disconnect {
                     entity: link,
-                    code: CloseCode::Unanswered.app(),
+                    reason: CloseCode::Unanswered.app(),
                 });
             }
         }
@@ -359,8 +360,8 @@ mod tests {
     use bevy_ecs::resource::Resource;
     use bevy_ecs::system::ResMut;
     use bevy_time::{TimePlugin, TimeUpdateStrategy};
-    use campfire_quic::AppCode;
-    use lightyear::prelude::UnlinkReason;
+    use campfire_net_payload::AppCode;
+    use campfire_net_payload::UnlinkReason;
 
     use super::*;
 
@@ -374,8 +375,8 @@ mod tests {
         // and 2 s, ends at 1 + `LINGER`, 6 s, and 7 s, with the dismissal's code; one never told
         // stays. A link offered at 0.5 s and silent ends at 0.5 + `ANSWER_WINDOW`, 10.5 s, with
         // `Unanswered`; one that joined, one refused, and one offered at 1 s that joins at 10.5 s,
-        // before its window ends at 11 s, stay. Each closes once: as `quic` does, a close unlinks
-        // the link.
+        // before its window ends at 11 s, stay. Each closes once: as the stack's endpoint does, a
+        // close unlinks the link.
         let mut app = App::new();
         app.add_plugins(TimePlugin);
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
@@ -383,13 +384,13 @@ mod tests {
         )));
         app.init_resource::<Closes>();
         app.add_observer(
-            |close: On<'_, '_, CloseLink>,
+            |close: On<'_, '_, Disconnect>,
              time: Res<'_, Time<Real>>,
              mut closes: ResMut<'_, Closes>,
              mut commands: Commands<'_, '_>| {
-                closes.0.push((close.entity, close.code, time.elapsed()));
+                closes.0.push((close.entity, close.reason, time.elapsed()));
                 commands.entity(close.entity).insert(Unlinked {
-                    reason: UnlinkReason::UserRequested(None),
+                    reason: UnlinkReason::Closed(close.reason),
                 });
             },
         );

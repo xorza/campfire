@@ -18,12 +18,13 @@ campfire-net-link.workspace = true
 campfire-net-emulator.workspace = true
 campfire-net-packets.workspace = true
 campfire-net-udp.workspace = true
+campfire-schedule.workspace = true
 
 tracing.workspace = true
 
-bevy_app = { version = "=0.20.0", default-features = false }
-bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
-bevy_time = { version = "=0.20.0", default-features = false }
+bevy_app.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
+bevy_time.workspace = true
 
 [dev-dependencies]
 campfire-net-payload = { workspace = true, features = ["internals"] }

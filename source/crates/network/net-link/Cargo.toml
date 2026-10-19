@@ -12,9 +12,9 @@ campfire-net-payload = { workspace = true, features = ["reflect"] }
 
 tracing.workspace = true
 
-bevy_app = { version = "=0.20.0", default-features = false }
-bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
-bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
+bevy_app.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
+bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
 
 [dev-dependencies]
 bytes.workspace = true

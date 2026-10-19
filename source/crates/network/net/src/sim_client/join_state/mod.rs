@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::{ChannelBinding, Seat, Tick};
+use campfire_net_core::NetTick;
+use campfire_net_sync::SyncedLocalTimeline;
 use campfire_package::ModePackages;
 use campfire_protocol::{
     ConnectAnswer, Delegation, DelegationId, DelegationTerms, InputChain, InputRules,
@@ -12,7 +14,6 @@ use campfire_protocol::{
 use campfire_runner::SessionRules;
 use campfire_values::Team;
 use campfire_visibility::Visibility;
-use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
 
 use crate::error::ReceiptRefusal;
 use crate::hosting::Hosting;

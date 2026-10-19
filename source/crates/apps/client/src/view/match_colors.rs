@@ -74,7 +74,7 @@ impl MatchColors {
             .tint
             .map_or(0, |tint| self.teams.colors().len() + tint.place() + 1);
         let tag = u32::try_from(team | (tint << 16)).expect("at most 256 colors and the tints");
-        MeshTag(tag)
+        MeshTag::new(tag)
     }
 
     /// The colors of every team, in their places' order.
@@ -128,7 +128,7 @@ mod tests {
                     team: team.map(Team::new),
                     tint,
                 })
-                .0
+                .value
         };
         assert_eq!(tag(None, None), 0);
         assert_eq!(tag(Some(0), None), 1);

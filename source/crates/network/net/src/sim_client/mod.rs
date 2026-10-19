@@ -12,6 +12,7 @@ use bevy_ecs::schedule::common_conditions::{
 };
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
+use bevy_replicon::prelude::Remote;
 use bevy_time::{Real, Time};
 use campfire_bots::{BotOrder, BotScript, BotUnits, BotView, OrderScratch, ScriptedInput};
 use campfire_capabilities::{MatchKind, MatchSetup, Order, Release};
@@ -20,24 +21,28 @@ use campfire_common::{SegmentSeed, Tick};
 use campfire_declare::Role;
 use campfire_log::LogEvent;
 use campfire_mode::MatchEnd;
+use campfire_net_connection::{Client, Connect, Disconnect};
+use campfire_net_endpoint::LinkBinding;
+use campfire_net_link::{Link, Unlinked};
+use campfire_net_messages::{MessageReceiver, MessageSender};
+use campfire_net_payload::UnlinkReason;
+use campfire_net_prediction::{PredictionSetup, RollbackSystems};
+use campfire_net_replication::{Predicted, ReplicationReceiver};
+use campfire_net_stack::ClientPlugins;
+use campfire_net_sync::{
+    InputDelaySetup, InputTimelineSetup, RemoteTimeline, SyncSetup, SyncedLocalTimeline,
+};
+use campfire_net_timeline::{LocalTimeline, Rollback};
 use campfire_package::ModePackages;
 use campfire_protocol::{SignedReceipt, Signer, Verifier};
-use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicEndpoint, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{
-    MatchRate, SimTick, SimUpdate, StableId, StateRewritten, TickInput, TickInputs, Unpredicted,
+    MatchRate, PredictionStarted, SimTick, SimUpdate, StableId, StateRewritten, TickInput,
+    TickInputs, Unpredicted,
 };
 use campfire_units::{Avatar, Dead, Fallen, Owner, UnitsWorld};
 use campfire_values::{Team, TeamSet};
 use campfire_vision::ByHolding;
-use lightyear::prelude::client::{
-    ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
-};
-use lightyear::prelude::{
-    Client, Connect, LocalTimeline, MessageReceiver, MessageSender, Predicted, PredictionManager,
-    Replicated, ReplicationReceiver, RollbackSystems, SyncConfig, SyncedLocalTimeline,
-    UnlinkReason, Unlinked, is_in_rollback,
-};
 use secp256k1::Keypair;
 use tracing::info;
 
@@ -92,8 +97,8 @@ const PREDICTION_SEED: SegmentSeed = SegmentSeed::ZERO;
 /// session key, sends the player's orders as chained inputs, signed once per message with the
 /// session key, and runs the sim in every fixed tick, rollbacks included, with the player's own
 /// inputs, on the units the client predicts. It adds Lightyear's client at the server's tick, the
-/// protocol, and the prediction; its app adds its frame loop or clock, and its link: QUIC's, or
-/// in-process channels.
+/// protocol, and the prediction; its app adds its frame loop or clock, and its link's endpoint: a
+/// UDP socket's, or the emulator's in the process.
 #[derive(Debug)]
 pub struct SimClient {
     /// The signer of the player's Nostr identity, which signs the delegation.
@@ -167,12 +172,10 @@ impl SimClient {
         SessionRules::of(&self.packages).runs_at(self.server.tick_hz)
     }
 
-    /// Spawns the client's entity, which its link and its connect name. Its link takes
-    /// `LINK_MIN_MTU` now, as its transport fixes its fragment size at the spawn, before any IO
-    /// links it (11-quic-transport.md, A link's minimum MTU is QUIC's datagram).
+    /// Spawns the client's entity, which its link and its connect name.
     pub fn spawn(world: &mut World) -> Entity {
         world
-            .spawn((Client, RawClient, ReplicationReceiver, QuicEndpoint::link()))
+            .spawn((Client, ReplicationReceiver, Link::default()))
             .id()
     }
 }
@@ -185,15 +188,12 @@ impl Plugin for SimClient {
         );
         let rate = MatchRate::new(self.server.tick_hz);
         app.add_plugins(ClientPlugins {
-            tick_duration: rate.length(),
+            tick_rate: rate.rate(),
         });
-        app.add_plugins((
-            NetProtocol {
-                capabilities: self.packages.manifest().capabilities,
-            },
-            QuicPlugin,
-        ));
-        app.insert_resource(PredictionManager::default());
+        app.add_plugins(NetProtocol {
+            capabilities: self.packages.manifest().capabilities,
+        });
+        app.insert_resource(PredictionSetup::default());
         let world = app.world_mut();
         let packages = &self.packages;
         // A client runs no scripts: it predicts only its own player's units.
@@ -219,9 +219,9 @@ impl Plugin for SimClient {
         // tick by half the round trip and its margins, so the input arrives before the server
         // runs that tick; with input delay it would keep that tick nearer, and the input would
         // land late.
-        app.insert_resource(InputTimelineConfig::new(
-            SyncConfig::default(),
-            InputDelayConfig::no_input_delay(),
+        app.insert_resource(InputTimelineSetup::new(
+            SyncSetup::default(),
+            InputDelaySetup::no_input_delay(),
         ));
         app.init_resource::<PendingOrders>();
         app.init_resource::<PendingSaves>();
@@ -261,11 +261,14 @@ impl Plugin for SimClient {
             rewrite_after_rollback
                 .after(RollbackSystems::Prepare)
                 .before(RollbackSystems::Rollback)
-                .run_if(is_in_rollback),
+                .run_if(Rollback::is_active),
         );
         app.add_systems(
             FixedUpdate,
-            (send_orders.run_if(not(is_in_rollback)), run_predicted_tick)
+            (
+                send_orders.run_if(not(Rollback::is_active)),
+                run_predicted_tick,
+            )
                 .chain()
                 .run_if(is_playing),
         );
@@ -312,9 +315,9 @@ fn answer_offer(
                         mismatch: ErrorReport::of(&error).to_string(),
                     }
                     .log();
-                    commands.trigger(CloseLink {
+                    commands.trigger(Disconnect {
                         entity: client,
-                        code: CloseCode::SessionRefused.app(),
+                        reason: CloseCode::SessionRefused.app(),
                     });
                 }
             }
@@ -353,9 +356,9 @@ fn receive_match_start(
                         cause: LinkLossCause::ClientClosed(CloseCode::ChainRewritten),
                     }
                     .log();
-                    commands.trigger(CloseLink {
+                    commands.trigger(Disconnect {
                         entity: client,
-                        code: CloseCode::ChainRewritten.app(),
+                        reason: CloseCode::ChainRewritten.app(),
                     });
                 }
             }
@@ -367,21 +370,21 @@ fn receive_match_start(
 /// the orders it holds, and tries again; one that does not stops, and logs the cause its link's end
 /// gives. Lightyear despawns the units the link replicated.
 fn lose_link(
-    unlinked: On<'_, '_, Insert, Unlinked>,
-    clients: Query<'_, '_, (&Unlinked, Option<&LinkEnd>), With<Client>>,
+    unlinked: On<'_, '_, Insert<Unlinked>>,
+    clients: Query<'_, '_, &Unlinked, With<Client>>,
     time: Res<'_, Time<Real>>,
     os: Res<'_, Os>,
     mut state: ResMut<'_, JoinState>,
     mut sent: ResMut<'_, SentInputs>,
     mut pending: ResMut<'_, PendingOrders>,
 ) {
-    let Ok((Unlinked { reason }, end)) = clients.get(unlinked.entity) else {
+    let Ok(&Unlinked { reason }) = clients.get(unlinked.entity) else {
         return;
     };
     if matches!(reason, UnlinkReason::Initial) {
         return;
     }
-    let cause = LinkLossCause::of(end);
+    let cause = LinkLossCause::of(reason);
     match state.lose(time.elapsed(), os.entropy.random()) {
         LinkLoss::Rejoining => {
             info!(?cause, "the link to the server failed; trying again");
@@ -431,9 +434,9 @@ fn receive_dismissed(
             cause: LinkLossCause::ClientClosed(code),
         }
         .log();
-        commands.trigger(CloseLink {
+        commands.trigger(Disconnect {
             entity: client,
-            code: code.app(),
+            reason: code.app(),
         });
     }
 }
@@ -614,8 +617,8 @@ fn report_deaths(
 )]
 fn send_orders(
     timeline: Res<'_, LocalTimeline>,
-    prediction: Res<'_, PredictionManager>,
-    timeline_config: Res<'_, InputTimelineConfig>,
+    prediction: Res<'_, PredictionSetup>,
+    timeline_config: Res<'_, InputTimelineSetup>,
     bot: Option<ResMut<'_, BotScript>>,
     view: BotView<'_, '_, ByHolding>,
     mut scratch: Local<'_, OrderScratch>,
@@ -645,9 +648,7 @@ fn send_orders(
     if server.is_some_and(|server| stamp.since(server).is_some_and(|ahead| ahead > lead)) {
         return;
     }
-    let reach = prediction
-        .rollback_policy
-        .effective_max_rollback_ticks(&timeline_config);
+    let reach = prediction.max_rollback_ticks(&timeline_config);
     sent.prune(Tick::new(now.get().saturating_sub(u64::from(reach))));
     if let Some(mut bot) = bot {
         for input in bot.due_inputs(stamp) {
@@ -751,7 +752,7 @@ fn run_predicted_tick(world: &mut World) {
     world.run_schedule(SimUpdate);
 }
 
-/// Tells the sim, once Lightyear restored the parts it predicts and before it runs the ticks
+/// Tells the sim, once the stack restored the parts it predicts and before it runs the ticks
 /// again, that its state was written from outside it, so each cache that follows the state's
 /// changes builds again from the restored state (04-capabilities/00-overview.md, One due index for
 /// each timed process).
@@ -761,9 +762,11 @@ fn rewrite_after_rollback(world: &mut World) {
 
 /// Marks each replicated entity `Unpredicted` while it is not predicted, in whatever order the
 /// two markers arrive, and again as the server stops its prediction here, as its owner changes.
+/// The client tells the sim of each unit it starts to predict, as it comes predicted or as its
+/// prediction begins, after the batch that brought it, so the sim's caches take its parts.
 fn mark_unpredicted(world: &mut World) {
     world.add_observer(
-        |added: On<'_, '_, Add, Replicated>,
+        |added: On<'_, '_, Add<Remote>>,
          predicted: Query<'_, '_, (), With<Predicted>>,
          mut commands: Commands<'_, '_>| {
             if !predicted.contains(added.entity) {
@@ -772,13 +775,16 @@ fn mark_unpredicted(world: &mut World) {
         },
     );
     world.add_observer(
-        |added: On<'_, '_, Add, Predicted>, mut commands: Commands<'_, '_>| {
+        |added: On<'_, '_, Add<Predicted>>, mut commands: Commands<'_, '_>| {
             commands.entity(added.entity).remove::<Unpredicted>();
+            commands.trigger(PredictionStarted {
+                entity: added.entity,
+            });
         },
     );
     world.add_observer(
-        |removed: On<'_, '_, Remove, Predicted>,
-         replicated: Query<'_, '_, (), With<Replicated>>,
+        |removed: On<'_, '_, Remove<Predicted>>,
+         replicated: Query<'_, '_, (), With<Remote>>,
          mut commands: Commands<'_, '_>| {
             if replicated.contains(removed.entity) {
                 commands.entity(removed.entity).try_insert(Unpredicted);

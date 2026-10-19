@@ -44,12 +44,12 @@ serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
-bevy_app = { version = "=0.20.0", default-features = false }
-bevy_derive = { version = "=0.20.0", default-features = false }
-bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std", "serialize"] }
-bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
-bevy_replicon = { version = "=0.45.2", default-features = false, features = ["client", "server"] }
-bevy_utils = { version = "=0.20.0", default-features = false, features = ["debug"] }
+bevy_app.workspace = true
+bevy_derive.workspace = true
+bevy_ecs = { workspace = true, features = ["std", "serialize"] }
+bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
+bevy_replicon = { workspace = true, features = ["client", "server"] }
+bevy_utils = { workspace = true, features = ["debug"] }
 
 [dev-dependencies]
 campfire-net-messages = { workspace = true, features = ["internals"] }

@@ -7,20 +7,30 @@ use std::process::{Child, Command};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use bevy_app::App;
+use bevy_app::{App, TaskPoolPlugin};
 use bevy_ecs::entity::Entity;
+use bevy_state::app::StatesPlugin;
+use bevy_time::TimePlugin;
 use campfire_common::ExitStatus;
 use campfire_log::LogLine;
-use campfire_net::Listening;
+use campfire_math::TickRate;
+use campfire_net::{Listening, NetProtocol, UdpLinks};
+use campfire_net_connection::{Client, Connect};
+use campfire_net_endpoint::Endpoint;
+use campfire_net_link::{Link, Linked, Unlinked};
+use campfire_net_payload::{AppCode, UnlinkReason};
+use campfire_net_socket::ClientSocket;
+use campfire_net_stack::ClientPlugins;
 use campfire_protocol::SessionId;
-use campfire_quic::{LinkEnd, LinkTimes, QuicEndpoint, QuicPlugin};
 use campfire_store::internals::TestDir;
 use campfire_store::{InputFile, StopSignals};
 use campfire_test_packages::TestMode;
-use lightyear::link::{LinkStart, Linked};
 
 /// The longest each step after the server's start waits, inside a test's bound of 1 s.
 const PATIENCE: Duration = Duration::from_millis(800);
+
+/// The mode the server opens, whose protocol the client takes.
+const MODE: TestMode = TestMode::Lane;
 
 /// Far more than the few lines of the server's start.
 const LOG_MAX: usize = 1 << 20;
@@ -70,7 +80,7 @@ fn a_stop_closes_each_link_and_exits_with_its_code() {
         .arg("--data")
         .arg(test_dir.path("data"))
         .arg("--no-port-map")
-        .arg(TestMode::Lane.dir())
+        .arg(MODE.dir())
         .arg("127.0.0.1:0");
     let mut server = ServerProcess(
         StopSignals::ignoring_terminal(&mut command)
@@ -90,12 +100,12 @@ fn a_stop_closes_each_link_and_exits_with_its_code() {
         thread::sleep(Duration::from_millis(1));
     };
 
-    let mut client = ClientApp::connect(&listening);
+    let mut client = ClientApp::connect(&listening, MODE);
     until("the link", || client.update().linked.then_some(()));
     StopSignals::stop(&server.0);
     // The server's close, not the idle timeout of 5 s, which `PATIENCE` does not reach.
     let end = until("the client's unlink", || client.update().end);
-    assert_eq!(end, LinkEnd::PeerStopped);
+    assert_eq!(end, UnlinkReason::ClosedByPeer(AppCode::DROPPED));
     let status = until("the server's exit", || server.0.try_wait().unwrap());
     assert_eq!(
         status.code(),
@@ -127,18 +137,30 @@ struct ClientApp {
 #[derive(Debug)]
 struct ClientState {
     linked: bool,
-    end: Option<LinkEnd>,
+    end: Option<UnlinkReason>,
 }
 
 impl ClientApp {
-    /// A client that connects to the server `listening` names.
-    fn connect(listening: &Listening) -> Self {
-        let quic = QuicEndpoint::client(listening.address, &listening.tls_key, LinkTimes::CAMPFIRE)
-            .unwrap();
+    /// A client of `mode`'s protocol that connects to the server `listening` names.
+    fn connect(listening: &Listening, mode: TestMode) -> Self {
+        let socket =
+            ClientSocket::bind(listening.address, UdpLinks::client(listening.tls_key)).unwrap();
         let mut app = App::new();
-        app.add_plugins(QuicPlugin);
-        let entity = app.world_mut().spawn((QuicEndpoint::link(), quic)).id();
-        app.world_mut().trigger(LinkStart { entity });
+        app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
+        app.add_plugins(ClientPlugins {
+            tick_rate: TickRate::try_from(listening.tick_hz.get()).unwrap(),
+        });
+        app.add_plugins(NetProtocol {
+            capabilities: mode.packages().manifest().capabilities,
+        });
+        app.finish();
+        app.cleanup();
+        let endpoint = Endpoint::from(socket.endpoint());
+        let entity = app
+            .world_mut()
+            .spawn((Client, Link::default(), endpoint))
+            .id();
+        app.world_mut().trigger(Connect { entity });
         Self { app, entity }
     }
 
@@ -148,7 +170,10 @@ impl ClientApp {
         let world = self.app.world();
         ClientState {
             linked: world.get::<Linked>(self.entity).is_some(),
-            end: world.get::<LinkEnd>(self.entity).copied(),
+            end: world
+                .get::<Unlinked>(self.entity)
+                .map(|unlinked| unlinked.reason)
+                .filter(|&reason| reason != UnlinkReason::Initial),
         }
     }
 }

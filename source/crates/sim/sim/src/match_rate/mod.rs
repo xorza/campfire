@@ -21,6 +21,10 @@ impl MatchRate {
         self.0.ticks()
     }
 
+    pub const fn rate(self) -> TickRate {
+        self.0
+    }
+
     /// How long a tick lasts, to the nearest nanosecond.
     pub const fn length(self) -> Duration {
         self.0.period()

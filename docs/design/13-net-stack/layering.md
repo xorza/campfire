@@ -32,6 +32,14 @@ The kinds of crate, problem, IO, glue and test support, and their rules are the 
 - **The host client's path stays in the glue.** `net-transport` and `net-messages`
   read `HostClient` and `Disconnected` from `net-connection`, as `api.md`'s "A host client
   keeps an endpoint for each side" decides; `net-channels` does not.
+- **The UDP protocol is a problem crate, and its socket an IO crate.** `net-udp` holds the
+  handshake, the seal, the admission and the server and client of the protocol over any datagram
+  IO, the emulated network's among them; `net-socket` holds the OS's socket, `quinn-udp`'s batches
+  and the poller, and carries a server or a client of `net-udp`. So `net`, a glue crate, runs the
+  sealed singleplayer link with no IO crate under it, and only the apps take the socket. Refused:
+  one crate of both, which puts an IO crate under every glue crate that links in the process; an
+  optional socket behind a feature of `net-udp`, which every app turns on, so the rule holds on its
+  letter alone. Source: `quinn-proto` holds QUIC with no IO and `quinn` binds it to the OS.
 - **The emulated wires and `net-udp`'s emulated server and client are production.** The wires are
   the packet session's IO: `net-packets` holds `EmulatedWires`, a `DatagramIo` over `net-emulator`'s
   model that needs no engine, so `net-packets` stays a problem crate; the sealed singleplayer link

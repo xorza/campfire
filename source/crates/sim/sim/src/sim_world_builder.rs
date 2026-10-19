@@ -332,7 +332,7 @@ mod tests {
             .track(&mut world, &mut StateDelta::default());
         let mut held: Vec<TypeId> = world
             .iter_resources()
-            .filter_map(|(info, _)| info.type_id())
+            .filter_map(|(_, info, _)| info.type_id())
             .collect();
         let mut own = OwnIds::default();
         SimWorldBuilder::own_resources(&mut own);

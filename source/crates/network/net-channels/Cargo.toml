@@ -30,7 +30,7 @@ lz4_flex = { workspace = true, optional = true }
 thiserror.workspace = true
 tracing.workspace = true
 
-bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_platform = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-net-channels = { workspace = true, features = ["internals"] }

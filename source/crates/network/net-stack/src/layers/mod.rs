@@ -20,11 +20,11 @@ use campfire_net_prediction::{
 use campfire_net_replication::{
     ClientReplicationPlugins, ReplicationPlugins, ServerReplicationPlugins,
 };
+#[cfg(feature = "udp")]
+use campfire_net_socket::UdpIo;
 use campfire_net_sync::{ClientSyncPlugins, SyncPlugins};
 use campfire_net_timeline::TimelinePlugins;
 use campfire_net_transport::TransportPlugin;
-#[cfg(feature = "udp")]
-use campfire_net_udp::UdpIo;
 use core::num::NonZeroU32;
 
 use crate::protocol_check_plugin::ProtocolCheckPlugin;

@@ -19,8 +19,8 @@ campfire-net-bytes.workspace = true
 getrandom.workspace = true
 serde.workspace = true
 
-bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
-bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"], optional = true }
+bevy_platform = { workspace = true, features = ["std"] }
+bevy_reflect = { workspace = true, features = ["std", "smallvec"], optional = true }
 
 [lints]
 workspace = true

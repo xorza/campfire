@@ -14,7 +14,7 @@ campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-net.workspace = true
-campfire-quic.workspace = true
+campfire-net-payload.workspace = true
 campfire-protocol.workspace = true
 campfire-store.workspace = true
 campfire-verifier.workspace = true

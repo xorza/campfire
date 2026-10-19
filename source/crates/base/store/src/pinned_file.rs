@@ -22,7 +22,8 @@ impl<'a> PinnedFile<'a> {
         PinnedFile { path }
     }
 
-    /// Writes `now` into the file when the run blesses, and gives whether it did.
+    /// Writes `now` into the file when the run blesses and the file holds other bytes, and gives
+    /// whether the run blesses.
     pub fn bless(&self, now: &[u8]) -> Result<bool, PathError<DurableError>> {
         self.write_if(PinnedFile::is_blessing(), now)
     }
@@ -78,11 +79,21 @@ impl<'a> PinnedFile<'a> {
         );
     }
 
+    /// A file that already holds `now` is left as it is: a write of the same bytes still moves
+    /// its time of change, and cargo builds again each crate that includes the file by that time,
+    /// not by its bytes.
     fn write_if(&self, blessing: bool, now: &[u8]) -> Result<bool, PathError<DurableError>> {
-        if blessing {
+        if blessing && !self.holds(now) {
             DurableFile::write(self.path, now)?;
         }
         Ok(blessing)
+    }
+
+    /// Whether the file holds `now` byte for byte. A file it cannot read holds it not, and the
+    /// write that follows reports what is wrong with its path.
+    fn holds(&self, now: &[u8]) -> bool {
+        InputFile::read_if_present(self.path, now.len())
+            .is_ok_and(|held| held.as_deref() == Some(now))
     }
 }
 
@@ -125,9 +136,21 @@ mod tests {
         assert!(!file.write_if(false, b"made").unwrap());
         assert_eq!(InputFile::read_if_present(&path, 16).unwrap(), None);
         assert!(file.write_if(true, b"made").unwrap());
+        let made = InputFile::read_stamped(&path, 16).unwrap();
+        assert_eq!(made.bytes, b"made");
+        // The same bytes leave the file and its time of change as they are; a prefix of them is
+        // other bytes, which the file, longer than the bound of their read, is written with.
+        assert!(file.write_if(true, b"made").unwrap());
         assert_eq!(
-            InputFile::read_if_present(&path, 16).unwrap().as_deref(),
-            Some(&b"made"[..])
+            InputFile::read_stamped(&path, 16).unwrap().modified,
+            made.modified
+        );
+        assert!(file.write_if(true, b"ma").unwrap());
+        assert_eq!(test_dir.read("pinned.txt"), b"ma");
+        assert!(file.write_if(true, b"made").unwrap());
+        assert_ne!(
+            InputFile::read_stamped(&path, 16).unwrap().modified,
+            made.modified
         );
         // A pin compares the file whole when the run does not bless, and else writes it.
         file.pin_if(false, b"made", 16);

@@ -152,10 +152,7 @@ fn a_name_drops_its_generic_arguments_and_keeps_the_trait_form() {
             "FunctionSystem::run",
         ),
         ("pass<core::iter::FlatMap<a::B<c>, d>>", "pass"),
-        (
-            "<campfire_quic::ThreadFixture>::pass",
-            "<campfire_quic::ThreadFixture>::pass",
-        ),
+        ("<stack::Fixture>::pass", "<stack::Fixture>::pass"),
         ("run<alloc::thread::f::{closure_env#1}>", "run"),
         ("{closure#0}", "{closure#0}"),
     ] {

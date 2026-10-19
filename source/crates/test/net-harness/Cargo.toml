@@ -1,0 +1,81 @@
+[package]
+name = "campfire-net-harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+autotests = false
+
+[package.metadata.campfire]
+kind = "test"
+
+# The network harness and the tests and benches that play matches through it: a server and its
+# clients in process, over the stack's emulated network. All of it is test code, so it has no
+# `internals` of its own: it depends, with their `internals`, on every crate its library names, and
+# dev-depends so on each crate that only its tests name.
+[dependencies]
+campfire-bots.workspace = true
+campfire-capabilities = { workspace = true, features = ["internals"] }
+campfire-codec = { workspace = true, features = ["internals"] }
+campfire-common.workspace = true
+campfire-log = { workspace = true, features = ["internals"] }
+campfire-math = { workspace = true, features = ["internals"] }
+campfire-measure.workspace = true
+campfire-mode = { workspace = true, features = ["internals"] }
+campfire-net = { workspace = true, features = ["internals"] }
+campfire-net-connection.workspace = true
+campfire-net-core.workspace = true
+campfire-net-emulator = { workspace = true, features = ["internals"] }
+campfire-net-endpoint = { workspace = true, features = ["internals"] }
+campfire-net-link.workspace = true
+campfire-net-packets = { workspace = true, features = ["internals"] }
+campfire-net-payload = { workspace = true, features = ["internals"] }
+campfire-net-prediction = { workspace = true, features = ["internals"] }
+campfire-net-sync = { workspace = true, features = ["internals"] }
+campfire-orders = { workspace = true, features = ["internals"] }
+campfire-package = { workspace = true, features = ["internals"] }
+campfire-protocol = { workspace = true, features = ["internals"] }
+campfire-runner = { workspace = true, features = ["internals"] }
+campfire-sim = { workspace = true, features = ["internals"] }
+campfire-store = { workspace = true, features = ["internals"] }
+campfire-test-packages.workspace = true
+campfire-units = { workspace = true, features = ["internals"] }
+campfire-values = { workspace = true, features = ["internals"] }
+campfire-visibility = { workspace = true, features = ["internals"] }
+
+bevy_app.workspace = true
+bevy_ecs.workspace = true
+bevy_state.workspace = true
+bevy_time.workspace = true
+criterion.workspace = true
+
+[dev-dependencies]
+campfire-actions = { workspace = true, features = ["internals"] }
+campfire-combat = { workspace = true, features = ["internals"] }
+campfire-harness.workspace = true
+campfire-navigation = { workspace = true, features = ["internals"] }
+campfire-net-messages = { workspace = true, features = ["internals"] }
+campfire-net-replication = { workspace = true, features = ["internals"] }
+campfire-net-timeline = { workspace = true, features = ["internals"] }
+campfire-players = { workspace = true, features = ["internals"] }
+campfire-progression = { workspace = true, features = ["internals"] }
+campfire-projectiles = { workspace = true, features = ["internals"] }
+campfire-script = { workspace = true, features = ["internals"] }
+campfire-state-types = { workspace = true, features = ["internals"] }
+campfire-stats = { workspace = true, features = ["internals"] }
+
+bevy_replicon = { workspace = true, features = ["client", "server"] }
+
+[lints]
+workspace = true
+
+[[test]]
+name = "tests"
+path = "tests/mod.rs"
+
+[lib]
+bench = false
+
+[[bench]]
+name = "net-harness"
+harness = false

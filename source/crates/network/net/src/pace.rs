@@ -1,7 +1,9 @@
 use campfire_common::EnumAll;
 
+use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::time::Duration;
+
+use campfire_math::TickRate;
 
 /// The pause and the speed of a local match, which its player sets and its client and its local
 /// server share: each applies them to its own clock every frame. Neither enters the log.
@@ -12,7 +14,8 @@ pub struct Pace {
     speed: AtomicU8,
 }
 
-/// A local match's game speed: the tick length is the session's over the speed.
+/// A local match's game speed: its timelines' rate is the session's times the speed, and the
+/// sim's rate stays the session's (12-lightyear-in-tree.md, The pace sets the tick rate).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, EnumAll)]
 pub enum PaceSpeed {
     Half,
@@ -50,14 +53,24 @@ impl Pace {
 }
 
 impl PaceSpeed {
-    /// The tick length at this speed of a session whose ticks last `tick`.
-    pub const fn tick(self, tick: Duration) -> Duration {
-        match self {
-            Self::Half => tick.saturating_mul(2),
-            Self::Normal => tick,
-            Self::Double => tick.checked_div(2).expect("2 is not 0"),
-            Self::Quadruple => tick.checked_div(4).expect("4 is not 0"),
-        }
+    /// The rate at this speed of a session whose rate is `rate`, exact: half of 21 Hz is 21 ticks
+    /// every 2 s.
+    pub const fn rate(self, rate: TickRate) -> TickRate {
+        let (ticks, seconds) = match self {
+            Self::Half => (1, 2),
+            Self::Normal => (1, 1),
+            Self::Double => (2, 1),
+            Self::Quadruple => (4, 1),
+        };
+        TickRate::new(times(rate.ticks(), ticks), times(rate.seconds(), seconds))
+    }
+}
+
+/// `count` times a speed's factor `by`.
+const fn times(count: NonZeroU32, by: u32) -> NonZeroU32 {
+    match count.checked_mul(NonZeroU32::new(by).expect("a speed's factor is not 0")) {
+        Some(product) => product,
+        None => panic!("a session's rate at a speed fits u32"),
     }
 }
 
@@ -66,7 +79,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_pace_holds_what_it_was_set_to_and_each_speed_divides_the_tick() {
+    fn a_pace_holds_what_it_was_set_to_and_each_speed_scales_the_rate() {
         let pace = Pace::default();
         assert_eq!((pace.is_paused(), pace.speed()), (false, PaceSpeed::Normal));
         pace.set_paused(true);
@@ -75,11 +88,16 @@ mod tests {
             assert_eq!(pace.speed(), speed);
         }
         assert!(pace.is_paused());
-        // 50 ms ticks: 100, 50, 25 and 12.5 ms.
-        let tick = Duration::from_millis(50);
+        // 21 Hz: 21 ticks every 2 s, 21, 42 and 84 Hz.
+        let rate = |ticks, seconds| {
+            TickRate::new(
+                NonZeroU32::new(ticks).unwrap(),
+                NonZeroU32::new(seconds).unwrap(),
+            )
+        };
         assert_eq!(
-            PaceSpeed::ALL.map(|speed| speed.tick(tick)),
-            [100_000, 50_000, 25_000, 12_500].map(Duration::from_micros)
+            PaceSpeed::ALL.map(|speed| speed.rate(rate(21, 1))),
+            [rate(21, 2), rate(21, 1), rate(42, 1), rate(84, 1)]
         );
     }
 }

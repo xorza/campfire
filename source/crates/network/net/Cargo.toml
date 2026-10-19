@@ -8,17 +8,33 @@ license.workspace = true
 kind = "glue"
 
 [features]
+# The stack's endpoints on the OS's UDP sockets, which an app that links over a network turns on;
+# without it, `net` links in the process alone
+udp = ["campfire-net-stack/udp"]
 internals = [
     "campfire-bots/internals",
     "campfire-capabilities/internals",
     "campfire-codec/internals",
     "campfire-declare/internals",
     "campfire-log/internals",
+    "campfire-math/internals",
     "campfire-mode/internals",
+    "campfire-net-channels/internals",
+    "campfire-net-emulator/internals",
+    "campfire-net-endpoint/internals",
+    "campfire-net-messages/internals",
+    "campfire-net-packets/internals",
+    "campfire-net-payload/internals",
+    "campfire-net-prediction/internals",
+    "campfire-net-replication/internals",
+    "campfire-net-stack/internals",
+    "campfire-net-sync/internals",
+    "campfire-net-timeline/internals",
+    "campfire-net-transport/internals",
+    "campfire-net-udp/internals",
     "campfire-package/internals",
     "campfire-players/internals",
     "campfire-protocol/internals",
-    "campfire-quic/internals",
     "campfire-runner/internals",
     "campfire-schedule/internals",
     "campfire-script/internals",
@@ -42,7 +58,24 @@ campfire-mode.workspace = true
 campfire-package.workspace = true
 campfire-players.workspace = true
 campfire-protocol.workspace = true
-campfire-quic.workspace = true
+campfire-math.workspace = true
+campfire-net-channels.workspace = true
+campfire-net-connection.workspace = true
+campfire-net-core.workspace = true
+campfire-net-emulator.workspace = true
+campfire-net-endpoint.workspace = true
+campfire-net-link.workspace = true
+campfire-net-messages.workspace = true
+campfire-net-packets.workspace = true
+campfire-net-payload.workspace = true
+campfire-net-prediction.workspace = true
+campfire-net-replication.workspace = true
+# Its emulated wires carry the singleplayer link
+campfire-net-stack = { workspace = true, features = ["sim"] }
+campfire-net-sync.workspace = true
+campfire-net-timeline.workspace = true
+campfire-net-transport.workspace = true
+campfire-net-udp.workspace = true
 campfire-runner.workspace = true
 campfire-schedule.workspace = true
 campfire-script.workspace = true
@@ -56,11 +89,9 @@ campfire-vision.workspace = true
 
 bevy_app.workspace = true
 bevy_ecs.workspace = true
-bevy_replicon.workspace = true
+bevy_replicon = { workspace = true, features = ["client", "server"] }
 bevy_state.workspace = true
 bevy_time.workspace = true
-lightyear.workspace = true
-lightyear_serde.workspace = true
 secp256k1.workspace = true
 serde.workspace = true
 thiserror.workspace = true

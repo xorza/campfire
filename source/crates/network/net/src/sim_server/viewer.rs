@@ -8,11 +8,11 @@ use bevy_ecs::observer::On;
 use bevy_ecs::system::{Commands, Query, Res, SystemParam};
 use bevy_ecs::world::{DeferredWorld, World};
 use campfire_common::Seat;
+use campfire_net_replication::Rooms;
 use campfire_players::{OutOfPlay, Player, PlayersWorld};
 use campfire_state_types::Recipients;
 use campfire_values::{Team, TeamSet};
 use campfire_visibility::{OutView, Visibility};
-use lightyear::prelude::Rooms;
 
 use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::player_link::PlayerLink;
@@ -134,7 +134,7 @@ impl Viewer {
     /// loses it.
     pub(crate) fn follow_links(app: &mut App) {
         app.add_observer(
-            |linked: On<'_, '_, Insert, PlayerLink>, mut world: DeferredWorld<'_>| {
+            |linked: On<'_, '_, Insert<PlayerLink>>, mut world: DeferredWorld<'_>| {
                 let link = *world
                     .get::<PlayerLink>(linked.entity)
                     .expect("an insert's own component");
@@ -143,7 +143,7 @@ impl Viewer {
             },
         );
         app.add_observer(
-            |unlinked: On<'_, '_, Remove, PlayerLink>, mut commands: Commands<'_, '_>| {
+            |unlinked: On<'_, '_, Remove<PlayerLink>>, mut commands: Commands<'_, '_>| {
                 commands.entity(unlinked.entity).try_remove::<Self>();
             },
         );
@@ -155,12 +155,12 @@ impl Viewer {
     /// entities leaves it as a unit that leaves vision does.
     pub(crate) fn follow_out_of_play(app: &mut App) {
         app.add_observer(
-            |out: On<'_, '_, Insert, OutOfPlay>, mut views: PlayerViews<'_, '_>| {
+            |out: On<'_, '_, Insert<OutOfPlay>>, mut views: PlayerViews<'_, '_>| {
                 views.view_again(out.entity, PlayStatus::Out);
             },
         );
         app.add_observer(
-            |back: On<'_, '_, Remove, OutOfPlay>, mut views: PlayerViews<'_, '_>| {
+            |back: On<'_, '_, Remove<OutOfPlay>>, mut views: PlayerViews<'_, '_>| {
                 views.view_again(back.entity, PlayStatus::Playing);
             },
         );

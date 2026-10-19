@@ -26,7 +26,7 @@ impl ServerPhase {
     /// before the next transition applies it.
     pub(crate) fn now(world: &World) -> Self {
         match world.resource::<NextState<Self>>() {
-            NextState::Pending(next) | NextState::PendingIfNeq(next) => *next,
+            NextState::Pending(next) | NextState::PendingIfDifferent(next) => *next,
             NextState::Unchanged => *world.resource::<State<Self>>().get(),
         }
     }

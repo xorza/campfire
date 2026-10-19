@@ -2,19 +2,19 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::Duration;
 
 use bevy::app::App;
 use bevy::ecs::entity::Entity;
-use campfire_common::ErrorReport;
-use campfire_common::ExitStatus;
+use campfire_common::{ErrorReport, ExitStatus};
+use campfire_math::TickRate;
 use campfire_mode::OptionValue;
 use campfire_net::{
     ClientDir, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Os, Pace, SeatBotFile,
-    ServerPin,
+    ServerPin, UdpLinks,
 };
+use campfire_net_endpoint::Endpoint;
+use campfire_net_socket::ClientSocket;
 use campfire_package::ModePackages;
-use campfire_quic::{LinkTimes, QuicEndpoint};
 use tracing::error;
 
 use crate::command_line::{Args, Server};
@@ -113,26 +113,28 @@ impl Connection {
         }
     }
 
-    /// Links `client`, the client entity of `app`, to the server: over QUIC to a remote one, which
-    /// takes only the TLS key the pin names; by in-process channels to a local one, whose `pace`
-    /// the app then follows, its session's ticks `tick` long, and whose new link after each load
-    /// it takes. The exit code when the client's socket does not open.
+    /// Links `client`, the client entity of `app`, to the server: over the stack's sealed UDP to a
+    /// remote one, which takes only the TLS key the pin names; over the sealed emulated link to a
+    /// local one, whose `pace` the app then follows, its session at `rate`, and whose new link
+    /// after each load it takes. The exit code when the client's socket does not open.
     pub(crate) fn link(
         &mut self,
         app: &mut App,
         client: Entity,
         pace: &Arc<Pace>,
-        tick: Duration,
+        rate: TickRate,
     ) -> Result<(), ExitCode> {
         match self {
             Self::Remote { pin, address, .. } => {
-                let endpoint = QuicEndpoint::client(*address, &pin.tls_key, LinkTimes::CAMPFIRE).map_err(
+                let socket = ClientSocket::bind(*address, UdpLinks::client(pin.tls_key)).map_err(
                     |error| {
                         error!(error = %ErrorReport::of(&error), "the client's socket does not open");
                         ExitCode::from(ExitStatus::Failure)
                     },
                 )?;
-                app.world_mut().entity_mut(client).insert(endpoint);
+                app.world_mut()
+                    .entity_mut(client)
+                    .insert(Endpoint::from(socket.endpoint()));
             }
             Self::Local { server, .. } => {
                 app.world_mut()
@@ -141,7 +143,7 @@ impl Connection {
                 app.add_plugins((
                     LocalPace {
                         pace: Arc::clone(pace),
-                        tick,
+                        rate,
                     },
                     LocalRelink {
                         relinks: server.relinks(),

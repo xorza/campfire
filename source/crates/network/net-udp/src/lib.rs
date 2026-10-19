@@ -7,7 +7,6 @@ mod address_token;
 mod admission;
 mod admission_setup;
 mod alert;
-mod bind_error;
 mod certificate_chain;
 mod certificate_error;
 mod crypto_stream;
@@ -16,33 +15,38 @@ mod handshake_packet;
 mod invalid_server_name;
 mod pinned_key_verifier;
 mod raw_key_signer;
-mod recv_batch;
 mod reset_key;
 mod rustls_seal;
 mod secure_establishment;
 mod server_identity;
 mod server_secret;
 mod server_trust;
-mod sockets;
 mod spki;
+#[cfg(feature = "internals")]
+mod test_link;
 mod tls_provider;
 mod transport_params;
-mod udp_io;
-mod udp_port;
+mod udp_client;
+mod udp_server;
 mod udp_setup;
 mod used_tokens;
 
 pub use crate::admission_setup::AdmissionSetup;
-pub use crate::bind_error::BindError;
 pub use crate::certificate_chain::CertificateChain;
 pub use crate::certificate_error::CertificateError;
 pub use crate::invalid_server_name::InvalidServerName;
 pub use crate::server_identity::ServerIdentity;
 pub use crate::server_secret::ServerSecret;
 pub use crate::server_trust::ServerTrust;
-pub use crate::sockets::{ClientSocket, EmulatedServer, ServerSocket, emulated_client};
-pub use crate::udp_io::UdpIo;
+pub use crate::udp_client::UdpClient;
+pub use crate::udp_server::UdpServer;
 pub use crate::udp_setup::UdpSetup;
+
+/// The protocol's test link, which the tests of its sockets share.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::test_link::TestLink;
+}
 
 /// The crate's criterion cases, which `benches/net-udp.rs` runs.
 #[cfg(feature = "internals")]
