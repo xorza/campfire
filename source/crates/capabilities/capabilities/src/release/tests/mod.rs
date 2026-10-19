@@ -11,6 +11,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::schedule::Schedules;
 use bevy_ecs::world::Mut;
 use campfire_actions::ActionBook;
+use campfire_codec::Toml;
 use campfire_common::SegmentSeed;
 use campfire_declare::{ByType, EntityParts, Module, Role};
 use campfire_math::Vec3;
@@ -19,10 +20,10 @@ use campfire_players::{Player, PlayerResources};
 use campfire_script::{PlannedCapability, ScriptLimits, ScriptPools, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimUpdate, SimWorld, StateRegistry};
-use campfire_store::internals::{CargoManifest, SourceFiles};
 use campfire_store::{DirEntries, EntryKind, InputFile};
 use campfire_units::UnitTypeCore;
 use campfire_values::Team;
+use serde::Deserialize;
 
 use super::*;
 use crate::release::r#match::Match;
@@ -276,6 +277,16 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 #[derive(Debug)]
 struct CapabilityCrates(Vec<CapabilityCrate>);
 
+/// The most bytes a crate's manifest holds: far past any of the group's.
+const MANIFEST_LEN: usize = 1 << 16;
+
+/// What a crate's manifest gives the layers: the crates it depends on, by name.
+#[derive(Debug, Deserialize)]
+struct Dependencies {
+    #[serde(default)]
+    dependencies: BTreeMap<String, TomlValue>,
+}
+
 /// A capability crate and the capability crates it depends on.
 #[derive(Debug)]
 struct CapabilityCrate {
@@ -318,9 +329,10 @@ impl CapabilityCrates {
         let crates = crate_dirs
             .into_iter()
             .map(|crate_dir| {
-                let manifest = CargoManifest::read(&root.join(&crate_dir));
-                let depends = CargoManifest::dependencies(&manifest)
-                    .into_iter()
+                let path = root.join(&crate_dir).join("Cargo.toml");
+                let manifest: Dependencies =
+                    Toml::parse(&InputFile::read_text(&path, MANIFEST_LEN).unwrap()).unwrap();
+                let depends = (manifest.dependencies.keys())
                     .filter_map(|dependency| dependency.strip_prefix("campfire-"))
                     .filter(|dependency| names.iter().any(|name| name == dependency))
                     .map(str::to_owned)
@@ -442,39 +454,6 @@ fn a_capabilitys_crate_depends_on_exactly_what_it_needs_or_uses() {
     assert_eq!(found, Vec::<String>::new());
 }
 
-/// Visits each source file under `dir` with its production code, by its path from `dir`.
-fn production(dir: &Path, visit: &mut impl FnMut(&str, &str)) {
-    for file in SourceFiles::under(dir) {
-        if let Some(code) = file.production() {
-            visit(&file.path, &code);
-        }
-    }
-}
-
-/// Visits each source file of every capability crate and of this one with its production code,
-/// by its path as `<crate>/<path>`, under the crate's directory name; this crate's under their
-/// modules' own.
-fn capability_sources(visit: &mut impl FnMut(&str, &str)) {
-    let root = CapabilityCrates::group();
-    let crates = CapabilityCrates::read();
-    let crate_dirs = crates.0.iter().map(|krate| krate.crate_dir.as_str());
-    for crate_dir in crate_dirs.chain([""]) {
-        let module = match crate_dir.rsplit('/').next().unwrap() {
-            "" => None,
-            name => Some(name.replace('-', "_")),
-        };
-        let dir = if crate_dir.is_empty() {
-            root.join(CapabilityCrates::OWN)
-        } else {
-            root.join(crate_dir)
-        };
-        production(&dir.join("src"), &mut |path, code| match &module {
-            Some(module) => visit(&format!("{module}/{path}"), code),
-            None => visit(path, code),
-        });
-    }
-}
-
 #[test]
 fn each_capability_installs_after_the_lower_layers_it_builds_on() {
     // The table's install order, its needs and the layers are three facts of one order: a
@@ -498,431 +477,6 @@ fn each_capability_installs_after_the_lower_layers_it_builds_on() {
         }
         installed.push(row.capability);
     }
-}
-
-/// `code` with the body of each set's place left out, where a module names the steps of the
-/// modules it builds on.
-fn outside_places(code: &str) -> String {
-    let mut out = String::new();
-    let mut rest = code;
-    while let Some(at) = rest.find("    fn place(self) -> SetPlace {") {
-        out.push_str(&rest[..at]);
-        let body = &rest[at..];
-        let end = body.find("\n    }\n").expect("a place's body ends") + "\n    }\n".len();
-        rest = &body[end..];
-    }
-    out.push_str(rest);
-    out
-}
-
-#[test]
-fn a_module_names_another_modules_sets_only_where_its_sets_run() {
-    // A set orders against the steps of the modules it builds on, which its place names; a module
-    // puts its systems in its own sets alone, so no system orders against another module's but
-    // through its set's place (02-engine-core.md, Sets order against the steps of the modules
-    // they build on).
-    let module_of = |path: &str| path.split('/').next().unwrap_or_default().to_owned();
-    let mut sets = Vec::new();
-    capability_sources(&mut |path, code| {
-        for (at, _) in code.match_indices("impl ModuleSet for ") {
-            let rest = &code[at + "impl ModuleSet for ".len()..];
-            let end = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap();
-            sets.push((module_of(path), rest[..end].to_owned()));
-        }
-    });
-    assert!(
-        sets.iter()
-            .any(|(module, set)| module == "actions" && set == "ActionsSet")
-    );
-    let mut named = Vec::new();
-    let mut placed = Vec::new();
-    capability_sources(&mut |path, code| {
-        let module = module_of(path);
-        let outside = outside_places(code);
-        if outside.len() < code.len() && code.contains("SetPlace::at(") {
-            placed.push(module.clone());
-        }
-        // An import names the set for the place's sake; a statement of it may take lines.
-        let mut importing = false;
-        let used = outside.lines().filter(|line| {
-            importing |= line.trim_start().starts_with("use ");
-            let used = !importing;
-            importing &= !line.trim_end().ends_with(';');
-            used
-        });
-        let words =
-            used.flat_map(|line| line.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')));
-        for word in words {
-            // `NoSet`, of a module that adds no system, is no module's.
-            let other = sets
-                .iter()
-                .find(|(home, set)| set == word && *home != module && home != "declare");
-            if let Some((home, set)) = other {
-                named.push(format!("{path} names {home}'s {set}"));
-            }
-        }
-    });
-    named.sort();
-    named.dedup();
-    assert_eq!(named, Vec::<String>::new());
-    // The capabilities do place their sets at the steps of others: the scan sees them.
-    assert!(placed.contains(&"combat".to_owned()), "{placed:?}");
-    assert_eq!(
-        outside_places("a\n    fn place(self) -> SetPlace {\n        X\n    }\nb"),
-        "a\nb"
-    );
-}
-
-/// Every lookup by name that the production code of the capabilities and the network calls, by
-/// file: a method or function whose name ends in `named`, as each lookup of an id by its name is
-/// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
-/// given once, as its arguments' types take them, in the load, which resolves the packages' names
-/// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 71] = [
-    // The load, each module's books by their builders.
-    ("actions/action_load.rs", "named"),
-    ("actions/action_rules.rs", "named"),
-    ("actions/action_slots/mod.rs", "named"),
-    ("actions/cost_target.rs", "named"),
-    ("actions/listed_effect/effect_data.rs", "named"),
-    ("actions/loaded_action.rs", "named"),
-    ("actions/slot_claims.rs", "named"),
-    ("actions/slot_kinds.rs", "named"),
-    ("areas/area_books.rs", "named"),
-    ("books/load_names.rs", "named"),
-    ("combat/armor.rs", "named"),
-    ("combat/combat_books.rs", "named"),
-    ("combat/mode_combat_data.rs", "named"),
-    ("combat/weapon_names.rs", "named"),
-    ("declare/book_cx.rs", "named"),
-    ("interaction/interaction_books.rs", "named"),
-    ("items/item_books.rs", "named"),
-    ("items/items_rules.rs", "named"),
-    ("mode/game_map.rs", "named"),
-    ("mode/mode_data.rs", "named"),
-    ("mode/mode_map.rs", "named"),
-    ("mode/mode_units.rs", "named"),
-    ("navigation/navigation_books.rs", "named"),
-    ("production/book_builders.rs", "named"),
-    ("progression/experience_book.rs", "named"),
-    ("progression/progression_books.rs", "named"),
-    ("stats/action_params.rs", "named"),
-    ("stats/modifier_book.rs", "named"),
-    ("stats/modifier_spec.rs", "named"),
-    ("stats/modifiers_data.rs", "named"),
-    ("stats/param_book.rs", "named"),
-    ("stats/stat_book.rs", "named"),
-    ("stats/type_passive.rs", "named"),
-    ("stats/type_pools.rs", "named"),
-    ("units/collision_data.rs", "named"),
-    ("units/declared_tags.rs", "named"),
-    ("units/pool_id.rs", "named"),
-    ("units/unit_types.rs", "named"),
-    ("units/units_rules.rs", "named"),
-    ("values/stat.rs", "named"),
-    // The load, and the host's settings as the server starts.
-    ("visibility/mode_visibility.rs", "named"),
-    ("visibility/setting/mod.rs", "named"),
-    // A bot's script, each unit type it names resolved once as its bot starts.
-    ("bots/bot_script/bot_names.rs", "named"),
-    // The load, and a filter a script names.
-    ("script/scripts/view/filter.rs", "named"),
-    ("script/scripts/view/match_names.rs", "named"),
-    ("values/filter_data.rs", "named"),
-    // Script calls, each argument by its type, and the mode inputs, whose names enter with the
-    // players' inputs.
-    ("actions/slot_kind.rs", "named"),
-    ("mode/bounty_book.rs", "named"),
-    ("mode/choice_id.rs", "named"),
-    ("mode/marker_tag.rs", "named"),
-    ("mode/mode_api.rs", "loadout_ability_named"),
-    ("mode/mode_api.rs", "offer_named"),
-    ("mode/mode_call.rs", "param_named"),
-    ("mode/mode_core.rs", "named"),
-    ("mode/mode_hooks.rs", "input_type_named"),
-    ("mode/mode_schema.rs", "named"),
-    ("mode/mode_script.rs", "named"),
-    ("mode/roster.rs", "named"),
-    ("mode/roster.rs", "offer_named"),
-    ("mode/timer_id.rs", "named"),
-    ("mode/victory.rs", "named"),
-    ("script/scripts/id_args.rs", "named"),
-    ("script/scripts/script_api/api_builder.rs", "named"),
-    ("script/scripts/script_api/mod.rs", "hook_named"),
-    ("script/scripts/script_names.rs", "named"),
-    ("script/scripts/state_decl/state_schema.rs", "named"),
-    ("script/scripts/view/tag_names.rs", "named"),
-    ("stats/param_table.rs", "named"),
-    ("stats/stats_call.rs", "named"),
-    ("units/stat_id.rs", "named"),
-    ("values/name_table.rs", "named"),
-];
-
-/// Each role a module's type may hold, by the trait it implements or, for a script API, by the
-/// `*Api` type that registers members: the suffix of the type's name, and of its file's.
-const ROLES: [(&str, &str, &str); 4] = [
-    ("impl Effect for ", "Effect", "effect"),
-    ("impl ViewColumn for ", "Column", "column"),
-    ("impl CallExtension for ", "Call", "call"),
-    ("struct ", "Api", "api"),
-];
-
-/// The types that hold a role but are named for what they are: the core's script API, which spans
-/// `units`, `scripts` and `players`.
-const ROLE_EXCEPTIONS: [&str; 1] = ["CoreApi"];
-
-/// The types of `code`, the file `file` of the module `module`, that hold a role and are not
-/// named `<Module><Role>` in `<module>_<role>.rs`, as `(file, type)`; a `mod.rs` is named by its
-/// directory, and a crate's `lib.rs` by its module.
-fn misnamed_roles(module: &str, file: &str, code: &str) -> Vec<(String, String)> {
-    let pascal: String = module
-        .split('_')
-        .map(|word| word[..1].to_ascii_uppercase() + &word[1..])
-        .collect();
-    let mut misnamed = Vec::new();
-    for (opening, suffix, file_suffix) in ROLES {
-        if suffix == "Api" && !code.contains("fn register(api: &mut ApiBuilder") {
-            continue;
-        }
-        for (at, _) in code.match_indices(opening) {
-            if at > 0 && !code[..at].ends_with(|c: char| c.is_whitespace() || c == ')') {
-                continue;
-            }
-            let rest = &code[at + opening.len()..];
-            let end = rest
-                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-                .unwrap_or(rest.len());
-            let name = &rest[..end];
-            if suffix == "Api" && !name.ends_with("Api") {
-                continue;
-            }
-            let named =
-                name == format!("{pascal}{suffix}") && file == format!("{module}_{file_suffix}");
-            if !named && !ROLE_EXCEPTIONS.contains(&name) {
-                misnamed.push((file.to_owned(), name.to_owned()));
-            }
-        }
-    }
-    misnamed
-}
-
-#[test]
-fn each_role_of_a_module_takes_the_modules_name() {
-    let mut misnamed = Vec::new();
-    let mut held = [0; ROLES.len()];
-    capability_sources(&mut |path, code| {
-        let parts: Vec<&str> = path.split('/').collect();
-        let [module, .., last] = parts[..] else {
-            return;
-        };
-        let file = match last.strip_suffix(".rs").expect("a source ends in .rs") {
-            "mod" => parts[parts.len() - 2],
-            "lib" => module,
-            stem => stem,
-        };
-        misnamed.extend(misnamed_roles(module, file, code));
-        for (held, (opening, ..)) in held.iter_mut().zip(ROLES) {
-            *held += code.matches(opening).count();
-        }
-    });
-    assert_eq!(misnamed, Vec::<(String, String)>::new());
-    // The walk reads each role, so a role it no longer finds fails here, not silently.
-    assert!(held.iter().all(|&count| count > 0), "{held:?}");
-
-    // Each role is found where it is misnamed, a script API only where it registers members,
-    // and the exceptions pass.
-    let api = |name: &str| {
-        format!("struct {name};\nimpl {name} {{ fn register(api: &mut ApiBuilder<'_>) {{}} }}")
-    };
-    let samples = [
-        (
-            "vision",
-            "vision_effect",
-            "impl Effect for VisionEffect {".to_owned(),
-            vec![],
-        ),
-        (
-            "vision",
-            "reveal_effect",
-            "impl Effect for RevealEffect {".to_owned(),
-            vec![("reveal_effect", "RevealEffect")],
-        ),
-        (
-            "vision",
-            "vision_column",
-            "impl ViewColumn for SightColumn {".to_owned(),
-            vec![("vision_column", "SightColumn")],
-        ),
-        (
-            "units",
-            "units_call",
-            "impl CallExtension for UnitsCall {".to_owned(),
-            vec![],
-        ),
-        ("units", "units_api", api("UnitsApi"), vec![]),
-        (
-            "units",
-            "units_api",
-            api("PositionApi"),
-            vec![("units_api", "PositionApi")],
-        ),
-        (
-            "units",
-            "position_api",
-            api("UnitsApi"),
-            vec![("position_api", "UnitsApi")],
-        ),
-        ("scripts", "core_api", api("CoreApi"), vec![]),
-        (
-            "scripts",
-            "script_api",
-            "pub struct ScriptApi {".to_owned(),
-            vec![],
-        ),
-        (
-            "orders",
-            "unit_order",
-            "impl Effect for UnitOrder {".to_owned(),
-            vec![("unit_order", "UnitOrder")],
-        ),
-        (
-            "orders",
-            "orders_effect",
-            "impl Effect for OrdersEffect {".to_owned(),
-            vec![],
-        ),
-        (
-            "capability_set",
-            "capability_set",
-            "impl Effect for CapabilitySetEffect {".to_owned(),
-            vec![("capability_set", "CapabilitySetEffect")],
-        ),
-    ];
-    for (module, file, code, expected) in samples {
-        let expected: Vec<(String, String)> = expected
-            .into_iter()
-            .map(|(file, name): (&str, &str)| (file.to_owned(), name.to_owned()))
-            .collect();
-        assert_eq!(misnamed_roles(module, file, &code), expected, "{code}");
-    }
-}
-
-/// Each role whose types take a suffix, wherever they are: the trait a type implements to hold
-/// it, and the suffix of its name. A `*Book` is exactly a book, a `*Data` a table of package data.
-const SUFFIX_ROLES: [(&str, &str); 2] = [("Book", "Book"), ("DataSection", "Data")];
-
-/// The types that hold a suffix role but are named for what they are: the two generic books, of a
-/// value for each action and for each unit type.
-const SUFFIX_EXCEPTIONS: [&str; 2] = ["ByAction", "ByType"];
-
-/// The types `code` implements `role` for, by name: each `impl … <role> for <type>`.
-fn implementers<'c>(code: &'c str, role: &str) -> Vec<&'c str> {
-    let opening = format!(" {role} for ");
-    let mut found = Vec::new();
-    for (at, _) in code.match_indices(&opening) {
-        let line = code[..at].rsplit('\n').next().unwrap_or_default();
-        if !line.trim_start().starts_with("impl") {
-            continue;
-        }
-        let rest = &code[at + opening.len()..];
-        let end = rest
-            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-            .unwrap_or(rest.len());
-        found.push(&rest[..end]);
-    }
-    found
-}
-
-/// The types `code` declares whose name ends in `suffix`.
-fn suffixed<'c>(code: &'c str, suffix: &str) -> Vec<&'c str> {
-    let mut found = Vec::new();
-    for (at, _) in code.match_indices("struct ") {
-        let rest = &code[at + "struct ".len()..];
-        let end = rest
-            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-            .unwrap_or(rest.len());
-        if rest[..end].ends_with(suffix) {
-            found.push(&rest[..end]);
-        }
-    }
-    found
-}
-
-#[test]
-fn a_book_and_a_data_table_take_their_suffix() {
-    let mut holders: [Vec<String>; SUFFIX_ROLES.len()] = Default::default();
-    let mut books = Vec::new();
-    capability_sources(&mut |_, code| {
-        for (holders, (role, _)) in holders.iter_mut().zip(SUFFIX_ROLES) {
-            holders.extend(implementers(code, role).into_iter().map(str::to_owned));
-        }
-        books.extend(suffixed(code, "Book").into_iter().map(str::to_owned));
-    });
-    let mut misnamed = Vec::new();
-    for (holders, (_, suffix)) in holders.iter().zip(SUFFIX_ROLES) {
-        assert!(
-            !holders.is_empty(),
-            "the walk finds the holders of each role"
-        );
-        let wrong = holders
-            .iter()
-            .filter(|name| !name.ends_with(suffix) && !SUFFIX_EXCEPTIONS.contains(&name.as_str()));
-        misnamed.extend(wrong.cloned());
-    }
-    assert_eq!(
-        misnamed,
-        Vec::<String>::new(),
-        "a holder of a role misnamed"
-    );
-    // Every `*Book` is a book.
-    let no_books: Vec<_> = books
-        .iter()
-        .filter(|name| !holders[0].contains(name))
-        .collect();
-    assert_eq!(no_books, Vec::<&String>::new(), "a `*Book` that is no book");
-
-    // A generic impl and a plain one are found, and a mention in a comment is not.
-    let code =
-        "impl<T: PerType> Book for ByType<T> {}\nimpl Book for ActionBook {}\n// a Book for all";
-    assert_eq!(implementers(code, "Book"), ["ByType", "ActionBook"]);
-    let code = "pub(crate) struct ModeBooks;\nstruct StatBook(u8);";
-    assert_eq!(suffixed(code, "Book"), ["StatBook"]);
-}
-
-#[test]
-fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
-    let mut found = Vec::new();
-    let mut visit = |path: &str, code: &str| {
-        let file = path.to_owned();
-        for line in code.lines() {
-            if line.trim_start().starts_with("//") {
-                continue;
-            }
-            for (at, _) in line.match_indices("named(") {
-                let start = line[..at]
-                    .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-                    .map_or(0, |before| before + 1);
-                let lookup = &line[start..at + "named".len()];
-                if !line[..start].trim_end().ends_with("fn") {
-                    found.push((file.clone(), lookup.to_owned()));
-                }
-            }
-        }
-    };
-    capability_sources(&mut visit);
-    // The bots' crate, whose scripts name unit types.
-    let bots = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../session/bots/src");
-    production(&bots, &mut |path, code| {
-        visit(&format!("bots/{path}"), code);
-    });
-    found.sort();
-    found.dedup();
-    let mut known: Vec<(String, String)> = LOOKUPS
-        .iter()
-        .map(|&(file, lookup)| (file.to_owned(), lookup.to_owned()))
-        .collect();
-    known.sort();
-    assert_eq!(found, known, "lookups by name");
 }
 
 #[test]
@@ -986,5 +540,4 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
 mod books;
 mod declaration_audit;
 mod feature_installs;
-mod genre_words;
 mod prediction_reads;

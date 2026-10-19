@@ -1,5 +1,5 @@
 use campfire_store::InputFile;
-use campfire_store::internals::{CargoManifest, PinnedFile};
+use campfire_store::internals::PinnedFile;
 
 use crate::workspace::{crates, manifests, read, sim_closure, source, sources};
 
@@ -676,9 +676,7 @@ fn each_crate_a_match_runs_on_bans_floats() {
         .filter(|krate| reached.contains(&krate.name))
     {
         checked += 1;
-        let proc_macro =
-            CargoManifest::section(&krate.manifest, "lib").any(|line| line == "proc-macro = true");
-        if proc_macro {
+        if krate.manifest.is_proc_macro() {
             continue;
         }
         let root = source().join(&krate.path).join("src/lib.rs");

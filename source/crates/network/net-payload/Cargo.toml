@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[package.metadata.campfire]
+kind = "problem"
+
 [features]
 # Queues with no budget, and a loop-back, for the tests of every layer above
 internals = []

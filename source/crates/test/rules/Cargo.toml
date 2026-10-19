@@ -5,12 +5,22 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[package.metadata.campfire]
+kind = "test"
+
 # The workspace's structural rules, as Rust's `tidy` holds the compiler's: all of it is test code,
 # which reads every crate's sources and manifests, `clippy.toml` and the design documents through
-# `store`. Its library builds nothing outside its tests, so `store` is a dev-dependency.
+# `store`, parses a source with `syn` and a manifest with `codec`'s TOML. Its library builds nothing
+# outside its tests, so each of its dependencies is a dev-dependency.
 
 [dev-dependencies]
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
+
+# A span's line and column, which a gated item's blanking reads.
+proc-macro2 = { workspace = true, features = ["span-locations"] }
+serde.workspace = true
+syn = { workspace = true, features = ["visit"] }
 
 [lints]
 workspace = true

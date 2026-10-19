@@ -5,24 +5,8 @@ is in [session](session.md); the tests' homes are in [testing](testing.md).
 
 ## Kinds
 
-- **A crate is a problem crate, a glue crate or test support.** A problem crate holds one problem
-  with no engine in it: a protocol, a codec, a model, an algorithm. A glue crate binds a problem
-  crate to the ECS, or holds a problem whose nouns are entities and components. Test support
-  joins problems for tests. Refused: each layer one crate with its ECS code inside, which compiles
-  the engine into every protocol and codec test. Source: `quinn-proto` holds QUIC with no IO and
-  no OS time and `quinn` binds it to Tokio; `renet` and `bevy_renet`; rust-analyzer, where one
-  crate alone knows LSP.
-- **A problem crate depends on problem crates alone.** No Bevy crate but `bevy_platform` is
-  among its required dependencies, so it builds and tests alone, and a test of `rules` refuses
-  one. `bevy_platform`, Bevy's platform layer with no engine in it, gives the clock that Bevy's
-  `Time` reads and the fixed-hash map, so a problem crate's instants and maps are the ECS's.
-- **A plain type the ECS holds takes its ECS derives behind its crate's features,** which the
-  glue crates turn on: `Reflect` behind `reflect`, and `Resource` behind `ecs`, as `TickRate` does.
-  So one type keeps one name in both kinds of crate. Refused: dropping the derives, which the ECS's
-  resources and components need; a remote reflection or a newtype in the glue, which repeats each
-  type's fields or its name.
-- **A glue crate never depends on an IO crate.** An IO reaches the ECS through
-  `EndpointPlugin<Io>`, which the facade registers.
+The kinds of crate, problem, IO, glue and test support, and their rules are the engine's
+([Every crate declares its kind](../02-engine-core.md#modules)).
 
 ## Splits
 

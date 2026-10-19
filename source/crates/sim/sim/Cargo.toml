@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 autotests = false
 
+[package.metadata.campfire]
+kind = "glue"
+
 [features]
 internals = [
     "campfire-codec/internals",

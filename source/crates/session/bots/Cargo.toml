@@ -4,6 +4,28 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[package.metadata.campfire]
+kind = "glue"
+
+[features]
+internals = [
+    "campfire-actions/internals",
+    "campfire-capabilities/internals",
+    "campfire-codec/internals",
+    "campfire-common/internals",
+    "campfire-geometry/internals",
+    "campfire-items/internals",
+    "campfire-math/internals",
+    "campfire-mode/internals",
+    "campfire-players/internals",
+    "campfire-script/internals",
+    "campfire-sim/internals",
+    "campfire-store/internals",
+    "campfire-units/internals",
+    "campfire-values/internals",
+    "campfire-vision/internals",
+]
+
 [dependencies]
 campfire-actions.workspace = true
 campfire-capabilities.workspace = true
@@ -26,8 +48,8 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+campfire-bots = { workspace = true, features = ["internals"] }
 campfire-orders = { workspace = true, features = ["internals"] }
-campfire-package = { workspace = true, features = ["internals"] }
 campfire-progression = { workspace = true, features = ["internals"] }
 # Its tests resolve scripts in the workspace's test packages.
 campfire-test-packages.workspace = true

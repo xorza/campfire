@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[package.metadata.campfire]
+kind = "problem"
+
 [features]
 compression_lz4 = ["dep:lz4_flex"]
 # The channels' measurements and payload fixtures, and the fragment bench, for the tests and

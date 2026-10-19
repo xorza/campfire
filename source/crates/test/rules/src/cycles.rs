@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use campfire_store::internals::SourceFile;
-
+use crate::source_file::SourceFile;
 use crate::workspace::{crates, sources};
 
 /// The cycles of `imports`, a crate's top modules each with the top modules it imports: each
@@ -126,7 +125,7 @@ fn sibling_imports(
         }
     }
     for (module, file) in &files {
-        let Some(code) = file.production() else {
+        let Some(code) = file.production_with_comments() else {
             continue;
         };
         let paths = crate_paths(&code);
@@ -199,11 +198,7 @@ fn no_crates_modules_import_each_other_in_a_cycle() {
     );
     // Under the crate's `p`, its child `q` names `r` through a group, and `r` names `q` through a
     // path: a cycle of `p`'s children. The root's `p` naming itself is none.
-    let file = |path: &str, text: &str| SourceFile {
-        path: format!("src/{path}"),
-        text: text.to_owned(),
-        gate: None,
-    };
+    let file = |path: &str, text: &str| SourceFile::new(format!("src/{path}"), text);
     let files = [
         file("lib.rs", "mod p;"),
         file("p/mod.rs", "use crate::p::q::Q;"),

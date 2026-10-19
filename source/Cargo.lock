@@ -2638,6 +2638,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs 0.19.1",
  "campfire-actions",
+ "campfire-bots",
  "campfire-capabilities",
  "campfire-codec",
  "campfire-common",
@@ -2646,7 +2647,6 @@ dependencies = [
  "campfire-math",
  "campfire-mode",
  "campfire-orders",
- "campfire-package",
  "campfire-players",
  "campfire-progression",
  "campfire-script",
@@ -3082,7 +3082,6 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs 0.19.1",
  "campfire-actions",
- "campfire-codec",
  "campfire-common",
  "campfire-declare",
  "campfire-deliveries",
@@ -3768,7 +3767,11 @@ dependencies = [
 name = "campfire-rules"
 version = "0.1.0"
 dependencies = [
+ "campfire-codec",
  "campfire-store",
+ "proc-macro2",
+ "serde",
+ "syn 2.0.119",
 ]
 
 [[package]]

@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[package.metadata.campfire]
+kind = "glue"
+
 [features]
 internals = [
     "campfire-actions/internals",
@@ -39,7 +42,6 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-campfire-codec = { workspace = true, features = ["internals"] }
 campfire-navigation = { workspace = true, features = ["internals"] }
 
 [lints]

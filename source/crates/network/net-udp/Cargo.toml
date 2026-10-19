@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[package.metadata.campfire]
+kind = "io"
+
 [features]
 # The admission bench, for the benches of every layer above
 internals = [

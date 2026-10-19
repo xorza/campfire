@@ -4,8 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[package.metadata.campfire]
+kind = "glue"
+
 [features]
 internals = [
+    "campfire-bots/internals",
     "campfire-capabilities/internals",
     "campfire-codec/internals",
     "campfire-common/internals",

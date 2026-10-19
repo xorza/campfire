@@ -1,8 +1,11 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use campfire_store::internals::{CargoManifest, SourceFile, SourceFiles};
 use campfire_store::{DirEntries, DirEntry, EntryKind, InputFile};
+
+use crate::manifest::Manifest;
+use crate::source_file::SourceFile;
+use crate::source_files::SourceFiles;
 
 /// The most bytes a test reads of a file of the workspace's own: far past any it holds.
 const FILE_LEN: usize = 1 << 20;
@@ -20,33 +23,19 @@ pub(crate) fn source() -> &'static Path {
 
 /// The dependencies of the crate at `dir`, under `source/crates/`, sorted.
 pub(crate) fn crate_dependencies(dir: &str) -> Vec<String> {
-    let manifest = read(
-        source()
-            .join("crates")
-            .join(dir)
-            .join("Cargo.toml")
-            .to_str()
-            .unwrap(),
-    );
-    let mut names: Vec<String> = CargoManifest::dependencies(&manifest)
-        .into_iter()
-        .map(str::to_owned)
+    let path = source().join("crates").join(dir).join("Cargo.toml");
+    let manifest = Manifest::parse(&read(path.to_str().unwrap()));
+    let mut names: Vec<String> = manifest
+        .dependencies()
+        .map(|(name, _)| name.to_owned())
         .collect();
     names.sort_unstable();
     names
 }
 
-/// The dependencies of `manifest` its build requires, not those a feature turns on.
-pub(crate) fn required_dependencies(manifest: &str) -> Vec<&str> {
-    CargoManifest::section(manifest, "dependencies")
-        .filter(|line| !line.contains("optional = true"))
-        .map(CargoManifest::dependency)
-        .collect()
-}
-
 /// The crates of the workspace a match runs on, by name: the release and each crate of the
 /// workspace its required dependencies reach, of `manifests`, the workspace's.
-pub(crate) fn sim_closure(manifests: &[(String, String)]) -> BTreeSet<String> {
+pub(crate) fn sim_closure(manifests: &[(String, Manifest)]) -> BTreeSet<String> {
     let workspace = |name: &str| manifests.iter().any(|(crate_name, _)| crate_name == name);
     let mut reached = required_closure(manifests, "campfire-capabilities");
     reached.retain(|name| workspace(name));
@@ -57,7 +46,7 @@ pub(crate) fn sim_closure(manifests: &[(String, String)]) -> BTreeSet<String> {
 /// Every crate the build of `name`, a crate of `manifests`, requires, by name: its required
 /// dependencies, and theirs through each crate of the workspace, as a dependency from outside it
 /// names its own in no manifest here.
-pub(crate) fn required_closure(manifests: &[(String, String)], name: &str) -> BTreeSet<String> {
+pub(crate) fn required_closure(manifests: &[(String, Manifest)], name: &str) -> BTreeSet<String> {
     let manifest = |name: &str| {
         manifests
             .iter()
@@ -70,7 +59,7 @@ pub(crate) fn required_closure(manifests: &[(String, String)], name: &str) -> BT
         let Some(manifest) = manifest(&at) else {
             continue;
         };
-        for other in required_dependencies(manifest) {
+        for other in manifest.required() {
             if reached.insert(other.to_owned()) {
                 next.push(other.to_owned());
             }
@@ -79,14 +68,14 @@ pub(crate) fn required_closure(manifests: &[(String, String)], name: &str) -> BT
     reached
 }
 
-/// A crate of the workspace: its directory's name, its package's name, and its manifest's text.
+/// A crate of the workspace: its directory's name, its package's name, and its manifest.
 #[derive(Debug)]
 pub(crate) struct Crate {
     pub(crate) dir_name: String,
     /// Its directory's path under `source/`, as `sources` names a file's.
     pub(crate) path: String,
     pub(crate) name: String,
-    pub(crate) manifest: String,
+    pub(crate) manifest: Manifest,
 }
 
 /// The crates of the workspace, by their packages' names: each directory of `crates/` and `checks/`
@@ -101,7 +90,7 @@ pub(crate) fn crates() -> Vec<Crate> {
             .iter()
             .any(|inner: &DirEntry| inner.name == "Cargo.toml")
         {
-            let manifest = read(dir.join("Cargo.toml").to_str().unwrap());
+            let manifest = Manifest::parse(&read(dir.join("Cargo.toml").to_str().unwrap()));
             // Joined by `/` on every OS, as a source file's path is.
             let path: Vec<&str> = dir
                 .strip_prefix(source())
@@ -112,7 +101,7 @@ pub(crate) fn crates() -> Vec<Crate> {
             found.push(Crate {
                 dir_name: dir.file_name().unwrap().to_str().unwrap().to_owned(),
                 path: path.join("/"),
-                name: CargoManifest::package_name(&manifest).to_owned(),
+                name: manifest.name().to_owned(),
                 manifest,
             });
         }
@@ -129,8 +118,8 @@ pub(crate) fn crates() -> Vec<Crate> {
     found
 }
 
-/// The crates of the workspace, each by its package's name, with the text of its manifest.
-pub(crate) fn manifests() -> Vec<(String, String)> {
+/// The crates of the workspace, each by its package's name, with its manifest.
+pub(crate) fn manifests() -> Vec<(String, Manifest)> {
     crates()
         .into_iter()
         .map(|krate| (krate.name, krate.manifest))
@@ -142,11 +131,9 @@ pub(crate) fn manifests() -> Vec<(String, String)> {
 pub(crate) fn sources() -> Vec<SourceFile> {
     let mut read = Vec::new();
     for dir_name in ["crates", "checks"] {
-        for file in SourceFiles::under(&source().join(dir_name)) {
-            read.push(SourceFile {
-                path: format!("{dir_name}/{}", file.path),
-                ..file
-            });
+        for mut file in SourceFiles::under(&source().join(dir_name)) {
+            file.path = format!("{dir_name}/{}", file.path);
+            read.push(file);
         }
     }
     read

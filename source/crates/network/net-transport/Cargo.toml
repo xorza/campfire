@@ -4,10 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[package.metadata.campfire]
+kind = "glue"
+
 [features]
 # The channels' LZ4 compression, in `net-channels`
 compression_lz4 = ["campfire-net-channels/compression_lz4"]
 internals = [
+    "dep:bevy_utils",
     "dep:bytes",
     "dep:criterion",
     "dep:campfire-net-common",
@@ -36,7 +40,7 @@ bevy_app = { version = "=0.20.0", default-features = false }
 bevy_derive = { version = "=0.20.0", default-features = false }
 bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
 bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
-bevy_utils = { version = "=0.20.0", default-features = false, features = ["debug"] }
+bevy_utils = { version = "=0.20.0", default-features = false, features = ["debug"], optional = true }
 
 [dev-dependencies]
 campfire-net-transport = { workspace = true, features = ["internals"] }

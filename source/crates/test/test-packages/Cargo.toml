@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[package.metadata.campfire]
+kind = "test"
+
 # The workspace's test packages, as the tests load them and edit them first, on `package-disk`'s
 # surface. All of it is test code, so it has no `internals` of its own: it depends, with their
 # `internals`, on the crates it reads.

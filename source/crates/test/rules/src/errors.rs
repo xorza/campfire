@@ -1,5 +1,5 @@
-use campfire_store::internals::{SourceFile, SourceFiles};
-
+use crate::source_file::SourceFile;
+use crate::source_files::SourceFiles;
 use crate::workspace::source;
 
 /// The lines that write an error's message alone and pass: Rhai's `EvalAltResult` and Bevy's

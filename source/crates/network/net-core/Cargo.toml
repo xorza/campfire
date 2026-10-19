@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[package.metadata.campfire]
+kind = "problem"
+
 [features]
 # `Reflect` on the shared types, for the ECS crates that hold them in components and resources
 reflect = ["dep:bevy_reflect"]

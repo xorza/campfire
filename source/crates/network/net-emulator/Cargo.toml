@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[package.metadata.campfire]
+kind = "problem"
+
 [features]
 # The model's bench, for the benches of every layer above
 internals = ["dep:criterion", "campfire-net-common/internals"]

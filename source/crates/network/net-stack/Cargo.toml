@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[package.metadata.campfire]
+kind = "glue"
+
 [features]
 compression_lz4 = ["campfire-net-transport/compression_lz4"]
 # The endpoint of an emulated network's wires, `net-packets`' `EmulatedWires`, which the plugin

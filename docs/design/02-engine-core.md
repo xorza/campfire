@@ -4,89 +4,92 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 
 ## Modules
 
-| Module | Status | Does |
-| --- | --- | --- |
-| `common` | built | The plain values crates that do not depend on each other share, the named enums, the domain hashers, the error report and the allocation audit |
-| `common-derive` | built | `common`'s derives, which `common` alone names and re-exports: an enum's members, their identifiers and their names |
-| `codec` | built | The one gateway of serialization, a proxy crate ([Serialization](#serialization)) |
-| `schedule` | built | The sim schedules' build settings, a proxy crate |
-| `math` | built | Fixed-point numbers and vectors, trig, roots, RNG ([Determinism core](07-determinism-core.md)) |
-| `protocol` | built | Signatures, keys, the handshake, input and seed chains, the session log; no IO ([Protocol Spec](05-protocol-spec.md)) |
-| `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |
-| `script` | built | The Rhai host, the script API's registry, and the script view ([Scripting](#scripting)) |
-| `capabilities` | built | The top of the capabilities' crates: the release, the books, `Match` |
-| `values` | built | Data value types, names and ids |
-| `geometry` | built | Exact geometry: metric, bounds, bodies, polygons, grids |
-| `state-types` | built | The state types modules declare, and how each is sent |
-| `visibility` | built | Who receives each kind of state ([Replication audiences](10-replication-audiences.md)) |
-| `declare` | built | How a module declares what it adds to a match |
-| `units` | built | The unit model, the map's book and its ground |
-| `players` | built | The match's and players' entities, resources and commands |
-| `stats` | built | The `stats` capability |
-| `actions` | built | The action pipeline and slots |
-| `deliveries` | built | Actions' deliveries and their hooks |
-| `combat` | built | The `combat` capability |
-| `navigation` | built | The `navigation` capability |
-| `vision` | built | The `vision` capability |
-| `projectiles` | built | The `projectiles` capability |
-| `areas` | built | The `areas` capability |
-| `abilities` | built | The `abilities` capability |
-| `progression` | built | The `progression` capability |
-| `production` | built | The `production` capability |
-| `interaction` | built | The `interaction` capability |
-| `items` | built | The `items` capability |
-| `orders` | built | The `orders` capability |
-| `mode` | built | The mode: its script, state, choices and spawns |
-| `package` | built | A mode's packages, checked against their index; no IO |
-| `client-files` | built | The client's files of a package, which the sim never reads |
-| `package-disk` | built | A package directory and the package store on disk |
-| `runner` | built | Builds and feeds a match; replays a published log |
-| `bots` | built | The bots' order scripts |
-| `verifier` | built | CLI that replays a session log and checks it |
-| `lan-check` | built | The real server and bot clients over QUIC on localhost, on request |
-| `zero-hour-check` | built | Imports and checks a Zero Hour install, on request |
-| `vocabulary` | built | Writes the repository's layout and the names its Rust files declare to one text file for review, on request |
-| `harness` | built | The session and network tests' match harness; never shipped |
-| `rules` | built | The workspace's structural rules as tests; never shipped |
-| `test-packages` | built | The workspace's test packages; never shipped |
-| `server` | built | The dedicated server's binary |
-| `net` | built | Lightyear over `quic`, and the session host ([Networking](#networking)) |
-| `quic` | built | QUIC under Lightyear's link ([QUIC transport](11-quic-transport.md)) |
-| `net-common` | built | What several of the network stack's crates share: a writer's chunk arena, a buffer of ready items, seeded randomness and the benches' scheme |
-| `net-core` | built | The network stack's vocabulary, with no engine in it: the app's instant, a link's direction, network ticks, peer and network ids |
-| `net-bytes` | built | The network stack's byte buffers: a writer that reuses its chunks, a reader, varints, and `ToBytes` for the stack's own headers |
-| `net-timeline` | built | The app's network clock and its timelines |
-| `net-payload` | built | The queues between the frame and each link's packet session, the payloads in them, and why a link ends |
-| `net-emulator` | built | The link model and the emulated network the stack's tests and singleplayer run on |
-| `net-link` | built | A link's state and its lifecycle, with no transport in it |
-| `net-connection` | built | A client's and a server's connection on a link, and an app's networking topology |
-| `net-packets` | built | Each link's packet session: numbered, acknowledged and, on a network, sealed packets |
-| `net-udp` | built | The stack's own UDP protocol: sealed sessions by a TLS 1.3 handshake in its own packets |
-| `net-endpoint` | built | Each IO's endpoints as components, and the frame's steps between the link queues and the sessions |
-| `net-stepper` | built | The stack's test stepper: a server and clients on the emulated network on one virtual time; never shipped |
-| `net-channels` | built | Messages over a link's packets: channels and their delivery, fragments, priority and compression |
-| `net-transport` | built | A link's channels on its entity, the channel registry, and the frame's receive and send steps |
-| `net-messages` | built | Messages and events an app registers, sent and received over the channels |
-| `net-sync` | built | Clock sync between peers: the latency estimate, the remote timeline and the local timeline's controller |
-| `net-despawn` | built | The one despawn of the stack's replication crates, a proxy crate: it leaves each entity the server still owns to the server |
-| `net-replication` | built | Entity replication on `bevy_replicon`: what each peer receives, who controls an entity, and its history |
-| `net-interpolation` | built | The interpolation of replicated entities between their server ticks |
-| `net-prediction` | built | The client's prediction of the entities it controls, its rollback and its correction |
-| `net-port-map` | built | Asks a home router to forward a server's port: PCP, NAT-PMP, then UPnP-IGD |
-| `net-stack` | built | The plugin groups that install the network stack's crates in the order they need |
-| `log` | built | Log output and the events a tool reads back |
-| `store` | built | Files, data directories, threads and the platform layer, a proxy crate ([Storage](#storage)) |
-| `launcher` | planned | Fetches, checks and starts the engine release a server names |
-| `client` | built | The Bevy client |
-| `import` | built | Writes one reproducible package from a game's install ([Zero Hour](09-zero-hour.md)) |
-| `content` | planned | Package signatures, pinning, Blossom fetch |
-| `editor` | planned | Map and content editors |
-| `identity` | planned | Nostr keys, listings, reputation |
-| `ownership` | planned | License checks |
-| `payments` | planned | Pools, hold invoices, wallet budgets |
+| Module | Status | Kind | Does |
+| --- | --- | --- | --- |
+| `common` | built | problem | The plain values crates that do not depend on each other share, the named enums, the domain hashers, the error report and the allocation audit |
+| `common-derive` | built | problem | `common`'s derives, which `common` alone names and re-exports: an enum's members, their identifiers and their names |
+| `codec` | built | proxy | The one gateway of serialization, a proxy crate ([Serialization](#serialization)) |
+| `schedule` | built | proxy | The sim schedules' build settings, a proxy crate |
+| `math` | built | problem | Fixed-point numbers and vectors, trig, roots, RNG ([Determinism core](07-determinism-core.md)) |
+| `protocol` | built | problem | Signatures, keys, the handshake, input and seed chains, the session log; no IO ([Protocol Spec](05-protocol-spec.md)) |
+| `sim` | built | glue | Deterministic state and systems on `bevy_ecs`; no genre code |
+| `script` | built | glue | The Rhai host, the script API's registry, and the script view ([Scripting](#scripting)) |
+| `capabilities` | built | glue | The top of the capabilities' crates: the release, the books, `Match` |
+| `values` | built | glue | Data value types, names and ids |
+| `geometry` | built | problem | Exact geometry: metric, bounds, bodies, polygons, grids |
+| `state-types` | built | glue | The state types modules declare, and how each is sent |
+| `visibility` | built | glue | Who receives each kind of state ([Replication audiences](10-replication-audiences.md)) |
+| `declare` | built | glue | How a module declares what it adds to a match |
+| `units` | built | glue | The unit model, the map's book and its ground |
+| `players` | built | glue | The match's and players' entities, resources and commands |
+| `stats` | built | glue | The `stats` capability |
+| `actions` | built | glue | The action pipeline and slots |
+| `deliveries` | built | glue | Actions' deliveries and their hooks |
+| `combat` | built | glue | The `combat` capability |
+| `navigation` | built | glue | The `navigation` capability |
+| `vision` | built | glue | The `vision` capability |
+| `projectiles` | built | glue | The `projectiles` capability |
+| `areas` | built | glue | The `areas` capability |
+| `abilities` | built | glue | The `abilities` capability |
+| `progression` | built | glue | The `progression` capability |
+| `production` | built | glue | The `production` capability |
+| `interaction` | built | glue | The `interaction` capability |
+| `items` | built | glue | The `items` capability |
+| `orders` | built | glue | The `orders` capability |
+| `mode` | built | glue | The mode: its script, state, choices and spawns |
+| `package` | built | glue | A mode's packages, checked against their index; no IO |
+| `client-files` | built | glue | The client's files of a package, which the sim never reads |
+| `package-disk` | built | glue | A package directory and the package store on disk |
+| `runner` | built | glue | Builds and feeds a match; replays a published log |
+| `bots` | built | glue | The bots' order scripts |
+| `verifier` | built | app | CLI that replays a session log and checks it |
+| `lan-check` | built | check | The real server and bot clients over QUIC on localhost, on request |
+| `zero-hour-check` | built | check | Imports and checks a Zero Hour install, on request |
+| `vocabulary` | built | check | Writes the repository's layout and the names its Rust files declare to one text file for review, on request |
+| `harness` | built | test | The session and network tests' match harness; never shipped |
+| `rules` | built | test | The workspace's structural rules as tests; never shipped |
+| `test-packages` | built | test | The workspace's test packages; never shipped |
+| `server` | built | app | The dedicated server's binary |
+| `net` | built | glue | Lightyear over `quic`, and the session host ([Networking](#networking)) |
+| `quic` | built | glue | QUIC under Lightyear's link ([QUIC transport](11-quic-transport.md)) |
+| `net-common` | built | problem | What several of the network stack's crates share: a writer's chunk arena, a buffer of ready items, seeded randomness and the benches' scheme |
+| `net-core` | built | problem | The network stack's vocabulary, with no engine in it: the app's instant, a link's direction, network ticks, peer and network ids |
+| `net-bytes` | built | problem | The network stack's byte buffers: a writer that reuses its chunks, a reader, varints, and `ToBytes` for the stack's own headers |
+| `net-timeline` | built | glue | The app's network clock and its timelines |
+| `net-payload` | built | problem | The queues between the frame and each link's packet session, the payloads in them, and why a link ends |
+| `net-emulator` | built | problem | The link model and the emulated network the stack's tests and singleplayer run on |
+| `net-link` | built | glue | A link's state and its lifecycle, with no transport in it |
+| `net-connection` | built | glue | A client's and a server's connection on a link, and an app's networking topology |
+| `net-packets` | built | problem | Each link's packet session: numbered, acknowledged and, on a network, sealed packets |
+| `net-udp` | built | io | The stack's own UDP protocol: sealed sessions by a TLS 1.3 handshake in its own packets |
+| `net-endpoint` | built | glue | Each IO's endpoints as components, and the frame's steps between the link queues and the sessions |
+| `net-stepper` | built | test | The stack's test stepper: a server and clients on the emulated network on one virtual time; never shipped |
+| `net-channels` | built | problem | Messages over a link's packets: channels and their delivery, fragments, priority and compression |
+| `net-transport` | built | glue | A link's channels on its entity, the channel registry, and the frame's receive and send steps |
+| `net-messages` | built | glue | Messages and events an app registers, sent and received over the channels |
+| `net-sync` | built | glue | Clock sync between peers: the latency estimate, the remote timeline and the local timeline's controller |
+| `net-despawn` | built | proxy | The one despawn of the stack's replication crates, a proxy crate: it leaves each entity the server still owns to the server |
+| `net-replication` | built | glue | Entity replication on `bevy_replicon`: what each peer receives, who controls an entity, and its history |
+| `net-interpolation` | built | glue | The interpolation of replicated entities between their server ticks |
+| `net-prediction` | built | glue | The client's prediction of the entities it controls, its rollback and its correction |
+| `net-port-map` | built | io | Asks a home router to forward a server's port: PCP, NAT-PMP, then UPnP-IGD |
+| `net-stack` | built | glue | The plugin groups that install the network stack's crates in the order they need |
+| `log` | built | problem | Log output and the events a tool reads back |
+| `store` | built | proxy | Files, data directories, threads and the platform layer, a proxy crate ([Storage](#storage)) |
+| `launcher` | planned | — | Fetches, checks and starts the engine release a server names |
+| `client` | built | app | The Bevy client |
+| `import` | built | app | Writes one reproducible package from a game's install ([Zero Hour](09-zero-hour.md)) |
+| `content` | planned | — | Package signatures, pinning, Blossom fetch |
+| `editor` | planned | — | Map and content editors |
+| `identity` | planned | — | Nostr keys, listings, reputation |
+| `ownership` | planned | — | License checks |
+| `payments` | planned | — | Pools, hold invoices, wallet budgets |
 
 - **A crate for each module.** Each module is a crate, `campfire-<module>`, as Bevy's are, so Cargo checks every import against the graph. A test holds the table above equal to the workspace.
 - **Layers.** Each crate depends only on lower layers, and no two crates of one layer depend on each other; a capability crate's layer is one above its highest dependency's, read from the manifests, so no table restates the graph, and one reader of the manifests serves every rule. Refused: a hand-kept list of layers, which can only agree with what Cargo already allows, and `cargo metadata`, which a test would spawn to read the graph the manifests already give.
+- **Every crate declares its kind.** A manifest names its crate's kind under `[package.metadata.campfire]`: `problem`, one problem with no engine in it, as a protocol, a codec, a model or an algorithm; `io`, a problem crate that holds a network IO; `proxy`, a proxy of the bans; `glue`, what binds problem crates to the ECS or holds a problem whose nouns are entities and components; `test`, what only tests build; `check`, a binary that checks the engine and never ships; or `app`, a binary that ships. A problem or IO crate has no engine crate in its required closure, so it builds and tests alone; a glue crate requires no IO crate, which reaches the ECS through the network stack's facade alone; and a library requires no test crate; a `rules` test holds each, and the table above gives each crate's kind. Refused: each layer one crate with its ECS code inside, which compiles the engine into every protocol and codec test; the kinds of the network stack alone, which left `values` and `visibility` on the ECS for six files; a hand list in `rules`, which missed a problem crate. Source: `quinn-proto` holds QUIC with no IO and no OS time and `quinn` binds it to Tokio; `renet` and `bevy_renet`; rust-analyzer, where one crate alone knows LSP.
+- **`bevy_platform` and `bevy_math` are engine-free.** A problem crate may hold them: `bevy_platform` gives the clock Bevy's `Time` reads and the fixed-hash map, and `bevy_math` vectors, neither with an ECS or an app. Refused: Bevy's math counted as engine, which keeps a crate of plain vectors glue.
+- **A plain type the ECS holds takes its ECS derives behind its crate's features,** which the glue crates turn on: `Reflect` behind `reflect`, and `Component` or `Resource` behind `ecs`. So one type keeps one name in both kinds of crate. Refused: dropping the derives, which the ECS's resources and components need; a remote reflection or a newtype in the glue, which repeats each type's fields or its name.
 - **The sim reads no file and logs nothing.** No crate a match runs on requires `store`, `log` or `tracing`, and `protocol` does not require `store`, so a match runs the same on a server, a client and a verifier, and a tick waits for no disk; a `rules` test walks the release's required dependencies.
 - **A script's print is a report.** In a debug build, `print` and `debug` record into the tick's `ScriptPrints`, which the server logs after the tick as it logs the tick's deaths; a release build drops them, so an untrusted script cannot fill a server's log. Refused: a call to `tracing` in the host, which made the script crate the one crate of a match that logs, and an ageing message buffer, which serves readers within the sim, as the removals do, and the sim reads no print.
 - **A pure sim.** `sim` takes state and inputs and gives the next state: no files, packages or signatures. No crate of the deterministic core depends on `store`, and `store` depends on no engine crate.
@@ -96,7 +99,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 - **The senders' `Order` lives at the top.** `Order` and its `Action`, a sum of each capability's action, are the top crate's, so `orders` depends on no capability whose action it carries.
 - **Contracts through `units`.** A capability asks another for work through a part of `units` both read, never by writing the other's state, as 0 A.D.'s components ask `UnitMotion` for a walk: `Dead`, `ForcedMove`, `Destination` with `ArrivedShort`, combat's record of the tick's `Deaths` and vision's `SeenBy`, which the server's sending reads with no capability crate. A change the asker decides and the owner applies is an event of `units` the owner observes, as `LevelRaised`.
 - **One published surface.** A crate's `lib.rs` names only its own items, and a caller depends on each type's home crate.
-- **Tests live at the top.** A test that builds a whole `Match` lives in the top crate's `tests/`, and one that plays a session or a network match in `harness`, so no crate dev-depends on a crate above it and no test build holds a second copy of a crate, whose types would not be the match's.
+- **One rule of test homes.** A test lives in the lowest crate whose dependencies hold everything it uses: one that builds a whole `Match` in the top crate's `tests/`, one that plays a session or a network match in `harness`, and one of a layer of the network stack in the lowest crate whose stack has every layer it uses. A dev-dependency never builds on the crate that takes it, so no test build holds a second copy of a crate, whose types would not be the match's; test support, as the test packages, may stand above a crate whose tests read it. Refused: a test home rule for the stack apart from the engine's; a ban on every dev-dependency above a crate, which moved a test that reads a module's private items away from them.
 - **The core's crates in order.** `script`, `declare`, `units`, `players`, each on its own layer: the script view is the runtime's own data, which the modules fill, so `units` depends on the runtime and never the other way.
 - **Game-bound code.** Code that serves one imported game lives in a module named after it, in the crate whose interface it serves, as `import::zero_hour`; nothing depends on it but the place that installs it, and a mechanism a second game needs moves into a general module.
 - **One rendering pipeline.** The client draws every game with Bevy's physically based standard material and the generic formats, glTF and the client files; an importer converts its game to them and writes down what it loses, and a need the pipeline cannot say becomes a general feature, never a path for one game.
@@ -157,6 +160,8 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 | Each rule of a network session has one home on each side, and a client that follows the rules is never refused. | The net scenarios under load |
 | A function that acts on a match has one home, by what it acts on: the whole match a trait on `World`, the match's content an associated function of its module's type, a value made from the world a constructor of its own type, a test fixture a struct of the ids it places. | The world rule test of `rules` |
 | `common` depends on no crate but `serde`, `derive_more`, its hashers and, behind `internals`, `backtrace`. | The manifest test of `rules` |
+| Each crate names its kind: a problem or IO crate has no engine crate in its required closure, a glue crate requires no IO crate, a library requires no test crate, a proxy is a proxy of the bans, and the crates table gives each kind. | `each_crate_keeps_the_rule_of_its_kind`, `the_design_marks_built_exactly_the_crates_of_the_workspace_with_their_kinds` |
+| Each crate takes the workspace's lints. | `each_crate_takes_the_workspaces_lints` |
 | A dev-dependency that turns on `internals` of a normal dependency names a crate whose `internals` gates code of its own. | `a_dev_dependency_turns_on_internals_that_gate_code` |
 | A required dependency is one production code names; one only `internals` code uses is optional, and one only tests use is a dev-dependency. | `a_required_dependency_is_named_by_production_code`, `an_optional_dependency_is_named_by_library_code`; cargo's `unused_dependencies` |
 | No sibling modules of a crate import each other in a cycle; two types that are one table in two parts share a module. | `no_crates_modules_import_each_other_in_a_cycle` |

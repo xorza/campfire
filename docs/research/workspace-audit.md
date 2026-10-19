@@ -54,7 +54,7 @@ Each finding goes to a decision of [Workspace alignment](../design/14-workspace-
 | A8, A14, A15 | A crate depends only on what its code names | |
 | A9, B24 | One measurement crate | |
 | A10, B2, E40 | `rules` reads Rust as Rust | |
-| A11, A12 | A structural rule lives in `rules` | |
+| A11, A12 | A structural rule lives in `rules` | A12 is no breach: the rule protects against a second copy of a crate, which `rules` holds |
 | A13 | Not taken | A pinned cross-check that the client cannot make, as it depends on no import |
 | A16, D19 | A field of a tick rate is `tick_rate` | |
 | A17 | `common` holds plain shared values alone | |

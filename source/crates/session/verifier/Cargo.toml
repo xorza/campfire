@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 autotests = false
 
+[package.metadata.campfire]
+kind = "app"
+
 [features]
 internals = [
     "campfire-common/internals",

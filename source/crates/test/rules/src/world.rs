@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_store::internals::SourceFile;
-
+use crate::source_file::SourceFile;
 use crate::workspace::{crates, holder, sources};
 
 /// A function whose first parameter is a world: its line, its name with its owner's, as

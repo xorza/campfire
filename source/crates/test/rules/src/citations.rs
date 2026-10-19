@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use campfire_store::internals::SourceFile;
 use campfire_store::{InputFile, PathError, ReadError};
 
+use crate::source_file::SourceFile;
 use crate::workspace::{source, sources};
 
 /// The most bytes a test reads of a design document: far past any the design holds.
@@ -146,11 +146,10 @@ fn a_citation_names_a_decision_its_document_holds() {
         .filter(|file| file.path != "crates/test/rules/src/citations.rs")
         .collect();
     for file in OTHER_FILES {
-        files.push(SourceFile {
-            path: file.to_owned(),
-            text: InputFile::read_text(&source().join(file), DOC_LEN).unwrap(),
-            gate: None,
-        });
+        files.push(SourceFile::new(
+            file,
+            InputFile::read_text(&source().join(file), DOC_LEN).unwrap(),
+        ));
     }
     let mut documents = BTreeMap::new();
     for file in &files {
@@ -179,14 +178,7 @@ fn a_citation_names_a_decision_its_document_holds() {
         ("b.md".to_owned(), None),
     ]);
     assert_eq!(
-        broken(
-            &[SourceFile {
-                path: "s.rs".to_owned(),
-                text: sample.to_owned(),
-                gate: None,
-            }],
-            &documents
-        ),
+        broken(&[SourceFile::new("s.rs", sample)], &documents),
         [
             "s.rs: a.md holds no \"Three\"",
             "s.rs: no b.md",

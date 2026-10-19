@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[package.metadata.campfire]
+kind = "glue"
+
 [features]
 # The sync layer's stack, for the tests and benches of every layer above
 internals = [

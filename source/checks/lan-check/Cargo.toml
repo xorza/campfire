@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[package.metadata.campfire]
+kind = "check"
+
 [dependencies]
 campfire-bots.workspace = true
 campfire-codec.workspace = true
