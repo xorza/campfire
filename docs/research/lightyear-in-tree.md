@@ -1,6 +1,6 @@
 # Lightyear in the tree — research
 
-What the fork of Lightyear that Campfire takes into its tree holds, and what Campfire uses of the fork it builds on today, for [Lightyear in the tree](../design/12-lightyear-in-tree.md). Facts only. Read on 19 October 2026: the fork's branch `canonical-state-and-bounded-passes` at `16797a83`, which its `main` did not yet hold (`main` stood at `3e81ef79`, two commits past `f4b95d9d`); Campfire at `5d6cab490` with its uncommitted tree, on Lightyear `54e6be21`.
+What the fork of Lightyear that Campfire takes into its tree holds, and what Campfire uses of the fork it builds on today, for [Lightyear in the tree](../design/12-lightyear-in-tree.md). Facts only. Read on 19 October 2026: the fork's branch `canonical-state-and-bounded-passes` at `16797a83`, whose tree its `main` already held as the one commit `3e81ef79`, two commits past `f4b95d9d`; Campfire at `5d6cab490` with its uncommitted tree, on Lightyear `54e6be21`.
 
 ## The fork
 
@@ -14,6 +14,15 @@ What the fork of Lightyear that Campfire takes into its tree holds, and what Cam
 - **Its documents.** `docs/design/` holds 10 documents and `docs/research/` 4; `testing.md` and `time.md` name Campfire's harness and its `DelayLine`. Its citations take the form `` (`file.md`: "Title") ``.
 - **Its own lint files.** `replication`, `interpolation` and `prediction` each hold a `clippy.toml` that adds Bevy's despawns to the workspace's bans; the `xtask` writes and checks them.
 - **Its benches.** One bench target, in the facade, whose ids are `<kind>/<crate>/<group>/<rest>`.
+
+## The fork's main at `98ec6345`
+
+Read on 19 October 2026, after the branch's name was deleted from the fork's repository with no pull request.
+
+- **It holds the branch.** The tree of `3e81ef79`, whose message names only fragmented messages, is the tree of `16797a83`; `main` adds six commits after it.
+- **Its tests.** 927 tests under nextest, all passed in 0.99 s of wall time on the i9-13980HX.
+- **What the six commits change for the copy.** `lightyear_ecs` is deleted, its `AdaptiveQueryIterMut` moved into `transport` (`5c728d11`); interpolation and prediction run as typed systems, with no erased walk of an archetype (`721c90f0`); a message's direction is refactored and prediction gains a misprediction module (`2fb885b6`); observers' deferred commands reuse their buffers (`0eb049da`); `port_map` speaks UPnP through a client of its own over `ureq` 3.4.2, in place of `igd-next` (`1c835362`), and Campfire's lockfile holds no `ureq`; `docs/research/` is deleted (`98ec6345`).
+- **Its own plan.** Its `TODO.md` holds one note: `PositiveTickDelta`'s `U32F32` becomes a `Num`.
 
 ## Campfire's use of Lightyear
 
