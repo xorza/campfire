@@ -1,7 +1,6 @@
 use crate::channel_registry::ChannelRegistry;
-use crate::transport::Transport;
+use crate::transport_plugin::TransportPlugin;
 use bevy_app::App;
-use bevy_ecs::prelude::*;
 use campfire_net_channels::Channel;
 use campfire_net_connection::Client;
 use campfire_net_connection::ClientOf;
@@ -31,30 +30,12 @@ impl<C: Channel> ChannelRegistration<'_, C> {
     /// or receive.
     fn add_role_direction<R: LinkRole>(&mut self, directions: Directions) {
         if directions.contains(R::SENDS) {
-            self.app.add_observer(add_sender_channel::<C, R>);
+            self.app
+                .add_observer(TransportPlugin::add_sender_channel::<C, R>);
         }
         if directions.contains(R::RECEIVES) {
-            self.app.add_observer(add_receiver_channel::<C, R>);
+            self.app
+                .add_observer(TransportPlugin::add_receiver_channel::<C, R>);
         }
-    }
-}
-
-fn add_sender_channel<C: Channel, R: LinkRole>(
-    trigger: On<'_, '_, Insert<(Transport, R)>>,
-    mut query: Query<'_, '_, &mut Transport, With<R>>,
-    registry: Res<'_, ChannelRegistry>,
-) {
-    if let Ok(mut transport) = query.get_mut(trigger.entity) {
-        transport.add_channel_send_from_registry::<C>(&registry);
-    }
-}
-
-fn add_receiver_channel<C: Channel, R: LinkRole>(
-    trigger: On<'_, '_, Insert<(Transport, R)>>,
-    mut query: Query<'_, '_, &mut Transport, With<R>>,
-    registry: Res<'_, ChannelRegistry>,
-) {
-    if let Ok(mut transport) = query.get_mut(trigger.entity) {
-        transport.add_channel_receive_from_registry::<C>(&registry);
     }
 }

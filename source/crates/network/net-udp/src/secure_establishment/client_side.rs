@@ -8,8 +8,8 @@ use bytes::Bytes;
 use campfire_net_core::Instant;
 use campfire_net_core::Random;
 use campfire_net_packets::{
-    ChannelBinding, ConnectionId, Datagram, Establish, Established, Establishing, Outbound,
-    Protection,
+    ChannelBinding, ClientEstablish, ConnectionId, Datagram, Establish, Established, Establishing,
+    Outbound, Protection,
 };
 use campfire_net_payload::UnlinkReason;
 use rustls::pki_types::ServerName;
@@ -101,43 +101,6 @@ impl ClientSide {
 }
 
 impl Establish for ClientSide {
-    /// Starts a handshake with `server` at `now`: its `Initial`, with a token of the server's
-    /// last handshake if one is left.
-    fn connect(&mut self, now: Instant, server: SocketAddr, out: &mut Establishing) {
-        let tls = ClientConnection::new(
-            Arc::clone(&self.tls),
-            Version::V1,
-            self.name.clone(),
-            transport_params::client(),
-        );
-        let Ok(tls) = tls else {
-            out.failed = Some(UnlinkReason::NotOpened);
-            return;
-        };
-        let mut tls = Connection::Client(tls);
-        let mut hello = Vec::new();
-        let key_change = tls.write_hs(&mut hello);
-        debug_assert!(key_change.is_none(), "a ClientHello changes no key");
-        let attempt = Attempt {
-            id: self.random.array(),
-            server,
-            tls,
-            hello,
-            token: self.tokens.pop(),
-            retried: false,
-            heard: false,
-            initial: CryptoStream::default(),
-            handshake: CryptoStream::default(),
-            handshake_keys: None,
-            handshake_send: CryptoSend::default(),
-            sent_number: 0,
-            started: now,
-            resend: ResendTimer::start(now),
-        };
-        attempt.send_initial(out);
-        self.attempt = Some(attempt);
-    }
-
     fn receive(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing) {
         let Datagram { from, payload } = datagram;
         let Some(packet) = HandshakePacket::read(payload) else {
@@ -280,15 +243,50 @@ impl Establish for ClientSide {
         attempt.into_iter().chain(finished).min()
     }
 
-    fn unknown(&mut self, _: Instant, _: &Datagram, _: &mut Establishing) {}
-
-    fn set_accepting(&mut self, _: bool) {}
-
     fn routes_by_prefix(&self) -> bool {
         false
     }
 
     fn ended(&mut self, _: Option<ConnectionId>) {}
+}
+
+impl ClientEstablish for ClientSide {
+    /// Starts a handshake with `server` at `now`: its `Initial`, with a token of the server's
+    /// last handshake if one is left.
+    fn connect(&mut self, now: Instant, server: SocketAddr, out: &mut Establishing) {
+        let tls = ClientConnection::new(
+            Arc::clone(&self.tls),
+            Version::V1,
+            self.name.clone(),
+            transport_params::client(),
+        );
+        let Ok(tls) = tls else {
+            out.failed = Some(UnlinkReason::NotOpened);
+            return;
+        };
+        let mut tls = Connection::Client(tls);
+        let mut hello = Vec::new();
+        let key_change = tls.write_hs(&mut hello);
+        debug_assert!(key_change.is_none(), "a ClientHello changes no key");
+        let attempt = Attempt {
+            id: self.random.array(),
+            server,
+            tls,
+            hello,
+            token: self.tokens.pop(),
+            retried: false,
+            heard: false,
+            initial: CryptoStream::default(),
+            handshake: CryptoStream::default(),
+            handshake_keys: None,
+            handshake_send: CryptoSend::default(),
+            sent_number: 0,
+            started: now,
+            resend: ResendTimer::start(now),
+        };
+        attempt.send_initial(out);
+        self.attempt = Some(attempt);
+    }
 }
 
 /// What a datagram did to a handshake.

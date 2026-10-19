@@ -1,4 +1,3 @@
-use crate::client_connection_plugin::ClientConnectionPlugin;
 use crate::connection_state::Connected;
 use crate::connection_state::Connecting;
 use crate::connection_state::Disconnected;
@@ -65,9 +64,6 @@ impl RawClientPlugin {
 
 impl Plugin for RawClientPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<ClientConnectionPlugin>() {
-            app.add_plugins(ClientConnectionPlugin);
-        }
         app.add_observer(Self::on_linking);
         app.add_observer(Self::on_linked);
         app.add_observer(Self::on_disconnect);

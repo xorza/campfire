@@ -1,8 +1,6 @@
 //! Building interpolation rules once every member's mode is known, and installing their typed
 //! systems.
 use crate::confirmed_history_fns::ConfirmedHistoryFns;
-use crate::delayed_interpolation_plugin::DelayedInterpolationPlugin;
-use crate::frame_interpolation_plugin::FrameInterpolationPlugin;
 use crate::frame_interpolation_rules::install_component_frame_interpolation;
 use crate::history_component::HistoryComponent;
 use crate::interpolate::install_component_interpolation;
@@ -12,6 +10,7 @@ use crate::interpolation_rule::InterpolationRule;
 use crate::interpolation_rule_component::{InterpolationRuleComponent, MemberSpec};
 use crate::interpolation_rule_id::InterpolationRuleId;
 use crate::member_mode::MemberMode;
+use crate::pipelines::Pipelines;
 use crate::registered_rule::RegisteredRule;
 use bevy_app::App;
 use bevy_ecs::archetype::Archetype;
@@ -22,22 +21,6 @@ use campfire_net_replication::ComponentRegistry;
 use campfire_net_replication::Replication;
 
 pub(crate) const SINGLE_COMPONENT_RULE_PRIORITY: usize = 1;
-
-/// Which pipelines the app runs, whose systems a rule installs.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Pipelines {
-    pub(crate) delayed: bool,
-    pub(crate) frame: bool,
-}
-
-impl Pipelines {
-    pub(crate) fn of(app: &App) -> Self {
-        Self {
-            delayed: app.is_plugin_added::<DelayedInterpolationPlugin>(),
-            frame: app.is_plugin_added::<FrameInterpolationPlugin>(),
-        }
-    }
-}
 
 /// What a rule member's confirmed history is written with, as its mode says: `None` when the rule
 /// owns no history, which a rule that does needs a replicated component for.

@@ -2,7 +2,7 @@ use super::*;
 use crate::prediction_registry::PredictionRegistry;
 use campfire_net_replication::ComponentRegistry;
 use campfire_net_sync::TimelineSync;
-use campfire_net_timeline::rollback::Rollback;
+use campfire_net_timeline::Rollback;
 
 use bevy_ecs::entity_disabling::Disabled;
 
@@ -15,17 +15,17 @@ use core::fmt::Debug;
 use campfire_net_sync::InputDelayConfig;
 use campfire_net_sync::LocalTimelineSync;
 
-use crate::internals::prediction_stack::PredictionStack;
-use crate::internals::protocol::CompCorr;
-use crate::internals::steps::trigger_state_rollback;
+use crate::fixtures::prediction_stack::PredictionStack;
+use crate::fixtures::protocol::CompCorr;
+use crate::fixtures::steps::trigger_state_rollback;
 use crate::rollback_config::RollbackConfig;
 use crate::rollback_systems::RollbackSystems;
 use bevy::prelude::*;
 use bevy_replicon::prelude::Remote;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;
-use campfire_net_interpolation::internals::protocol::CompFull;
-use campfire_net_replication::internals::protocol::CompA;
+use campfire_net_interpolation::internals::CompFull;
+use campfire_net_replication::internals::CompA;
 use campfire_net_replication::{PredictionTarget, Replicate};
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
@@ -82,8 +82,8 @@ fn prediction_history_is_not_recorded_until_timeline_sync() {
     app.init_resource::<LocalTimelineSync>();
     app.insert_resource(PredictionManager::default());
     app.insert_resource(InputTimelineConfig::default());
-    app.add_systems(Update, update_prediction_history::<TestValue>);
-    app.add_observer(apply_component_removal_predicted::<TestValue>);
+    app.add_systems(Update, PredictionHistory::<TestValue>::update);
+    app.add_observer(PredictionHistory::<TestValue>::record_removal);
 
     let entity = app
         .world_mut()
@@ -128,8 +128,8 @@ fn prediction_history_is_pruned_to_effective_rollback_horizon() {
     app.add_systems(
         Update,
         (
-            update_prediction_history::<TestValue>,
-            prune_confirmed_history::<TestValue>,
+            PredictionHistory::<TestValue>::update,
+            PredictionHistory::<TestValue>::prune_confirmed,
         ),
     );
 
@@ -179,7 +179,7 @@ fn confirmed_history_is_not_pruned_past_the_latest_completed_checkpoint() {
     // Local tick 200, horizon 7, confirmed up to 100: the cut stops at 100, not 193.
     let mut app = prediction_history_test_app(20, InputDelayConfig::balanced(), 200);
     app.insert_resource(confirmed_through(NetTick(100)));
-    app.add_systems(Update, prune_confirmed_history::<TestValue>);
+    app.add_systems(Update, PredictionHistory::<TestValue>::prune_confirmed);
     let mut confirmed_history = ConfirmedHistory::default();
     for tick in [80, 90, 95, 100] {
         confirmed_history.insert_present(NetTick(tick), TestValue(tick as f32));
@@ -236,7 +236,7 @@ fn confirmed_history_is_not_pruned_past_the_latest_completed_checkpoint() {
     // No completed checkpoint: nothing is pruned.
     let mut app = prediction_history_test_app(20, InputDelayConfig::balanced(), 200);
     app.insert_resource(ReplicationCheckpointMap::default());
-    app.add_systems(Update, prune_confirmed_history::<TestValue>);
+    app.add_systems(Update, PredictionHistory::<TestValue>::prune_confirmed);
     let mut confirmed_history = ConfirmedHistory::default();
     confirmed_history.insert_present(NetTick(80), TestValue(80.0));
     let entity = app
@@ -273,7 +273,7 @@ fn a_late_predicted_marker_backfills_a_confirmation_older_than_the_window() {
         );
     }
     world.insert_resource(checkpoints);
-    world.add_observer(backfill_confirmed_history_on_predicted::<TestValue>);
+    world.add_observer(PredictionHistory::<TestValue>::backfill_confirmed);
     let entity = world
         .spawn((TestValue(5.0), ConfirmHistory::new(RepliconTick::new(4))))
         .id();
@@ -358,7 +358,7 @@ fn snap_to_confirmed_matches_typed_query_behavior() {
         .changed;
 
     app.world_mut()
-        .run_system_once(snap_to_confirmed::<TestValue>)
+        .run_system_once(PredictionHistory::<TestValue>::snap_to_confirmed)
         .unwrap();
 
     assert_eq!(app.world().get::<TestValue>(changed), Some(&TestValue(2.0)));

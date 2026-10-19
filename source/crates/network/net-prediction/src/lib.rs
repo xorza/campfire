@@ -12,12 +12,11 @@
 mod correction;
 mod correction_ease;
 mod correction_policy;
-mod despawn;
 mod disable_rollback;
 mod disabled_during_rollback;
-mod history_receive;
 #[cfg(feature = "internals")]
-pub mod internals;
+mod fixtures;
+mod history_receive;
 mod locally_predicted;
 mod mismatch_fn;
 mod misprediction;
@@ -35,6 +34,7 @@ mod prediction_manager;
 mod prediction_marker_plugin;
 mod prediction_mode;
 mod prediction_plugin;
+mod prediction_plugins;
 mod prediction_registration;
 mod prediction_registration_ext;
 mod prediction_registry;
@@ -48,12 +48,12 @@ mod rollback_mode;
 mod rollback_plugin;
 mod rollback_scan;
 mod rollback_systems;
-mod switch;
 mod switch_blend;
 mod switch_direction;
 mod tick_period_history;
 mod timeline_switch;
 mod timeline_switch_config;
+mod timeline_switch_plugin;
 mod visual_correction;
 
 pub use crate::correction_ease::CorrectionEase;
@@ -72,7 +72,7 @@ pub use crate::prediction_history::{Iter, PredictionHistory};
 pub use crate::prediction_manager::PredictionManager;
 pub use crate::prediction_marker_plugin::PredictionMarkerPlugin;
 pub use crate::prediction_mode::PredictionMode;
-pub use crate::prediction_plugin::PredictionPlugin;
+pub use crate::prediction_plugins::PredictionPlugins;
 pub use crate::prediction_registration_ext::LocalRollbackMode;
 pub use crate::prediction_registration_ext::PredictionRegistrationExt;
 pub use crate::prediction_registry::PredictionRegistry;
@@ -89,3 +89,15 @@ pub use crate::switch_direction::SwitchDirection;
 pub use crate::timeline_switch::TimelineSwitch;
 pub use crate::timeline_switch_config::TimelineSwitchConfig;
 pub use crate::visual_correction::{VisualCorrection, VisualError};
+
+/// What the tests and benches of the layers above share: this layer's stack, test protocol,
+/// fixtures and measurements.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::fixtures::prediction_stack::PredictionStack;
+    pub use crate::fixtures::protocol::{
+        CompCorr, CompCorrectionBundleA, CompCorrectionBundleB, CompMixedCorrectionBundleA,
+        CompMixedCorrectionBundleB, CompNotNetworked, CompPredictionOnly, PredictionProtocolPlugin,
+        correction_bundle_lerp, mixed_correction_bundle_lerp,
+    };
+}

@@ -1,5 +1,5 @@
 use super::*;
-use crate::internals::replication_stack::ReplicationStack;
+use crate::fixtures::replication_stack::ReplicationStack;
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::VisibilityFilter;
 use bevy_replicon::server::visibility::client_visibility::ClientVisibility;

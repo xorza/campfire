@@ -9,8 +9,7 @@ mod mutations;
 mod reader;
 mod serialization_error;
 mod to_bytes;
-/// Utilities for variable-length integer encoding and decoding.
-pub mod varint;
+mod var_int;
 mod wrapping_id;
 mod writer;
 
@@ -20,6 +19,7 @@ pub use crate::reader::ReadVarInt;
 pub use crate::reader::Reader;
 pub use crate::serialization_error::SerializationError;
 pub use crate::to_bytes::ToBytes;
+pub use crate::var_int::VarInt;
 pub use crate::writer::WriteInteger;
 pub use crate::writer::Writer;
 

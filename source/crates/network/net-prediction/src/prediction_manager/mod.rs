@@ -1,7 +1,9 @@
 //! Defines bevy resources needed for Prediction
 
+use crate::prediction_gate::predicts;
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
+use campfire_net_connection::NetworkingState;
 
 use crate::correction_policy::CorrectionPolicy;
 use crate::rollback_config::RollbackConfig;
@@ -38,6 +40,14 @@ impl PredictionManager {
         input_config: &InputTimelineConfig,
     ) -> NetTick {
         now - u32::from(self.max_rollback_ticks(input_config))
+    }
+
+    /// Returns true if this application opted into prediction and has a supported active topology.
+    pub(crate) fn should_run(
+        manager: Option<Res<'_, Self>>,
+        networking: Res<'_, NetworkingState>,
+    ) -> bool {
+        predicts(manager.is_some(), &networking)
     }
 }
 

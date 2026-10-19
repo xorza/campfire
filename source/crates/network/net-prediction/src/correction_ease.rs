@@ -74,13 +74,18 @@ impl Default for CorrectionEase {
     /// `TimelineSwitchConfig`.
     fn default() -> Self {
         Self::Exponential {
-            decay_ratio: 0.5,
-            decay_period_secs: 0.2,
+            decay_ratio: Self::DEFAULT_DECAY_RATIO,
+            decay_period_secs: Self::DEFAULT_DECAY_PERIOD_SECS,
         }
     }
 }
 
 impl CorrectionEase {
+    /// The default exponential's fraction of the error left after each period.
+    pub const DEFAULT_DECAY_RATIO: f32 = 0.5;
+    /// The default exponential's period, in seconds.
+    pub const DEFAULT_DECAY_PERIOD_SECS: f32 = 0.2;
+
     /// How long an exponential takes to keep under `fraction` of its error: the window that
     /// ends it once what it would keep is not worth carrying.
     pub fn exponential_window_secs(decay_ratio: f32, decay_period_secs: f32, fraction: f32) -> f32 {
@@ -106,12 +111,10 @@ impl CorrectionEase {
                 }
                 decay_ratio.powf(elapsed / decay_period_secs)
             }
-            bounded => {
-                if !duration.is_finite() || duration <= 0.0 {
-                    return 0.0;
-                }
-                bounded.bounded_remaining(elapsed / duration)
-            }
+            Self::Linear => bounded_remaining(EaseFunction::Linear, elapsed, duration),
+            Self::Smoothstep => bounded_remaining(EaseFunction::SmoothStep, elapsed, duration),
+            Self::EaseOutCubic => bounded_remaining(EaseFunction::CubicOut, elapsed, duration),
+            Self::EaseInOutCubic => bounded_remaining(EaseFunction::CubicInOut, elapsed, duration),
         }
     }
 
@@ -142,21 +145,15 @@ impl CorrectionEase {
             0.0
         }
     }
+}
 
-    /// Normalised curves only: an exponential has no window to be normalised
-    /// over, and `remaining` handles it before reaching here.
-    fn bounded_remaining(&self, progress: f32) -> f32 {
-        let curve = match self {
-            Self::Linear => EaseFunction::Linear,
-            Self::Smoothstep => EaseFunction::SmoothStep,
-            Self::EaseOutCubic => EaseFunction::CubicOut,
-            Self::EaseInOutCubic => EaseFunction::CubicInOut,
-            Self::Exponential { .. } => {
-                unreachable!("an exponential is unbounded and handled by the caller")
-            }
-        };
-        1.0 - curve.sample_clamped(progress)
+/// What a bounded curve keeps of the error `elapsed` seconds into its `duration`-long window,
+/// over which it is normalised.
+fn bounded_remaining(curve: EaseFunction, elapsed: f32, duration: f32) -> f32 {
+    if !duration.is_finite() || duration <= 0.0 {
+        return 0.0;
     }
+    1.0 - curve.sample_clamped(elapsed / duration)
 }
 
 #[cfg(test)]

@@ -3,8 +3,8 @@ use campfire_net_connection::Connected;
 use campfire_net_messages::{MessageReceiver, MessageSender};
 
 use crate::scenario::guarantee::Guarantee;
-use campfire_net_messages::internals::protocol::SeqMessage;
-use campfire_net_transport::internals::protocol::{
+use campfire_net_messages::internals::SeqMessage;
+use campfire_net_transport::internals::{
     Channel1, ChannelOrderedReliable, ChannelSequencedReliable, ChannelSequencedUnreliable,
     ChannelUnorderedReliable,
 };

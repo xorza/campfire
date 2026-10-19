@@ -1,7 +1,7 @@
 use super::*;
+use crate::fixtures::protocol::*;
+use crate::fixtures::replication_stack::ReplicationStack;
 use crate::inheritance_plugin::InheritancePlugin;
-use crate::internals::protocol::*;
-use crate::internals::replication_stack::ReplicationStack;
 use crate::replication_target::Replicate;
 use crate::visibility_ext::VisibilityExt;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;

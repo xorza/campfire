@@ -9,8 +9,8 @@ use crate::pcp_map::PcpRefusal;
 /// the client's socket failed, or the map stopped.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum MapError {
-    #[error("the OS names no default gateway: {0}")]
-    NoGateway(String),
+    #[error("the OS names no default gateway")]
+    NoGateway,
     #[error("the default gateway has no IPv4 address")]
     NoIpv4Gateway,
     #[error("the gateway did not answer")]

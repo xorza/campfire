@@ -2,17 +2,17 @@ use super::*;
 use bevy_app::{App, Update};
 use bevy_ecs::prelude::{Resource, With};
 use bevy_ecs::system::ResMut;
-use bevy_time::TimeUpdateStrategy;
+use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use bytes::BytesMut;
 use campfire_net_core::Instant;
 use campfire_net_emulator::{
     DuplexModel, EmulatedIo, EmulatedNetwork, LinkConditioning, LinkModel, WireClock,
 };
-use campfire_net_link::Unlinked;
+use campfire_net_link::{LinkPlugin, Unlinked};
 use campfire_net_packets::EmulatedWires;
 use campfire_net_packets::{
-    ChannelBinding, ConnectionId, Datagram, EndpointConfig, Establish, Established, Establishing,
-    Protection,
+    ChannelBinding, ClientEstablish, ConnectionId, Datagram, EndpointConfig, Establish,
+    Established, Establishing, Protection, ServerEstablish,
 };
 use campfire_net_payload::{OutgoingPayload, PayloadFate, PayloadKind, PayloadToken};
 use campfire_net_timeline::ClockPlugin;
@@ -109,7 +109,12 @@ impl Harness {
         let app = || {
             let mut app = App::new();
             app.insert_resource(Clock::new(ClockSource::Frame));
-            app.add_plugins((ClockPlugin, EndpointPlugin::<EmulatedWires>::default()));
+            app.add_plugins((
+                TimePlugin,
+                ClockPlugin,
+                LinkPlugin,
+                EndpointPlugin::<EmulatedWires>::default(),
+            ));
             app.insert_resource(TimeUpdateStrategy::ManualDuration(FRAME));
             app.init_resource::<Inbox>();
             app.add_systems(Update, Inbox::take);
@@ -399,7 +404,12 @@ fn a_real_clock_runs_the_pass_on_a_thread() {
     let app = || {
         let mut app = App::new();
         app.insert_resource(Clock::new(ClockSource::Os));
-        app.add_plugins((ClockPlugin, EndpointPlugin::<EmulatedWires>::default()));
+        app.add_plugins((
+            TimePlugin,
+            ClockPlugin,
+            LinkPlugin,
+            EndpointPlugin::<EmulatedWires>::default(),
+        ));
         app.init_resource::<Inbox>();
         app.add_systems(Update, Inbox::take);
         app
@@ -481,21 +491,7 @@ impl Bound {
 }
 
 impl Establish for Bound {
-    fn connect(&mut self, _: Instant, server: SocketAddr, out: &mut Establishing) {
-        out.established.push(Self::established(server));
-    }
-
     fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) {}
-
-    fn unknown(&mut self, _: Instant, datagram: &Datagram, out: &mut Establishing) {
-        if self.accepting {
-            out.established.push(Self::established(datagram.from));
-        }
-    }
-
-    fn set_accepting(&mut self, accepting: bool) {
-        self.accepting = accepting;
-    }
 
     fn poll(&mut self, _: Instant, _: &mut Establishing) {}
 
@@ -512,6 +508,24 @@ impl Establish for Bound {
     }
 
     fn ended(&mut self, _: Option<ConnectionId>) {}
+}
+
+impl ClientEstablish for Bound {
+    fn connect(&mut self, _: Instant, server: SocketAddr, out: &mut Establishing) {
+        out.established.push(Self::established(server));
+    }
+}
+
+impl ServerEstablish for Bound {
+    fn unknown(&mut self, _: Instant, datagram: &Datagram, out: &mut Establishing) {
+        if self.accepting {
+            out.established.push(Self::established(datagram.from));
+        }
+    }
+
+    fn set_accepting(&mut self, accepting: bool) {
+        self.accepting = accepting;
+    }
 }
 
 /// A session's binding goes on the entity that carries it, as `LinkBinding`: the client's own and

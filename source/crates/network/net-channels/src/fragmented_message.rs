@@ -7,8 +7,8 @@ use crate::fragment_compression::FragmentCompression;
 use crate::message_id::MessageId;
 use bytes::Bytes;
 use campfire_net_bytes::ToBytes;
+use campfire_net_bytes::VarInt;
 use campfire_net_bytes::WriteInteger;
-use campfire_net_bytes::varint;
 use tracing::trace;
 
 /// A message too large for one packet: its bytes once, which each fragment slices at its index,
@@ -23,7 +23,7 @@ pub(crate) struct FragmentedMessage {
     bytes: Bytes,
     fragment_size: usize,
     compression: FragmentCompression,
-    states: Vec<FragmentState>,
+    states: Vec<PartState>,
     /// No fragment before it is due.
     due_from: u16,
     /// The fragments a packet carried at least once.
@@ -31,9 +31,10 @@ pub(crate) struct FragmentedMessage {
     acked: u16,
 }
 
-/// Where a fragment is: it goes in the next packet that has room while it is due.
+/// Where a part of a message is, a whole message's or a fragment: it goes in the next packet that
+/// has room while it is due.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FragmentState {
+pub(crate) enum PartState {
     Unsent,
     /// A packet that carries it went to the session, and its fate is not known: on an unreliable
     /// channel, for good.
@@ -43,8 +44,8 @@ pub(crate) enum FragmentState {
     Acked,
 }
 
-impl FragmentState {
-    const fn is_due(self) -> bool {
+impl PartState {
+    pub(crate) const fn is_due(self) -> bool {
         matches!(self, Self::Unsent | Self::Lost)
     }
 }
@@ -88,7 +89,7 @@ impl FragmentedMessage {
             bytes,
             fragment_size,
             compression,
-            states: vec![FragmentState::Unsent; usize::from(num_fragments)],
+            states: vec![PartState::Unsent; usize::from(num_fragments)],
             due_from: 0,
             sent: 0,
             acked: 0,
@@ -131,19 +132,19 @@ impl FragmentedMessage {
     /// and was lost.
     pub(crate) fn commit(&mut self, index: u16) -> bool {
         let state = &mut self.states[usize::from(index)];
-        let previous = core::mem::replace(state, FragmentState::InFlight);
-        if previous == FragmentState::Unsent {
+        let previous = core::mem::replace(state, PartState::InFlight);
+        if previous == PartState::Unsent {
             self.sent += 1;
         }
-        previous == FragmentState::Lost
+        previous == PartState::Lost
     }
 
     /// Applies the loss of the packet that carried fragment `index`, which is due again unless
     /// it was acknowledged since.
     pub(crate) fn lose(&mut self, index: u16) {
         let state = &mut self.states[usize::from(index)];
-        if *state == FragmentState::InFlight {
-            *state = FragmentState::Lost;
+        if *state == PartState::InFlight {
+            *state = PartState::Lost;
             self.due_from = self.due_from.min(index);
         }
     }
@@ -152,10 +153,10 @@ impl FragmentedMessage {
     /// message.
     pub(crate) fn ack(&mut self, index: u16) -> bool {
         let state = &mut self.states[usize::from(index)];
-        if *state == FragmentState::Acked {
+        if *state == PartState::Acked {
             return false;
         }
-        *state = FragmentState::Acked;
+        *state = PartState::Acked;
         self.acked += 1;
         self.acked == self.num_fragments()
     }
@@ -194,14 +195,14 @@ impl<'a> FragmentRef<'a> {
     pub(crate) fn bytes_len(self) -> usize {
         let payload_len = self.payload().len();
         self.message.message_id.bytes_len()
-            + varint::len(u64::from(self.index))
-            + varint::len(u64::from(self.message.num_fragments()))
+            + VarInt::new(u64::from(self.index)).encoded_len()
+            + VarInt::new(u64::from(self.message.num_fragments())).encoded_len()
             + if self.index == 0 {
                 self.message.compression.bytes_len()
             } else {
                 0
             }
-            + varint::len(payload_len as u64)
+            + VarInt::new(payload_len as u64).encoded_len()
             + payload_len
     }
 

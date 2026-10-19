@@ -433,29 +433,29 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
         self.base_cursor
             .is_some_and(|base_cursor| cursor == base_cursor || !cursor.is_newer(base_cursor))
     }
-}
 
-/// Keep diff cursor history aligned with the oldest value retained in [`ConfirmedHistory`].
-///
-/// Prediction and interpolation own their value-retention policies. This system, the receiver's
-/// one pruner, runs afterwards and promotes the matching cursor to the receiver's retained base.
-/// Pending diffs keep both their cursor state and historical base until they materialize, are
-/// superseded, or fall behind the kept history.
-pub(crate) fn prune_history_diff_receiver<C: RepliconDiffable>(
-    storage: Option<ResMut<'_, ReplicationStorage>>,
-    query: Query<'_, '_, (Entity, &ConfirmedHistory<C>)>,
-) {
-    let Some(mut storage) = storage else {
-        return;
-    };
-    for (entity, history) in query.iter() {
-        let Some(front) = history.get_nth_state(0) else {
-            continue;
+    /// Keep diff cursor history aligned with the oldest value retained in [`ConfirmedHistory`].
+    ///
+    /// Prediction and interpolation own their value-retention policies. This system, the receiver's
+    /// one pruner, runs afterwards and promotes the matching cursor to the receiver's retained base.
+    /// Pending diffs keep both their cursor state and historical base until they materialize, are
+    /// superseded, or fall behind the kept history.
+    pub(crate) fn prune(
+        storage: Option<ResMut<'_, ReplicationStorage>>,
+        query: Query<'_, '_, (Entity, &ConfirmedHistory<C>)>,
+    ) {
+        let Some(mut storage) = storage else {
+            return;
         };
-        let Some(receiver) = storage.get_mut::<HistoryDiffReceiver<C>>(entity) else {
-            continue;
-        };
-        receiver.clear_before_tick(front.tick, front.value.value().is_some());
+        for (entity, history) in query.iter() {
+            let Some(front) = history.get_nth_state(0) else {
+                continue;
+            };
+            let Some(receiver) = storage.get_mut::<Self>(entity) else {
+                continue;
+            };
+            receiver.clear_before_tick(front.tick, front.value.value().is_some());
+        }
     }
 }
 

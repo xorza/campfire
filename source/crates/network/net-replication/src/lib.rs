@@ -106,6 +106,7 @@ pub mod bench;
 mod checkpoint;
 mod checkpoint_error;
 mod client_replication_plugin;
+mod client_replication_plugins;
 mod client_replicon_plugin;
 mod completed_checkpoint;
 mod component_codec;
@@ -123,15 +124,15 @@ mod despawn;
 mod detached_bit;
 mod diffable;
 mod disable_replicate_hierarchy;
+#[cfg(feature = "internals")]
+mod fixtures;
 mod hello_channel;
 mod hello_plugin;
 mod hierarchy;
 mod hierarchy_send_plugin;
 mod history_diff_receiver;
-pub mod history_write;
+mod history_write;
 mod inheritance_plugin;
-#[cfg(feature = "internals")]
-pub mod internals;
 mod interpolated_despawn;
 mod interpolation_yield;
 mod lifetime;
@@ -165,7 +166,7 @@ mod room_plugin;
 mod rooms;
 mod sender_hello;
 mod sent_marker;
-mod server_replication_plugin;
+mod server_replication_plugins;
 mod server_replicon_plugin;
 mod server_send_plugin;
 mod shared_component_registration_plugin;
@@ -178,7 +179,7 @@ mod interpolated;
 mod predicted;
 
 pub use crate::app_component_ext::AppComponentExt;
-pub use crate::client_replication_plugin::ClientReplicationPlugin;
+pub use crate::client_replication_plugins::ClientReplicationPlugins;
 pub use crate::completed_checkpoint::CompletedCheckpoint;
 pub use crate::component_kind::ComponentKind;
 pub use crate::component_registration::ComponentRegistration;
@@ -198,6 +199,7 @@ pub use crate::hello_channel::HelloChannel;
 pub use crate::history_diff_receiver::HistoryDiffError;
 pub use crate::history_diff_receiver::HistoryDiffReceiver;
 pub use crate::history_state::HistoryState;
+pub use crate::history_write::{ReceivedValue, receive_history_diff, replicated_message_tick};
 pub use crate::interpolated::Interpolated;
 pub use crate::interpolated_despawn::InterpolatedDespawn;
 pub use crate::lifetime::Lifetime;
@@ -234,5 +236,23 @@ pub use crate::room_id::RoomId;
 pub use crate::room_plugin::RoomPlugin;
 pub use crate::rooms::Rooms;
 pub use crate::sender_hello::SenderHello;
-pub use crate::server_replication_plugin::ServerReplicationPlugin;
+pub use crate::server_replication_plugins::ServerReplicationPlugins;
 pub use crate::visibility_ext::VisibilityExt;
+
+/// What the tests and benches of the layers above share: this layer's stack, test protocol,
+/// fixtures and measurements.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::fixtures::diff_messages::{
+        diff_message, diff_snapshot, newest_confirmed_value, record_checkpoint,
+    };
+    pub use crate::fixtures::protocol::{
+        CompA, CompMap, CompReplicateOnce, CompRepliconDiff, CompS, CompSimple,
+        ReplicationProtocolPlugin,
+    };
+    pub use crate::fixtures::replication_counts::summed_replication_counts;
+    pub use crate::fixtures::replication_stack::ReplicationStack;
+    pub use crate::fixtures::steps::{
+        PROPAGATION_FRAMES, client_copy, on_client, on_server, spawn_on_server,
+    };
+}

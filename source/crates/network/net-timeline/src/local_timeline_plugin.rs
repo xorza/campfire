@@ -1,4 +1,4 @@
-use crate::local_timeline::{LocalTimeline, end_local_tick, increment_local_tick};
+use crate::local_timeline::LocalTimeline;
 use crate::set_tick_rate::SetTickRate;
 use crate::timeline_systems::TimelineSystems;
 use bevy_app::{App, FixedFirst, FixedLast, FixedMainScheduleOrder, Plugin};
@@ -41,9 +41,9 @@ impl Plugin for LocalTimelinePlugin {
 
         app.add_systems(
             FixedFirst,
-            increment_local_tick.in_set(TimelineSystems::IncrementLocal),
+            LocalTimeline::increment_tick.in_set(TimelineSystems::IncrementLocal),
         );
-        app.add_systems(EndLocalTick, end_local_tick);
+        app.add_systems(EndLocalTick, LocalTimeline::end_tick);
         app.world_mut()
             .get_resource_or_init::<FixedMainScheduleOrder>()
             .insert_after(FixedLast, EndLocalTick);

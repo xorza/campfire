@@ -1,9 +1,9 @@
 use super::*;
 use crate::confirmed_history_fns::ConfirmedHistoryFns;
+use crate::fixtures::interpolation_stack::InterpolationStack;
+use crate::fixtures::protocol::*;
 use crate::frame_interpolation_history::FrameInterpolationHistory;
 use crate::history_receive::InterpolatedMarkerFns;
-use crate::internals::interpolation_stack::InterpolationStack;
-use crate::internals::protocol::*;
 use crate::interpolate::sample_history_with_interpolation;
 use crate::interpolation_fns::{InterpolationFns, InterpolationPipeline};
 use crate::interpolation_rule::InterpolationRule;
@@ -20,9 +20,7 @@ use bytes::Bytes;
 use campfire_codec::Binary;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_core::NetTick;
-use campfire_net_replication::internals::diff_messages;
-use campfire_net_replication::internals::protocol::*;
-use campfire_net_replication::internals::steps::client_copy;
+use campfire_net_replication::internals::*;
 use campfire_net_replication::{
     AppComponentExt, ConfirmedHistory, HistoryState, Interpolated, InterpolatedSend,
     InterpolationTarget, Replicate, ReplicationCheckpointMap,
@@ -39,7 +37,8 @@ use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
 
 use crate::interpolation_marker_plugin::InterpolationMarkerPlugin;
-use crate::interpolation_plugin::InterpolationPlugin;
+use crate::interpolation_plugins::InterpolationPlugins;
+use crate::interpolation_registry_plugin::InterpolationRegistryPlugin;
 use crate::interpolation_timeline::InterpolationTimeline;
 use bevy_ecs::component::Component;
 use bevy_replicon::prelude::RepliconPlugins;
@@ -160,7 +159,8 @@ fn setup_interpolation_diff_app() -> (App, FnsId) {
         StatesPlugin,
         RepliconPlugins,
         InterpolationMarkerPlugin,
-        InterpolationPlugin,
+        InterpolationRegistryPlugin,
+        InterpolationPlugins,
     ));
     app.insert_resource(ReplicationCheckpointMap::default());
     app.register_component::<TestDiffComponent>()
@@ -185,7 +185,8 @@ fn add_interpolation_diff_with_applies_registered_sampler() {
         StatesPlugin,
         RepliconPlugins,
         InterpolationMarkerPlugin,
-        InterpolationPlugin,
+        InterpolationRegistryPlugin,
+        InterpolationPlugins,
     ));
     app.insert_resource(ReplicationCheckpointMap::default());
     app.register_component::<TestDiffComponent>()
@@ -222,7 +223,8 @@ fn marker_functions_can_precede_replication_component_registration() {
         StatesPlugin,
         RepliconPlugins,
         InterpolationMarkerPlugin,
-        InterpolationPlugin,
+        InterpolationRegistryPlugin,
+        InterpolationPlugins,
     ));
 
     app.register_interpolation_rule::<TestComp, ()>(InterpolationRule::new(
@@ -306,7 +308,8 @@ fn inserts_history_when_interpolated_added_after_component_is_already_replicated
         StatesPlugin,
         RepliconPlugins,
         InterpolationMarkerPlugin,
-        InterpolationPlugin,
+        InterpolationRegistryPlugin,
+        InterpolationPlugins,
     ));
     app.insert_resource(ReplicationCheckpointMap::default());
     app.register_component::<TestComp>()
@@ -358,7 +361,8 @@ fn no_history_winner_does_not_initialize_lower_rule_history() {
         StatesPlugin,
         RepliconPlugins,
         InterpolationMarkerPlugin,
-        InterpolationPlugin,
+        InterpolationRegistryPlugin,
+        InterpolationPlugins,
     ));
     app.insert_resource(ReplicationCheckpointMap::default());
     app.register_component::<TestComp>()
@@ -623,7 +627,8 @@ fn frame_only_app() -> App {
         StatesPlugin,
         RepliconPlugins,
         InterpolationMarkerPlugin,
-        InterpolationPlugin,
+        InterpolationRegistryPlugin,
+        InterpolationPlugins,
     ));
     app
 }
@@ -905,7 +910,7 @@ fn diff_interpolation_records_confirmed_history_from_replicon_diffs() {
             .contains::<Interpolated>()
     );
     assert_eq!(
-        diff_messages::newest_confirmed_value(stepper.client_app_mut(0), client_entity),
+        newest_confirmed_value(stepper.client_app_mut(0), client_entity),
         Some(0)
     );
 
@@ -918,7 +923,7 @@ fn diff_interpolation_records_confirmed_history_from_replicon_diffs() {
     stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
 
     assert_eq!(
-        diff_messages::newest_confirmed_value(stepper.client_app_mut(0), client_entity),
+        newest_confirmed_value(stepper.client_app_mut(0), client_entity),
         Some(1)
     );
 }

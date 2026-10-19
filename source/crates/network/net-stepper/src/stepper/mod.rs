@@ -14,7 +14,7 @@ use campfire_net_core::TickRate;
 use campfire_net_emulator::{
     DuplexModel, EmulatedLinkId, EmulatedNetwork, EmulatedPair, WireClock,
 };
-use campfire_net_endpoint::{Endpoint, EndpointPlugin};
+use campfire_net_endpoint::Endpoint;
 use campfire_net_link::{Link, LinkOf, Linked, PeerAddr, Unlinked};
 use campfire_net_packets::{EmulatedWires, EndpointConfig, EndpointParts, SessionConfig};
 use campfire_net_timeline::LocalTimeline;
@@ -112,11 +112,7 @@ impl<S: Stack> Stepper<S> {
             ClientKind::Raw
         };
         let mut server_app = App::new();
-        server_app.add_plugins((
-            TaskPoolPlugin::default(),
-            TimePlugin,
-            EndpointPlugin::<EmulatedWires>::default(),
-        ));
+        server_app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
         stack.add_server(&mut server_app, config.tick_rate);
         // The links the server's endpoint spawns take the stack's components before they link: a
         // queued command runs before the endpoint's `Linked`, which comes in a later command.
@@ -268,11 +264,7 @@ impl<S: Stack> Stepper<S> {
     /// A remote client's app with the stack's plugins and protocol, finished.
     fn new_client_app(&self) -> App {
         let mut client_app = App::new();
-        client_app.add_plugins((
-            TaskPoolPlugin::default(),
-            TimePlugin,
-            EndpointPlugin::<EmulatedWires>::default(),
-        ));
+        client_app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
         self.stack.add_client(&mut client_app, self.tick_rate);
         self.stack.add_protocol(&mut client_app);
         client_app.finish();

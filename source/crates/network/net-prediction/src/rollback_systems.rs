@@ -14,7 +14,7 @@ pub enum RollbackSystems {
     /// Replays the ticks from the rollback tick to the current one.
     Rollback,
     /// Ends the rollback: starts each visual correction and removes the
-    /// [`Rollback`](campfire_net_timeline::rollback::Rollback) resource.
+    /// [`Rollback`](campfire_net_timeline::Rollback) resource.
     EndRollback,
     /// Decays each visual correction, from the value shown before the rollback to the corrected
     /// one.

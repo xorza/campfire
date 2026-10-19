@@ -5,7 +5,7 @@
 //! messages wait for an ack writes into a reclaimed chunk instead of a new allocation.
 
 use crate::arena::Arena;
-use crate::varint;
+use crate::var_int::VarInt;
 use bytes::{Bytes, BytesMut};
 
 /// The size of a chunk. A message that outgrows one gets an allocation of its own.
@@ -106,7 +106,7 @@ pub trait WriteInteger {
     /// Writes `value` as a variable-length integer in network byte order, in the fewest bytes
     /// that hold it: the top two bits of the first byte hold the base-2 logarithm of the length.
     fn write_varint(&mut self, value: u64) {
-        let len = varint::len(value);
+        let len = VarInt::new(value).encoded_len();
         let tag = u64::from(len.trailing_zeros());
         let encoded = (value | (tag << (8 * len - 2))).to_be_bytes();
         self.write_bytes(&encoded[size_of::<u64>() - len..]);

@@ -1,6 +1,6 @@
 use super::*;
+use crate::fixtures::sync_stack::SyncStack;
 use crate::input_delay_config::InputDelayConfig;
-use crate::internals::sync_stack::SyncStack;
 use crate::remote_timeline::RemoteTimeline;
 use campfire_net_core::{NetTick, PositiveTickDelta};
 use campfire_net_stepper::Stepper;

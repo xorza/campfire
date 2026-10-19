@@ -14,6 +14,7 @@ use crate::compression_scratch::CompressionScratch;
 use crate::fragmented_message::FragmentedMessage;
 use crate::message_id::MessageId;
 use crate::message_ref::MessageRef;
+use crate::queued_message::QueuedMessage;
 use crate::send_candidate::{CandidateMessages, CandidateRank, CandidateSink, SendCandidate};
 use crate::send_message_key::SendMessageKey;
 use crate::single_data::SingleData;
@@ -68,8 +69,8 @@ enum SendState {
 #[derive(Debug)]
 struct UnreliableSendState {
     delivery: UnreliableDelivery,
-    singles: VecDeque<Pending<SingleData>>,
-    fragmented: VecDeque<Pending<FragmentedMessage>>,
+    /// The messages in buffering order; a key names one by its index here, for one flush.
+    queue: VecDeque<Pending>,
     next_message_id: MessageId,
 }
 
@@ -81,22 +82,19 @@ enum UnreliableDelivery {
 
 /// An unreliable message while it waits to be sent.
 #[derive(Debug)]
-struct Pending<T> {
-    message: T,
+struct Pending {
+    message: QueuedMessage,
     base_priority: f32,
     /// Grows by `base_priority` a second while the message waits to be sent.
     priority: f32,
-    /// Whether a packet carried it; a fragmented message's fragments keep their own.
-    committed: bool,
 }
 
-impl<T> Pending<T> {
-    const fn new(message: T, base_priority: f32) -> Self {
+impl Pending {
+    const fn new(message: QueuedMessage, base_priority: f32) -> Self {
         Self {
             message,
             base_priority,
             priority: 0.0,
-            committed: false,
         }
     }
 }
@@ -281,23 +279,20 @@ impl ChannelSender {
         }
     }
 
-    /// Applies the loss of a packet that carried the message or fragment `key` names.
+    /// Applies the loss of a packet that carried the part `key` names. An unreliable channel
+    /// sends each part once and takes no fate: the transport watches none of its packets.
     pub(crate) fn receive_loss(&mut self, key: SendMessageKey) {
-        match &mut self.state {
-            SendState::Reliable(state) => state.receive_loss(key),
-            SendState::Unreliable(_) => {
-                unreachable!("only reliable channels track the packets of their messages")
-            }
+        if let SendState::Reliable(state) = &mut self.state {
+            state.receive_loss(key);
         }
     }
 
-    /// Applies an acknowledgement and returns whether it completed the logical message.
+    /// Applies an acknowledgement and returns whether it completed the logical message; never on
+    /// an unreliable channel, which takes no fate.
     pub(crate) fn receive_ack(&mut self, key: SendMessageKey) -> bool {
         match &mut self.state {
             SendState::Reliable(state) => state.receive_ack(key),
-            SendState::Unreliable(_) => {
-                unreachable!("only reliable channels track the packets of their messages")
-            }
+            SendState::Unreliable(_) => false,
         }
     }
 }
@@ -306,8 +301,7 @@ impl UnreliableSendState {
     const fn new(delivery: UnreliableDelivery) -> Self {
         Self {
             delivery,
-            singles: VecDeque::new(),
-            fragmented: VecDeque::new(),
+            queue: VecDeque::new(),
             next_message_id: MessageId(0),
         }
     }
@@ -324,21 +318,18 @@ impl UnreliableSendState {
         let is_fragmented = message.len() > fragment_size;
         let has_id = is_fragmented || self.delivery != UnreliableDelivery::Unordered;
 
-        if is_fragmented {
-            let message = FragmentedMessage::split(
+        let message = if is_fragmented {
+            QueuedMessage::Fragmented(FragmentedMessage::split(
                 message_id,
                 message,
                 fragment_size,
                 compression,
                 compression_scratch,
-            );
-            self.fragmented.push_back(Pending::new(message, priority));
+            ))
         } else {
-            self.singles.push_back(Pending::new(
-                SingleData::new(has_id.then_some(message_id), message),
-                priority,
-            ));
-        }
+            QueuedMessage::whole(SingleData::new(has_id.then_some(message_id), message))
+        };
+        self.queue.push_back(Pending::new(message, priority));
 
         has_id.then(|| {
             self.next_message_id += 1;
@@ -346,90 +337,59 @@ impl UnreliableSendState {
         })
     }
 
+    /// Appends each message with a due part. A message's send order is its place among the
+    /// queue's messages of its shape, as whole messages and fragmented ones compete apart.
     fn collect_candidates(&mut self, elapsed: Duration, sink: &mut CandidateSink<'_>) {
         let elapsed_secs = elapsed.as_secs_f32();
-        for (index, pending) in self.singles.iter_mut().enumerate() {
-            if pending.committed {
-                continue;
-            }
-            pending.priority += pending.base_priority * elapsed_secs;
-            let slot = u32::try_from(index).unwrap();
-            let rank = CandidateRank {
-                priority: pending.priority,
-                send_order: slot,
+        let mut wholes = 0;
+        let mut fragmented = 0;
+        for (index, pending) in self.queue.iter_mut().enumerate() {
+            let shape_order = if pending.message.is_whole() {
+                &mut wholes
+            } else {
+                &mut fragmented
             };
-            sink.push(
-                SendMessageKey::UnreliableSingle(slot),
-                rank,
-                MessageRef::Single(&pending.message),
-            );
-        }
-        for (index, pending) in self.fragmented.iter_mut().enumerate() {
-            let Some(first) = pending.message.first_due() else {
+            let send_order = *shape_order;
+            *shape_order += 1;
+            let Some(part) = pending.message.first_due() else {
                 continue;
             };
             pending.priority += pending.base_priority * elapsed_secs;
-            let slot = u32::try_from(index).unwrap();
             let rank = CandidateRank {
                 priority: pending.priority,
-                send_order: slot,
+                send_order,
             };
             sink.push(
-                SendMessageKey::UnreliableFragment(slot, first),
+                SendMessageKey::new(u32::try_from(index).unwrap(), part),
                 rank,
-                MessageRef::Fragment(pending.message.fragment(first)),
+                pending.message.part(part),
             );
         }
     }
 
     fn message(&self, key: SendMessageKey) -> MessageRef<'_> {
-        match key {
-            SendMessageKey::UnreliableSingle(slot) => {
-                MessageRef::Single(&self.singles[index_of(slot)].message)
-            }
-            SendMessageKey::UnreliableFragment(slot, index) => {
-                MessageRef::Fragment(self.fragmented[index_of(slot)].message.fragment(index))
-            }
-            SendMessageKey::ReliableSingle(_) | SendMessageKey::ReliableFragment(..) => {
-                unreachable!("an unreliable channel names its messages by queue index")
-            }
-        }
+        self.queue[index_of(key.message)].message.part(key.part)
     }
 
     fn next_due(&self, key: SendMessageKey) -> Option<SendMessageKey> {
-        let SendMessageKey::UnreliableFragment(slot, index) = key else {
-            unreachable!("only a fragment of an unreliable channel has a next fragment here")
-        };
-        self.fragmented[index_of(slot)]
+        self.queue[index_of(key.message)]
             .message
-            .next_due(index + 1)
-            .map(|next| key.with_fragment(next))
+            .next_due(key.part + 1)
+            .map(|next| key.with_part(next))
     }
 
     fn commit_send(&mut self, key: SendMessageKey) {
-        match key {
-            SendMessageKey::UnreliableSingle(slot) => {
-                self.singles[index_of(slot)].committed = true;
-            }
-            SendMessageKey::UnreliableFragment(slot, index) => {
-                self.fragmented[index_of(slot)].message.commit(index);
-            }
-            SendMessageKey::ReliableSingle(_) | SendMessageKey::ReliableFragment(..) => {
-                unreachable!("an unreliable channel names its messages by queue index")
-            }
-        }
+        self.queue[index_of(key.message)].message.commit(key.part);
     }
 
     /// Drops what the flush sent. With `discard_unsent`, it drops what it did not send too, but
     /// a fragmented message it started, whose fragments the receiver waits for.
     fn finish_send(&mut self, discard_unsent: bool) {
         if discard_unsent {
-            self.singles.clear();
-            self.fragmented
+            self.queue
                 .retain(|pending| pending.message.is_started() && !pending.message.is_sent());
         } else {
-            self.singles.retain(|pending| !pending.committed);
-            self.fragmented.retain(|pending| !pending.message.is_sent());
+            self.queue.retain(|pending| !pending.message.is_sent());
         }
     }
 }

@@ -3,9 +3,10 @@ use crate::message_id::MessageId;
 use crate::send_candidate::CandidateRank;
 use crate::send_message_key::SendMessageKey;
 use campfire_net_core::NetId;
+use core::num::NonZeroU32;
 
-/// A candidate of `channel_id` of a single of `bytes_len` bytes, or a fragmented message when
-/// the key names a fragment.
+/// A candidate of `channel_id` of a whole message of `bytes_len` bytes, or of a fragmented
+/// message when `bytes_len` is 0.
 fn candidate(
     channel_id: u16,
     key: SendMessageKey,
@@ -20,7 +21,7 @@ fn candidate(
             priority,
             send_order,
         },
-        bytes_len,
+        single_len: NonZeroU32::new(bytes_len),
     }
 }
 
@@ -36,22 +37,18 @@ fn order(manager: &PriorityManager) -> Vec<(NetId, SendMessageKey)> {
 #[test]
 fn infinite_priority_messages_are_ordered_before_traffic_bursts() {
     let mut manager = PriorityManager::default();
-    manager.candidates_mut().extend(
-        (0..120).map(|index| candidate(1, SendMessageKey::UnreliableSingle(index), 1.0, index, 9)),
-    );
-    manager.candidates_mut().push(candidate(
-        0,
-        SendMessageKey::UnreliableSingle(0),
-        f32::INFINITY,
-        0,
-        5,
-    ));
+    manager
+        .candidates_mut()
+        .extend((0..120).map(|index| candidate(1, SendMessageKey::new(index, 0), 1.0, index, 9)));
+    manager
+        .candidates_mut()
+        .push(candidate(0, SendMessageKey::new(0, 0), f32::INFINITY, 0, 5));
 
     manager.prioritize();
 
     assert_eq!(
         order(&manager)[0],
-        (NetId::new(0), SendMessageKey::UnreliableSingle(0))
+        (NetId::new(0), SendMessageKey::new(0, 0))
     );
 }
 
@@ -61,8 +58,8 @@ fn infinite_priority_messages_are_ordered_before_traffic_bursts() {
 fn higher_priority_single_precedes_lower_priority_fragment() {
     let mut manager = PriorityManager::default();
     manager.candidates_mut().extend([
-        candidate(0, SendMessageKey::UnreliableFragment(0, 0), 1.0, 0, 0),
-        candidate(1, SendMessageKey::UnreliableSingle(0), 10.0, 0, 7),
+        candidate(0, SendMessageKey::new(100, 0), 1.0, 0, 0),
+        candidate(1, SendMessageKey::new(0, 0), 10.0, 0, 7),
     ]);
 
     manager.prioritize();
@@ -70,8 +67,8 @@ fn higher_priority_single_precedes_lower_priority_fragment() {
     assert_eq!(
         order(&manager),
         [
-            (NetId::new(1), SendMessageKey::UnreliableSingle(0)),
-            (NetId::new(0), SendMessageKey::UnreliableFragment(0, 0)),
+            (NetId::new(1), SendMessageKey::new(0, 0)),
+            (NetId::new(0), SendMessageKey::new(100, 0)),
         ]
     );
 }
@@ -80,9 +77,9 @@ fn higher_priority_single_precedes_lower_priority_fragment() {
 fn equal_priority_uses_fragment_first_size_ascending_packing_order() {
     let mut manager = PriorityManager::default();
     manager.candidates_mut().extend([
-        candidate(0, SendMessageKey::UnreliableSingle(0), 1.0, 0, 14),
-        candidate(0, SendMessageKey::UnreliableSingle(1), 1.0, 1, 6),
-        candidate(0, SendMessageKey::UnreliableFragment(0, 0), 1.0, 0, 0),
+        candidate(0, SendMessageKey::new(0, 0), 1.0, 0, 14),
+        candidate(0, SendMessageKey::new(1, 0), 1.0, 1, 6),
+        candidate(0, SendMessageKey::new(100, 0), 1.0, 0, 0),
     ]);
 
     manager.prioritize();
@@ -90,9 +87,9 @@ fn equal_priority_uses_fragment_first_size_ascending_packing_order() {
     assert_eq!(
         order(&manager),
         [
-            (NetId::new(0), SendMessageKey::UnreliableFragment(0, 0)),
-            (NetId::new(0), SendMessageKey::UnreliableSingle(1)),
-            (NetId::new(0), SendMessageKey::UnreliableSingle(0)),
+            (NetId::new(0), SendMessageKey::new(100, 0)),
+            (NetId::new(0), SendMessageKey::new(1, 0)),
+            (NetId::new(0), SendMessageKey::new(0, 0)),
         ]
     );
 }
@@ -102,8 +99,8 @@ fn equal_priority_uses_fragment_first_size_ascending_packing_order() {
 fn equal_size_singles_go_in_send_order() {
     let mut manager = PriorityManager::default();
     manager.candidates_mut().extend([
-        candidate(0, SendMessageKey::UnreliableSingle(1), 1.0, 1, 6),
-        candidate(0, SendMessageKey::UnreliableSingle(0), 1.0, 0, 6),
+        candidate(0, SendMessageKey::new(1, 0), 1.0, 1, 6),
+        candidate(0, SendMessageKey::new(0, 0), 1.0, 0, 6),
     ]);
 
     manager.prioritize();
@@ -111,8 +108,8 @@ fn equal_size_singles_go_in_send_order() {
     assert_eq!(
         order(&manager),
         [
-            (NetId::new(0), SendMessageKey::UnreliableSingle(0)),
-            (NetId::new(0), SendMessageKey::UnreliableSingle(1)),
+            (NetId::new(0), SendMessageKey::new(0, 0)),
+            (NetId::new(0), SendMessageKey::new(1, 0)),
         ]
     );
 }
@@ -123,27 +120,22 @@ fn equal_size_singles_go_in_send_order() {
 fn fragment_order_uses_channel_queue_order_then_channel() {
     let mut manager = PriorityManager::default();
     manager.candidates_mut().extend(
-        [3, 1, 2, 0]
-            .map(|slot| candidate(0, SendMessageKey::UnreliableFragment(slot, 0), 1.0, slot, 0)),
+        [3, 1, 2, 0].map(|slot| candidate(0, SendMessageKey::new(100 + slot, 0), 1.0, slot, 0)),
     );
-    manager.candidates_mut().push(candidate(
-        1,
-        SendMessageKey::UnreliableFragment(0, 0),
-        1.0,
-        0,
-        0,
-    ));
+    manager
+        .candidates_mut()
+        .push(candidate(1, SendMessageKey::new(100, 0), 1.0, 0, 0));
 
     manager.prioritize();
 
     assert_eq!(
         order(&manager),
         [
-            (NetId::new(0), SendMessageKey::UnreliableFragment(0, 0)),
-            (NetId::new(1), SendMessageKey::UnreliableFragment(0, 0)),
-            (NetId::new(0), SendMessageKey::UnreliableFragment(1, 0)),
-            (NetId::new(0), SendMessageKey::UnreliableFragment(2, 0)),
-            (NetId::new(0), SendMessageKey::UnreliableFragment(3, 0)),
+            (NetId::new(0), SendMessageKey::new(100, 0)),
+            (NetId::new(1), SendMessageKey::new(100, 0)),
+            (NetId::new(0), SendMessageKey::new(100 + 1, 0)),
+            (NetId::new(0), SendMessageKey::new(100 + 2, 0)),
+            (NetId::new(0), SendMessageKey::new(100 + 3, 0)),
         ]
     );
 }
@@ -156,7 +148,7 @@ fn reliable_fragment_order_survives_message_id_rollover() {
     for (message_id, send_order) in [(MessageId(0), 1), (MessageId(u16::MAX), 0)] {
         manager.candidates_mut().push(candidate(
             0,
-            SendMessageKey::ReliableFragment(message_id, 0),
+            SendMessageKey::of_id(message_id, 0),
             1.0,
             send_order,
             0,
@@ -167,7 +159,6 @@ fn reliable_fragment_order_survives_message_id_rollover() {
 
     assert_eq!(
         order(&manager),
-        [MessageId(u16::MAX), MessageId(0)]
-            .map(|id| (NetId::new(0), SendMessageKey::ReliableFragment(id, 0)))
+        [MessageId(u16::MAX), MessageId(0)].map(|id| (NetId::new(0), SendMessageKey::of_id(id, 0)))
     );
 }

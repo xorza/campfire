@@ -9,13 +9,13 @@ use criterion::{BatchSize, BenchmarkId, Criterion};
 use std::hint::black_box;
 
 use crate::reader::{ReadVarInt, Reader};
-use crate::varint;
+use crate::var_int::VarInt;
 use crate::writer::{WriteInteger, Writer};
 
 const VALUES: u64 = 1024;
 
 /// The largest value of each varint length: 1, 2, 4 and 8 bytes.
-const LARGEST: [u64; 4] = [63, 16_383, 1_073_741_823, varint::MAX];
+const LARGEST: [u64; 4] = [63, 16_383, 1_073_741_823, VarInt::MAX.get()];
 
 /// Runs each case of the crate whose id criterion's filter takes.
 pub fn run(criterion: &mut Criterion) {
@@ -27,7 +27,10 @@ fn varint(criterion: &mut Criterion) {
     let values: Vec<u64> = (0..VALUES)
         .map(|i| LARGEST[(i % 4) as usize] - i / 4 % 64)
         .collect();
-    let bytes: usize = values.iter().map(|&value| varint::len(value)).sum();
+    let bytes: usize = values
+        .iter()
+        .map(|&value| VarInt::new(value).encoded_len())
+        .sum();
     let mut encoded = Writer::with_capacity(bytes);
     for &value in &values {
         encoded.write_varint(value);

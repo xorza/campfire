@@ -25,10 +25,7 @@
 //! access. Systems ordered after [`FrameInterpolationSystems::Interpolate`] can
 //! therefore use `Changed<C>` to react to the visual value.
 //! ```rust,ignore
-//! # use campfire_net_interpolation::{
-//! #     AppInterpolationExt, FrameInterpolate, FrameInterpolationPlugin, InterpolationFns,
-//! #     InterpolationRule,
-//! # };
+//! # use campfire_net_interpolation::{//! #     AppInterpolationExt, FrameInterpolate, FrameInterpolationPlugin, InterpolationFns, //! #     InterpolationRegistryPlugin, InterpolationRule, //! #};
 //! # use bevy_app::App;
 //! # use bevy_ecs::prelude::*;
 //!
@@ -39,7 +36,7 @@
 //! # }
 //!
 //! let mut app = App::new();
-//! app.add_plugins(FrameInterpolationPlugin);
+//! app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
 //! app.register_interpolation_rule::<Component1, ()>(InterpolationRule::new(
 //!     InterpolationFns::no_history(lerp_component),
 //! ));
@@ -53,13 +50,13 @@ use crate::frame_interpolation_systems::FrameInterpolationSystems;
 use crate::frame_stage::FrameStage;
 use crate::interpolation_owners::InterpolationOwners;
 use crate::interpolation_registry::InterpolationRegistry;
-use crate::interpolation_registry_plugin::InterpolationRegistryPlugin;
+use crate::pipelines::Pipelines;
 use bevy_app::prelude::*;
 use bevy_ecs::archetype::Archetypes;
 use bevy_ecs::component::Components;
 use bevy_ecs::prelude::*;
 use campfire_net_replication::ReplicationSystems;
-use campfire_net_timeline::rollback;
+use campfire_net_timeline::Rollback;
 
 /// Bevy plugin that enables frame interpolation.
 ///
@@ -78,9 +75,7 @@ use campfire_net_timeline::rollback;
 /// ```rust,ignore
 /// use bevy_app::App;
 /// use bevy_ecs::prelude::*;
-/// use campfire_net_interpolation::{
-///     AppInterpolationExt, FrameInterpolationPlugin, InterpolationFns, InterpolationRule,
-/// };
+/// use campfire_net_interpolation::{///     AppInterpolationExt, FrameInterpolationPlugin, InterpolationFns, InterpolationRegistryPlugin, ///     InterpolationRule, ///};
 ///
 /// #[derive(Component, Clone, PartialEq)]
 /// struct Position(f32);
@@ -90,7 +85,7 @@ use campfire_net_timeline::rollback;
 /// }
 ///
 /// let mut app = App::new();
-/// app.add_plugins(FrameInterpolationPlugin);
+/// app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
 /// app.register_interpolation_rule::<Position, ()>(InterpolationRule::new(InterpolationFns::no_history(lerp_position)));
 /// ```
 #[derive(Debug, Default)]
@@ -98,9 +93,7 @@ pub struct FrameInterpolationPlugin;
 
 impl Plugin for FrameInterpolationPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<InterpolationRegistryPlugin>() {
-            app.add_plugins(InterpolationRegistryPlugin);
-        }
+        Pipelines::mark(app, |pipelines| pipelines.frame = true);
         app.configure_sets(
             RunFixedMainLoop,
             FrameInterpolationSystems::Restore.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
@@ -109,7 +102,7 @@ impl Plugin for FrameInterpolationPlugin {
         // values a rollback replays reads them through its frame source.
         app.configure_sets(
             FixedPostUpdate,
-            FrameInterpolationSystems::Update.run_if(not(rollback::is_active)),
+            FrameInterpolationSystems::Update.run_if(not(Rollback::is_active)),
         );
         app.configure_sets(
             PostUpdate,
@@ -142,24 +135,29 @@ impl Plugin for FrameInterpolationPlugin {
         );
         app.add_systems(
             RunFixedMainLoop,
-            refresh_frame_owners.in_set(FrameStage::Refresh),
+            Self::refresh_frame_owners.in_set(FrameStage::Refresh),
         );
         app.add_systems(
             FixedPostUpdate,
-            refresh_frame_owners.in_set(FrameStage::Refresh),
+            Self::refresh_frame_owners.in_set(FrameStage::Refresh),
         );
-        app.add_systems(PostUpdate, refresh_frame_owners.in_set(FrameStage::Refresh));
+        app.add_systems(
+            PostUpdate,
+            Self::refresh_frame_owners.in_set(FrameStage::Refresh),
+        );
     }
 }
 
-/// Resolves the frame interpolation of the archetypes created since the last refresh.
-fn refresh_frame_owners(
-    mut owners: ResMut<'_, InterpolationOwners>,
-    archetypes: &Archetypes,
-    components: &Components,
-    registry: Res<'_, InterpolationRegistry>,
-) {
-    registry.refresh_owners(&mut owners.frame, archetypes, components);
+impl FrameInterpolationPlugin {
+    /// Resolves the frame interpolation of the archetypes created since the last refresh.
+    fn refresh_frame_owners(
+        mut owners: ResMut<'_, InterpolationOwners>,
+        archetypes: &Archetypes,
+        components: &Components,
+        registry: Res<'_, InterpolationRegistry>,
+    ) {
+        registry.refresh_owners(&mut owners.frame, archetypes, components);
+    }
 }
 
 #[cfg(test)]

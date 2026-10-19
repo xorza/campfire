@@ -37,14 +37,10 @@ impl Default for CorrectionPolicy {
     /// The shared default curve, so a rollback and a blend let the error go at the same rate
     /// unless a caller tunes one of them, run until it converges.
     fn default() -> Self {
-        let CorrectionEase::Exponential {
-            decay_ratio,
-            decay_period_secs,
-        } = CorrectionEase::default()
-        else {
-            unreachable!("the default ease is the exponential");
-        };
-        Self::exponential(decay_ratio, decay_period_secs)
+        Self::exponential(
+            CorrectionEase::DEFAULT_DECAY_RATIO,
+            CorrectionEase::DEFAULT_DECAY_PERIOD_SECS,
+        )
     }
 }
 

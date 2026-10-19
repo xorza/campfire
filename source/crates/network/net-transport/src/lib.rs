@@ -18,7 +18,7 @@ pub mod bench;
 mod channel_registration;
 mod channel_registry;
 #[cfg(feature = "internals")]
-pub mod internals;
+mod fixtures;
 mod packet_received;
 mod transport;
 mod transport_plugin;
@@ -32,3 +32,17 @@ pub use crate::packet_received::PacketReceived;
 pub use crate::transport::Transport;
 pub use crate::transport_plugin::TransportPlugin;
 pub use crate::transport_systems::TransportSystems;
+
+/// What the tests and benches of the layers above share: this layer's stack, test protocol,
+/// fixtures and measurements.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::fixtures::compression_case::{CompressionCase, CompressionRun};
+    pub use crate::fixtures::protocol::{
+        Channel1, ChannelOrderedReliable, ChannelSequencedReliable, ChannelSequencedUnreliable,
+        ChannelUnorderedReliable, TransportProtocolPlugin, channel_id,
+    };
+    pub use crate::fixtures::stepper_counts::summed_transport_counts;
+    pub use crate::fixtures::test_transport_plugin::{TestChannel, TestTransportPlugin};
+    pub use crate::fixtures::transport_stack::TransportStack;
+}

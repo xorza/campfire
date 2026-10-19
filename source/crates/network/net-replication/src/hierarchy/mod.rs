@@ -6,7 +6,6 @@ use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::RuleFns;
 use bevy_replicon::shared::replication::deferred_entity::DeferredEntity;
 use bevy_replicon::shared::replication::registry::ctx::{RemoveCtx, SerializeCtx, WriteCtx};
-use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use bytes::Bytes;
 
 /// Serializes the server parent entity targeted by [`ChildOf`].
@@ -42,7 +41,7 @@ pub(crate) fn deserialize_child_of(
 
 /// Receives [`ChildOf`] without using Replicon's placeholder entity mapper: the server's parent
 /// is kept as [`RemoteParent`], and [`ChildOf`] is its view while the parent is mapped. An
-/// unmapped parent waits for [`attach_remote_parents`].
+/// unmapped parent waits for [`RemoteParent::attach`].
 pub(crate) fn write_child_of(
     ctx: &mut WriteCtx<'_>,
     _rule_fns: &RuleFns<ChildOf>,
@@ -62,21 +61,6 @@ pub(crate) fn write_child_of(
 pub(crate) fn remove_child_of(_ctx: &mut RemoveCtx, entity: &mut DeferredEntity<'_>) {
     entity.remove::<ChildOf>();
     entity.remove::<RemoteParent>();
-}
-
-/// Gives each replicated entity whose server parent is mapped and that shows no [`ChildOf`]
-/// its view: a parent that arrives late, or that comes back after it was despawned here. It runs
-/// after the receive, and only in a frame whose receive mapped an entity.
-pub(crate) fn attach_remote_parents(
-    entity_map: Res<'_, ServerEntityMap>,
-    detached: Query<'_, '_, (Entity, &RemoteParent), Without<ChildOf>>,
-    mut commands: Commands<'_, '_>,
-) {
-    for (entity, parent) in &detached {
-        if let Some(&client_parent) = entity_map.to_client().get(&parent.server) {
-            commands.entity(entity).insert(ChildOf(client_parent));
-        }
-    }
 }
 
 #[cfg(test)]

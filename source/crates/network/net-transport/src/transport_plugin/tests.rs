@@ -49,7 +49,7 @@ fn a_protocol_violation_unlinks_the_link_once() {
 /// Stopping a raw server unlinks its IO.
 #[test]
 fn stopping_the_server_unlinks_it() {
-    use crate::internals::transport_stack::TransportStack;
+    use crate::fixtures::transport_stack::TransportStack;
     use campfire_net_connection::Stop;
     use campfire_net_connection::Stopped;
     use campfire_net_link::Unlinked;

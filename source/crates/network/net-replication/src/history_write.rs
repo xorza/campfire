@@ -19,7 +19,10 @@ use tracing::debug;
 
 /// The authoritative tick of the replicated message of `message_tick`; one that no checkpoint
 /// maps is counted as a fault of the peer's data.
-pub fn message_tick(entity: &DeferredEntity<'_>, message_tick: RepliconTick) -> Option<NetTick> {
+pub fn replicated_message_tick(
+    entity: &DeferredEntity<'_>,
+    message_tick: RepliconTick,
+) -> Option<NetTick> {
     entity
         .world()
         .resource::<ReplicationCheckpointMap>()
@@ -43,14 +46,16 @@ pub struct ReceivedValue<'a, C> {
 /// A message that the entity's checkpoints do not map is dropped. An entity without a confirmed
 /// history gets one: its values are written there and read back for the diffs they make ready,
 /// as the entity's own component goes on only when the message's changes are flushed.
-pub fn receive_diff<C: Component<Mutability = Mutable> + Clone + PartialEq + RepliconDiffable>(
+pub fn receive_history_diff<
+    C: Component<Mutability = Mutable> + Clone + PartialEq + RepliconDiffable,
+>(
     ctx: &mut WriteCtx<'_>,
     entity: &mut DeferredEntity<'_>,
     message: &mut Bytes,
     mut before_write: impl FnMut(&mut DeferredEntity<'_>, ReceivedValue<'_, C>),
 ) -> Result<()> {
     let diff: ComponentDelta<C> = ComponentCodec::read_replicon(message)?;
-    let Some(tick) = message_tick(entity, ctx.message_tick) else {
+    let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
         debug!(
             message_tick = ?ctx.message_tick,
             component = core::any::type_name::<C>(),

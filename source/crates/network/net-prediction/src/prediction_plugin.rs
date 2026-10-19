@@ -1,30 +1,31 @@
-use crate::despawn::{finalize_local_despawns, forget_unreachable_pre_spawns};
+use crate::locally_predicted::LocallyPredicted;
+use crate::prediction_history::PredictionHistory;
+use crate::prediction_manager::PredictionManager;
+use crate::rollback_plugin::RollbackPlugin;
+use crate::rollback_scan::RollbackScan;
+use bevy_ecs::error;
+use campfire_net_despawn::DespawnReplicated;
+use campfire_net_replication::PreSpawnedReceiver;
+use campfire_net_sync::InputTimelineConfig;
+use campfire_net_timeline::LocalTimeline;
+
 use crate::disabled_during_rollback::DisabledDuringRollback;
-use crate::misprediction::{scan_mismatches, survey_check_targets, survey_pending_diffs};
+
 use crate::prediction_despawned::PredictionDespawned;
-use crate::prediction_diagnostics_plugin::PredictionDiagnosticsPlugin;
-use crate::prediction_gate;
-use crate::prediction_history::{
-    add_history_diff_receiver, add_prediction_history, apply_component_removal_predicted,
-    backfill_confirmed_history_on_predicted, handle_local_timeline_shift_prediction_history,
-    prune_confirmed_history, snap_to_confirmed, update_prediction_history,
-};
+
 use crate::prediction_registry;
-use crate::prediction_registry_plugin::PredictionRegistryPlugin;
 use crate::prediction_systems::PredictionSystems;
 use crate::rollback_check_stage::RollbackCheckStage;
-use crate::rollback_plugin::{RollbackPlugin, prepare_rollback};
+
 use crate::rollback_systems::RollbackSystems;
-use crate::switch;
 use bevy_app::prelude::*;
 use bevy_ecs::component::Mutable;
 use bevy_ecs::entity_disabling::DefaultQueryFilters;
 use bevy_ecs::prelude::*;
 use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
-use campfire_net_interpolation::FrameInterpolationPlugin;
 use campfire_net_interpolation::HistoryComponent;
 use campfire_net_replication::ReplicationSystems;
-use campfire_net_timeline::rollback;
+use campfire_net_timeline::Rollback;
 
 /// Plugin that installs client-side prediction systems.
 ///
@@ -35,7 +36,7 @@ use campfire_net_timeline::rollback;
 /// resource to opt the application into one global prediction and rollback pipeline. Host-client
 /// and server topologies remain authoritative and do not run it.
 #[derive(Debug, Default)]
-pub struct PredictionPlugin;
+pub(crate) struct PredictionPlugin;
 
 // Higher-priority markers win when more than one applies to an update.
 // Pre-spawn must preserve its specialized reconciliation semantics before the
@@ -50,33 +51,33 @@ pub(crate) const PREDICTED_PRIORITY: usize = 90;
 pub(crate) fn add_non_networked_rollback_systems<C: Component<Mutability = Mutable> + Clone>(
     app: &mut App,
 ) {
-    app.add_observer(apply_component_removal_predicted::<C>);
-    app.add_observer(add_prediction_history::<C>);
+    app.add_observer(PredictionHistory::<C>::record_removal);
+    app.add_observer(PredictionHistory::<C>::add_on_prediction);
     // This also supports explicit resynchronization after prediction has begun. Do not shift
     // `ConfirmedHistory<C>` here: confirmed samples are resolved
     // through `ReplicationCheckpointMap` and are already in authoritative
     // server tick space. Shifting them can move authoritative state into the
     // future and make rollback prefer it over later server updates.
-    app.add_observer(handle_local_timeline_shift_prediction_history::<C>);
+    app.add_observer(PredictionHistory::<C>::shift_with_local_timeline);
     app.add_systems(
         FixedPostUpdate,
-        update_prediction_history::<C>.in_set(PredictionSystems::UpdateHistory),
+        PredictionHistory::<C>::update.in_set(PredictionSystems::UpdateHistory),
     );
     app.add_systems(
         PreUpdate,
-        prepare_rollback::<C>.in_set(RollbackSystems::Prepare),
+        RollbackPlugin::prepare_rollback::<C>.in_set(RollbackSystems::Prepare),
     );
 }
 
 pub(crate) fn add_prediction_systems<C: HistoryComponent>(app: &mut App) {
-    app.add_observer(apply_component_removal_predicted::<C>);
-    app.add_observer(handle_local_timeline_shift_prediction_history::<C>);
-    app.add_observer(add_prediction_history::<C>);
-    app.add_observer(backfill_confirmed_history_on_predicted::<C>);
+    app.add_observer(PredictionHistory::<C>::record_removal);
+    app.add_observer(PredictionHistory::<C>::shift_with_local_timeline);
+    app.add_observer(PredictionHistory::<C>::add_on_prediction);
+    app.add_observer(PredictionHistory::<C>::backfill_confirmed);
     app.add_systems(
         FixedPostUpdate,
         // we need to run this during fixed update to know accurately the history for each tick
-        update_prediction_history::<C>.in_set(PredictionSystems::UpdateHistory),
+        PredictionHistory::<C>::update.in_set(PredictionSystems::UpdateHistory),
     );
     // Prune once per frame in PostUpdate (not before the rollback check): Check must
     // see the full confirmed history for this frame's rollback decision, including
@@ -85,29 +86,29 @@ pub(crate) fn add_prediction_systems<C: HistoryComponent>(app: &mut App) {
     // inside rollback replay.
     app.add_systems(
         PostUpdate,
-        prune_confirmed_history::<C>
+        PredictionHistory::<C>::prune_confirmed
             .in_set(PredictionSystems::All)
             .in_set(ReplicationSystems::CutHistory),
     );
     app.add_systems(
         PreUpdate,
         (
-            survey_check_targets::<C>.in_set(RollbackCheckStage::Survey),
-            scan_mismatches::<C>.in_set(RollbackCheckStage::Scan),
-            prepare_rollback::<C>.in_set(RollbackSystems::Prepare),
+            RollbackScan::survey_check_targets::<C>.in_set(RollbackCheckStage::Survey),
+            RollbackScan::scan_mismatches::<C>.in_set(RollbackCheckStage::Scan),
+            RollbackPlugin::prepare_rollback::<C>.in_set(RollbackSystems::Prepare),
         ),
     );
     app.add_systems(
         FixedPreUpdate,
-        snap_to_confirmed::<C>.in_set(PredictionSystems::SnapToConfirmed),
+        PredictionHistory::<C>::snap_to_confirmed.in_set(PredictionSystems::SnapToConfirmed),
     );
 }
 
 pub(crate) fn add_prediction_diff_systems<C: HistoryComponent + RepliconDiffable>(app: &mut App) {
-    app.add_observer(add_history_diff_receiver::<C>);
+    app.add_observer(PredictionHistory::<C>::add_diff_receiver);
     app.add_systems(
         PreUpdate,
-        survey_pending_diffs::<C>.in_set(RollbackCheckStage::Survey),
+        RollbackScan::survey_pending_diffs::<C>.in_set(RollbackCheckStage::Survey),
     );
 }
 
@@ -117,14 +118,6 @@ impl Plugin for PredictionPlugin {
     }
 
     fn build(&self, app: &mut App) {
-        // Correction measures each error against the frame-interpolated value.
-        if !app.is_plugin_added::<FrameInterpolationPlugin>() {
-            app.add_plugins(FrameInterpolationPlugin);
-        }
-        if !app.is_plugin_added::<PredictionRegistryPlugin>() {
-            app.add_plugins(PredictionRegistryPlugin);
-        }
-
         // Custom entity disabling
         let rollback_disable_id = app
             .world_mut()
@@ -152,7 +145,7 @@ impl Plugin for PredictionPlugin {
         );
         app.configure_sets(
             PreUpdate,
-            PredictionSystems::All.run_if(prediction_gate::should_run),
+            PredictionSystems::All.run_if(PredictionManager::should_run),
         );
 
         // FixedPreUpdate systems
@@ -161,11 +154,11 @@ impl Plugin for PredictionPlugin {
             FixedPreUpdate,
             PredictionSystems::SnapToConfirmed
                 .in_set(PredictionSystems::All)
-                .run_if(rollback::is_active),
+                .run_if(Rollback::is_active),
         );
         app.configure_sets(
             FixedPreUpdate,
-            PredictionSystems::All.run_if(prediction_gate::should_run),
+            PredictionSystems::All.run_if(PredictionManager::should_run),
         );
 
         // FixedPostUpdate systems
@@ -186,39 +179,84 @@ impl Plugin for PredictionPlugin {
         );
         app.configure_sets(
             FixedPostUpdate,
-            PredictionSystems::All.run_if(prediction_gate::should_run),
+            PredictionSystems::All.run_if(PredictionManager::should_run),
         );
         app.add_systems(
             FixedPostUpdate,
-            (finalize_local_despawns, forget_unreachable_pre_spawns)
+            (
+                Self::finalize_local_despawns,
+                Self::forget_unreachable_pre_spawns,
+            )
                 .in_set(PredictionSystems::EntityDespawn),
         );
 
         app.configure_sets(
             PostUpdate,
-            PredictionSystems::All.run_if(prediction_gate::should_run),
+            PredictionSystems::All.run_if(PredictionManager::should_run),
         );
 
         // Timeline switch between predicted and interpolated (client-local).
-        switch::add_timeline_switch_systems(app);
+    }
+}
 
-        app.add_plugins((PredictionDiagnosticsPlugin::default(), RollbackPlugin));
+impl PredictionPlugin {
+    /// Permanently remove locally predicted entities once their despawn tick is outside the rollback
+    /// window.
+    pub(crate) fn finalize_local_despawns(
+        mut commands: Commands<'_, '_>,
+        timeline: Res<'_, LocalTimeline>,
+        prediction_manager: Res<'_, PredictionManager>,
+        input_config: Res<'_, InputTimelineConfig>,
+        query: Query<
+            '_,
+            '_,
+            (Entity, &PredictionDespawned),
+            (With<LocallyPredicted>, Allow<PredictionDespawned>),
+        >,
+    ) {
+        let oldest = prediction_manager.oldest_rollback_tick(timeline.tick(), &input_config);
+        for (entity, disabled) in &query {
+            // Keep the entity while its disable tick can still be reached by an accepted rollback.
+            // Once it is older than the same effective bound enforced by `RollbackPlugin::check_rollback`, no later
+            // reconciliation can restore it.
+            if disabled.tick < oldest {
+                commands
+                    .entity(entity)
+                    .queue_handled(DespawnReplicated, error::warn);
+            }
+        }
+    }
+
+    /// Forgets the pre-spawned entities no rollback can reach, so the list a rollback walks holds only
+    /// those its window covers.
+    pub(crate) fn forget_unreachable_pre_spawns(
+        mut receiver: ResMut<'_, PreSpawnedReceiver>,
+        timeline: Res<'_, LocalTimeline>,
+        prediction_manager: Res<'_, PredictionManager>,
+        input_config: Res<'_, InputTimelineConfig>,
+    ) {
+        receiver.forget_rollback_through(
+            prediction_manager.oldest_rollback_tick(timeline.tick(), &input_config),
+        );
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prediction_manager::PredictionManager;
     use campfire_net_connection::NetworkingState;
 
     use campfire_net_connection::NetworkTopology;
 
-    use crate::internals::prediction_stack::PredictionStack;
+    use crate::fixtures::prediction_stack::PredictionStack;
     use campfire_net_core::NetTick;
     use campfire_net_replication::ComponentRegistry;
     use campfire_net_stepper::{Stepper, StepperConfig};
-    use campfire_net_timeline::rollback::Rollback;
+
+    use crate::prediction_plugins::PredictionPlugins;
+    use crate::prediction_registry_plugin::PredictionRegistryPlugin;
+    use bevy_ecs::system::RunSystemOnce;
+    use campfire_net_interpolation::InterpolationRegistryPlugin;
 
     #[derive(Debug, Resource, Default)]
     struct SnapRuns(u32);
@@ -233,7 +271,11 @@ mod tests {
         // The resources the connection and replication layers provide.
         app.init_resource::<NetworkingState>();
         app.init_resource::<ComponentRegistry>();
-        app.add_plugins(PredictionPlugin);
+        app.add_plugins((
+            InterpolationRegistryPlugin,
+            PredictionRegistryPlugin,
+            PredictionPlugins,
+        ));
         app.insert_resource(PredictionManager::default());
         app.init_resource::<SnapRuns>();
         let client = app.world_mut().spawn_empty().id();
@@ -259,7 +301,7 @@ mod tests {
         let mut stepper = Stepper::new(PredictionStack, StepperConfig::single());
         stepper.frame_step(1);
         let app = stepper.client_app(0);
-        let position = |prefix: &str| {
+        let position = |owner: &str, system_fn: &str| {
             app.world()
                 .resource::<Schedules>()
                 .get(PostUpdate)
@@ -268,10 +310,60 @@ mod tests {
                 .unwrap()
                 .position(|(_, system)| {
                     let name = system.name().to_string();
-                    name.contains(prefix) && name.contains("CompRepliconDiff")
+                    name.contains(owner)
+                        && name.ends_with(system_fn)
+                        && name.contains("CompRepliconDiff")
                 })
-                .unwrap_or_else(|| panic!("{prefix} runs in PostUpdate"))
+                .unwrap_or_else(|| panic!("{owner}{system_fn} runs in PostUpdate"))
         };
-        assert!(position("prune_confirmed_history<") < position("prune_history_diff_receiver<"));
+        assert!(
+            position("PredictionHistory<", ">::prune_confirmed")
+                < position("HistoryDiffReceiver<", ">::prune")
+        );
+    }
+
+    /// With a rollback window of `w` ticks at tick 100, an entity disabled at `100 - w - 1` can be
+    /// restored by no rollback and is despawned, while one disabled at `100 - w`, the oldest tick a
+    /// rollback restores, stays. A pre-spawn at `100 - w` is forgotten, as a rollback despawns only
+    /// what spawned after the tick it restores, and one at `100 - w + 1` stays listed.
+    #[test]
+    fn a_local_despawn_ends_once_it_leaves_the_rollback_window() {
+        let mut world = World::new();
+        world.init_resource::<PredictionManager>();
+        world.init_resource::<InputTimelineConfig>();
+        let mut timeline = LocalTimeline::default();
+        timeline.shift(100);
+        world.insert_resource(timeline);
+        let window = u32::from(
+            world
+                .resource::<PredictionManager>()
+                .max_rollback_ticks(world.resource::<InputTimelineConfig>()),
+        );
+        let mut disabled_at = |tick| {
+            world
+                .spawn((LocallyPredicted::default(), PredictionDespawned { tick }))
+                .id()
+        };
+        let gone = disabled_at(NetTick(100 - window - 1));
+        let kept = disabled_at(NetTick(100 - window));
+
+        world
+            .run_system_once(PredictionPlugin::finalize_local_despawns)
+            .unwrap();
+
+        assert!(world.get_entity(gone).is_err());
+        assert!(world.get_entity(kept).is_ok());
+
+        let mut receiver = PreSpawnedReceiver::default();
+        receiver.register(NetTick(100 - window), gone);
+        receiver.register(NetTick(100 - window + 1), kept);
+        world.insert_resource(receiver);
+        world
+            .run_system_once(PredictionPlugin::forget_unreachable_pre_spawns)
+            .unwrap();
+        assert_eq!(
+            world.resource::<PreSpawnedReceiver>().rollback(),
+            [(NetTick(100 - window + 1), kept)]
+        );
     }
 }

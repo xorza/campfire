@@ -1,32 +1,37 @@
 use crate::message_id::MessageId;
 
-/// Names a message or fragment of a channel: in a flush's candidates and packets, and on a
-/// reliable channel in the packets whose fates the transport waits for.
+/// Names a part of a message of a channel: in a flush's candidates and packets, and on a reliable
+/// channel in the packets whose fates the transport waits for.
 ///
-/// An unreliable channel names a message by its queue index, which holds for one flush, as the
-/// channel compacts its queues only once the flush ends; a reliable channel by its id. A
-/// fragmented message's candidate names its first due fragment.
+/// Every message is a run of parts, and a message that fits one packet is one part, as QUIC
+/// names a stream's bytes by their offsets, so a key names no shape the message could contradict
+/// (14-workspace-alignment.md, A state the code cannot reach is a type). An unreliable channel
+/// names a message by its queue index, which holds for one flush, as the channel compacts its
+/// queue only once the flush ends; a reliable channel by its id. A fragmented message's candidate
+/// names its first due part.
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SendMessageKey {
-    UnreliableSingle(u32),
-    UnreliableFragment(u32, u16),
-    ReliableSingle(MessageId),
-    ReliableFragment(MessageId, u16),
+pub(crate) struct SendMessageKey {
+    pub(crate) message: u32,
+    pub(crate) part: u16,
 }
 
 impl SendMessageKey {
-    pub(crate) const fn is_single(self) -> bool {
-        matches!(self, Self::UnreliableSingle(_) | Self::ReliableSingle(_))
+    pub(crate) const fn new(message: u32, part: u16) -> Self {
+        Self { message, part }
     }
 
-    /// The same message's fragment `index`, for a key of a fragment.
-    pub(crate) const fn with_fragment(self, index: u16) -> Self {
-        match self {
-            Self::UnreliableFragment(slot, _) => Self::UnreliableFragment(slot, index),
-            Self::ReliableFragment(id, _) => Self::ReliableFragment(id, index),
-            Self::UnreliableSingle(_) | Self::ReliableSingle(_) => {
-                panic!("a single message has no fragments")
-            }
-        }
+    /// The part `part` of a reliable channel's message `id`.
+    pub(crate) fn of_id(id: MessageId, part: u16) -> Self {
+        Self::new(u32::from(id.0), part)
+    }
+
+    /// The reliable message id the key names.
+    pub(crate) fn id(self) -> MessageId {
+        MessageId(u16::try_from(self.message).expect("a reliable channel's key holds a message id"))
+    }
+
+    /// The same message's part `part`.
+    pub(crate) const fn with_part(self, part: u16) -> Self {
+        Self::new(self.message, part)
     }
 }

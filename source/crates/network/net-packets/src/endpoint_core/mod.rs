@@ -17,7 +17,7 @@ use crate::connection_id::ConnectionId;
 use crate::datagram_io::Datagram;
 use crate::datagram_io::Outbound;
 use crate::endpoint_parts::EndpointSide;
-use crate::establish::{Establish, Established, Establishing};
+use crate::establish::{ClientEstablish, Establish, Established, Establishing, ServerEstablish};
 use crate::header::IO_BIT;
 use crate::packet_session::{PacketSession, PathOutcome, Received};
 use crate::session_config::SessionConfig;
@@ -61,16 +61,35 @@ pub enum News<C> {
     Ended { carrier: C, reason: UnlinkReason },
 }
 
-/// Whether the endpoint opens one session to its server or takes sessions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Whether the endpoint opens one session to its server or takes sessions, with the
+/// establishment of that side.
+#[derive(Debug)]
 enum Side<C> {
     /// A client's endpoint, whose session the host's own carrier carries from its start.
     Client {
         server: SocketAddr,
         carrier: Option<C>,
+        establish: Box<dyn ClientEstablish>,
     },
     /// A server's endpoint, whose establishment takes new peers while it accepts.
-    Server,
+    Server { establish: Box<dyn ServerEstablish> },
+}
+
+impl<C> Side<C> {
+    /// The establishment, in the calls both sides take.
+    fn establish(&mut self) -> &mut dyn Establish {
+        match self {
+            Self::Client { establish, .. } => establish.as_mut(),
+            Self::Server { establish } => establish.as_mut(),
+        }
+    }
+
+    fn establish_ref(&self) -> &dyn Establish {
+        match self {
+            Self::Client { establish, .. } => establish.as_ref(),
+            Self::Server { establish } => establish.as_ref(),
+        }
+    }
 }
 
 /// The time the endpoint's sessions read: the frame's, as the frame sets it, on a driven clock;
@@ -122,7 +141,6 @@ impl<C> Peer<C> {
 /// carrier `C` of the host carries.
 #[derive(Debug)]
 pub struct EndpointCore<C> {
-    establish: Box<dyn Establish>,
     config: SessionConfig,
     side: Side<C>,
     peers: Vec<Option<Peer<C>>>,
@@ -148,7 +166,6 @@ pub struct EndpointCore<C> {
 
 impl<C: Carrier> EndpointCore<C> {
     pub(crate) fn new(
-        establish: Box<dyn Establish>,
         config: SessionConfig,
         side: EndpointSide,
         conditioner: Option<LinkConditioner<Datagram>>,
@@ -158,14 +175,14 @@ impl<C: Carrier> EndpointCore<C> {
             "a keep-alive less often than the idle timeout lets a quiet session time out"
         );
         Self {
-            establish,
             config,
             side: match side {
-                EndpointSide::Client { server } => Side::Client {
+                EndpointSide::Client { server, establish } => Side::Client {
                     server,
                     carrier: None,
+                    establish,
                 },
-                EndpointSide::Server => Side::Server,
+                EndpointSide::Server { establish } => Side::Server { establish },
             },
             peers: Vec::new(),
             free: Vec::new(),
@@ -206,27 +223,29 @@ impl<C: Carrier> EndpointCore<C> {
             Side::Client {
                 server,
                 carrier: client,
+                establish,
             } => {
                 *client = Some(carrier);
-                let server = *server;
                 // A client that connects again drops its last session, closing or not: the new
                 // one's datagrams come from the same address.
                 self.free.clear();
                 for peer in self.peers.drain(..).flatten() {
-                    self.establish.ended(peer.route);
+                    establish.ended(peer.route);
                 }
                 self.routes.clear();
                 self.timers.clear();
-                self.establish.connect(now, server, &mut self.establishing);
+                establish.connect(now, *server, &mut self.establishing);
             }
-            Side::Server => self.establish.set_accepting(true),
+            Side::Server { establish } => establish.set_accepting(true),
         }
         self.apply_establishing(now, out);
     }
 
     /// Takes no new peer, as a server that stopped.
     pub fn stop_accepting(&mut self) {
-        self.establish.set_accepting(false);
+        if let Side::Server { establish } = &mut self.side {
+            establish.set_accepting(false);
+        }
     }
 
     /// One pass over `datagrams` the IO gave, then the timers: what goes out is appended to
@@ -245,7 +264,7 @@ impl<C: Carrier> EndpointCore<C> {
         for datagram in datagrams.drain(..) {
             self.route(now, datagram, out);
         }
-        self.establish.poll(now, &mut self.establishing);
+        self.side.establish().poll(now, &mut self.establishing);
         self.apply_establishing(now, out);
         // The due timers are taken first, so a pass polls each session once, as a timer it
         // leaves due waits for the next pass.
@@ -274,7 +293,7 @@ impl<C: Carrier> EndpointCore<C> {
                 if let Some(carrier) = peer.carrier {
                     self.news.push_back(News::Ended { carrier, reason });
                 }
-                self.establish.ended(peer.route);
+                self.side.establish().ended(peer.route);
                 self.routes.remove(&peer.route_key());
                 *slot = None;
                 self.free.push(key.slot);
@@ -308,13 +327,14 @@ impl<C: Carrier> EndpointCore<C> {
             return;
         };
         if first & IO_BIT != 0 {
-            self.establish
+            self.side
+                .establish()
                 .receive(now, datagram, &mut self.establishing);
             self.apply_establishing(now, out);
             return;
         }
         let from = datagram.from;
-        let route = if self.establish.routes_by_prefix() {
+        let route = if self.side.establish_ref().routes_by_prefix() {
             let Some(id) = datagram
                 .payload
                 .first_chunk()
@@ -330,11 +350,10 @@ impl<C: Carrier> EndpointCore<C> {
         let slot = if let Some(&slot) = self.routes.get(&route_key) {
             slot
         } else {
-            if self.is_client() {
+            let Side::Server { establish } = &mut self.side else {
                 return;
-            }
-            self.establish
-                .unknown(now, &datagram, &mut self.establishing);
+            };
+            establish.unknown(now, &datagram, &mut self.establishing);
             self.apply_establishing(now, out);
             let Some(&slot) = self.routes.get(&route_key) else {
                 return;
@@ -371,7 +390,7 @@ impl<C: Carrier> EndpointCore<C> {
             && received == (Received::Read { largest: true })
         {
             peer.candidate = Some(from);
-            let data = self.establish.challenge();
+            let data = self.side.establish().challenge();
             peer.session.start_challenge(now, data, &mut self.transmits);
         }
         Self::check_path(peer);
@@ -390,8 +409,9 @@ impl<C: Carrier> EndpointCore<C> {
             && let Side::Client {
                 carrier: Some(carrier),
                 ..
-            } = self.side
+            } = &self.side
         {
+            let carrier = *carrier;
             self.news.push_back(News::Ended { carrier, reason });
         }
     }
@@ -418,9 +438,9 @@ impl<C: Carrier> EndpointCore<C> {
         // Each end's first packet tells its peer the session is open: a client's server spawns
         // its link, and a server's client stops sending its handshake's end.
         session.ping(now, &mut self.transmits);
-        let carrier = match self.side {
-            Side::Client { carrier, .. } => carrier,
-            Side::Server => None,
+        let carrier = match &self.side {
+            Side::Client { carrier, .. } => *carrier,
+            Side::Server { .. } => None,
         };
         let mut peer = Peer {
             session,
@@ -584,7 +604,7 @@ impl<C: Carrier> EndpointCore<C> {
             .peek()
             .map(|Reverse(timer)| timer.at)
             .into_iter()
-            .chain(self.establish.next_deadline())
+            .chain(self.side.establish_ref().next_deadline())
             .chain(
                 self.conditioner
                     .as_ref()
@@ -598,7 +618,7 @@ impl<C: Carrier> EndpointCore<C> {
 pub(crate) mod internals {
     use crate::carrier::Carrier;
     use crate::endpoint_core::EndpointCore;
-    use crate::internals::session_counts::SessionCounts;
+    use crate::packet_session::internals::SessionCounts;
 
     impl<C: Carrier> EndpointCore<C> {
         /// The counts of the session that `carrier` carries.

@@ -1,4 +1,3 @@
-use crate::networking_state;
 use crate::networking_state::NetworkingState;
 use crate::remote_id::RemoteId;
 use bevy_ecs::lifecycle::HookContext;
@@ -33,7 +32,7 @@ impl Connected {
     }
 
     fn on_remove(mut world: DeferredWorld<'_>, context: HookContext) {
-        networking_state::unmap_remote(&mut world, context.entity);
+        NetworkingState::unmap_remote(&mut world, context.entity);
     }
 }
 
@@ -59,7 +58,7 @@ pub struct Disconnected {
 
 impl Disconnected {
     fn on_add(mut world: DeferredWorld<'_>, context: HookContext) {
-        networking_state::unmap_remote(&mut world, context.entity);
+        NetworkingState::unmap_remote(&mut world, context.entity);
         world
             .commands()
             .entity(context.entity)

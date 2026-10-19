@@ -53,7 +53,6 @@ use campfire_net_timeline::LocalTimeline;
 use campfire_net_transport::AdaptiveQueryIterMut;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
-use campfire_net_transport::TransportPlugin;
 use campfire_net_transport::TransportSystems;
 use std::sync::Arc;
 use tracing::debug;
@@ -66,10 +65,6 @@ pub struct MessagePlugin;
 
 impl Plugin for MessagePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TransportPlugin>() {
-            app.add_plugins(TransportPlugin);
-        }
-
         app.init_resource::<MessageRegistry>();
         app.add_observer(Self::handle_disconnection);
 

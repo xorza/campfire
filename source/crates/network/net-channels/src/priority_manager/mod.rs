@@ -54,7 +54,7 @@ impl PriorityManager {
         match (a.is_single(), b.is_single()) {
             (false, true) => core::cmp::Ordering::Less,
             (true, false) => core::cmp::Ordering::Greater,
-            (true, true) => a.bytes_len.cmp(&b.bytes_len),
+            (true, true) => a.single_len.cmp(&b.single_len),
             (false, false) => core::cmp::Ordering::Equal,
         }
         .then_with(|| a.rank.send_order.cmp(&b.rank.send_order))

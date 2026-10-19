@@ -1,7 +1,7 @@
 use super::*;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
-use bevy_time::TimeUpdateStrategy;
+use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_net_connection::RemoteId;
 use campfire_net_connection::{
     ClientOf, Connect, Connected, Connecting, Disconnected, DisconnectedReason, HostClient,
@@ -9,9 +9,9 @@ use campfire_net_connection::{
 };
 use campfire_net_core::PeerId;
 use campfire_net_emulator::{DuplexModel, EmulatedNetwork, WireClock};
-use campfire_net_endpoint::{Endpoint, EndpointPlugin};
+use campfire_net_endpoint::Endpoint;
 use campfire_net_link::{Link, LinkOf, Linked, PeerAddr};
-use campfire_net_packets::{EmulatedWires, EndpointConfig, EndpointParts};
+use campfire_net_packets::{EndpointConfig, EndpointParts};
 use campfire_net_payload::{AppCode, UnlinkReason};
 use campfire_net_timeline::{Clock, ClockSource};
 use core::time::Duration;
@@ -71,8 +71,12 @@ impl Harness {
         app.insert_resource(Clock::new(ClockSource::Frame));
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Self::FRAME));
         app.add_plugins((
+            TimePlugin,
+            ClockPlugin,
+            LinkPlugin,
             EndpointPlugin::<EmulatedWires>::default(),
-            RawServerPlugin,
+            ConnectionPlugins,
+            ServerConnectionPlugins,
             RawClientPlugin,
         ));
         let server = app

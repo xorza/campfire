@@ -14,6 +14,7 @@ use crate::tick_encoder::{LONG_TICK_LEN, TickEncoder};
 use bevy_platform::collections::HashMap;
 
 use super::*;
+use crate::queued_message::QueuedMessage;
 
 #[derive(Debug)]
 struct Channel1;
@@ -43,8 +44,8 @@ fn net_id(kind: ChannelKind) -> NetId {
 #[derive(Debug, Default)]
 struct Staged {
     candidates: Vec<SendCandidate>,
-    singles: HashMap<(NetId, u32), SingleData>,
-    fragmented: HashMap<(NetId, u32), FragmentedMessage>,
+    /// Each message by its channel and key, a fragmented one's index offset by 100.
+    messages: HashMap<(NetId, u32), QueuedMessage>,
 }
 
 impl Staged {
@@ -64,11 +65,12 @@ impl Staged {
             send_order: index,
         };
         self.sink(channel_id).push(
-            SendMessageKey::UnreliableSingle(index),
+            SendMessageKey::new(index, 0),
             rank,
             MessageRef::Single(&single),
         );
-        self.singles.insert((channel_id, index), single);
+        self.messages
+            .insert((channel_id, index), QueuedMessage::whole(single));
     }
 
     /// Stages one fragmented message of priority 1 at the queue index `index`.
@@ -83,11 +85,14 @@ impl Staged {
             send_order: index,
         };
         self.sink(channel_id).push(
-            SendMessageKey::UnreliableFragment(index, 0),
+            SendMessageKey::new(100 + index, 0),
             rank,
             MessageRef::Fragment(message.fragment(0)),
         );
-        self.fragmented.insert((channel_id, index), message);
+        self.messages.insert(
+            (channel_id, 100 + index),
+            QueuedMessage::Fragmented(message),
+        );
     }
 
     /// The source of a flush whose packets carry a long tick, as before the peer read one.
@@ -104,26 +109,13 @@ impl Staged {
 
 impl CandidateMessages for Staged {
     fn message(&self, channel_id: NetId, key: SendMessageKey) -> MessageRef<'_> {
-        match key {
-            SendMessageKey::UnreliableSingle(index) => {
-                MessageRef::Single(&self.singles[&(channel_id, index)])
-            }
-            SendMessageKey::UnreliableFragment(index, fragment) => {
-                MessageRef::Fragment(self.fragmented[&(channel_id, index)].fragment(fragment))
-            }
-            SendMessageKey::ReliableSingle(_) | SendMessageKey::ReliableFragment(..) => {
-                unreachable!("the stage holds unreliable messages")
-            }
-        }
+        self.messages[&(channel_id, key.message)].part(key.part)
     }
 
     fn next_due(&self, channel_id: NetId, key: SendMessageKey) -> Option<SendMessageKey> {
-        let SendMessageKey::UnreliableFragment(index, fragment) = key else {
-            unreachable!("only a fragment has a next fragment")
-        };
-        self.fragmented[&(channel_id, index)]
-            .next_due(fragment + 1)
-            .map(|next| key.with_fragment(next))
+        self.messages[&(channel_id, key.message)]
+            .next_due(key.part + 1)
+            .map(|next| key.with_part(next))
     }
 }
 
@@ -463,8 +455,8 @@ fn staged_builder_fills_each_final_fragment_with_singles() -> Result<(), PacketE
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    let single = SendMessageKey::UnreliableSingle;
-    let fragment = SendMessageKey::UnreliableFragment;
+    let single = |index: u32| SendMessageKey::new(index, 0);
+    let fragment = |index: u32, part| SendMessageKey::new(100 + index, part);
     assert_eq!(
         keys,
         [
@@ -577,7 +569,7 @@ fn final_fragment_tail_uses_actual_single_channel_width_and_rolls_back() -> Resu
                 .iter()
                 .map(|message| message.commit.key)
                 .collect::<Vec<_>>(),
-            [SendMessageKey::UnreliableFragment(0, fragment)]
+            [SendMessageKey::new(100, fragment)]
         );
     }
 

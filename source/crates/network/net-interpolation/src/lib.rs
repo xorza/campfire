@@ -7,7 +7,7 @@
 //!
 //! # Basic setup
 //!
-//! Add [`interpolation_plugin::InterpolationPlugin`] on the client and register interpolation rules
+//! Add [`InterpolationPlugins`] on the client and register interpolation rules
 //! in the same shared protocol code that registers replicated components. The rules are stored in
 //! [`interpolation_registry::InterpolationRegistry`].
 //!
@@ -297,7 +297,7 @@
 //!
 //! # Scheduling
 //!
-//! [`interpolation_plugin::InterpolationPlugin`] runs the receive-history and apply systems in
+//! [`InterpolationPlugins`] run the receive-history and apply systems in
 //! [`interpolation_systems::InterpolationSystems`]. User interpolation systems should usually run
 //! in [`interpolation_systems::InterpolationSystems::Interpolate`] so they see histories after the
 //! stack has updated component presence for the interpolation timeline.
@@ -316,7 +316,8 @@ mod archetype_set;
 mod confirmed_history_fns;
 mod delayed_interpolation_plugin;
 /// Handles delayed despawns for interpolated entities.
-mod despawn;
+#[cfg(feature = "internals")]
+mod fixtures;
 mod frame_history_fns;
 mod frame_interpolation_plugin;
 mod frame_interpolation_rules;
@@ -324,8 +325,6 @@ mod frame_interpolation_systems;
 mod history_component;
 mod history_receive;
 mod history_seed;
-#[cfg(feature = "internals")]
-pub mod internals;
 /// Contains interpolation logic.
 mod interpolate;
 mod interpolation_bundle;
@@ -335,8 +334,8 @@ mod interpolation_fns;
 mod interpolation_marker_plugin;
 mod interpolation_mode;
 mod interpolation_owners;
-/// Provides the `InterpolationPlugin` and related systems for Bevy integration.
 mod interpolation_plugin;
+mod interpolation_plugins;
 mod interpolation_registration_ext;
 mod interpolation_registry;
 mod interpolation_registry_plugin;
@@ -352,6 +351,7 @@ mod interpolation_timeline_plugin;
 mod into_interpolation_fn;
 mod lerps;
 mod member_mode;
+mod pipelines;
 mod registered_rule;
 mod rule_building;
 mod rule_resolution;
@@ -379,7 +379,7 @@ pub use crate::interpolation_fn::LerpFn;
 pub use crate::interpolation_fns::InterpolationFns;
 pub use crate::interpolation_marker_plugin::InterpolationMarkerPlugin;
 pub use crate::interpolation_mode::InterpolationMode;
-pub use crate::interpolation_plugin::InterpolationPlugin;
+pub use crate::interpolation_plugins::InterpolationPlugins;
 pub use crate::interpolation_registration_ext::InterpolationRegistrationExt;
 pub use crate::interpolation_registry::InterpolationRegistry;
 pub use crate::interpolation_registry_plugin::InterpolationRegistryPlugin;
@@ -393,3 +393,13 @@ pub use crate::into_interpolation_fn::{ComponentShape, IntoContextLerpFn, IntoLe
 pub use crate::lerps::linear_lerp;
 pub use crate::skip_frame_interpolation::SkipFrameInterpolation;
 pub use crate::synced_interpolation_timeline::SyncedInterpolationTimeline;
+
+/// What the tests and benches of the layers above share: this layer's stack, test protocol,
+/// fixtures and measurements.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::fixtures::interpolation_stack::{
+        InterpolationStack, interpolation_timeline_is_synced,
+    };
+    pub use crate::fixtures::protocol::{CompCustomInterp, CompFull, InterpolationProtocolPlugin};
+}

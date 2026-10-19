@@ -21,7 +21,7 @@ pub struct RollbackCheckState {
     /// Latest completed server mutate tick consumed by the rollback check.
     ///
     /// Replicon advances `ServerMutateTicks` during receive; this advances only after
-    /// `check_rollback` handles that frontier. We retain it separately to:
+    /// `RollbackPlugin::check_rollback` handles that frontier. We retain it separately to:
     /// - avoid rescanning entities while the completed frontier is unchanged;
     /// - provide a safe watermark for pruning diff history.
     ///
@@ -37,7 +37,7 @@ pub struct RollbackCheckState {
 
     /// NetTick at which an external caller has requested a one-shot rollback.
     ///
-    /// Consumed by `check_rollback` regardless of the `rollback_config.mode`
+    /// Consumed by `RollbackPlugin::check_rollback` regardless of the `rollback_config.mode`
     /// setting — this is an explicit request, not a mismatch-triggered one.
     /// Set via [`RollbackCheckState::request_forced_rollback`]. Cleared
     /// when consumed.
@@ -90,10 +90,10 @@ impl RollbackCheckState {
     }
 
     /// NetTick at which a one-shot rollback has been requested but not yet
-    /// consumed by `check_rollback`. While this is `Some`, prediction
+    /// consumed by `RollbackPlugin::check_rollback`. While this is `Some`, prediction
     /// history buffers on the entities targeted by the rollback must not
     /// be mutated (e.g. checksum systems that use destructive reads must
-    /// skip), otherwise `prepare_rollback` won't find the restore value.
+    /// skip), otherwise `RollbackPlugin::prepare_rollback` won't find the restore value.
     pub const fn forced_rollback_tick(&self) -> Option<NetTick> {
         self.forced_rollback_tick
     }
@@ -115,18 +115,18 @@ impl RollbackCheckState {
     /// Returns the latest completed server mutate tick consumed by rollback checking.
     ///
     /// During Replicon's receive systems this still reflects the previous rollback-check frontier;
-    /// it is advanced only after `check_rollback` handles a completed checkpoint that is at or
+    /// it is advanced only after `RollbackPlugin::check_rollback` handles a completed checkpoint that is at or
     /// before the local simulation tick.
     /// It is used to avoid rescanning an already-consumed completed tick. This is a processing
     /// watermark, not the target of a rollback currently in progress; that target is the
-    /// [`Rollback`](campfire_net_timeline::rollback::Rollback) resource's tick.
+    /// [`Rollback`](campfire_net_timeline::Rollback) resource's tick.
     pub const fn last_processed_confirmed_tick(&self) -> Option<NetTick> {
         self.last_processed_confirmed_tick
     }
 
     /// Record that rollback checking consumed this completed server mutate tick.
     ///
-    /// Call this only after `check_rollback` consumes the checkpoint: after the full state scan in
+    /// Call this only after `RollbackPlugin::check_rollback` consumes the checkpoint: after the full state scan in
     /// `RollbackMode::Check`, or after scheduling its unconditional rollback in
     /// `RollbackMode::Always`. Do not advance it directly from `ServerMutateTicks`, while the
     /// completed tick is still in the client's future, or while a diff at or before this checkpoint
@@ -137,7 +137,7 @@ impl RollbackCheckState {
 
     /// Check if the completed mutate tick has advanced since we last processed it.
     ///
-    /// If this returns false, `check_rollback` can skip the full state scan because the current
+    /// If this returns false, `RollbackPlugin::check_rollback` can skip the full state scan because the current
     /// completed checkpoint was already handled on an earlier frame.
     pub fn has_confirmed_tick_advanced(&self, current_tick: NetTick) -> bool {
         match self.last_processed_confirmed_tick {

@@ -134,7 +134,7 @@ mod tests {
     fn message(id: u16) -> SentMessage {
         SentMessage {
             channel_id: NetId::new(0),
-            key: SendMessageKey::ReliableSingle(MessageId(id)),
+            key: SendMessageKey::of_id(MessageId(id), 0),
         }
     }
 

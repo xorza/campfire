@@ -1,13 +1,13 @@
 use super::*;
-use crate::internals::prediction_stack::PredictionStack;
+use crate::fixtures::prediction_stack::PredictionStack;
 use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
 use bevy::prelude::Component;
 use bevy_replicon::prelude::Remote;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::{NetworkTarget, NetworkTopology};
 use campfire_net_core::NetTick;
-use campfire_net_interpolation::internals::protocol::CompFull;
-use campfire_net_replication::internals::protocol::CompSimple;
+use campfire_net_interpolation::internals::CompFull;
+use campfire_net_replication::internals::CompSimple;
 use campfire_net_replication::{PredictionTarget, Replicate};
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;

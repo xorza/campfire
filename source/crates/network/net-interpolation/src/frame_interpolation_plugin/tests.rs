@@ -4,6 +4,7 @@ use crate::app_interpolation_ext::AppInterpolationExt;
 
 use crate::interpolation_fns::InterpolationFns;
 use crate::interpolation_marker_plugin::InterpolationMarkerPlugin;
+use crate::interpolation_registry_plugin::InterpolationRegistryPlugin;
 use crate::interpolation_rule::InterpolationRule;
 
 use crate::frame_interpolate::FrameInterpolate;
@@ -77,7 +78,7 @@ fn bundle_context_lerp(
 )]
 fn frame_plugin_rejects_late_rule_registration() {
     let mut app = App::new();
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.finish();
 
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
@@ -89,7 +90,7 @@ fn frame_plugin_rejects_late_rule_registration() {
 #[test]
 fn frame_update_inserts_history_when_frame_interpolate_is_added() {
     let mut app = App::new();
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
         InterpolationFns::no_history(|start: &FrameA, end: &FrameA, t: f32| {
             FrameA(start.0 + (end.0 - start.0) * t)
@@ -118,7 +119,7 @@ fn frame_update_inserts_history_when_frame_interpolate_is_added() {
 #[test]
 fn frame_update_inserts_history_when_component_is_added() {
     let mut app = App::new();
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
         InterpolationFns::no_history(|start: &FrameA, end: &FrameA, t: f32| {
             FrameA(start.0 + (end.0 - start.0) * t)
@@ -147,7 +148,7 @@ fn frame_update_inserts_history_when_component_is_added() {
 #[test]
 fn frame_update_inserts_history_when_both_are_spawned() {
     let mut app = App::new();
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
         InterpolationFns::no_history(|start: &FrameA, end: &FrameA, t: f32| {
             FrameA(start.0 + (end.0 - start.0) * t)
@@ -169,7 +170,7 @@ fn frame_update_inserts_history_when_both_are_spawned() {
 #[test]
 fn disabled_winner_does_not_insert_lower_rule_frame_history() {
     let mut app = App::new();
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
         InterpolationFns::no_history(|start: &FrameA, end: &FrameA, t: f32| {
             FrameA(start.0 + (end.0 - start.0) * t)
@@ -197,7 +198,7 @@ fn disabled_winner_does_not_insert_lower_rule_frame_history() {
 #[test]
 fn frame_update_initializes_all_histories_for_the_winning_rules() {
     let mut app = App::new();
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
         InterpolationFns::no_history(|start: &FrameA, end: &FrameA, t: f32| {
             FrameA(start.0 + (end.0 - start.0) * t)
@@ -235,7 +236,7 @@ fn frame_bundle_interpolation_uses_tuple_rule() {
     app.world_mut()
         .resource_mut::<Time<Fixed>>()
         .accumulate_overstep(Duration::from_millis(500));
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_bundle_interpolation_rule::<(FrameA, FrameB), ()>(InterpolationRule::new(
         InterpolationFns::no_history(bundle_lerp),
     ));
@@ -301,7 +302,7 @@ fn frame_bundle_maintains_history_while_component_rule_applies_to_live_member() 
     app.world_mut()
         .resource_mut::<Time<Fixed>>()
         .accumulate_overstep(Duration::from_millis(500));
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
         InterpolationFns::no_history(|start: &FrameA, end: &FrameA, t: f32| {
             FrameA(start.0 + (end.0 - start.0) * t)
@@ -341,7 +342,7 @@ fn frame_bundle_interpolation_receives_fixed_timestep() {
     app.world_mut()
         .resource_mut::<Time<Fixed>>()
         .accumulate_overstep(Duration::from_millis(500));
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_bundle_interpolation_rule::<(FrameA, FrameB), ()>(InterpolationRule::new(
         InterpolationFns::no_history_with_context(bundle_context_lerp),
     ));
@@ -377,7 +378,7 @@ fn frame_interpolation_reuses_no_history_interpolation_rule() {
     app.world_mut()
         .resource_mut::<Time<Fixed>>()
         .accumulate_overstep(Duration::from_millis(250));
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
         InterpolationFns::no_history(|start: &FrameA, end: &FrameA, t: f32| {
             FrameA(10.0 + start.0 + (end.0 - start.0) * t)
@@ -437,7 +438,7 @@ fn frame_interpolation_reuses_history_only_interpolation_rule() {
         InterpolationMarkerPlugin,
     ));
     app.register_component::<FrameA>().replicate();
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
         InterpolationFns::history_only().interpolate(|start: &FrameA, end: &FrameA, t: f32| {
             FrameA(20.0 + start.0 + (end.0 - start.0) * t)
@@ -476,7 +477,7 @@ fn frame_interpolation_uses_filtered_rule_for_frame_interpolate_marker() {
     app.world_mut()
         .resource_mut::<Time<Fixed>>()
         .accumulate_overstep(Duration::from_millis(250));
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
         InterpolationFns::no_history(|start: &FrameA, end: &FrameA, t: f32| {
             FrameA(10.0 + start.0 + (end.0 - start.0) * t)
@@ -514,7 +515,7 @@ fn frame_interpolation_supports_sparse_set_live_component() {
     app.world_mut()
         .resource_mut::<Time<Fixed>>()
         .accumulate_overstep(Duration::from_millis(500));
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<SparseFrame, ()>(InterpolationRule::new(
         InterpolationFns::no_history(|start: &SparseFrame, end: &SparseFrame, t: f32| {
             SparseFrame(start.0 + (end.0 - start.0) * t)
@@ -576,7 +577,7 @@ fn frame_interpolation_supports_sparse_set_live_component() {
 fn frame_interpolation_updates_change_detection_for_table_and_sparse_set_components() {
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs(1)));
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
         InterpolationFns::no_history(|_: &FrameA, end: &FrameA, _: f32| end.clone()),
     ));
@@ -672,7 +673,7 @@ fn frame_a_samples<'w>(
 #[test]
 fn a_frame_source_supplies_the_samples() {
     let mut app = App::new();
-    app.add_plugins(FrameInterpolationPlugin);
+    app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(
         InterpolationFns::no_history(|start: &FrameA, end: &FrameA, t: f32| {
             FrameA(start.0 + (end.0 - start.0) * t)

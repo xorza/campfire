@@ -12,7 +12,7 @@ pub(crate) struct ReceiveBudget {
 
 /// The default receive budget, 1 MiB: twice the default `max_message_size`, which admits the
 /// largest reassembly buffer a peer can describe.
-pub const DEFAULT_RECEIVE_BUDGET: usize = 1024 * 1024;
+pub(crate) const DEFAULT_RECEIVE_BUDGET: usize = 1024 * 1024;
 
 impl ReceiveBudget {
     pub(crate) const fn new(left: usize) -> Self {

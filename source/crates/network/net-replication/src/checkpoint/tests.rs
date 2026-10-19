@@ -1,4 +1,6 @@
 use super::*;
+use crate::replication_checkpoint_map::ReplicationCheckpointMap;
+use bevy_replicon::client::UserdataReceived;
 use bevy_replicon::prelude::RepliconTick;
 
 #[test]
@@ -21,7 +23,7 @@ fn invalid_authoritative_tick_userdata_is_rejected() {
 fn invalid_userdata_is_counted() {
     let mut app = bevy_app::App::new();
     app.init_resource::<ReplicationCheckpointMap>();
-    app.add_observer(record_authoritative_tick_userdata);
+    app.add_observer(ReplicationCheckpointMap::record_authoritative_tick);
 
     app.world_mut().trigger(UserdataReceived {
         message_tick: RepliconTick::new(5),

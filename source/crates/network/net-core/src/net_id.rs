@@ -2,8 +2,8 @@
 use bevy_reflect::Reflect;
 use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
+use campfire_net_bytes::VarInt;
 use campfire_net_bytes::WriteInteger;
-use campfire_net_bytes::varint;
 use campfire_net_bytes::{ReadVarInt, Reader};
 
 /// The id a protocol registry gives each registered type, in registration order: what names a
@@ -24,7 +24,7 @@ impl NetId {
 
 impl ToBytes for NetId {
     fn bytes_len(&self) -> usize {
-        varint::len(u64::from(self.0))
+        VarInt::new(u64::from(self.0)).encoded_len()
     }
 
     fn to_bytes(&self, buffer: &mut impl WriteInteger) {

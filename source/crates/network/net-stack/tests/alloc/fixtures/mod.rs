@@ -9,7 +9,7 @@ mod writer;
 use bevy::prelude::Entity;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_measure::AllocAudit;
-use campfire_net_stack::internals::full_stack::FullStack;
+use campfire_net_stack::internals::FullStack;
 use campfire_net_stepper::Order;
 use campfire_net_stepper::Stepper;
 

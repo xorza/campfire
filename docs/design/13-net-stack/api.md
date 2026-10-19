@@ -39,10 +39,15 @@ How an app registers its protocol and names what the stack publishes.
   the synced timelines' `SystemParam`s, which skip a system on a condition no derive expresses.
   Refused: erased archetype walks through `UnsafeWorldCell` and transmuted fn pointers, whose
   saving of one system run for each type no bench measured, as Bevy's generic systems do.
-- **The plugin groups add every layer and no IO by default.** An IO's endpoint plugin,
-  `EndpointPlugin<UdpIo>` or the simulated network's `EndpointPlugin<SimWires>`, is added only
-  behind that IO's cargo feature. A layer adds its registry on both
-  sides and its systems only where they run.
+- **One plugin group for each role of an app, and no plugin adds another.** `ClientPlugins`,
+  `ServerPlugins` and `HostPlugins` list every layer, the shared ones once, so a host server
+  builds each layer once; a layer whose side takes several plugins gives them as a group of its
+  own, `ServerReplicationPlugins` among them. An IO's endpoint plugin, `EndpointPlugin<UdpIo>` or
+  the emulated network's `EndpointPlugin<EmulatedWires>`, is listed only behind that IO's cargo
+  feature, and Bevy's `TimePlugin` is the app's. A layer adds its registry on both sides and its
+  systems only where they run. Refused: a plugin that adds what it needs under
+  `is_plugin_added`, which hides the order of plugins and builds a shared plugin twice in a host
+  server ([Workspace alignment](../14-workspace-alignment.md), A plugin group lists every layer).
 
 ## Surface
 

@@ -1,10 +1,10 @@
 use super::*;
-use crate::internals::protocol::{Channel1, channel_id};
-use crate::internals::transport_stack::TransportStack;
+use crate::fixtures::protocol::{Channel1, channel_id};
+use crate::fixtures::transport_stack::TransportStack;
 use bevy_ecs::world::World;
 use bytes::Bytes;
-use campfire_net_channels::internals::channel_counts::ChannelCounts;
-use campfire_net_channels::packet::fragment_size_for_max_payload;
+use campfire_net_channels::fragment_size_for_max_payload;
+use campfire_net_channels::internals::ChannelCounts;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
 

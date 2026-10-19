@@ -78,11 +78,7 @@ pub(crate) struct PacketSession {
     /// allocates nothing once the IO dropped the ones before it.
     control: Arena,
     #[cfg(feature = "internals")]
-    #[expect(
-        clippy::absolute_paths,
-        reason = "a gated field takes its type by path, with no gated import"
-    )]
-    counts: crate::internals::session_counts::SessionCounts,
+    counts: internals::SessionCounts,
 }
 
 #[derive(Debug)]
@@ -174,11 +170,7 @@ impl PacketSession {
             state: State::Open,
             control: Arena::new(CONTROL_ARENA_BYTES, 0),
             #[cfg(feature = "internals")]
-            #[expect(
-                clippy::absolute_paths,
-                reason = "a gated field takes its type by path, with no gated import"
-            )]
-            counts: crate::internals::session_counts::SessionCounts::default(),
+            counts: internals::SessionCounts::default(),
         }
     }
 
@@ -644,8 +636,31 @@ impl PacketSession {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::internals::session_counts::SessionCounts;
+    use crate::header::PacketType;
     use crate::packet_session::PacketSession;
+
+    /// The packets of its own that a session sent, which a bench reads: each accumulates over the
+    /// session's life.
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct SessionCounts {
+        /// `Ping`s: the first packet, the keep-alives and the probes.
+        pub pings: u64,
+        /// Packets that carry only an ACK.
+        pub ack_only: u64,
+    }
+
+    impl SessionCounts {
+        pub(crate) const fn count(&mut self, packet_type: PacketType) {
+            match packet_type {
+                PacketType::Ping => self.pings += 1,
+                PacketType::AckOnly => self.ack_only += 1,
+                PacketType::Payload
+                | PacketType::PathChallenge
+                | PacketType::PathResponse
+                | PacketType::Close => {}
+            }
+        }
+    }
 
     impl PacketSession {
         pub(crate) const fn counts(&self) -> SessionCounts {

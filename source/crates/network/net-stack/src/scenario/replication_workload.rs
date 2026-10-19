@@ -4,7 +4,7 @@ use campfire_net_connection::NetworkTarget;
 use campfire_net_replication::Replicate;
 use std::collections::BTreeMap;
 
-use campfire_net_replication::internals::protocol::{CompA, CompS};
+use campfire_net_replication::internals::{CompA, CompS};
 
 /// The server's side of a scenario's replication: eight entities at the first frame it runs,
 /// one of them updated every ten frames, and two despawned at frame 100, while `running`.

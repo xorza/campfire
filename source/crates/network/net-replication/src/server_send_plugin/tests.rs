@@ -1,8 +1,8 @@
 use super::*;
-use crate::internals::protocol::*;
-use crate::internals::replication_counts;
-use crate::internals::replication_stack::ReplicationStack;
-use crate::internals::steps::{
+use crate::fixtures::protocol::*;
+use crate::fixtures::replication_counts::summed_replication_counts;
+use crate::fixtures::replication_stack::ReplicationStack;
+use crate::fixtures::steps::{
     PROPAGATION_FRAMES, client_copy, on_client, on_server, spawn_on_server,
 };
 use crate::interpolated::Interpolated;
@@ -13,17 +13,15 @@ use crate::visibility_ext::VisibilityExt;
 use bevy::prelude::*;
 use bevy_replicon::prelude::Remote;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
-use campfire_net_channels::internals::channel_counts::ChannelCounts;
-use campfire_net_channels::internals::transport_counts::TransportCounts;
-use campfire_net_connection::HostClient;
+use campfire_net_channels::internals::ChannelCounts;
+use campfire_net_channels::internals::TransportCounts;
 use campfire_net_connection::NetworkTarget;
-use campfire_net_connection::RemoteId;
 use campfire_net_core::PeerId;
 use campfire_net_despawn::DespawnReplicated;
 use campfire_net_stepper::Order;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
-use campfire_net_transport::internals::stepper_counts;
+use campfire_net_transport::internals::summed_transport_counts;
 
 #[test]
 fn a_replicated_spawn_reaches_the_client() {
@@ -756,8 +754,8 @@ impl core::ops::Sub for StepperCounts {
 impl StepperCounts {
     fn read(stepper: &mut Stepper<ReplicationStack>) -> Self {
         Self {
-            transport: stepper_counts::read(stepper),
-            replication: replication_counts::read(stepper),
+            transport: summed_transport_counts(stepper),
+            replication: summed_replication_counts(stepper),
         }
     }
 }

@@ -3,7 +3,7 @@ use core::net::SocketAddr;
 
 use crate::connection_id::ConnectionId;
 use crate::datagram_io::Datagram;
-use crate::establish::{Establish, Established, Establishing};
+use crate::establish::{ClientEstablish, Establish, Established, Establishing, ServerEstablish};
 use crate::protection::Protection;
 
 /// Plain sessions with no handshake, for an IO in one process: a client's session opens at its
@@ -27,21 +27,7 @@ impl PlainEstablishment {
 }
 
 impl Establish for PlainEstablishment {
-    fn connect(&mut self, _now: Instant, server: SocketAddr, out: &mut Establishing) {
-        out.established.push(Self::established(server));
-    }
-
     fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) {}
-
-    fn unknown(&mut self, _now: Instant, datagram: &Datagram, out: &mut Establishing) {
-        if self.accepting {
-            out.established.push(Self::established(datagram.from));
-        }
-    }
-
-    fn set_accepting(&mut self, accepting: bool) {
-        self.accepting = accepting;
-    }
 
     fn poll(&mut self, _: Instant, _: &mut Establishing) {}
 
@@ -59,4 +45,22 @@ impl Establish for PlainEstablishment {
     }
 
     fn ended(&mut self, _: Option<ConnectionId>) {}
+}
+
+impl ClientEstablish for PlainEstablishment {
+    fn connect(&mut self, _now: Instant, server: SocketAddr, out: &mut Establishing) {
+        out.established.push(Self::established(server));
+    }
+}
+
+impl ServerEstablish for PlainEstablishment {
+    fn unknown(&mut self, _now: Instant, datagram: &Datagram, out: &mut Establishing) {
+        if self.accepting {
+            out.established.push(Self::established(datagram.from));
+        }
+    }
+
+    fn set_accepting(&mut self, accepting: bool) {
+        self.accepting = accepting;
+    }
 }

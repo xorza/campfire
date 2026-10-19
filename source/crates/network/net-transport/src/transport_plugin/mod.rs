@@ -4,9 +4,11 @@ use crate::transport::Transport;
 use crate::transport_systems::TransportSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use campfire_net_channels::Channel;
 use campfire_net_connection::Disconnected;
 use campfire_net_connection::HostClient;
-use campfire_net_link::{Link, LinkPlugin, LinkSystems, Linked, Unlink};
+use campfire_net_connection::LinkRole;
+use campfire_net_link::{Link, LinkSystems, Linked, Unlink};
 use campfire_net_payload::UnlinkReason;
 use campfire_net_timeline::Clock;
 use campfire_net_timeline::LocalTimeline;
@@ -88,13 +90,30 @@ impl TransportPlugin {
             transport.reset();
         }
     }
+
+    pub(crate) fn add_sender_channel<C: Channel, R: LinkRole>(
+        trigger: On<'_, '_, Insert<(Transport, R)>>,
+        mut query: Query<'_, '_, &mut Transport, With<R>>,
+        registry: Res<'_, ChannelRegistry>,
+    ) {
+        if let Ok(mut transport) = query.get_mut(trigger.entity) {
+            transport.add_channel_send_from_registry::<C>(&registry);
+        }
+    }
+
+    pub(crate) fn add_receiver_channel<C: Channel, R: LinkRole>(
+        trigger: On<'_, '_, Insert<(Transport, R)>>,
+        mut query: Query<'_, '_, &mut Transport, With<R>>,
+        registry: Res<'_, ChannelRegistry>,
+    ) {
+        if let Ok(mut transport) = query.get_mut(trigger.entity) {
+            transport.add_channel_receive_from_registry::<C>(&registry);
+        }
+    }
 }
 
 impl Plugin for TransportPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<LinkPlugin>() {
-            app.add_plugins(LinkPlugin);
-        }
         app.add_observer(Self::handle_disconnection);
         app.add_observer(Transport::on_linked);
     }

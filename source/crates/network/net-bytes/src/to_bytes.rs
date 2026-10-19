@@ -1,6 +1,6 @@
 use crate::reader::{ReadInteger, ReadVarInt, Reader};
 use crate::serialization_error::SerializationError;
-use crate::varint;
+use crate::var_int::VarInt;
 use crate::writer::WriteInteger;
 use bytes::Bytes;
 use smallvec::{Array, SmallVec};
@@ -60,7 +60,7 @@ impl<M: ToBytes> ToBytes for Option<M> {
 /// When we read, instead of allocating we just create a new Bytes by slicing the buffer
 impl ToBytes for Bytes {
     fn bytes_len(&self) -> usize {
-        varint::len(self.len() as u64) + self.len()
+        VarInt::new(self.len() as u64).encoded_len() + self.len()
     }
 
     fn to_bytes(&self, buffer: &mut impl WriteInteger) {
@@ -96,7 +96,7 @@ impl ToBytes for u8 {
 
 impl ToBytes for u16 {
     fn bytes_len(&self) -> usize {
-        varint::len(u64::from(*self))
+        VarInt::new(u64::from(*self)).encoded_len()
     }
 
     fn to_bytes(&self, buffer: &mut impl WriteInteger) {
@@ -138,7 +138,8 @@ variadics_please::all_tuples!(impl_tuple_query_data, 1, 8, P);
 
 impl<M: ToBytes> ToBytes for Vec<M> {
     fn bytes_len(&self) -> usize {
-        varint::len(self.len() as u64) + self.iter().map(ToBytes::bytes_len).sum::<usize>()
+        VarInt::new(self.len() as u64).encoded_len()
+            + self.iter().map(ToBytes::bytes_len).sum::<usize>()
     }
 
     fn to_bytes(&self, buffer: &mut impl WriteInteger) {
@@ -169,7 +170,8 @@ where
     // Match Vec's framing exactly so changing an in-memory collection to SmallVec does not change
     // the wire format.
     fn bytes_len(&self) -> usize {
-        varint::len(self.len() as u64) + self.iter().map(ToBytes::bytes_len).sum::<usize>()
+        VarInt::new(self.len() as u64).encoded_len()
+            + self.iter().map(ToBytes::bytes_len).sum::<usize>()
     }
 
     fn to_bytes(&self, buffer: &mut impl WriteInteger) {
@@ -224,7 +226,7 @@ mod tests {
     #[test]
     fn counts_beyond_the_remaining_bytes_are_refused() {
         let mut writer = Writer::default();
-        writer.write_varint(varint::MAX);
+        writer.write_varint(VarInt::MAX.get());
         writer.write_bytes(&[7]);
         let bytes = writer.into_bytes();
         let truncated = |error: SerializationError| matches!(error, SerializationError::Io(e) if e.kind() == std::io::ErrorKind::UnexpectedEof);

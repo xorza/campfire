@@ -1,14 +1,11 @@
-use crate::internals::prediction_stack::PredictionStack;
+use crate::fixtures::prediction_stack::PredictionStack;
 use bevy::prelude::*;
 use bevy_replicon::prelude::Remote;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::RemoteId;
 use campfire_net_connection::{ClientOf, Connect, Connected, NetworkTarget};
-use campfire_net_interpolation::internals::protocol::*;
-use campfire_net_replication::internals::protocol::*;
-use campfire_net_replication::internals::steps::{
-    PROPAGATION_FRAMES, client_copy, on_client, on_server, spawn_on_server,
-};
+use campfire_net_interpolation::internals::*;
+use campfire_net_replication::internals::*;
 use campfire_net_replication::{
     Controlled, ControlledBy, Interpolated, InterpolationTarget, Lifetime, Overridden, Predicted,
     PredictedSend, PredictionTarget, Replicate, RoomAllocator, Rooms,

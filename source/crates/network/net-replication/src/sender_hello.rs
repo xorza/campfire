@@ -4,7 +4,7 @@ use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::WriteInteger;
 use campfire_net_core::PositiveTickDelta;
-use campfire_net_messages::entity_bytes;
+use campfire_net_messages::WireEntity;
 
 /// Event emitted when the receiver learns the sender's replication interval.
 ///
@@ -20,12 +20,12 @@ pub struct SenderHello {
 
 impl ToBytes for SenderHello {
     fn bytes_len(&self) -> usize {
-        self.send_interval.bytes_len() + entity_bytes::len(self.link)
+        self.send_interval.bytes_len() + WireEntity(self.link).bytes_len()
     }
 
     fn to_bytes(&self, buffer: &mut impl WriteInteger) {
         self.send_interval.to_bytes(buffer);
-        entity_bytes::write(self.link, buffer);
+        WireEntity(self.link).to_bytes(buffer);
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>
@@ -33,7 +33,7 @@ impl ToBytes for SenderHello {
         Self: Sized,
     {
         let send_interval = PositiveTickDelta::from_bytes(buffer)?;
-        let link = entity_bytes::read(buffer)?;
+        let WireEntity(link) = WireEntity::from_bytes(buffer)?;
         Ok(Self {
             send_interval,
             link,
@@ -43,7 +43,7 @@ impl ToBytes for SenderHello {
 
 #[cfg(test)]
 mod tests {
-    use crate::internals::replication_stack::ReplicationStack;
+    use crate::fixtures::replication_stack::ReplicationStack;
     use bevy_ecs::world::EntityRef;
     use campfire_net_messages::MessageManager;
     use campfire_net_stepper::Stepper;

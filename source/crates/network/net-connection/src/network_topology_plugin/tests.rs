@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::connection_plugin::ConnectionPlugin;
+use crate::connection_plugins::ConnectionPlugins;
 use crate::connection_state::DisconnectedReason;
 use campfire_net_payload::AppCode;
 
@@ -9,7 +9,7 @@ use campfire_net_core::PeerId;
 
 fn app() -> App {
     let mut app = App::new();
-    app.add_plugins(ConnectionPlugin);
+    app.add_plugins(ConnectionPlugins);
     app.update();
     app
 }

@@ -1,10 +1,10 @@
 use super::*;
-use crate::internals::prediction_stack::PredictionStack;
+use crate::fixtures::prediction_stack::PredictionStack;
 use crate::prediction_registration_ext::PredictionRegistrationExt;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_core::Ticked;
-use campfire_net_interpolation::internals::protocol::CompFull;
+use campfire_net_interpolation::internals::CompFull;
 use campfire_net_replication::AppComponentExt;
 use campfire_net_replication::ComponentRegistry;
 
@@ -12,15 +12,15 @@ use bevy_ecs::system::RunSystemOnce;
 
 use core::fmt::Debug;
 
-use crate::internals::protocol::{CompNotNetworked, CompPredictionOnly};
-use crate::internals::steps::{request_forced_rollback_at_completed_tick, trigger_state_rollback};
+use crate::fixtures::protocol::{CompNotNetworked, CompPredictionOnly};
+use crate::fixtures::steps::{request_forced_rollback_at_completed_tick, trigger_state_rollback};
 use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
 use bevy::prelude::*;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
 use bevy_replicon::prelude::RepliconTick;
 use bevy_replicon::shared::replication::diff::diff_index::DiffIndex;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
-use campfire_net_replication::internals::protocol::CompRepliconDiff;
+use campfire_net_replication::internals::CompRepliconDiff;
 use campfire_net_replication::{HistoryDiffReceiver, PredictionTarget, Replicate};
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
@@ -62,7 +62,7 @@ fn rollback_before_the_history_keeps_the_predicted_component() {
     let predicted = world.spawn((Predicted, TestComponent(1.0), history)).id();
 
     world
-        .run_system_once(prepare_rollback::<TestComponent>)
+        .run_system_once(RollbackPlugin::prepare_rollback::<TestComponent>)
         .unwrap();
 
     assert_eq!(
@@ -105,7 +105,7 @@ fn rollback_seeds_from_oldest_confirmed_when_target_predates_history() {
         .id();
 
     world
-        .run_system_once(prepare_rollback::<TestComponent>)
+        .run_system_once(RollbackPlugin::prepare_rollback::<TestComponent>)
         .unwrap();
 
     assert_eq!(
@@ -147,7 +147,7 @@ fn rollback_preserves_pre_target_history_for_deeper_rollback() {
     // to the floor sample at the target.
     world.insert_resource(Rollback(NetTick(12)));
     world
-        .run_system_once(prepare_rollback::<TestComponent>)
+        .run_system_once(RollbackPlugin::prepare_rollback::<TestComponent>)
         .unwrap();
 
     let history = world
@@ -174,7 +174,7 @@ fn rollback_preserves_pre_target_history_for_deeper_rollback() {
     // per-tick sample, not from the live post-first-rollback value.
     world.insert_resource(Rollback(NetTick(8)));
     world
-        .run_system_once(prepare_rollback::<TestComponent>)
+        .run_system_once(RollbackPlugin::prepare_rollback::<TestComponent>)
         .unwrap();
     assert_eq!(
         world.get::<TestComponent>(predicted),
@@ -191,7 +191,7 @@ fn rollback_preserves_pre_target_history_for_deeper_rollback() {
 ///
 /// Without the fix, the confirmed insert is parked in `ConfirmedHistory<C>`:
 /// the completed-checkpoint scan returns early without a retained predicted
-/// sample, and `prepare_rollback` skips the component entirely because the
+/// sample, and `RollbackPlugin::prepare_rollback` skips the component entirely because the
 /// entity has no `PredictionHistory<C>` — so the component only ever arrives
 /// as a side effect of a rollback caused by something else.
 #[test]
@@ -2134,7 +2134,9 @@ fn a_rollback_undoes_only_the_despawns_it_replays_or_the_server_overrides() {
         .id();
     world.insert_resource(Rollback(NetTick(10)));
 
-    world.run_system_once(remove_prediction_despawned).unwrap();
+    world
+        .run_system_once(RollbackPlugin::remove_prediction_despawned)
+        .unwrap();
 
     let disabled =
         |world: &World, entity: Entity| world.entity(entity).contains::<PredictionDespawned>();
@@ -2175,7 +2177,9 @@ fn local_despawn_is_pruned_to_the_rollback_window() {
     let entities = [1, 16, 17].map(|tick| (NetTick(tick), world.spawn_empty().id()));
     world.resource_mut::<RollbackCheckState>().local_despawn = entities.to_vec();
 
-    world.run_system_once(prune_local_despawn).unwrap();
+    world
+        .run_system_once(RollbackPlugin::prune_local_despawn)
+        .unwrap();
 
     assert_eq!(
         world.resource::<RollbackCheckState>().local_despawn,
@@ -2198,7 +2202,9 @@ fn only_a_snapshot_rollback_ends_spawn_protections() {
         metadata.rollback_kind = kind;
         world.insert_resource(Rollback(NetTick(10)));
 
-        world.run_system_once(start_rollback).unwrap();
+        world
+            .run_system_once(RollbackPlugin::start_rollback)
+            .unwrap();
 
         assert_eq!(
             world.entity(entity).contains::<DisableRollback>(),

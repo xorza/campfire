@@ -168,6 +168,74 @@ impl RemoteTimeline {
             timeline.last_received_tick = None;
         }
     }
+
+    /// Updates the remote timeline estimate from the remote tick that each received packet carries,
+    /// once the link has a latency estimate.
+    pub(crate) fn update_from_packet(
+        trigger: On<'_, '_, PacketReceived>,
+        tick_rate: Res<'_, TickRate>,
+        mut query: Query<'_, '_, (&mut Self, &LinkEstimator)>,
+    ) {
+        if let Ok((mut t, estimator)) = query.get_mut(trigger.entity) {
+            trace!(
+                "Received packet received with remote tick {:?}",
+                trigger.remote_tick
+            );
+            trace!(
+                target: "campfire_net_debug::timeline",
+                kind = "packet_remote_tick",
+                schedule = "PreUpdate",
+                sample_point = "PreUpdate",
+                entity = ?trigger.entity,
+                remote_tick = trigger.remote_tick.0,
+                "packet carried remote timeline tick"
+            );
+            let Some(estimate) = estimator.estimate() else {
+                trace!(
+                    target: "campfire_net_debug::sync",
+                    kind = "remote_estimate_waiting_for_latency_samples",
+                    schedule = "PreUpdate",
+                    sample_point = "PreUpdate",
+                    remote_tick = trigger.remote_tick.0,
+                    latency_samples = estimator.samples(),
+                    "remote timeline estimate skipped until latency samples are available"
+                );
+                return;
+            };
+            t.update(trigger.remote_tick, estimate, *tick_rate);
+        }
+    }
+
+    /// Advance our estimate of the remote timeline based on the real time
+    ///
+    /// Real time passes during a rollback too, so the advance never skips a frame.
+    pub(crate) fn advance(
+        clock: Res<'_, Clock>,
+        tick_rate: Res<'_, TickRate>,
+        mut query: Query<'_, '_, &mut Self, With<Linked>>,
+    ) {
+        let delta = clock.delta();
+        query.iter_mut().for_each(|mut t| {
+            t.apply_duration(delta, *tick_rate);
+        });
+    }
+
+    /// Reset the bool that tracks if we received a packet this frame
+    pub(crate) fn reset_received_packet(mut query: Query<'_, '_, &mut Self, With<Linked>>) {
+        query.iter_mut().for_each(|mut t| {
+            t.state.received_packet = false;
+        });
+    }
+
+    /// The estimate of the remote's current instant.
+    pub fn current_estimate(&self) -> TickInstant {
+        self.now + self.offset
+    }
+
+    /// Whether a packet arrived this frame, which a timeline may sync on.
+    pub const fn received_packet(&self) -> bool {
+        self.0.state.received_packet
+    }
 }
 
 /// The jitter at or below which the offset EMA's gain is 1/10, which follows a change fast.
@@ -188,78 +256,6 @@ fn ema_gain(jitter: Duration) -> u32 {
         .min(HIGH_JITTER - LOW_JITTER);
     let past = u32::try_from(past.as_nanos()).expect("the clamp keeps it under the span");
     5 * (JITTER_SPAN_NANOS - past) + past
-}
-
-/// Updates the remote timeline estimate from the remote tick that each received packet carries,
-/// once the link has a latency estimate.
-pub(crate) fn update_remote_timeline(
-    trigger: On<'_, '_, PacketReceived>,
-    tick_rate: Res<'_, TickRate>,
-    mut query: Query<'_, '_, (&mut RemoteTimeline, &LinkEstimator)>,
-) {
-    if let Ok((mut t, estimator)) = query.get_mut(trigger.entity) {
-        trace!(
-            "Received packet received with remote tick {:?}",
-            trigger.remote_tick
-        );
-        trace!(
-            target: "campfire_net_debug::timeline",
-            kind = "packet_remote_tick",
-            schedule = "PreUpdate",
-            sample_point = "PreUpdate",
-            entity = ?trigger.entity,
-            remote_tick = trigger.remote_tick.0,
-            "packet carried remote timeline tick"
-        );
-        let Some(estimate) = estimator.estimate() else {
-            trace!(
-                target: "campfire_net_debug::sync",
-                kind = "remote_estimate_waiting_for_latency_samples",
-                schedule = "PreUpdate",
-                sample_point = "PreUpdate",
-                remote_tick = trigger.remote_tick.0,
-                latency_samples = estimator.samples(),
-                "remote timeline estimate skipped until latency samples are available"
-            );
-            return;
-        };
-        t.update(trigger.remote_tick, estimate, *tick_rate);
-    }
-}
-
-/// Advance our estimate of the remote timeline based on the real time
-///
-/// Real time passes during a rollback too, so the advance never skips a frame.
-pub(crate) fn advance_remote_timeline(
-    clock: Res<'_, Clock>,
-    tick_rate: Res<'_, TickRate>,
-    mut query: Query<'_, '_, &mut RemoteTimeline, With<Linked>>,
-) {
-    let delta = clock.delta();
-    query.iter_mut().for_each(|mut t| {
-        t.apply_duration(delta, *tick_rate);
-    });
-}
-
-/// Reset the bool that tracks if we received a packet this frame
-pub(crate) fn reset_received_packet_remote_timeline(
-    mut query: Query<'_, '_, &mut RemoteTimeline, With<Linked>>,
-) {
-    query.iter_mut().for_each(|mut t| {
-        t.state.received_packet = false;
-    });
-}
-
-impl RemoteTimeline {
-    /// The estimate of the remote's current instant.
-    pub fn current_estimate(&self) -> TickInstant {
-        self.now + self.offset
-    }
-
-    /// Whether a packet arrived this frame, which a timeline may sync on.
-    pub const fn received_packet(&self) -> bool {
-        self.0.state.received_packet
-    }
 }
 
 #[cfg(test)]

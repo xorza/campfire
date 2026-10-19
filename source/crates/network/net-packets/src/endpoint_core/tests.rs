@@ -31,20 +31,7 @@ fn address(port: u16) -> SocketAddr {
 struct RoutedEstablishment;
 
 impl Establish for RoutedEstablishment {
-    fn connect(&mut self, _: Instant, _: SocketAddr, _: &mut Establishing) {}
-
     fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) {}
-
-    fn unknown(&mut self, _: Instant, datagram: &Datagram, out: &mut Establishing) {
-        out.established.push(Established {
-            peer: datagram.from,
-            protection: Protection::Plain,
-            prefix: None,
-            route: Some(ID),
-            reset_token: None,
-            binding: None,
-        });
-    }
 
     fn poll(&mut self, _: Instant, _: &mut Establishing) {}
 
@@ -61,6 +48,19 @@ impl Establish for RoutedEstablishment {
     }
 
     fn ended(&mut self, _: Option<ConnectionId>) {}
+}
+
+impl ServerEstablish for RoutedEstablishment {
+    fn unknown(&mut self, _: Instant, datagram: &Datagram, out: &mut Establishing) {
+        out.established.push(Established {
+            peer: datagram.from,
+            protection: Protection::Plain,
+            prefix: None,
+            route: Some(ID),
+            reset_token: None,
+            binding: None,
+        });
+    }
 
     fn set_accepting(&mut self, _: bool) {}
 }
@@ -84,9 +84,10 @@ fn client_payload(client: &mut PacketSession, now: Instant) -> BytesMut {
 fn a_hand_over_sizes_its_payload_by_the_carried_mtu() {
     for mtu in [600, 900] {
         let mut core = EndpointCore::<u32>::new(
-            Box::new(RoutedEstablishment),
             SessionConfig::default(),
-            EndpointSide::Server,
+            EndpointSide::Server {
+                establish: Box::new(RoutedEstablishment),
+            },
             None,
         );
         let mut client =
@@ -116,9 +117,10 @@ fn a_hand_over_sizes_its_payload_by_the_carried_mtu() {
 #[test]
 fn a_peer_that_moves_is_checked_at_its_new_address_and_then_followed() {
     let mut core = EndpointCore::<u32>::new(
-        Box::new(RoutedEstablishment),
         SessionConfig::default(),
-        EndpointSide::Server,
+        EndpointSide::Server {
+            establish: Box::new(RoutedEstablishment),
+        },
         None,
     );
     let mut client =
@@ -198,22 +200,7 @@ struct ResetEstablishment;
 const TOKEN: [u8; stateless_reset::TOKEN_LEN] = [9; stateless_reset::TOKEN_LEN];
 
 impl Establish for ResetEstablishment {
-    fn connect(&mut self, _: Instant, server: SocketAddr, out: &mut Establishing) {
-        out.established.push(Established {
-            peer: server,
-            protection: Protection::Plain,
-            prefix: None,
-            route: None,
-            reset_token: Some(TOKEN),
-            binding: None,
-        });
-    }
-
     fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) {}
-
-    fn unknown(&mut self, _: Instant, _: &Datagram, _: &mut Establishing) {}
-
-    fn set_accepting(&mut self, _: bool) {}
 
     fn poll(&mut self, _: Instant, _: &mut Establishing) {}
 
@@ -232,6 +219,19 @@ impl Establish for ResetEstablishment {
     fn ended(&mut self, _: Option<ConnectionId>) {}
 }
 
+impl ClientEstablish for ResetEstablishment {
+    fn connect(&mut self, _: Instant, server: SocketAddr, out: &mut Establishing) {
+        out.established.push(Established {
+            peer: server,
+            protection: Protection::Plain,
+            prefix: None,
+            route: None,
+            reset_token: Some(TOKEN),
+            binding: None,
+        });
+    }
+}
+
 /// A datagram from the client's server that ends in the reset token ends its session as `Reset`,
 /// and its carrier learns it; one a byte shorter than a reset is read as a session's.
 #[test]
@@ -239,9 +239,11 @@ fn a_reset_of_its_token_ends_a_clients_session() {
     let server = address(1);
     let carrier = 4_u32;
     let mut core = EndpointCore::<u32>::new(
-        Box::new(ResetEstablishment),
         SessionConfig::default(),
-        EndpointSide::Client { server },
+        EndpointSide::Client {
+            server,
+            establish: Box::new(ResetEstablishment),
+        },
         None,
     );
     let mut out = Vec::new();
@@ -275,9 +277,11 @@ fn a_reset_of_its_token_ends_a_clients_session() {
 fn an_io_failure_ends_each_session_and_the_pass() {
     let carrier = 4_u32;
     let mut core = EndpointCore::<u32>::new(
-        Box::new(ResetEstablishment),
         SessionConfig::default(),
-        EndpointSide::Client { server: address(1) },
+        EndpointSide::Client {
+            server: address(1),
+            establish: Box::new(ResetEstablishment),
+        },
         None,
     );
     core.set_time(EndpointTime::Driven(at(0)));
@@ -339,9 +343,10 @@ impl FaultyWire {
 fn a_moved_peer_is_checked_under_loss_reorder_and_duplicates() {
     for seed in 0..32 {
         let mut core = EndpointCore::<u32>::new(
-            Box::new(RoutedEstablishment),
             SessionConfig::default(),
-            EndpointSide::Server,
+            EndpointSide::Server {
+                establish: Box::new(RoutedEstablishment),
+            },
             None,
         );
         let mut client =
@@ -448,9 +453,11 @@ fn an_endpoint_refuses_a_keep_alive_as_long_as_its_idle_timeout() {
         ..SessionConfig::default()
     };
     let _ = EndpointCore::<u32>::new(
-        Box::new(ResetEstablishment),
         config,
-        EndpointSide::Server,
+        EndpointSide::Client {
+            server: address(1),
+            establish: Box::new(ResetEstablishment),
+        },
         None,
     );
 }
@@ -462,9 +469,11 @@ fn an_endpoint_refuses_a_keep_alive_as_long_as_its_idle_timeout() {
 #[test]
 fn a_pass_polls_a_session_once_its_timer_is_due() {
     let mut core = EndpointCore::<u32>::new(
-        Box::new(ResetEstablishment),
         SessionConfig::default(),
-        EndpointSide::Client { server: address(1) },
+        EndpointSide::Client {
+            server: address(1),
+            establish: Box::new(ResetEstablishment),
+        },
         None,
     );
     let mut out = Vec::new();

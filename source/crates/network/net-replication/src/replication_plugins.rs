@@ -29,7 +29,7 @@ impl PluginGroup for ReplicationPlugins {
 
 #[cfg(test)]
 mod tests {
-    use crate::internals::replication_stack::ReplicationStack;
+    use crate::fixtures::replication_stack::ReplicationStack;
     use crate::replication_target::Replicate;
     use bevy_app::{App, PreUpdate};
     use bevy_ecs::entity::Entity;
@@ -41,10 +41,10 @@ mod tests {
     use campfire_net_connection::NetworkTarget;
     use campfire_net_messages::EventSender;
     use campfire_net_messages::RemoteEvent;
-    use campfire_net_messages::internals::protocol::MappedEntityEvent;
+    use campfire_net_messages::internals::MappedEntityEvent;
     use campfire_net_stepper::Stepper;
     use campfire_net_stepper::StepperConfig;
-    use campfire_net_transport::internals::protocol::Channel1;
+    use campfire_net_transport::internals::Channel1;
 
     /// The message receive drains every channel of a transport, replicon's too, so each app
     /// reads replicon's channels before it, as the replicon plugins order it: in `PreUpdate`,
@@ -64,8 +64,14 @@ mod tests {
                 .unwrap_or_else(|| panic!("{name} runs in PreUpdate"))
         };
         for (app, read) in [
-            (stepper.server_app(), "receive_server_packets"),
-            (stepper.client_app(0), "receive_client_packets"),
+            (
+                stepper.server_app(),
+                "ServerRepliconPlugin::receive_server_packets",
+            ),
+            (
+                stepper.client_app(0),
+                "ClientRepliconPlugin::receive_client_packets",
+            ),
         ] {
             assert!(position(app, read) < position(app, "MessagePlugin::receive"));
         }

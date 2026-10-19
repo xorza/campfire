@@ -49,29 +49,29 @@ impl TickPeriodHistory {
     fn shift(&mut self, delta: i32) {
         self.periods.shift(delta, |_, _| {});
     }
-}
 
-/// Records the period of the tick `FixedMain` runs, a replayed one included, and forgets the
-/// ticks before the rollback window.
-pub(crate) fn record_tick_period(
-    timeline: Res<'_, LocalTimeline>,
-    time: Res<'_, Time<Fixed>>,
-    manager: Option<Res<'_, PredictionManager>>,
-    input_config: Option<Res<'_, InputTimelineConfig>>,
-    mut history: ResMut<'_, TickPeriodHistory>,
-) {
-    let tick = timeline.tick();
-    history.record(tick, time.delta());
-    if let (Some(manager), Some(input_config)) = (manager, input_config) {
-        history.forget_before(manager.oldest_rollback_tick(tick, &input_config));
+    /// Records the period of the tick `FixedMain` runs, a replayed one included, and forgets the
+    /// ticks before the rollback window.
+    pub(crate) fn record_tick(
+        timeline: Res<'_, LocalTimeline>,
+        time: Res<'_, Time<Fixed>>,
+        manager: Option<Res<'_, PredictionManager>>,
+        input_config: Option<Res<'_, InputTimelineConfig>>,
+        mut history: ResMut<'_, Self>,
+    ) {
+        let tick = timeline.tick();
+        history.record(tick, time.delta());
+        if let (Some(manager), Some(input_config)) = (manager, input_config) {
+            history.forget_before(manager.oldest_rollback_tick(tick, &input_config));
+        }
     }
-}
 
-pub(crate) fn shift_tick_periods(
-    trigger: On<'_, '_, LocalTimelineShift>,
-    mut history: ResMut<'_, TickPeriodHistory>,
-) {
-    history.shift(trigger.delta);
+    pub(crate) fn shift_with_local_timeline(
+        trigger: On<'_, '_, LocalTimelineShift>,
+        mut history: ResMut<'_, Self>,
+    ) {
+        history.shift(trigger.delta);
+    }
 }
 
 #[cfg(test)]

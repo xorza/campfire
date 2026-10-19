@@ -1,10 +1,9 @@
-use crate::link_plugin::LinkPlugin;
 use crate::server::Server;
 use bevy_app::{App, Plugin};
 
 /// Plugin that installs server/link relationship support.
 ///
-/// The plugin ensures [`LinkPlugin`] is present and adds the observer that reacts to
+/// On [`LinkPlugin`](crate::LinkPlugin), which the app adds, it adds the observer that reacts to
 /// [`Unlinked`](crate::link_state::Unlinked) on server entities by unlinking their child links.
 /// Transport crates that expose a multi-client server endpoint should add this plugin before
 /// scheduling their server IO systems.
@@ -13,9 +12,6 @@ pub struct ServerLinkPlugin;
 
 impl Plugin for ServerLinkPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<LinkPlugin>() {
-            app.add_plugins(LinkPlugin);
-        }
         app.add_observer(Server::unlinked);
     }
 }

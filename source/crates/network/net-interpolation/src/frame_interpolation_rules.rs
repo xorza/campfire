@@ -22,7 +22,6 @@ use bevy_time::{Fixed, Time};
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::NetTick;
 use campfire_net_replication::ComponentKind;
-use campfire_net_replication::DeferredEntityCommands;
 use campfire_net_timeline::LocalTimeline;
 use std::borrow::Cow;
 use tracing::trace;
@@ -81,7 +80,7 @@ pub(crate) fn install_frame_history<C: HistoryComponent>(
 ) {
     app.add_systems(
         FixedPostUpdate,
-        update_frame_history::<C>
+        FrameInterpolationHistory::<C>::update
             .in_set(FrameInterpolationSystems::Update)
             .in_set(FrameStage::Run),
     );
@@ -152,65 +151,6 @@ pub(crate) fn install_frame_history<C: HistoryComponent>(
             .in_set(FrameInterpolationSystems::Restore)
             .in_set(FrameStage::Run),
     );
-}
-
-/// Records each entity's live `C` into `FrameInterpolationHistory<C>`, where a rule that owns
-/// `C`'s frame history keeps it and no source keeps the samples instead.
-///
-/// This runs after fixed updates so `current_value` is the latest fixed-tick
-/// value and `previous_value` is the value from the prior fixed tick. The write does not mark the
-/// history changed.
-pub(crate) fn update_frame_history<C: HistoryComponent>(
-    owners: Res<'_, InterpolationOwners>,
-    mut query: Query<
-        '_,
-        '_,
-        (
-            Entity,
-            EntityLocation,
-            &C,
-            Option<&mut FrameInterpolationHistory<C>>,
-        ),
-        With<FrameInterpolate>,
-    >,
-    mut deferred_apply: Deferred<'_, DeferredEntityCommands>,
-) {
-    let kind = ComponentKind::of::<C>();
-    let maintained = owners.frame.history(kind);
-    let sourced = owners.frame.sourced(kind);
-    for (entity, location, component_value, history) in &mut query {
-        // A source keeps the samples, so there is nothing to copy.
-        if !maintained.contains(location.archetype_id) || sourced.contains(location.archetype_id) {
-            continue;
-        }
-        let Some(mut history) = history else {
-            deferred_apply.insert(
-                entity,
-                FrameInterpolationHistory::<C> {
-                    previous_value: None,
-                    current_value: Some(component_value.clone()),
-                },
-            );
-            continue;
-        };
-        let history = history.bypass_change_detection();
-        // The previous value's slot takes the new one, so a value that owns memory reuses it.
-        if history.current_value.is_some() {
-            core::mem::swap(&mut history.previous_value, &mut history.current_value);
-        }
-        match &mut history.current_value {
-            Some(current_value) => current_value.clone_from(component_value),
-            None => history.current_value = Some(component_value.clone()),
-        }
-        trace!(
-            target: "campfire_net_debug::frame_interpolation",
-            kind = "frame_interpolation_update_history",
-            schedule = "FixedPostUpdate",
-            sample_point = "FixedPostUpdate",
-            component = ?DebugName::type_name::<C>(),
-            "updated frame interpolation history"
-        );
-    }
 }
 
 /// Installs the system that applies the component rule `rule_id` of `C` to the frame, with

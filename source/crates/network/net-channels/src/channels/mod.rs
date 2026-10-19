@@ -797,13 +797,111 @@ pub(crate) mod internals {
     use crate::channel_receiver::ChannelReceiver;
     use crate::channel_sender::ChannelSender;
     use crate::channels::Channels;
-    use crate::internals::channel_counts::ChannelCounts;
-    use crate::internals::transport_backlog::TransportBacklog;
-    use crate::internals::transport_counts::TransportCounts;
     use crate::message_id::MessageId;
     use crate::transport_error::TransportError;
     use campfire_net_core::NetId;
     use campfire_net_payload::SendPayload;
+    use core::ops::{Add, Sub};
+
+    /// A reading of one channel's bench counters on a [`Channels`].
+    ///
+    /// The byte fields count message payload bytes (for a fragment, the fragment's bytes); every field
+    /// accumulates over the channel's life, so a bench subtracts two readings.
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct ChannelCounts {
+        /// Bytes of the channel's messages in packets given to the session.
+        pub sent_bytes: u64,
+        /// The channel's messages and fragments in packets given to the session.
+        pub sent_messages: u64,
+        /// Bytes of the channel's messages parsed from received packets.
+        pub received_bytes: u64,
+    }
+
+    impl Add for ChannelCounts {
+        type Output = Self;
+
+        fn add(self, rhs: Self) -> Self {
+            Self {
+                sent_bytes: self.sent_bytes + rhs.sent_bytes,
+                sent_messages: self.sent_messages + rhs.sent_messages,
+                received_bytes: self.received_bytes + rhs.received_bytes,
+            }
+        }
+    }
+
+    impl Sub for ChannelCounts {
+        type Output = Self;
+
+        fn sub(self, base: Self) -> Self {
+            Self {
+                sent_bytes: self.sent_bytes - base.sent_bytes,
+                sent_messages: self.sent_messages - base.sent_messages,
+                received_bytes: self.received_bytes - base.received_bytes,
+            }
+        }
+    }
+
+    /// What a [`Channels`] still waits for.
+    ///
+    /// Once a healed network has delivered everything owed, no fragmented message is partial and only
+    /// the last frame's packets wait for their fates.
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct TransportBacklog {
+        /// Fragmented messages with some fragments still missing, over every channel.
+        pub partial_fragments: usize,
+        /// Packets whose reliable messages wait for the packet's fate.
+        pub tracked_packet_acks: usize,
+    }
+
+    /// A reading of a link's channels' bench counters.
+    ///
+    /// Every field is accumulated over the channels' life, so a bench subtracts two readings.
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct TransportCounts {
+        /// Bytes of the packets given to the session.
+        pub sent_bytes: u64,
+        /// Packets given to the session.
+        pub sent_packets: u64,
+        /// Messages and fragments that a packet given to the session carried again.
+        pub resent_messages: u64,
+        /// Bytes of the packets the session opened.
+        pub received_bytes: u64,
+        /// Bytes that compression removed from the packets sent.
+        pub compression_saved_bytes: u64,
+        /// Packets whose compressed form was not smaller, so they were sent uncompressed.
+        pub compression_abandoned: u64,
+    }
+
+    impl Add for TransportCounts {
+        type Output = Self;
+
+        fn add(self, rhs: Self) -> Self {
+            Self {
+                sent_bytes: self.sent_bytes + rhs.sent_bytes,
+                sent_packets: self.sent_packets + rhs.sent_packets,
+                resent_messages: self.resent_messages + rhs.resent_messages,
+                received_bytes: self.received_bytes + rhs.received_bytes,
+                compression_saved_bytes: self.compression_saved_bytes + rhs.compression_saved_bytes,
+                compression_abandoned: self.compression_abandoned + rhs.compression_abandoned,
+            }
+        }
+    }
+
+    impl Sub for TransportCounts {
+        type Output = Self;
+
+        fn sub(self, base: Self) -> Self {
+            Self {
+                sent_bytes: self.sent_bytes - base.sent_bytes,
+                sent_packets: self.sent_packets - base.sent_packets,
+                resent_messages: self.resent_messages - base.resent_messages,
+                received_bytes: self.received_bytes - base.received_bytes,
+                compression_saved_bytes: self.compression_saved_bytes
+                    - base.compression_saved_bytes,
+                compression_abandoned: self.compression_abandoned - base.compression_abandoned,
+            }
+        }
+    }
 
     impl Channels {
         /// Buffers bytes directly in the channel sender, as the next send does with each staged

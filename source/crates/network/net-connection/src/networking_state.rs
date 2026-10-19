@@ -7,7 +7,7 @@ use campfire_net_core::PeerId;
 
 /// The networking topology of this Bevy application, and the link entity of each remote peer.
 ///
-/// `ConnectionPlugin` maintains this resource from role and lifecycle components. Users
+/// `ConnectionPlugins` maintain this resource from role and lifecycle components. Users
 /// can read [`topology`](Self::topology) and [`peer_map`](Self::peer_map), but do not need to
 /// update them themselves.
 #[derive(Resource, Debug, Clone)]
@@ -29,6 +29,17 @@ impl NetworkingState {
             self.peer_map.remove(&peer);
         }
     }
+
+    /// Removes `entity`'s own `peer_map` entry, at its disconnect and again when `Connected` goes,
+    /// which a despawn without a disconnect also does.
+    pub(crate) fn unmap_remote(world: &mut DeferredWorld<'_>, entity: Entity) {
+        let Some(peer) = world.get::<RemoteId>(entity).map(|remote| remote.0) else {
+            return;
+        };
+        if let Some(mut metadata) = world.get_resource_mut::<Self>() {
+            metadata.unmap(peer, entity);
+        }
+    }
 }
 
 impl Default for NetworkingState {
@@ -38,16 +49,5 @@ impl Default for NetworkingState {
             peer_map: HashMap::default(),
             dirty: true,
         }
-    }
-}
-
-/// Removes `entity`'s own `peer_map` entry, at its disconnect and again when `Connected` goes,
-/// which a despawn without a disconnect also does.
-pub(crate) fn unmap_remote(world: &mut DeferredWorld<'_>, entity: Entity) {
-    let Some(peer) = world.get::<RemoteId>(entity).map(|remote| remote.0) else {
-        return;
-    };
-    if let Some(mut metadata) = world.get_resource_mut::<NetworkingState>() {
-        metadata.unmap(peer, entity);
     }
 }

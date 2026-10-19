@@ -208,10 +208,10 @@ fn send(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internals::host_received_messages::HostReceivedMessages;
-    use crate::internals::messages_stack::MessagesStack;
-    use crate::internals::protocol::{ClientMessage, StringEvent, StringMessage};
-    use crate::internals::received_messages::ReceivedMessages;
+    use crate::fixtures::host_received_messages::HostReceivedMessages;
+    use crate::fixtures::messages_stack::MessagesStack;
+    use crate::fixtures::protocol::{ClientMessage, StringEvent, StringMessage};
+    use crate::fixtures::received_messages::ReceivedMessages;
     use crate::remote_event::RemoteEvent;
     use bevy_ecs::entity::EntityIndexSet;
     use bevy_ecs::entity::{Entity, UniqueEntityArray};
@@ -225,7 +225,7 @@ mod tests {
     use campfire_net_payload::AppCode;
     use campfire_net_stepper::Stepper;
     use campfire_net_stepper::StepperConfig;
-    use campfire_net_transport::internals::protocol::Channel1;
+    use campfire_net_transport::internals::Channel1;
 
     fn received(stepper: &Stepper<MessagesStack>, client: usize) -> &[(Entity, StringMessage)] {
         &stepper

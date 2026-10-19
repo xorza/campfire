@@ -4,7 +4,7 @@ use campfire_net_emulator::EmulatedIo;
 
 use crate::emulated_wires::EmulatedWires;
 use crate::endpoint_config::EndpointConfig;
-use crate::establish::Establish;
+use crate::establish::{ClientEstablish, ServerEstablish};
 use crate::plain_establishment::PlainEstablishment;
 
 /// What an endpoint is made of: its IO, the establishment that makes its sessions, its side and
@@ -13,16 +13,21 @@ use crate::plain_establishment::PlainEstablishment;
 #[derive(Debug)]
 pub struct EndpointParts<Io> {
     pub(crate) io: Io,
-    pub(crate) establish: Box<dyn Establish>,
     pub(crate) side: EndpointSide,
     pub(crate) config: EndpointConfig,
 }
 
-/// Whether an endpoint opens one session to its server or takes sessions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Whether an endpoint opens one session to its server or takes sessions, with the
+/// establishment of that side.
+#[derive(Debug)]
 pub(crate) enum EndpointSide {
-    Client { server: SocketAddr },
-    Server,
+    Client {
+        server: SocketAddr,
+        establish: Box<dyn ClientEstablish>,
+    },
+    Server {
+        establish: Box<dyn ServerEstablish>,
+    },
 }
 
 impl<Io> EndpointParts<Io> {
@@ -30,23 +35,21 @@ impl<Io> EndpointParts<Io> {
     pub fn client(
         io: Io,
         server: SocketAddr,
-        establish: Box<dyn Establish>,
+        establish: Box<dyn ClientEstablish>,
         config: EndpointConfig,
     ) -> Self {
         Self {
             io,
-            establish,
-            side: EndpointSide::Client { server },
+            side: EndpointSide::Client { server, establish },
             config,
         }
     }
 
     /// A server's endpoint over `io`, whose sessions `establish` makes.
-    pub fn server(io: Io, establish: Box<dyn Establish>, config: EndpointConfig) -> Self {
+    pub fn server(io: Io, establish: Box<dyn ServerEstablish>, config: EndpointConfig) -> Self {
         Self {
             io,
-            establish,
-            side: EndpointSide::Server,
+            side: EndpointSide::Server { establish },
             config,
         }
     }

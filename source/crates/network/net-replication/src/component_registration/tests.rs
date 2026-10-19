@@ -1,7 +1,7 @@
 use super::*;
-use crate::internals::protocol::{CompA, CompReplicateOnce, CompRepliconDiff};
-use crate::internals::replication_stack::ReplicationStack;
-use crate::internals::steps::{
+use crate::fixtures::protocol::{CompA, CompReplicateOnce, CompRepliconDiff};
+use crate::fixtures::replication_stack::ReplicationStack;
+use crate::fixtures::steps::{
     PROPAGATION_FRAMES, client_copy, on_client, on_server, spawn_on_server,
 };
 use crate::replication_target::Replicate;

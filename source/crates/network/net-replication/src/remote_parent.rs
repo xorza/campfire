@@ -1,4 +1,5 @@
 use bevy_ecs::prelude::*;
+use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use core::fmt::Debug;
 
 /// The server's [`ChildOf`] of a replicated entity, as the server sends it: the server entity of
@@ -18,5 +19,20 @@ pub(crate) struct RemoteParent {
 impl RemoteParent {
     pub(crate) const fn new(server: Entity) -> Self {
         Self { server }
+    }
+
+    /// Gives each replicated entity whose server parent is mapped and that shows no [`ChildOf`]
+    /// its view: a parent that arrives late, or that comes back after it was despawned here. It runs
+    /// after the receive, and only in a frame whose receive mapped an entity.
+    pub(crate) fn attach(
+        entity_map: Res<'_, ServerEntityMap>,
+        detached: Query<'_, '_, (Entity, &Self), Without<ChildOf>>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        for (entity, parent) in &detached {
+            if let Some(&client_parent) = entity_map.to_client().get(&parent.server) {
+                commands.entity(entity).insert(ChildOf(client_parent));
+            }
+        }
     }
 }

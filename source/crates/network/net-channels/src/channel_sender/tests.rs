@@ -1,6 +1,7 @@
 use super::*;
 use crate::channel::Channel;
 use crate::channel_config::DEFAULT_MAX_MESSAGE_SIZE;
+use core::num::NonZeroU32;
 
 use crate::packet::FRAGMENT_SIZE;
 
@@ -39,8 +40,8 @@ fn channel(mode: ChannelMode, retry_unsent_messages: bool) -> ChannelSender {
     )
 }
 
-const fn fragment_ack(fragment_index: u16) -> SendMessageKey {
-    SendMessageKey::ReliableFragment(MessageId(0), fragment_index)
+fn fragment_ack(fragment_index: u16) -> SendMessageKey {
+    SendMessageKey::of_id(MessageId(0), fragment_index)
 }
 
 #[test]
@@ -105,7 +106,7 @@ fn candidates_name_their_message_and_carry_its_length_and_rank() {
         .map(|candidate| {
             (
                 candidate.key,
-                candidate.bytes_len,
+                candidate.single_len.map_or(0, NonZeroU32::get),
                 candidate.rank.send_order,
                 candidate.rank.priority,
             )
@@ -114,8 +115,8 @@ fn candidates_name_their_message_and_carry_its_length_and_rank() {
     assert_eq!(
         summary,
         [
-            (SendMessageKey::UnreliableSingle(0), 8, 0, 0.0),
-            (SendMessageKey::UnreliableFragment(0, 0), 0, 0, 0.0),
+            (SendMessageKey::new(0, 0), 8, 0, 0.0),
+            (SendMessageKey::new(1, 0), 0, 0, 0.0),
         ]
     );
     let MessageRef::Single(single) = channel.message(candidates[0].key) else {
@@ -123,7 +124,7 @@ fn candidates_name_their_message_and_carry_its_length_and_rank() {
     };
     assert_eq!(single.bytes, Bytes::from_static(b"pending"));
     let next = channel.next_due(candidates[1].key);
-    assert_eq!(next, Some(SendMessageKey::UnreliableFragment(0, 1)));
+    assert_eq!(next, Some(SendMessageKey::new(1, 1)));
     let MessageRef::Fragment(fragment) = channel.message(next.unwrap()) else {
         panic!("a fragment key names a fragment");
     };
@@ -224,10 +225,10 @@ fn discard_policy_finishes_started_fragmented_messages() {
         .iter()
         .map(|candidate| candidate.key)
         .collect::<Vec<_>>();
-    assert_eq!(keys, [SendMessageKey::UnreliableFragment(0, 1)]);
+    assert_eq!(keys, [SendMessageKey::new(0, 1)]);
     assert_eq!(
         partially_sent.next_due(keys[0]),
-        Some(SendMessageKey::UnreliableFragment(0, 2))
+        Some(SendMessageKey::new(0, 2))
     );
 }
 
@@ -317,7 +318,7 @@ fn message_id_policy_is_derived_from_delivery_mode() {
 /// which is its second send and its only resend, and its ack ends it.
 #[test]
 fn every_reliable_mode_sends_again_at_a_loss_and_stops_after_ack() {
-    let ack = SendMessageKey::ReliableSingle(MessageId(0));
+    let ack = SendMessageKey::of_id(MessageId(0), 0);
     for mode in [
         ChannelMode::UnorderedReliable,
         ChannelMode::SequencedReliable,
@@ -384,14 +385,14 @@ fn a_newer_sequenced_reliable_message_drops_the_older() {
     channel.buffer(Bytes::from_static(b"one"), 1.0, CompressionConfig::DISABLED);
 
     assert_eq!(channel.pending_reliable(), [MessageId(1)]);
-    assert!(!channel.receive_ack(SendMessageKey::ReliableSingle(MessageId(0))));
+    assert!(!channel.receive_ack(SendMessageKey::of_id(MessageId(0), 0)));
     candidates.clear();
     channel.collect_send_candidates(&mut candidates);
     let keys = candidates
         .iter()
         .map(|candidate| candidate.key)
         .collect::<Vec<_>>();
-    assert_eq!(keys, [SendMessageKey::ReliableSingle(MessageId(1))]);
+    assert_eq!(keys, [SendMessageKey::of_id(MessageId(1), 0)]);
 }
 
 /// Priority grows by its base each second a message waits: a retained unreliable message of
@@ -430,7 +431,7 @@ fn priority_accumulates_while_waiting_and_restarts_when_sent() {
     // loss makes it due.
     channel.update(Duration::from_millis(50));
     assert_eq!(priorities(&mut channel), Vec::<f32>::new());
-    channel.receive_loss(SendMessageKey::ReliableSingle(MessageId(0)));
+    channel.receive_loss(SendMessageKey::of_id(MessageId(0), 0));
     channel.update(Duration::from_millis(51));
     assert_eq!(priorities(&mut channel), [0.051]);
 }

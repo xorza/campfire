@@ -1,5 +1,5 @@
 use crate::serialization_error::SerializationError;
-use crate::varint;
+use crate::var_int::{self, VarInt};
 use bytes::{Buf, Bytes};
 use std::io::{Error, ErrorKind, Read, Result};
 
@@ -118,13 +118,13 @@ pub trait ReadVarInt: ReadInteger {
     /// than its value needs (14-workspace-alignment.md, A header decodes from one encoding).
     fn read_varint(&mut self) -> core::result::Result<u64, SerializationError> {
         let first = self.read_u8()?;
-        let len = varint::parse_len(first);
+        let len = var_int::encoded_len_of(first);
         let mut bytes = [0; size_of::<u64>()];
         let start = bytes.len() - len;
         bytes[start] = first & 0x3f;
         self.read_exact(&mut bytes[start + 1..])?;
         let value = u64::from_be_bytes(bytes);
-        if varint::len(value) != len {
+        if VarInt::new(value).encoded_len() != len {
             return Err(SerializationError::NotCanonical);
         }
         Ok(value)

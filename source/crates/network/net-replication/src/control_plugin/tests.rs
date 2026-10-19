@@ -1,6 +1,6 @@
 use super::*;
 use crate::controlled_send::ControlledSend;
-use crate::internals::replication_stack::ReplicationStack;
+use crate::fixtures::replication_stack::ReplicationStack;
 use crate::lifetime::Lifetime;
 use crate::replication_target::Replicate;
 use crate::server_send_plugin::ServerSendPlugin;

@@ -1,6 +1,6 @@
 use super::*;
-use crate::internals::prediction_stack::PredictionStack;
-use crate::prediction_history::{self, PredictionHistory};
+use crate::fixtures::prediction_stack::PredictionStack;
+use crate::prediction_history::PredictionHistory;
 use crate::prediction_registration_ext::PredictionRegistrationExt;
 use bevy_replicon::prelude::EntityDiffExt;
 use bevy_replicon::prelude::{RepliconTick, RuleFns};
@@ -12,9 +12,9 @@ use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::HistoryState;
 use campfire_net_replication::Predicted;
 use campfire_net_replication::ReplicationCheckpointMap;
-use campfire_net_replication::internals::diff_messages;
-use campfire_net_replication::internals::protocol::CompRepliconDiff;
-use campfire_net_replication::internals::steps::client_copy;
+use campfire_net_replication::internals::CompRepliconDiff;
+use campfire_net_replication::internals::client_copy;
+use campfire_net_replication::internals::newest_confirmed_value;
 use campfire_net_replication::{PredictionTarget, Replicate};
 use campfire_net_stepper::StepperConfig;
 use campfire_net_stepper::{Order, Stepper};
@@ -42,7 +42,7 @@ impl PredictionRegistry {
 }
 use crate::prediction_manager::PredictionManager;
 use crate::prediction_marker_plugin::PredictionMarkerPlugin;
-use crate::prediction_plugin::PredictionPlugin;
+use crate::prediction_plugins::PredictionPlugins;
 use crate::prediction_registry_plugin::PredictionRegistryPlugin;
 use bevy_ecs::system::RunSystemOnce;
 use bevy_replicon::prelude::{AuthMethod, RepliconPlugins, RepliconSharedPlugin};
@@ -52,8 +52,8 @@ use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 use bevy_replicon::shared::replication::registry::test_fns::TestFnsEntityExt;
 use bevy_state::app::StatesPlugin;
 use campfire_net_interpolation::{
-    InterpolationFns, InterpolationMarkerPlugin, InterpolationPlugin, InterpolationRegistrationExt,
-    InterpolationRegistry,
+    InterpolationFns, InterpolationMarkerPlugin, InterpolationPlugins,
+    InterpolationRegistrationExt, InterpolationRegistry, InterpolationRegistryPlugin,
 };
 use campfire_net_replication::AppComponentExt;
 use campfire_net_sync::{InputTimelineConfig, LocalTimelineSync};
@@ -80,7 +80,8 @@ fn prediction_app() -> App {
         },
         PredictionMarkerPlugin,
         InterpolationMarkerPlugin,
-        InterpolationPlugin,
+        InterpolationRegistryPlugin,
+        InterpolationPlugins,
     ));
     app.init_resource::<PredictionRegistry>();
     app.init_resource::<PredictionManager>();
@@ -89,7 +90,7 @@ fn prediction_app() -> App {
 }
 
 /// A server app: the shared protocol's plugins and the registry plugin, without
-/// `PredictionPlugin`.
+/// `PredictionPlugins`.
 fn server_app() -> App {
     let mut app = App::new();
     app.add_plugins((
@@ -99,7 +100,8 @@ fn server_app() -> App {
         },
         PredictionMarkerPlugin,
         InterpolationMarkerPlugin,
-        InterpolationPlugin,
+        InterpolationRegistryPlugin,
+        InterpolationPlugins,
         PredictionRegistryPlugin,
     ));
     app
@@ -293,7 +295,9 @@ fn setup_prediction_diff_app() -> (App, FnsId) {
         StatesPlugin,
         RepliconPlugins,
         PredictionMarkerPlugin,
-        PredictionPlugin,
+        InterpolationRegistryPlugin,
+        PredictionRegistryPlugin,
+        PredictionPlugins,
     ));
     app.insert_resource(LocalTimeline::default());
     app.insert_resource(ReplicationCheckpointMap::default());
@@ -357,7 +361,7 @@ fn local_rollback_resource_backfills_existing_resource_history() {
     install(&mut app);
     seal(&mut app);
     app.world_mut()
-        .run_system_once(prediction_history::update_prediction_history::<LocalRollbackOnlyResource>)
+        .run_system_once(PredictionHistory::<LocalRollbackOnlyResource>::update)
         .unwrap();
 
     assert!(
@@ -406,7 +410,7 @@ fn local_rollback_resource_adds_history_to_late_resource() {
     app.insert_resource(LocalRollbackOnlyResource(42));
     app.world_mut().flush();
     app.world_mut()
-        .run_system_once(prediction_history::update_prediction_history::<LocalRollbackOnlyResource>)
+        .run_system_once(PredictionHistory::<LocalRollbackOnlyResource>::update)
         .unwrap();
 
     let resource_entity = app
@@ -508,7 +512,7 @@ fn diff_prediction_records_confirmed_history_from_replicon_diffs() {
             .contains::<Predicted>()
     );
     assert_eq!(
-        diff_messages::newest_confirmed_value(stepper.client_app_mut(0), client_entity),
+        newest_confirmed_value(stepper.client_app_mut(0), client_entity),
         Some(0)
     );
 
@@ -521,7 +525,7 @@ fn diff_prediction_records_confirmed_history_from_replicon_diffs() {
     stepper.step(1, stepper.frame_interval(), Order::ServerFirst);
 
     assert_eq!(
-        diff_messages::newest_confirmed_value(stepper.client_app_mut(0), client_entity),
+        newest_confirmed_value(stepper.client_app_mut(0), client_entity),
         Some(1)
     );
 }

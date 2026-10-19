@@ -4,45 +4,13 @@ use std::collections::VecDeque;
 
 use crate::compression_config::CompressionConfig;
 use crate::compression_scratch::CompressionScratch;
-use crate::fragmented_message::{FragmentState, FragmentedMessage};
+use crate::fragmented_message::FragmentedMessage;
 use crate::message_id::MessageId;
 use crate::message_ref::MessageRef;
+use crate::queued_message::QueuedMessage;
 use crate::send_candidate::{CandidateRank, CandidateSink};
 use crate::send_message_key::SendMessageKey;
 use crate::single_data::SingleData;
-
-/// A reliable message: one packet's or a fragmented one's, and where its parts are. A part goes
-/// in the next packet that has room unless a packet that carries it is in flight
-/// (13-net-stack/session.md, Loss is found by the packet threshold of 3, or by 9/8 of the RTT).
-#[derive(Debug)]
-enum ReliableMessage {
-    Single {
-        data: SingleData,
-        state: FragmentState,
-    },
-    Fragmented(FragmentedMessage),
-}
-
-impl ReliableMessage {
-    const fn set_id(&mut self, id: MessageId) {
-        match self {
-            Self::Single { data, .. } => data.id = Some(id),
-            Self::Fragmented(message) => message.set_message_id(id),
-        }
-    }
-
-    /// The key of its first due part, if one is due.
-    fn first_due(&mut self, id: MessageId) -> Option<SendMessageKey> {
-        match self {
-            Self::Single { state, .. } => (*state == FragmentState::Unsent
-                || *state == FragmentState::Lost)
-                .then_some(SendMessageKey::ReliableSingle(id)),
-            Self::Fragmented(message) => message
-                .first_due()
-                .map(|index| SendMessageKey::ReliableFragment(id, index)),
-        }
-    }
-}
 
 /// The most message ids a reliable channel has in flight, from its oldest unacked message to its
 /// next id.
@@ -56,7 +24,7 @@ pub(crate) const SEND_WINDOW: u16 = 16_384;
 /// missing.
 #[derive(Debug)]
 struct WaitingMessage {
-    message: ReliableMessage,
+    message: QueuedMessage,
     priority: f32,
 }
 
@@ -71,8 +39,8 @@ pub(super) enum ReliableDelivery {
 }
 
 #[derive(Debug)]
-struct PendingReliableMessage {
-    message: ReliableMessage,
+struct PendingQueuedMessage {
+    message: QueuedMessage,
     base_priority: f32,
     /// Grows by `base_priority` a second while the message waits to be sent, and restarts when it
     /// is sent, so a retransmission competes as a fresh message does.
@@ -87,7 +55,7 @@ pub(super) struct ReliableSendState {
     delivery: ReliableDelivery,
     /// The messages of the window, at their id's distance from `oldest_unacked`; an acked one
     /// leaves its slot empty until the slots before it are.
-    pending: VecDeque<Option<PendingReliableMessage>>,
+    pending: VecDeque<Option<PendingQueuedMessage>>,
     /// The ids of the pending messages that have a part to send, which a collection reads instead
     /// of every pending message; one that sent all since leaves at the next collection.
     due: Vec<MessageId>,
@@ -128,7 +96,7 @@ impl ReliableSendState {
         (index < self.pending.len()).then_some(index)
     }
 
-    fn pending_mut(&mut self, id: MessageId) -> Option<&mut PendingReliableMessage> {
+    fn pending_mut(&mut self, id: MessageId) -> Option<&mut PendingQueuedMessage> {
         let slot = self.slot(id)?;
         self.pending[slot].as_mut()
     }
@@ -145,7 +113,7 @@ impl ReliableSendState {
     ) -> Option<MessageId> {
         // The id is set when the message enters the window.
         let message = if message.len() > fragment_size {
-            ReliableMessage::Fragmented(FragmentedMessage::split(
+            QueuedMessage::Fragmented(FragmentedMessage::split(
                 MessageId(0),
                 message,
                 fragment_size,
@@ -153,10 +121,7 @@ impl ReliableSendState {
                 compression_scratch,
             ))
         } else {
-            ReliableMessage::Single {
-                data: SingleData::new(None, message),
-                state: FragmentState::Unsent,
-            }
+            QueuedMessage::whole(SingleData::new(None, message))
         };
         if self.delivery == ReliableDelivery::Newest {
             self.waiting.clear();
@@ -183,7 +148,7 @@ impl ReliableSendState {
             }
             let message_id = self.next_message_id();
             message.set_id(message_id);
-            self.pending.push_back(Some(PendingReliableMessage {
+            self.pending.push_back(Some(PendingQueuedMessage {
                 message,
                 base_priority: priority,
                 accumulated_priority: 0.0,
@@ -206,7 +171,7 @@ impl ReliableSendState {
             let Some(pending) = &mut self.pending[slot] else {
                 return false;
             };
-            let Some(key) = pending.message.first_due(message_id) else {
+            let Some(part) = pending.message.first_due() else {
                 pending.listed = false;
                 return false;
             };
@@ -215,15 +180,8 @@ impl ReliableSendState {
                 priority: pending.accumulated_priority,
                 send_order: u32::try_from(slot).unwrap(),
             };
-            let message = match &pending.message {
-                ReliableMessage::Single { data, .. } => MessageRef::Single(data),
-                ReliableMessage::Fragmented(message) => {
-                    let SendMessageKey::ReliableFragment(_, index) = key else {
-                        unreachable!("a fragmented message's key names a fragment")
-                    };
-                    MessageRef::Fragment(message.fragment(index))
-                }
-            };
+            let key = SendMessageKey::of_id(message_id, part);
+            let message = pending.message.part(part);
             sink.push(key, rank, message);
             true
         });
@@ -231,111 +189,59 @@ impl ReliableSendState {
     }
 
     pub(super) fn message(&self, key: SendMessageKey) -> MessageRef<'_> {
-        let (SendMessageKey::ReliableSingle(id) | SendMessageKey::ReliableFragment(id, _)) = key
-        else {
-            unreachable!("a reliable channel names its messages by message id")
-        };
-        let pending = self
-            .slot(id)
+        self.slot(key.id())
             .and_then(|slot| self.pending[slot].as_ref())
-            .expect("a send key names a pending message");
-        match (&pending.message, key) {
-            (ReliableMessage::Single { data, .. }, SendMessageKey::ReliableSingle(_)) => {
-                MessageRef::Single(data)
-            }
-            (ReliableMessage::Fragmented(message), SendMessageKey::ReliableFragment(_, index)) => {
-                MessageRef::Fragment(message.fragment(index))
-            }
-            _ => unreachable!("a send key matches the shape of the message it names"),
-        }
+            .expect("a send key names a pending message")
+            .message
+            .part(key.part)
     }
 
-    /// The key of the next due fragment of the message whose fragment `key` names, past it.
+    /// The key of the next due part of the message `key` names, past its part.
     pub(super) fn next_due(&self, key: SendMessageKey) -> Option<SendMessageKey> {
-        let SendMessageKey::ReliableFragment(id, index) = key else {
-            unreachable!("only a fragment has a next fragment")
-        };
-        let pending = self.slot(id).and_then(|slot| self.pending[slot].as_ref())?;
-        let ReliableMessage::Fragmented(message) = &pending.message else {
-            unreachable!("a fragment key names a fragmented message")
-        };
-        message
-            .next_due(index + 1)
-            .map(|next| key.with_fragment(next))
+        let pending = self
+            .slot(key.id())
+            .and_then(|slot| self.pending[slot].as_ref())?;
+        pending
+            .message
+            .next_due(key.part + 1)
+            .map(|next| key.with_part(next))
     }
 
-    /// Records that a packet carries the message or fragment `key` names, and returns whether a
-    /// packet carried it before.
+    /// Records that a packet carries the part `key` names, and returns whether a packet carried
+    /// it before.
     pub(super) fn commit_send(&mut self, key: SendMessageKey) -> bool {
-        let (SendMessageKey::ReliableSingle(id) | SendMessageKey::ReliableFragment(id, _)) = key
-        else {
-            unreachable!("a reliable channel names its messages by message id")
-        };
         let pending = self
-            .pending_mut(id)
+            .pending_mut(key.id())
             .expect("a committed key names a pending message");
         pending.accumulated_priority = 0.0;
-        match (&mut pending.message, key) {
-            (ReliableMessage::Single { state, .. }, SendMessageKey::ReliableSingle(_)) => {
-                core::mem::replace(state, FragmentState::InFlight) == FragmentState::Lost
-            }
-            (ReliableMessage::Fragmented(message), SendMessageKey::ReliableFragment(_, index)) => {
-                message.commit(index)
-            }
-            _ => unreachable!("a send key matches the shape of the message it names"),
-        }
+        pending.message.commit(key.part)
     }
 
-    /// Applies the loss of a packet that carried the message or fragment `key` names: it goes in
-    /// the next packet that has room. A message acknowledged since, or dropped by a newer one,
-    /// needs nothing.
+    /// Applies the loss of a packet that carried the part `key` names: it goes in the next packet
+    /// that has room. A message acknowledged since, or dropped by a newer one, needs nothing.
     pub(super) fn receive_loss(&mut self, key: SendMessageKey) {
-        let (SendMessageKey::ReliableSingle(id) | SendMessageKey::ReliableFragment(id, _)) = key
-        else {
-            unreachable!("only a reliable message's packet is watched")
-        };
+        let id = key.id();
         let Some(pending) = self.pending_mut(id) else {
             return;
         };
-        match (&mut pending.message, key) {
-            (ReliableMessage::Single { state, .. }, SendMessageKey::ReliableSingle(_)) => {
-                if *state == FragmentState::InFlight {
-                    *state = FragmentState::Lost;
-                }
-            }
-            (ReliableMessage::Fragmented(message), SendMessageKey::ReliableFragment(_, index)) => {
-                message.lose(index);
-            }
-            _ => unreachable!("a loss matches the shape of the message it names"),
-        }
+        pending.message.lose(key.part);
         if !pending.listed {
             pending.listed = true;
             self.due.push(id);
         }
     }
 
-    /// Applies an acknowledgement and returns whether it completed the logical message.
-    ///
-    /// The window keeps every id in flight distinct, so an ack matches the shape of the message
-    /// it names: one recorded for the packet that carried it.
+    /// Applies the acknowledgement of the part `key` names, and returns whether it completed the
+    /// logical message. The window keeps every id in flight distinct, so an ack names a part of
+    /// the message the packet carried.
     pub(super) fn receive_ack(&mut self, key: SendMessageKey) -> bool {
-        let (SendMessageKey::ReliableSingle(id) | SendMessageKey::ReliableFragment(id, _)) = key
-        else {
-            unreachable!("only a reliable message's packet is watched")
-        };
-        let Some(slot) = self.slot(id) else {
+        let Some(slot) = self.slot(key.id()) else {
             return false;
         };
         let Some(pending) = &mut self.pending[slot] else {
             return false;
         };
-        let completed = match (&mut pending.message, key) {
-            (ReliableMessage::Single { .. }, SendMessageKey::ReliableSingle(_)) => true,
-            (ReliableMessage::Fragmented(message), SendMessageKey::ReliableFragment(_, index)) => {
-                message.ack(index)
-            }
-            _ => unreachable!("an ack matches the shape of the message it names"),
-        };
+        let completed = pending.message.ack(key.part);
         if completed {
             self.pending[slot] = None;
             while self.pending.front().is_some_and(Option::is_none) {
@@ -416,18 +322,18 @@ mod tests {
         assert_eq!(
             order,
             [
-                (SendMessageKey::ReliableSingle(MessageId(u16::MAX)), 0),
-                (SendMessageKey::ReliableSingle(MessageId(0)), 1)
+                (SendMessageKey::of_id(MessageId(u16::MAX), 0), 0),
+                (SendMessageKey::of_id(MessageId(0), 0), 1)
             ]
         );
 
-        assert!(state.receive_ack(SendMessageKey::ReliableSingle(MessageId(u16::MAX))));
+        assert!(state.receive_ack(SendMessageKey::of_id(MessageId(u16::MAX), 0)));
         assert_eq!(state.oldest_unacked, MessageId(0));
         let order = collect(&mut state)
             .iter()
             .map(|candidate| (candidate.key, candidate.rank.send_order))
             .collect::<Vec<_>>();
-        assert_eq!(order, [(SendMessageKey::ReliableSingle(MessageId(0)), 0)]);
+        assert_eq!(order, [(SendMessageKey::of_id(MessageId(0), 0), 0)]);
     }
 
     /// The window holds 16,384 ids from the oldest unacked message: the 16,385th and 16,386th
@@ -446,7 +352,7 @@ mod tests {
         assert_eq!(send(&mut state, Bytes::from_static(b"m")), None);
         assert_eq!(state.pending.len(), usize::from(SEND_WINDOW));
 
-        let ack = |id| SendMessageKey::ReliableSingle(MessageId(id));
+        let ack = |id| SendMessageKey::of_id(MessageId(id), 0);
         assert!(state.receive_ack(ack(5)));
         collect(&mut state);
         assert_eq!(state.slot(MessageId(SEND_WINDOW)), None);
@@ -493,7 +399,7 @@ mod tests {
     fn a_fragmented_message_is_one_candidate_with_its_first_due_fragment() {
         let mut state = ReliableSendState::new(ReliableDelivery::Every);
         send(&mut state, Bytes::from(vec![0; FRAGMENT_SIZE * 5 / 2]));
-        let fragment = |index| SendMessageKey::ReliableFragment(MessageId(0), index);
+        let fragment = |index| SendMessageKey::of_id(MessageId(0), index);
         let candidates = collect(&mut state);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].key, fragment(0));

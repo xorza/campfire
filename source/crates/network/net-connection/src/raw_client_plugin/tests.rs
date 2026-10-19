@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::client_connection_plugin::ClientConnectionPlugin;
 use crate::connection_state::DisconnectedReason;
 
 use campfire_net_payload::AppCode;
@@ -9,7 +10,11 @@ use campfire_net_payload::AppCode;
 #[test]
 fn raw_client_keeps_preconfigured_peer_ids_and_closes_with_its_code() {
     let mut app = App::new();
-    app.add_plugins((campfire_net_link::LinkPlugin, RawClientPlugin));
+    app.add_plugins((
+        campfire_net_link::LinkPlugin,
+        ClientConnectionPlugin,
+        RawClientPlugin,
+    ));
     let local_id = LocalId(PeerId::Entity(1));
     let remote_id = RemoteId(PeerId::Entity(2));
     let entity = app

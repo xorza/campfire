@@ -9,16 +9,16 @@ use crate::packet_kind::PacketKind;
 use crate::packet_message::PacketMessage;
 use crate::tick_encoder::LONG_TICK_LEN;
 use bytes::BytesMut;
-use campfire_net_bytes::varint;
+use campfire_net_bytes::VarInt;
 use campfire_net_payload::{DEFAULT_MTU, OutgoingPayload};
 
 /// The most fragments a message splits into: the largest count a two-byte varint holds, so the
 /// fragment id and count reserve two bytes each.
 pub(crate) const MAX_FRAGMENTS: usize = 16_383;
 
-const MAX_FRAGMENT_CHANNEL_ID_BYTES: usize = varint::len(u16::MAX as u64);
-const MAX_FRAGMENT_ID_BYTES: usize = varint::len(MAX_FRAGMENTS as u64 - 1);
-const MAX_FRAGMENT_COUNT_BYTES: usize = varint::len(MAX_FRAGMENTS as u64);
+const MAX_FRAGMENT_CHANNEL_ID_BYTES: usize = VarInt::new(u16::MAX as u64).encoded_len();
+const MAX_FRAGMENT_ID_BYTES: usize = VarInt::new(MAX_FRAGMENTS as u64 - 1).encoded_len();
+const MAX_FRAGMENT_COUNT_BYTES: usize = VarInt::new(MAX_FRAGMENTS as u64).encoded_len();
 const INITIAL_FRAGMENT_COMPRESSION_BYTES: usize = 1;
 const FIXED_FRAGMENT_METADATA_BYTES: usize = MAX_FRAGMENT_CHANNEL_ID_BYTES
     + 2 // MessageId
@@ -51,7 +51,7 @@ pub const fn fragment_size_for_max_payload(max_payload: usize) -> Option<usize> 
     // largest payload whose own length prefix plus bytes fit in that space.
     let mut fragment_size = available;
     while fragment_size > 0 {
-        let length_prefix_bytes = varint::len(fragment_size as u64);
+        let length_prefix_bytes = VarInt::new(fragment_size as u64).encoded_len();
         if fragment_size <= available.saturating_sub(length_prefix_bytes) {
             return Some(fragment_size);
         }

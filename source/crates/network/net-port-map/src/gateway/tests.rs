@@ -53,9 +53,7 @@ fn a_pcp_mapping_is_renewed_with_its_nonce_at_its_address_and_deleted() {
     );
     let renewed = map(&mut client, Some(&mapping)).unwrap();
     assert_eq!(renewed, mapping);
-    client
-        .delete(4433, &mapping, Duration::from_millis(100))
-        .unwrap();
+    client.delete(4433, Duration::from_millis(100)).unwrap();
 
     let host = Ipv4Addr::LOCALHOST;
     let request = |external, lifetime| PcpMap {
@@ -112,9 +110,7 @@ fn a_gateway_that_answers_pcp_with_version_0_is_asked_by_nat_pmp_from_then_on() 
     };
     assert_eq!(client.address(wait).unwrap(), *EXTERNAL.ip());
     assert_eq!(map(&mut client, Some(&mapping)).unwrap(), mapping);
-    client
-        .delete(4433, &mapping, Duration::from_millis(100))
-        .unwrap();
+    client.delete(4433, Duration::from_millis(100)).unwrap();
     let requests = gateway.requests();
     let kinds: Vec<[u8; 2]> = requests
         .iter()

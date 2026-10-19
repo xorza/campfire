@@ -1,6 +1,7 @@
 use crate::message_ref::MessageRef;
 use crate::send_message_key::SendMessageKey;
 use campfire_net_core::NetId;
+use core::num::NonZeroU32;
 
 /// A channel-owned message that is due in a flush, and how it competes: one for each message, a
 /// fragmented one's included, whose fragments the packet builder takes in turn.
@@ -13,8 +14,9 @@ pub(crate) struct SendCandidate {
     pub(crate) channel_id: NetId,
     pub(crate) key: SendMessageKey,
     pub(crate) rank: CandidateRank,
-    /// A single message's bytes on the wire, which packing orders by; 0 for a fragmented one.
-    pub(crate) bytes_len: u32,
+    /// A whole message's bytes on the wire, which packing orders by; none for a fragmented one,
+    /// whose parts each fill a packet of their own.
+    pub(crate) single_len: Option<NonZeroU32>,
 }
 
 /// How a candidate competes with the others of its flush.
@@ -28,7 +30,7 @@ pub(crate) struct CandidateRank {
 
 impl SendCandidate {
     pub(crate) const fn is_single(&self) -> bool {
-        self.key.is_single()
+        self.single_len.is_some()
     }
 }
 
@@ -56,27 +58,30 @@ impl CandidateSink<'_> {
         } else {
             scaled
         };
-        let bytes_len = match message {
-            MessageRef::Single(single) => {
-                u32::try_from(single.bytes_len()).expect("a single message fits one packet")
-            }
-            MessageRef::Fragment(_) => 0,
+        let single_len = match message {
+            MessageRef::Single(single) => Some(
+                u32::try_from(single.bytes_len())
+                    .ok()
+                    .and_then(NonZeroU32::new)
+                    .expect("a whole message takes at least its length's byte, and fits a packet"),
+            ),
+            MessageRef::Fragment(_) => None,
         };
         self.candidates.push(SendCandidate {
             channel_id: self.channel_id,
             key,
             rank,
-            bytes_len,
+            single_len,
         });
     }
 }
 
 /// Where the packet builder reads the message of each candidate.
 pub(crate) trait CandidateMessages {
-    /// The single message or fragment `key` names on the channel `channel_id`.
+    /// The part `key` names on the channel `channel_id`: a whole message or one fragment.
     fn message(&self, channel_id: NetId, key: SendMessageKey) -> MessageRef<'_>;
 
-    /// The key of the next due fragment of the message whose fragment `key` names, past it.
+    /// The key of the next due part of the message `key` names, past its part.
     fn next_due(&self, channel_id: NetId, key: SendMessageKey) -> Option<SendMessageKey>;
 }
 
@@ -95,7 +100,7 @@ mod tests {
             candidates: &mut candidates,
         }
         .push(
-            SendMessageKey::UnreliableSingle(0),
+            SendMessageKey::new(0, 0),
             CandidateRank {
                 priority,
                 send_order: 0,

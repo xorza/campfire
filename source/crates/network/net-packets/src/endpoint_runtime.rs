@@ -36,20 +36,10 @@ pub struct PassScratch {
 
 impl<Io: DatagramIo, C: Carrier> EndpointRuntime<Io, C> {
     pub fn new(parts: EndpointParts<Io>) -> Self {
-        let EndpointParts {
-            io,
-            establish,
-            side,
-            config,
-        } = parts;
+        let EndpointParts { io, side, config } = parts;
         let conditioner = config.conditioner.map(LinkConditioner::new);
         Self {
-            core: Mutex::new(EndpointCore::new(
-                establish,
-                config.session,
-                side,
-                conditioner,
-            )),
+            core: Mutex::new(EndpointCore::new(config.session, side, conditioner)),
             io,
         }
     }

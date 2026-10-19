@@ -134,6 +134,7 @@ impl LinkOf {
 mod tests {
     use super::*;
     use crate::link::Link;
+    use crate::link_plugin::LinkPlugin;
     use crate::server_link_plugin::ServerLinkPlugin;
     use bevy_app::App;
 
@@ -147,7 +148,7 @@ mod tests {
     #[test]
     fn server_unlinked_triggers_unlink_for_child_links() {
         let mut app = App::new();
-        app.add_plugins(ServerLinkPlugin);
+        app.add_plugins((LinkPlugin, ServerLinkPlugin));
         app.init_resource::<UnlinkedChildren>();
         app.add_observer(record_unlink);
 

@@ -14,7 +14,7 @@ use campfire_net_replication::ComponentKind;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::Interpolated;
 use campfire_net_replication::InterpolatedSend;
-use campfire_net_replication::history_write;
+use campfire_net_replication::{receive_history_diff, replicated_message_tick};
 use tracing::debug;
 
 /// The components whose receive fns are set under the interpolation markers.
@@ -51,7 +51,7 @@ fn write_history<C: HistoryComponent>(
     message: &mut Bytes,
 ) -> Result<()> {
     let component: C = rule_fns.deserialize(ctx, message)?;
-    let Some(tick) = history_write::message_tick(entity, ctx.message_tick) else {
+    let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
         debug!(
             message_tick = ?ctx.message_tick,
             "dropping an interpolated value that no checkpoint maps"
@@ -74,7 +74,7 @@ fn write_history_diff<C: HistoryComponent + RepliconDiffable>(
     entity: &mut DeferredEntity<'_>,
     message: &mut Bytes,
 ) -> Result<()> {
-    history_write::receive_diff::<C>(ctx, entity, message, |_, _| {})
+    receive_history_diff::<C>(ctx, entity, message, |_, _| {})
 }
 
 /// Records a component removal in `ConfirmedHistory<C>`.
@@ -85,7 +85,7 @@ pub(crate) fn remove_history<C: HistoryComponent>(
     ctx: &mut RemoveCtx,
     entity: &mut DeferredEntity<'_>,
 ) {
-    let Some(tick) = history_write::message_tick(entity, ctx.message_tick) else {
+    let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
         debug!(
             message_tick = ?ctx.message_tick,
             "dropping an interpolated removal that no checkpoint maps"

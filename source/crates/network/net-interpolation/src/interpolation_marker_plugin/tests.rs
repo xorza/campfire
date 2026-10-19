@@ -1,5 +1,5 @@
-use crate::internals::interpolation_stack::InterpolationStack;
-use crate::internals::protocol::*;
+use crate::fixtures::interpolation_stack::InterpolationStack;
+use crate::fixtures::protocol::*;
 use bevy::prelude::*;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::{Connect, NetworkTarget};

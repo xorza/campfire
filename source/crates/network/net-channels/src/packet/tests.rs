@@ -53,12 +53,14 @@ fn fragment_size_uses_its_own_encoded_length_and_is_maximal() {
     assert_eq!(fragment_size_for_max_payload(MIN_FRAGMENT_PAYLOAD), Some(1));
 
     let fragment_size = fragment_size_for_max_payload(DEFAULT_MAX_PAYLOAD).unwrap();
-    let packet_size =
-        FIXED_FRAGMENT_PACKET_BYTES + varint::len(fragment_size as u64) + fragment_size;
+    let packet_size = FIXED_FRAGMENT_PACKET_BYTES
+        + VarInt::new(fragment_size as u64).encoded_len()
+        + fragment_size;
     assert!(packet_size <= DEFAULT_MAX_PAYLOAD);
 
     let next_fragment_size = fragment_size + 1;
-    let next_packet_size =
-        FIXED_FRAGMENT_PACKET_BYTES + varint::len(next_fragment_size as u64) + next_fragment_size;
+    let next_packet_size = FIXED_FRAGMENT_PACKET_BYTES
+        + VarInt::new(next_fragment_size as u64).encoded_len()
+        + next_fragment_size;
     assert!(next_packet_size > DEFAULT_MAX_PAYLOAD);
 }

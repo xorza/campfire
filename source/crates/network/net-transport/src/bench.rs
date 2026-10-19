@@ -4,9 +4,9 @@ use campfire_measure::Kind;
 use campfire_measure::Scale;
 use criterion::{BatchSize, BenchmarkId, Criterion};
 
-use campfire_net_channels::internals::compression_mode::CompressionMode;
+use campfire_net_channels::internals::CompressionMode;
 
-use crate::internals::compression_case::{CompressionCase, CompressionRun};
+use crate::fixtures::compression_case::{CompressionCase, CompressionRun};
 
 /// Runs each case of the crate whose id criterion's filter takes.
 pub fn run(criterion: &mut Criterion) {

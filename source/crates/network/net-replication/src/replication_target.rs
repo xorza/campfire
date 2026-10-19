@@ -120,154 +120,7 @@ impl TargetKind for () {
     type RemovedWith = Replicated;
 }
 
-/// A target that is removed hides the entity from every link, and takes its host marker and
-/// what leaves with it.
-///
-/// `Remove` does not fire on replace (only `Discard` does), so a retarget runs just the filter's
-/// re-evaluation, preserving manual visibility overrides. A despawn (`new_archetype` of `None`)
-/// is skipped: marking an entity hidden while it is being despawned makes Replicon suppress the
-/// actual despawn message.
-///
-/// The hide runs deferred (after Replicon's own `on_remove`, which releases the filter bit) so
-/// removing `Replicate` deterministically despawns the remote entity instead of leaving it
-/// retained.
-pub(crate) fn on_remove<T: TargetKind>(
-    trigger: On<'_, '_, Remove<ReplicationTarget<T>>>,
-    mut commands: Commands<'_, '_>,
-) where
-    ReplicationTarget<T>: VisibilityFilter,
-{
-    if trigger.trigger().new_archetype.is_none() {
-        return;
-    }
-    let entity = trigger.entity;
-    commands.queue(move |world: &mut World| {
-        if let Some(bit) = world
-            .resource::<FilterRegistry>()
-            .get_bit::<ReplicationTarget<T>>()
-        {
-            let mut senders = world.query::<&mut ClientVisibility>();
-            for mut visibility in senders.iter_mut(world) {
-                visibility.set(entity, bit, false);
-            }
-        }
-        if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
-            entity_mut.remove::<(T::HostMarker, T::RemovedWith)>();
-        }
-    });
-}
-
-/// A target that is inserted or replaced gives the entity its host marker exactly while a host
-/// client is in the target.
-pub(crate) fn sync_host_marker<T: TargetKind>(
-    trigger: On<'_, '_, Insert<ReplicationTarget<T>>>,
-    targets: Query<'_, '_, (&ReplicationTarget<T>, Option<&PredictionTarget>)>,
-    hosts: Query<'_, '_, (Entity, Option<&RemoteId>), With<HostClient>>,
-    mut commands: Commands<'_, '_>,
-) where
-    T::HostMarker: Component,
-{
-    let Ok((target, prediction)) = targets.get(trigger.entity) else {
-        return;
-    };
-    let targeted = hosts
-        .iter()
-        .any(|(host, remote)| target.targets_host(host, remote, prediction));
-    set_host_marker::<T>(&mut commands.entity(trigger.entity), targeted);
-}
-
-/// A prediction target, inserted or replaced, gives a host client the `Interpolated` marker
-/// exactly while the interpolation target names it and the prediction target does not.
-pub(crate) fn sync_host_interpolated_on_prediction(
-    trigger: On<'_, '_, Insert<PredictionTarget>>,
-    targets: Query<'_, '_, (&InterpolationTarget, &PredictionTarget)>,
-    hosts: Query<'_, '_, (Entity, Option<&RemoteId>), With<HostClient>>,
-    mut commands: Commands<'_, '_>,
-) {
-    let Ok((target, prediction)) = targets.get(trigger.entity) else {
-        return;
-    };
-    let targeted = hosts
-        .iter()
-        .any(|(host, remote)| target.targets_host(host, remote, Some(prediction)));
-    set_host_marker::<InterpolatedSend>(&mut commands.entity(trigger.entity), targeted);
-}
-
-/// A prediction target that goes leaves each host client the interpolation target names its
-/// `Interpolated` marker.
-pub(crate) fn sync_host_interpolated_on_prediction_removed(
-    trigger: On<'_, '_, Remove<PredictionTarget>>,
-    targets: Query<'_, '_, &InterpolationTarget>,
-    hosts: Query<'_, '_, (Entity, Option<&RemoteId>), With<HostClient>>,
-    mut commands: Commands<'_, '_>,
-) {
-    if trigger.trigger().new_archetype.is_none() {
-        return;
-    }
-    let Ok(target) = targets.get(trigger.entity) else {
-        return;
-    };
-    let targeted = hosts
-        .iter()
-        .any(|(host, remote)| target.targets_host(host, remote, None));
-    set_host_marker::<InterpolatedSend>(&mut commands.entity(trigger.entity), targeted);
-}
-
-/// A client that becomes a host client gets the host marker of each target it is in.
-pub(crate) fn sync_host_markers_on_host_added<T: TargetKind>(
-    trigger: On<'_, '_, Add<HostClient>>,
-    hosts: Query<'_, '_, Option<&RemoteId>, With<HostClient>>,
-    targets: Query<
-        '_,
-        '_,
-        (
-            Entity,
-            &ReplicationTarget<T>,
-            Has<T::HostMarker>,
-            Option<&PredictionTarget>,
-        ),
-    >,
-    mut commands: Commands<'_, '_>,
-) where
-    T::HostMarker: Component,
-{
-    let host = trigger.entity;
-    let Ok(remote) = hosts.get(host) else {
-        return;
-    };
-    for (entity, target, marked, prediction) in &targets {
-        if !marked && target.targets_host(host, remote, prediction) {
-            set_host_marker::<T>(&mut commands.entity(entity), true);
-        }
-    }
-}
-
-/// A client that stops being a host client takes the host markers that only it held.
-pub(crate) fn sync_host_markers_on_host_removed<T: TargetKind>(
-    trigger: On<'_, '_, Remove<HostClient>>,
-    hosts: Query<'_, '_, (Entity, Option<&RemoteId>), With<HostClient>>,
-    targets: Query<
-        '_,
-        '_,
-        (Entity, &ReplicationTarget<T>, Option<&PredictionTarget>),
-        With<T::HostMarker>,
-    >,
-    mut commands: Commands<'_, '_>,
-) where
-    T::HostMarker: Component,
-{
-    let leaving = trigger.entity;
-    for (entity, target, prediction) in &targets {
-        let targeted = hosts
-            .iter()
-            .any(|(host, remote)| host != leaving && target.targets_host(host, remote, prediction));
-        if !targeted {
-            set_host_marker::<T>(&mut commands.entity(entity), false);
-        }
-    }
-}
-
-fn set_host_marker<T: TargetKind>(entity: &mut EntityCommands<'_>, targeted: bool) {
+pub(crate) fn set_host_marker<T: TargetKind>(entity: &mut EntityCommands<'_>, targeted: bool) {
     if targeted {
         entity.try_insert(T::HostMarker::default());
     } else {
@@ -300,7 +153,7 @@ impl<T: TargetKind> ReplicationTarget<T> {
 
     /// Whether a host client `host` takes this target's marker: the target names it, and for a
     /// kind that yields to prediction, the entity's `prediction` target does not.
-    fn targets_host(
+    pub(crate) fn targets_host(
         &self,
         host: Entity,
         remote: Option<&RemoteId>,
@@ -316,6 +169,97 @@ impl<T: TargetKind> ReplicationTarget<T> {
     /// Also reused by the host marker sync, so that both agree.
     pub(crate) fn is_visible_for(&self, link: Entity, remote: Option<&RemoteId>) -> bool {
         self.mode.is_visible_for(link, remote)
+    }
+
+    /// A target that is removed hides the entity from every link, and takes its host marker and
+    /// what leaves with it.
+    ///
+    /// `Remove` does not fire on replace (only `Discard` does), so a retarget runs just the filter's
+    /// re-evaluation, preserving manual visibility overrides. A despawn (`new_archetype` of `None`)
+    /// is skipped: marking an entity hidden while it is being despawned makes Replicon suppress the
+    /// actual despawn message.
+    ///
+    /// The hide runs deferred (after Replicon's own `ReplicationTarget::on_remove`, which releases the filter bit) so
+    /// removing `Replicate` deterministically despawns the remote entity instead of leaving it
+    /// retained.
+    pub(crate) fn on_remove(trigger: On<'_, '_, Remove<Self>>, mut commands: Commands<'_, '_>)
+    where
+        Self: VisibilityFilter,
+    {
+        if trigger.trigger().new_archetype.is_none() {
+            return;
+        }
+        let entity = trigger.entity;
+        commands.queue(move |world: &mut World| {
+            if let Some(bit) = world.resource::<FilterRegistry>().get_bit::<Self>() {
+                let mut senders = world.query::<&mut ClientVisibility>();
+                for mut visibility in senders.iter_mut(world) {
+                    visibility.set(entity, bit, false);
+                }
+            }
+            if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
+                entity_mut.remove::<(T::HostMarker, T::RemovedWith)>();
+            }
+        });
+    }
+
+    /// A target that is inserted or replaced gives the entity its host marker exactly while a host
+    /// client is in the target.
+    pub(crate) fn sync_host_marker(
+        trigger: On<'_, '_, Insert<Self>>,
+        targets: Query<'_, '_, (&Self, Option<&PredictionTarget>)>,
+        hosts: Query<'_, '_, (Entity, Option<&RemoteId>), With<HostClient>>,
+        mut commands: Commands<'_, '_>,
+    ) where
+        T::HostMarker: Component,
+    {
+        let Ok((target, prediction)) = targets.get(trigger.entity) else {
+            return;
+        };
+        let targeted = hosts
+            .iter()
+            .any(|(host, remote)| target.targets_host(host, remote, prediction));
+        set_host_marker::<T>(&mut commands.entity(trigger.entity), targeted);
+    }
+
+    /// A client that becomes a host client gets the host marker of each target it is in.
+    pub(crate) fn sync_host_markers_on_host_added(
+        trigger: On<'_, '_, Add<HostClient>>,
+        hosts: Query<'_, '_, Option<&RemoteId>, With<HostClient>>,
+        targets: Query<'_, '_, (Entity, &Self, Has<T::HostMarker>, Option<&PredictionTarget>)>,
+        mut commands: Commands<'_, '_>,
+    ) where
+        T::HostMarker: Component,
+    {
+        let host = trigger.entity;
+        let Ok(remote) = hosts.get(host) else {
+            return;
+        };
+        for (entity, target, marked, prediction) in &targets {
+            if !marked && target.targets_host(host, remote, prediction) {
+                set_host_marker::<T>(&mut commands.entity(entity), true);
+            }
+        }
+    }
+
+    /// A client that stops being a host client takes the host markers that only it held.
+    pub(crate) fn sync_host_markers_on_host_removed(
+        trigger: On<'_, '_, Remove<HostClient>>,
+        hosts: Query<'_, '_, (Entity, Option<&RemoteId>), With<HostClient>>,
+        targets: Query<'_, '_, (Entity, &Self, Option<&PredictionTarget>), With<T::HostMarker>>,
+        mut commands: Commands<'_, '_>,
+    ) where
+        T::HostMarker: Component,
+    {
+        let leaving = trigger.entity;
+        for (entity, target, prediction) in &targets {
+            let targeted = hosts.iter().any(|(host, remote)| {
+                host != leaving && target.targets_host(host, remote, prediction)
+            });
+            if !targeted {
+                set_host_marker::<T>(&mut commands.entity(entity), false);
+            }
+        }
     }
 }
 
@@ -412,7 +356,7 @@ impl SentMarker for InterpolatedSend {
 mod tests {
     use super::*;
     use crate::replication_timer::ReplicationTimer;
-    use crate::server_send_plugin::update_replication_tick;
+    use crate::server_send_plugin::ServerSendPlugin;
     use bevy_app::prelude::*;
     use bevy_replicon::server::server_tick::ServerTick;
     use bevy_time::Time;
@@ -429,7 +373,8 @@ mod tests {
     fn add_replication_tick_test_systems(app: &mut App) {
         app.add_systems(
             RunFixedMainLoop,
-            update_replication_tick.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
+            ServerSendPlugin::update_replication_tick
+                .in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
         );
         app.add_systems(
             PostUpdate,

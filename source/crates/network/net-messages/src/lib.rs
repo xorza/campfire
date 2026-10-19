@@ -30,14 +30,13 @@ mod app_message_ext;
 #[cfg(feature = "internals")]
 pub mod bench;
 mod endpoint_side;
-pub mod entity_bytes;
 mod entity_check;
 mod event_registration;
 mod event_sender;
+#[cfg(feature = "internals")]
+mod fixtures;
 mod host_event_sender;
 mod host_message_sender;
-#[cfg(feature = "internals")]
-pub mod internals;
 mod message;
 mod message_error;
 mod message_kind;
@@ -60,6 +59,7 @@ mod send_entity_map;
 mod send_map_view;
 mod send_queue;
 mod serialize_fns;
+mod wire_entity;
 
 pub use crate::app_event_ext::AppEventExt;
 pub use crate::app_message_ext::AppMessageExt;
@@ -89,3 +89,17 @@ pub use crate::remote_event::RemoteEvent;
 pub use crate::send_entity_map::SendEntityMap;
 pub use crate::send_map_view::SendMapView;
 pub use crate::send_queue::Priority;
+pub use crate::wire_entity::WireEntity;
+
+/// What the tests and benches of the layers above share: this layer's stack, test protocol,
+/// fixtures and measurements.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::fixtures::host_received_messages::HostReceivedMessages;
+    pub use crate::fixtures::messages_stack::MessagesStack;
+    pub use crate::fixtures::protocol::{
+        ClientMessage, EntityMessage, MappedEntityEvent, MessagesProtocolPlugin, SeqMessage,
+        StringEvent, StringMessage,
+    };
+    pub use crate::fixtures::received_messages::ReceivedMessages;
+}

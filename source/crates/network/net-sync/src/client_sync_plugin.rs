@@ -1,9 +1,6 @@
 //! Syncs a client's clocks to its server.
 use crate::local_timeline_sync::LocalTimelineSync;
-use crate::local_timeline_sync_plugin::LocalTimelineSyncPlugin;
-use crate::remote_timeline;
 use crate::remote_timeline::RemoteTimeline;
-use crate::timeline_sync_plugin::TimelineSyncPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::IntoScheduleConfigs;
 use campfire_net_connection::Client;
@@ -11,32 +8,22 @@ use campfire_net_timeline::TimelineSystems;
 
 /// Keeps a client's estimate of its server's timeline, and syncs the local timeline to it.
 #[derive(Debug)]
-pub struct ClientSyncPlugin;
+pub(crate) struct ClientSyncPlugin;
 
 impl Plugin for ClientSyncPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TimelineSyncPlugin>() {
-            app.add_plugins(TimelineSyncPlugin);
-        }
-
         app.register_required_components::<Client, RemoteTimeline>();
-
-        // Network synchronization disciplines the application's single LocalTimeline even when
-        // it has several network links.
-        app.add_plugins(LocalTimelineSyncPlugin);
-
-        // Register these after the local-sync plugin initializes its default
-        // configuration. `ClientSyncPlugin` can be built before `TimelinePlugin` installs TickRate,
-        // while every runtime configuration update, connection, and sync event happens after it.
+        // `ClientSyncPlugins` builds the local timeline's sync, which this observer reconfigures,
+        // first.
         app.add_observer(LocalTimelineSync::recompute_input_delay_on_config_update);
 
         app.add_observer(RemoteTimeline::handle_connect);
-        app.add_observer(remote_timeline::update_remote_timeline);
+        app.add_observer(RemoteTimeline::update_from_packet);
         app.add_systems(
             PreUpdate,
-            remote_timeline::advance_remote_timeline.in_set(TimelineSystems::Advance),
+            RemoteTimeline::advance.in_set(TimelineSystems::Advance),
         );
-        app.add_systems(Last, remote_timeline::reset_received_packet_remote_timeline);
+        app.add_systems(Last, RemoteTimeline::reset_received_packet);
     }
 }
 
@@ -49,13 +36,16 @@ mod tests {
     use core::time::Duration;
 
     use campfire_net_connection::NetworkingState;
-    use campfire_net_timeline::TimelinePlugin;
+    use campfire_net_timeline::TimelinePlugins;
+
+    use crate::client_sync_plugins::ClientSyncPlugins;
+    use crate::sync_plugins::SyncPlugins;
 
     use bevy_ecs::prelude::*;
     use campfire_net_core::NetTick;
     use campfire_net_core::TickInstant;
     use campfire_net_link::Linked;
-    use campfire_net_timeline::rollback::Rollback;
+    use campfire_net_timeline::Rollback;
     use campfire_net_transport::TransportSystems;
 
     #[derive(Resource, Default)]
@@ -73,10 +63,11 @@ mod tests {
         app.init_resource::<NetworkingState>();
         app.add_plugins((
             TimePlugin,
-            TimelinePlugin {
+            TimelinePlugins {
                 tick_rate: TickRate::try_from(100).unwrap(),
             },
-            ClientSyncPlugin,
+            SyncPlugins,
+            ClientSyncPlugins,
         ));
         app.update();
 

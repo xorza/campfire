@@ -1,7 +1,7 @@
 use crate::component_codec::ComponentCodec;
 use crate::component_kind::ComponentKind;
 use crate::component_registry::ComponentRegistry;
-use crate::history_diff_receiver;
+use crate::history_diff_receiver::HistoryDiffReceiver;
 use crate::replication_kind::{DiffReplicated, FullReplicated, NotReplicated, Replication};
 use crate::replication_systems::ReplicationSystems;
 use bevy_app::{App, PostUpdate};
@@ -62,8 +62,7 @@ impl<'a, C> ComponentRegistration<'a, C> {
         self.app.replicate_diff::<C>();
         self.app.add_systems(
             PostUpdate,
-            history_diff_receiver::prune_history_diff_receiver::<C>
-                .after(ReplicationSystems::CutHistory),
+            HistoryDiffReceiver::<C>::prune.after(ReplicationSystems::CutHistory),
         );
         self.record(Replication::Diff)
     }

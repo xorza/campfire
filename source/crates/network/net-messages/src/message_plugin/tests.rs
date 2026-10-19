@@ -2,14 +2,14 @@ use super::*;
 use crate::app_event_ext::AppEventExt;
 use crate::app_message_ext::AppMessageExt;
 use crate::event_sender::EventSender;
+use crate::fixtures::host_received_messages::HostReceivedMessages;
+use crate::fixtures::messages_stack::MessagesStack;
+use crate::fixtures::protocol::EntityMessage;
+use crate::fixtures::protocol::StringEvent;
+use crate::fixtures::protocol::StringMessage;
+use crate::fixtures::received_messages::ReceivedMessages;
 use crate::host_event_sender::HostEventSender;
 use crate::host_message_sender::HostMessageSender;
-use crate::internals::host_received_messages::HostReceivedMessages;
-use crate::internals::messages_stack::MessagesStack;
-use crate::internals::protocol::EntityMessage;
-use crate::internals::protocol::StringEvent;
-use crate::internals::protocol::StringMessage;
-use crate::internals::received_messages::ReceivedMessages;
 use crate::message_kind::MessageKind;
 use crate::message_manager::LinkEndpoint;
 use crate::message_receiver::HostMessageReceiver;
@@ -23,20 +23,22 @@ use bevy_ecs::event::Event;
 use bevy_ecs::prelude::ResMut;
 use bevy_ecs::prelude::Resource;
 use bevy_replicon::shared::replication::Replicated;
-use campfire_net_channels::packet::fragment_size_for_max_payload;
+use campfire_net_channels::fragment_size_for_max_payload;
 use campfire_net_connection::NetworkingState;
 use campfire_net_core::Directions;
 use campfire_net_core::TickRate;
 use campfire_net_link::Link;
+use campfire_net_link::LinkPlugin;
 use campfire_net_link::Linked;
 use campfire_net_payload::SessionQueues;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
-use campfire_net_timeline::TimelinePlugin;
-use campfire_net_transport::internals::protocol::Channel1;
-use campfire_net_transport::internals::test_transport_plugin::TestChannel;
-use campfire_net_transport::internals::test_transport_plugin::TestTransportPlugin;
+use campfire_net_timeline::internals::TestTimelinePlugins;
+use campfire_net_transport::TransportPlugin;
+use campfire_net_transport::internals::Channel1;
+use campfire_net_transport::internals::TestChannel;
+use campfire_net_transport::internals::TestTransportPlugin;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -55,7 +57,7 @@ fn count_event(_: On<'_, '_, RemoteEvent<E>>, mut count: ResMut<'_, EventCount>)
 
 fn message_test_app(register_event: bool) -> App {
     let mut app = App::new();
-    app.add_plugins(TimelinePlugin {
+    app.add_plugins(TestTimelinePlugins {
         tick_rate: TickRate::try_from(100).unwrap(),
     });
     app.add_plugins(TestTransportPlugin);
@@ -94,7 +96,7 @@ struct Unlinks(Vec<UnlinkReason>);
 /// client's link, or with no `Client` marker a server's.
 fn to_clients_link(client: bool) -> (App, Entity) {
     let mut app = App::new();
-    app.add_plugins(TimelinePlugin {
+    app.add_plugins(TestTimelinePlugins {
         tick_rate: TickRate::try_from(100).unwrap(),
     });
     app.add_plugins(TestTransportPlugin);
@@ -169,7 +171,7 @@ fn a_link_does_not_send_against_its_direction() {
 #[test]
 fn a_sent_message_is_received_through_the_link() {
     let mut app = App::new();
-    app.add_plugins(TimelinePlugin {
+    app.add_plugins(TestTimelinePlugins {
         tick_rate: TickRate::try_from(100).unwrap(),
     });
     app.add_plugins(TestTransportPlugin);
@@ -236,11 +238,11 @@ fn a_sent_message_is_received_through_the_link() {
 #[test]
 fn an_unread_message_is_dropped_at_the_frame_end() {
     let mut app = App::new();
-    app.add_plugins(TimelinePlugin {
+    app.add_plugins(TestTimelinePlugins {
         tick_rate: TickRate::try_from(100).unwrap(),
     });
     app.register_message::<M>();
-    app.add_plugins(MessagePlugin);
+    app.add_plugins((LinkPlugin, TransportPlugin, MessagePlugin));
     app.finish();
 
     let entity_mut = app.world_mut().spawn((

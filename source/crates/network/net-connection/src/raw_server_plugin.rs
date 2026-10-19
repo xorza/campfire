@@ -1,11 +1,9 @@
-use crate::client_connection_plugin::ClientConnectionPlugin;
 use crate::client_of::ClientOf;
 use crate::connection_state::Connected;
 use crate::connection_state::Connecting;
 use crate::local_id::LocalId;
 use crate::raw_server::RawServer;
 use crate::remote_id::RemoteId;
-use crate::server_connection_plugin::ServerConnectionPlugin;
 use crate::server_state::Started;
 use crate::server_state::Starting;
 use crate::server_state::Stopped;
@@ -109,12 +107,6 @@ impl RawServerPlugin {
 
 impl Plugin for RawServerPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<ClientConnectionPlugin>() {
-            app.add_plugins(ClientConnectionPlugin);
-        }
-        if !app.is_plugin_added::<ServerConnectionPlugin>() {
-            app.add_plugins(ServerConnectionPlugin);
-        }
         app.add_observer(Self::on_server_linking);
         app.add_observer(Self::on_server_linked);
         app.add_observer(Self::on_link_of_linking);
@@ -126,8 +118,10 @@ impl Plugin for RawServerPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client_connection_plugin::ClientConnectionPlugin;
     use crate::connection_state::Disconnected;
     use crate::connection_state::DisconnectedReason;
+    use crate::server_connection_plugin::ServerConnectionPlugin;
     use crate::server_state::StopReason;
     use campfire_net_payload::AppCode;
 
@@ -136,7 +130,13 @@ mod tests {
     #[test]
     fn stop_reports_its_code_and_ends_each_link() {
         let mut app = App::new();
-        app.add_plugins((campfire_net_link::ServerLinkPlugin, RawServerPlugin));
+        app.add_plugins((
+            campfire_net_link::LinkPlugin,
+            campfire_net_link::ServerLinkPlugin,
+            ClientConnectionPlugin,
+            ServerConnectionPlugin,
+            RawServerPlugin,
+        ));
         let server = app.world_mut().spawn((RawServer, Linked)).id();
         let client = app
             .world_mut()
@@ -177,7 +177,11 @@ mod tests {
     #[test]
     fn raw_server_link_preserves_preconfigured_remote_id() {
         let mut app = App::new();
-        app.add_plugins(RawServerPlugin);
+        app.add_plugins((
+            ClientConnectionPlugin,
+            ServerConnectionPlugin,
+            RawServerPlugin,
+        ));
         let server = app.world_mut().spawn(RawServer).id();
         let addr = "127.0.0.1:5000".parse().unwrap();
         let named = RemoteId(PeerId::Entity(7));

@@ -33,8 +33,6 @@ struct Scratch {
 /// What runs the endpoint's pass.
 #[derive(Debug)]
 enum Driver {
-    /// Before the first frame, which tells whether the clock is the OS's.
-    Pending,
     /// The frame, at each of its two steps, on a driven clock.
     Inline,
     /// A thread of its own, on the OS clock, which the endpoint's drop joins.
@@ -48,7 +46,8 @@ enum Driver {
 #[component(on_discard = Self::on_discard)]
 pub struct Endpoint<Io: DatagramIo> {
     runtime: Arc<EndpointRuntime<Io, Entity>>,
-    driver: Driver,
+    /// None before the first frame, which tells whether the clock is the OS's.
+    driver: Option<Driver>,
     scratch: Scratch,
 }
 
@@ -56,7 +55,7 @@ impl<Io: DatagramIo> From<EndpointParts<Io>> for Endpoint<Io> {
     fn from(parts: EndpointParts<Io>) -> Self {
         Self {
             runtime: Arc::new(EndpointRuntime::new(parts)),
-            driver: Driver::Pending,
+            driver: None,
             scratch: Scratch::default(),
         }
     }
@@ -198,7 +197,7 @@ impl<Io: DatagramIo> Endpoint<Io> {
             let endpoint = &mut *endpoint;
             {
                 let mut core = endpoint.runtime.lock();
-                if matches!(endpoint.driver, Driver::Inline) {
+                if matches!(endpoint.driver, Some(Driver::Inline)) {
                     core.set_time(EndpointTime::Driven(clock.now()));
                 }
                 let Scratch {
@@ -214,25 +213,23 @@ impl<Io: DatagramIo> Endpoint<Io> {
             }
             endpoint.runtime.send(&mut endpoint.scratch.outbound);
             match endpoint.driver {
-                Driver::Inline => endpoint.runtime.pass(&mut endpoint.scratch.pass),
-                Driver::Thread(_) | Driver::Pending => endpoint.runtime.io().wake(),
+                Some(Driver::Inline) => endpoint.runtime.pass(&mut endpoint.scratch.pass),
+                Some(Driver::Thread(_)) | None => endpoint.runtime.io().wake(),
             }
         }
     }
 
     /// Resolves the driver at the first frame, and runs the frame's pass on a driven clock.
     fn drive(&mut self, clock: &Clock) {
-        if matches!(self.driver, Driver::Pending) {
-            self.driver = match clock.os_origin() {
-                Some(origin) => {
-                    self.runtime.lock().set_time(EndpointTime::Os(origin));
-                    let runtime = Arc::clone(&self.runtime);
-                    Driver::Thread(Worker::start("campfire-session", move || runtime.run()))
-                }
-                None => Driver::Inline,
-            };
-        }
-        match &mut self.driver {
+        let driver = self.driver.get_or_insert_with(|| match clock.os_origin() {
+            Some(origin) => {
+                self.runtime.lock().set_time(EndpointTime::Os(origin));
+                let runtime = Arc::clone(&self.runtime);
+                Driver::Thread(Worker::start("campfire-session", move || runtime.run()))
+            }
+            None => Driver::Inline,
+        });
+        match driver {
             Driver::Inline => {
                 self.runtime
                     .lock()
@@ -240,7 +237,6 @@ impl<Io: DatagramIo> Endpoint<Io> {
                 self.runtime.pass(&mut self.scratch.pass);
             }
             Driver::Thread(worker) => worker.check(),
-            Driver::Pending => unreachable!("the driver resolves above"),
         }
     }
 
@@ -273,7 +269,7 @@ impl<Io: DatagramIo> Drop for Endpoint<Io> {
 pub(crate) mod internals {
     use bevy_ecs::entity::Entity;
     use campfire_net_packets::DatagramIo;
-    use campfire_net_packets::internals::session_counts::SessionCounts;
+    use campfire_net_packets::internals::SessionCounts;
 
     use crate::endpoint::Endpoint;
 

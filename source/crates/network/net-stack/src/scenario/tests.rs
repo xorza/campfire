@@ -15,14 +15,14 @@ use core::time::Duration;
 
 use campfire_store::internals::Parallel;
 
-use crate::internals::full_stack::FullStack;
+use crate::fixtures::full_stack::FullStack;
 use crate::scenario::Scenario;
 use crate::scenario::faults::{Faults, Latency, Loss, Outage};
 use campfire_log::internals::LogCheck;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
-use campfire_net_sync::internals::sync_stack::input_timeline_is_synced;
+use campfire_net_sync::internals::input_timeline_is_synced;
 
 /// Runs the swarm scenario of each seed and fails with every broken seed, its faults, what it
 /// broke, and the command that replays it.

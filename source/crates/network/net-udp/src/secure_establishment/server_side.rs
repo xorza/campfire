@@ -11,7 +11,7 @@ use campfire_net_core::Instant;
 use campfire_net_core::Random;
 use campfire_net_packets::{
     ConnectionId, Datagram, Establish, Established, Establishing, MIN_RESET_LEN, Outbound,
-    Protection,
+    Protection, ServerEstablish,
 };
 use rustls::quic::{Connection, KeyChange, Keys, ServerConnection, Version};
 
@@ -253,10 +253,6 @@ impl ServerSide {
 }
 
 impl Establish for ServerSide {
-    fn set_accepting(&mut self, accepting: bool) {
-        self.accepting = accepting;
-    }
-
     fn challenge(&mut self) -> [u8; 8] {
         self.random.array()
     }
@@ -370,30 +366,6 @@ impl Establish for ServerSide {
         }
     }
 
-    /// Answers a session datagram whose connection ID no session holds with a stateless reset of
-    /// that ID's token, shorter than the datagram, which a datagram of `MIN_RESET_LEN` bytes or
-    /// less gets none of.
-    fn unknown(&mut self, _now: Instant, datagram: &Datagram, out: &mut Establishing) {
-        let Datagram { from, payload } = datagram;
-        let datagram: &[u8] = payload;
-        let Some(id) = datagram
-            .first_chunk()
-            .and_then(|bytes| ConnectionId::from_bytes(*bytes))
-        else {
-            return;
-        };
-        if datagram.len() <= MIN_RESET_LEN {
-            return;
-        }
-        let len = (datagram.len() - 1).min(MAX_RESET_LEN);
-        let token = self.reset_key.token(id);
-        let mut reset = vec![0; len];
-        self.random.fill(&mut reset[..len - token.len()]);
-        reset[0] &= 0x7f;
-        reset[len - token.len()..].copy_from_slice(&token);
-        Self::send(out, *from, Bytes::from(reset));
-    }
-
     /// Sends each pending flight again at its timer, and drops a handshake that waited longer
     /// than its patience.
     fn poll(&mut self, now: Instant, out: &mut Establishing) {
@@ -424,13 +396,39 @@ impl Establish for ServerSide {
         self.release(route);
     }
 
-    fn connect(&mut self, _: Instant, _: SocketAddr, _: &mut Establishing) {
-        unreachable!("a server connects to no one")
-    }
-
     /// A server routes its clients' datagrams by the connection ID it gave each.
     fn routes_by_prefix(&self) -> bool {
         true
+    }
+}
+
+impl ServerEstablish for ServerSide {
+    fn set_accepting(&mut self, accepting: bool) {
+        self.accepting = accepting;
+    }
+
+    /// Answers a session datagram whose connection ID no session holds with a stateless reset of
+    /// that ID's token, shorter than the datagram, which a datagram of `MIN_RESET_LEN` bytes or
+    /// less gets none of.
+    fn unknown(&mut self, _now: Instant, datagram: &Datagram, out: &mut Establishing) {
+        let Datagram { from, payload } = datagram;
+        let datagram: &[u8] = payload;
+        let Some(id) = datagram
+            .first_chunk()
+            .and_then(|bytes| ConnectionId::from_bytes(*bytes))
+        else {
+            return;
+        };
+        if datagram.len() <= MIN_RESET_LEN {
+            return;
+        }
+        let len = (datagram.len() - 1).min(MAX_RESET_LEN);
+        let token = self.reset_key.token(id);
+        let mut reset = vec![0; len];
+        self.random.fill(&mut reset[..len - token.len()]);
+        reset[0] &= 0x7f;
+        reset[len - token.len()..].copy_from_slice(&token);
+        Self::send(out, *from, Bytes::from(reset));
     }
 }
 

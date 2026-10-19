@@ -15,10 +15,10 @@ mod endpoint_core;
 mod endpoint_parts;
 mod endpoint_runtime;
 mod establish;
+#[cfg(feature = "internals")]
+mod fixtures;
 mod header;
 mod header_error;
-#[cfg(feature = "internals")]
-pub mod internals;
 mod io_failed;
 mod new_reno;
 mod open_error;
@@ -47,10 +47,20 @@ pub use crate::endpoint_config::EndpointConfig;
 pub use crate::endpoint_core::{EndpointCore, EndpointTime, News, PeerKey};
 pub use crate::endpoint_parts::EndpointParts;
 pub use crate::endpoint_runtime::{EndpointRuntime, PassScratch};
-pub use crate::establish::{Establish, Established, Establishing};
+pub use crate::establish::{
+    ClientEstablish, Establish, Established, Establishing, ServerEstablish,
+};
 pub use crate::io_failed::IoFailed;
 pub use crate::open_error::OpenError;
 pub use crate::protection::Protection;
 pub use crate::seal::{Seal, TAG_LEN};
 pub use crate::session_config::SessionConfig;
 pub use crate::stateless_reset::{MIN_LEN as MIN_RESET_LEN, TOKEN_LEN as RESET_TOKEN_LEN};
+
+/// What the tests and benches of the layers above share: this layer's stack, test protocol,
+/// fixtures and measurements.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::fixtures::plain_host::{CLIENT, HostLink, PlainHost};
+    pub use crate::packet_session::internals::SessionCounts;
+}

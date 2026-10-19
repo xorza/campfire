@@ -11,10 +11,11 @@
 )]
 
 mod client_sync_plugin;
+mod client_sync_plugins;
+#[cfg(feature = "internals")]
+mod fixtures;
 mod input_delay_config;
 mod input_timeline_config;
-#[cfg(feature = "internals")]
-pub mod internals;
 mod link_estimate;
 mod link_estimator;
 mod link_estimator_config;
@@ -23,17 +24,17 @@ mod local_timeline_sync;
 mod local_timeline_sync_plugin;
 mod remote_timeline;
 mod rtt_estimator_ewma;
-mod server_sync_plugin;
 mod sync_adjustment;
 mod sync_config;
 mod sync_hysteresis;
+mod sync_plugins;
 mod sync_sample;
 mod sync_systems;
 mod synced_local_timeline;
 mod timeline_sync;
 mod timeline_sync_plugin;
 
-pub use crate::client_sync_plugin::ClientSyncPlugin;
+pub use crate::client_sync_plugins::ClientSyncPlugins;
 pub use crate::input_delay_config::InputDelayConfig;
 pub use crate::input_timeline_config::InputTimelineConfig;
 pub use crate::link_estimate::LinkEstimate;
@@ -43,11 +44,18 @@ pub use crate::local_timeline_sync::LocalTimelineSync;
 pub use crate::remote_timeline::RemoteEstimate;
 pub use crate::remote_timeline::RemoteTimeline;
 pub use crate::remote_timeline::RemoteTimelineConfig;
-pub use crate::server_sync_plugin::ServerSyncPlugin;
 pub use crate::sync_adjustment::SyncAdjustment;
 pub use crate::sync_config::SyncConfig;
 pub use crate::sync_hysteresis::SyncHysteresis;
+pub use crate::sync_plugins::SyncPlugins;
 pub use crate::sync_sample::SyncSample;
 pub use crate::sync_systems::SyncSystems;
 pub use crate::synced_local_timeline::SyncedLocalTimeline;
 pub use crate::timeline_sync::TimelineSync;
+
+/// What the tests and benches of the layers above share: this layer's stack, test protocol,
+/// fixtures and measurements.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::fixtures::sync_stack::{SyncStack, input_timeline_is_synced};
+}

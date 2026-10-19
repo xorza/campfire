@@ -1,23 +1,30 @@
 use bevy_app::App;
 use bevy_ecs::world::{EntityWorldMut, World};
-use campfire_net_connection::{ConnectionPlugin, HostPlugin, RawClientPlugin, RawServerPlugin};
+use campfire_net_connection::{ConnectionPlugins, RawClientPlugin, ServerConnectionPlugins};
 use campfire_net_core::TickRate;
-use campfire_net_link::ServerLinkPlugin;
-use campfire_net_timeline::TimelinePlugin;
+use campfire_net_endpoint::EndpointPlugin;
+use campfire_net_link::{LinkPlugin, ServerLinkPlugin};
+use campfire_net_packets::EmulatedWires;
+use campfire_net_timeline::{ClockPlugin, TimelinePlugins};
 
 use crate::stack::Stack;
 
 /// The connection layer alone: raw clients and a raw server, connected once linked.
 ///
-/// Every stack adds a plugin only if it is not added yet, so a stack built on two others that
-/// share a layer adds that layer once.
+/// Every stack adds a layer only if it is not added yet, so a server app that holds a host client
+/// adds the layers both sides share once.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ConnectionStack;
 
 impl ConnectionStack {
     fn add_shared(app: &mut App, tick_rate: TickRate) {
-        if !app.is_plugin_added::<TimelinePlugin>() {
-            app.add_plugins((TimelinePlugin { tick_rate }, ConnectionPlugin));
+        if !app.is_plugin_added::<ClockPlugin>() {
+            app.add_plugins((
+                TimelinePlugins { tick_rate },
+                LinkPlugin,
+                EndpointPlugin::<EmulatedWires>::default(),
+                ConnectionPlugins,
+            ));
         }
     }
 }
@@ -32,8 +39,8 @@ impl Stack for ConnectionStack {
 
     fn add_server(&self, app: &mut App, tick_rate: TickRate) {
         Self::add_shared(app, tick_rate);
-        if !app.is_plugin_added::<RawServerPlugin>() {
-            app.add_plugins((ServerLinkPlugin, HostPlugin, RawServerPlugin));
+        if !app.is_plugin_added::<ServerLinkPlugin>() {
+            app.add_plugins((ServerLinkPlugin, ServerConnectionPlugins));
         }
     }
 

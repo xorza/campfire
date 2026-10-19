@@ -51,23 +51,23 @@ impl LocalTimeline {
     pub fn shift(&mut self, ticks: i32) {
         self.tick = self.tick + ticks;
     }
-}
 
-/// Increment the local tick at each FixedUpdate
-pub(crate) fn increment_local_tick(mut timeline: ResMut<'_, LocalTimeline>) {
-    timeline.tick += 1;
-    timeline.simulating = true;
-    trace!(
-        target: "campfire_net_debug::timeline",
-        kind = "local_tick",
-        sample_point = "FixedFirst",
-        schedule = "FixedFirst",
-        local_tick = timeline.tick.0,
-        "local timeline tick advanced"
-    );
-}
+    /// Increment the local tick at each FixedUpdate
+    pub(crate) fn increment_tick(mut timeline: ResMut<'_, Self>) {
+        timeline.tick += 1;
+        timeline.simulating = true;
+        trace!(
+            target: "campfire_net_debug::timeline",
+            kind = "local_tick",
+            sample_point = "FixedFirst",
+            schedule = "FixedFirst",
+            local_tick = timeline.tick.0,
+            "local timeline tick advanced"
+        );
+    }
 
-/// Ends the simulation of the local tick, after the `FixedLast` that closes it.
-pub(crate) fn end_local_tick(mut timeline: ResMut<'_, LocalTimeline>) {
-    timeline.simulating = false;
+    /// Ends the simulation of the local tick, after the `FixedLast` that closes it.
+    pub(crate) fn end_tick(mut timeline: ResMut<'_, Self>) {
+        timeline.simulating = false;
+    }
 }

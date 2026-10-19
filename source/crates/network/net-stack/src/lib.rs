@@ -1,6 +1,7 @@
 //! Plugin groups that install the stack's layer crates in the order they need.
 //!
-//! [`client_plugins::ClientPlugins`] and [`server_plugins::ServerPlugins`] are the entry points.
+//! [`ClientPlugins`], [`ServerPlugins`] and [`HostPlugins`], one for each role of an app, are the
+//! entry points.
 //! Every type comes from its layer crate, as `campfire_net_link::Link` or
 //! `campfire_net_replication::Replicate`; this crate re-exports none of them.
 
@@ -11,12 +12,21 @@
 
 mod client_plugins;
 #[cfg(feature = "internals")]
-pub mod internals;
+mod fixtures;
+mod host_plugins;
+mod layers;
 mod protocol_check_plugin;
 #[cfg(test)]
 mod scenario;
 mod server_plugins;
-mod shared_plugin;
 
 pub use crate::client_plugins::ClientPlugins;
+pub use crate::host_plugins::HostPlugins;
 pub use crate::server_plugins::ServerPlugins;
+
+/// What the tests and benches of the layers above share: this layer's stack, test protocol,
+/// fixtures and measurements.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::fixtures::full_stack::FullStack;
+}

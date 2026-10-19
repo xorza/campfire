@@ -312,6 +312,15 @@ impl FragmentConstructor {
                     return Ok(Stored::Pending);
                 }
                 buffer.write(fragment_index, is_last_fragment, &bytes);
+                self.num_received_fragments += 1;
+                if self.num_received_fragments == self.num_fragments {
+                    trace!("Received all fragments!");
+                    let payload = core::mem::take(&mut buffer.bytes);
+                    return Ok(Stored::Complete {
+                        tick: self.tick,
+                        bytes: payload.into(),
+                    });
+                }
             }
             FragmentLayout::Unknown { final_fragment } => {
                 if final_fragment.is_some() {
@@ -337,22 +346,11 @@ impl FragmentConstructor {
                 }
                 self.charged = bytes.len();
                 *final_fragment = Some(bytes);
+                // The final fragment alone of several completes nothing: the layout is known
+                // once a non-final one arrives.
+                self.num_received_fragments += 1;
             }
         }
-        self.num_received_fragments += 1;
-
-        if self.num_received_fragments == self.num_fragments {
-            trace!("Received all fragments!");
-            let FragmentLayout::Known(buffer) = &mut self.layout else {
-                unreachable!("a message of several fragments has a non-final fragment");
-            };
-            let payload = core::mem::take(&mut buffer.bytes);
-            return Ok(Stored::Complete {
-                tick: self.tick,
-                bytes: payload.into(),
-            });
-        }
-
         Ok(Stored::Pending)
     }
 

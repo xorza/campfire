@@ -6,11 +6,11 @@ use campfire_measure::Kind;
 use campfire_measure::Scale;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
-use campfire_net_transport::internals::protocol::Channel1;
+use campfire_net_transport::internals::Channel1;
 use criterion::{BatchSize, BenchmarkId, Criterion};
 
-use crate::internals::messages_stack::MessagesStack;
-use crate::internals::protocol::StringMessage;
+use crate::fixtures::messages_stack::MessagesStack;
+use crate::fixtures::protocol::StringMessage;
 use crate::message_sender::MessageSender;
 
 const MESSAGES: [usize; 5] = [0, 10, 100, 1000, 10000];

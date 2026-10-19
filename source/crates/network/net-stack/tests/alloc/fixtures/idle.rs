@@ -1,6 +1,6 @@
 use crate::fixtures::AUDIT;
 use crate::fixtures::LINK;
-use campfire_net_stack::internals::full_stack::FullStack;
+use campfire_net_stack::internals::FullStack;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;

@@ -1,11 +1,16 @@
+use crate::checkpoint::decode_authoritative_tick;
 use crate::completed_checkpoint::CompletedCheckpoint;
+use bevy_ecs::prelude::On;
+use bevy_ecs::prelude::ResMut;
 use bevy_ecs::prelude::Resource;
+use bevy_replicon::client::UserdataReceived;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
 use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
 use bevy_replicon::prelude::RepliconTick;
 use campfire_net_core::NetTick;
 use core::sync::atomic::{AtomicU64, Ordering};
 use std::collections::VecDeque;
+use tracing::error;
 
 /// How many checkpoints the map keeps: the window of recent rollback and prediction.
 pub(crate) const MAX_STORED_CHECKPOINTS: usize = 256;
@@ -245,6 +250,25 @@ impl ReplicationCheckpointMap {
 
     pub(crate) const fn count_invalid_userdata(&mut self) {
         self.faults.invalid_userdata += 1;
+    }
+
+    /// Record the authoritative network tick carried by Replicon userdata.
+    pub(crate) fn record_authoritative_tick(
+        received: On<'_, '_, UserdataReceived>,
+        mut checkpoints: ResMut<'_, Self>,
+    ) {
+        match decode_authoritative_tick(received.bytes.as_ref()) {
+            Ok(authoritative_tick) => checkpoints.record(received.message_tick, authoritative_tick),
+            Err(error_kind) => {
+                error!(
+                    ?error_kind,
+                    replicon_tick = ?received.message_tick,
+                    userdata_len = received.bytes.len(),
+                    "dropping invalid replicon checkpoint userdata"
+                );
+                checkpoints.count_invalid_userdata();
+            }
+        }
     }
 }
 

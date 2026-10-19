@@ -1,5 +1,6 @@
 use crate::correction_ease::CorrectionEase;
 use campfire_net_interpolation::FrameInterpolationPlugin;
+use campfire_net_interpolation::InterpolationRegistryPlugin;
 
 use bevy_curve::{Curve, Ease, FunctionCurve, Interval};
 use bevy_ecs::system::RunSystemOnce;
@@ -15,10 +16,11 @@ use campfire_net_replication::{AppComponentExt, Predicted};
 
 use super::*;
 use crate::prediction_marker_plugin::PredictionMarkerPlugin;
-use crate::prediction_plugin::PredictionPlugin;
+use crate::prediction_plugins::PredictionPlugins;
 use crate::prediction_registration::prediction_frame_samples;
 use crate::prediction_registration_ext::PredictionRegistrationExt;
 use crate::prediction_registry::PredictionRegistry;
+use crate::prediction_registry_plugin::PredictionRegistryPlugin;
 use bevy_ecs::world::FilteredEntityRef;
 use bevy_time::Fixed;
 use campfire_net_core::NetTick;
@@ -29,12 +31,12 @@ use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::SetTickRate;
 use core::time::Duration;
 
-use crate::internals::prediction_stack::PredictionStack;
-use crate::internals::protocol::{
+use crate::fixtures::prediction_stack::PredictionStack;
+use crate::fixtures::protocol::{
     CompCorrectionBundleA, CompCorrectionBundleB, CompMixedCorrectionBundleA,
     CompMixedCorrectionBundleB, CompPredictionOnly,
 };
-use crate::internals::steps::trigger_state_rollback;
+use crate::fixtures::steps::trigger_state_rollback;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
 use core::fmt::Debug;
@@ -105,7 +107,11 @@ fn prediction_adds_the_frame_interpolation_correction_measures_against() {
             CorrectionA(start.0 + (end.0 - start.0) * t)
         }),
     ));
-    app.add_plugins(PredictionPlugin);
+    app.add_plugins((
+        InterpolationRegistryPlugin,
+        PredictionRegistryPlugin,
+        PredictionPlugins,
+    ));
 
     assert!(app.is_plugin_added::<FrameInterpolationPlugin>());
     app.finish();
@@ -172,7 +178,7 @@ fn correct_with_decays_the_error_by_its_function() {
         .advance_by(Duration::from_millis(16));
 
     app.world_mut()
-        .run_system_once(update_visual_correction::<CorrectionA, CorrectionA>)
+        .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::update_visual_correction)
         .unwrap();
 
     assert_eq!(
@@ -231,7 +237,7 @@ fn entity_correction_policy_overrides_global() {
         .advance_by(Duration::from_millis(125));
 
     app.world_mut()
-        .run_system_once(update_visual_correction::<CorrectionA, CorrectionA>)
+        .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::update_visual_correction)
         .unwrap();
 
     let fast = app
@@ -270,7 +276,7 @@ fn correction_measures_a_saved_value_in_an_archetype_created_later() {
 
     // First pass: nothing has a saved value yet.
     app.world_mut()
-        .run_system_once(create_visual_correction::<CorrectionA, CorrectionA>)
+        .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::create_visual_correction)
         .unwrap();
     app.world_mut().flush();
 
@@ -282,7 +288,7 @@ fn correction_measures_a_saved_value_in_an_archetype_created_later() {
     app.world_mut().flush();
 
     app.world_mut()
-        .run_system_once(create_visual_correction::<CorrectionA, CorrectionA>)
+        .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::create_visual_correction)
         .unwrap();
     app.world_mut().flush();
 
@@ -344,7 +350,7 @@ fn correction_policy_can_run_a_bounded_curve() {
     // frame before advancing the clock.
     let mut elapsed = 0.0f32;
     app.world_mut()
-        .run_system_once(update_visual_correction::<CorrectionA, CorrectionA>)
+        .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::update_visual_correction)
         .unwrap();
     assert_eq!(
         app.world()
@@ -359,7 +365,7 @@ fn correction_policy_can_run_a_bounded_curve() {
             .resource_mut::<Time<Virtual>>()
             .advance_by(Duration::from_secs_f32(dt));
         app.world_mut()
-            .run_system_once(update_visual_correction::<CorrectionA, CorrectionA>)
+            .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::update_visual_correction)
             .unwrap();
         let error = app
             .world()
@@ -378,7 +384,7 @@ fn correction_policy_can_run_a_bounded_curve() {
         .resource_mut::<Time<Virtual>>()
         .advance_by(Duration::from_millis(400));
     app.world_mut()
-        .run_system_once(update_visual_correction::<CorrectionA, CorrectionA>)
+        .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::update_visual_correction)
         .unwrap();
     assert_eq!(
         app.world()
@@ -393,7 +399,7 @@ fn correction_policy_can_run_a_bounded_curve() {
         .resource_mut::<Time<Virtual>>()
         .advance_by(Duration::from_millis(16));
     app.world_mut()
-        .run_system_once(update_visual_correction::<CorrectionA, CorrectionA>)
+        .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::update_visual_correction)
         .unwrap();
     assert!(
         app.world()
@@ -430,7 +436,7 @@ fn visual_correction_marks_component_changed() {
         .changed;
 
     app.world_mut()
-        .run_system_once(update_visual_correction::<CorrectionA, CorrectionA>)
+        .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::update_visual_correction)
         .unwrap();
 
     assert_ne!(
@@ -464,7 +470,7 @@ fn post_rollback_correction_skips_capture_without_live_value() {
         .spawn((PreviousVisual(Some(CorrectionA(12.0))),));
 
     app.world_mut()
-        .run_system_once(create_visual_correction::<CorrectionA, CorrectionA>)
+        .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::create_visual_correction)
         .unwrap();
     let mut query = app.world_mut().query::<&VisualCorrection<CorrectionA>>();
     assert!(query.iter(app.world()).next().is_none());
@@ -499,7 +505,7 @@ fn creation_discards_a_saved_value_nobody_is_waiting_for() {
     app.world_mut().flush();
 
     app.world_mut()
-        .run_system_once(create_visual_correction::<CorrectionA, CorrectionA>)
+        .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::create_visual_correction)
         .unwrap();
     app.world_mut().flush();
 
@@ -858,7 +864,7 @@ fn an_exponential_correction_ends_at_its_window() {
             "frame {frame}"
         );
         app.world_mut()
-            .run_system_once(update_visual_correction::<CorrectionA, CorrectionA>)
+            .run_system_once(CorrectionFn::<CorrectionA, CorrectionA>::update_visual_correction)
             .unwrap();
         app.world_mut().flush();
         app.world_mut()
@@ -883,12 +889,12 @@ fn the_correction_systems_have_one_order() {
     let schedules = app.world().resource::<Schedules>();
     let schedule = schedules.get(PostUpdate).unwrap();
     let names = [
-        "create_visual_correction<",
-        "update_visual_correction<",
-        "clear_expired_switch_state<",
-        "save_switch_visual<",
-        "expire_switch_blends",
-        "save_previous_visuals",
+        "CorrectionFn::create_visual_correction<",
+        "CorrectionFn::update_visual_correction<",
+        "CorrectionFn::clear_expired_switch_state<",
+        "CorrectionFn::save_switch_visual<",
+        "TimelineSwitchPlugin::expire_switch_blends",
+        "TimelineSwitchPlugin::save_previous_visuals",
     ];
     let name = |key| {
         schedule

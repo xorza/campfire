@@ -4,12 +4,12 @@ use bevy::prelude::{App, Query, ResMut, Resource, Update};
 use campfire_net_channels::Channel;
 use campfire_net_messages::MessageReceiver;
 use campfire_net_messages::MessageSender;
-use campfire_net_messages::internals::protocol::StringMessage;
-use campfire_net_stack::internals::full_stack::FullStack;
+use campfire_net_messages::internals::StringMessage;
+use campfire_net_stack::internals::FullStack;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
-use campfire_net_transport::internals::protocol::{Channel1, ChannelOrderedReliable};
+use campfire_net_transport::internals::{Channel1, ChannelOrderedReliable};
 
 #[derive(Debug, Default, Resource)]
 struct Received(usize);

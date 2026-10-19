@@ -155,14 +155,10 @@ impl Gateway {
         }
     }
 
-    /// Deletes `mapping` of `internal_port`, which PCP or NAT-PMP granted: one request, its answer
-    /// awaited `wait`.
-    pub(crate) fn delete(
-        &self,
-        internal_port: u16,
-        mapping: &Mapping,
-        wait: Duration,
-    ) -> Result<(), MapError> {
+    /// Deletes the mapping of `internal_port` by the protocol the gateway speaks, which granted
+    /// the mapping it holds, as a renewal maps again by NAT-PMP once PCP says it speaks NAT-PMP
+    /// alone: one request, its answer awaited `wait`.
+    pub(crate) fn delete(&self, internal_port: u16, wait: Duration) -> Result<(), MapError> {
         // A deletion comes as the map stops, which no stop cuts short.
         let running = AtomicBool::new(false);
         let once = Wait {
@@ -172,35 +168,31 @@ impl Gateway {
             },
             stop: &running,
         };
-        match mapping.by {
-            MappedBy::Pcp => {
-                let request = PcpMap {
-                    nonce: self.nonce,
-                    client: self.client,
-                    internal_port,
-                    external: NO_EXTERNAL,
-                    lifetime: Duration::ZERO,
-                };
-                match self.pcp(&request, once)? {
-                    PcpReply::Granted(_) => Ok(()),
-                    PcpReply::Refused { refusal, lasts } => {
-                        Err(MapError::PcpRefused { refusal, lasts })
-                    }
-                    PcpReply::NatPmpOnly => Err(MapError::NatPmpOnly),
-                }
+        if self.nat_pmp_only {
+            let request = NatPmpMap {
+                internal_port,
+                external_port: 0,
+                lifetime: Duration::ZERO,
+            };
+            match self.nat_pmp(&request, once)? {
+                NatPmpReply::Granted(_) => Ok(()),
+                NatPmpReply::Refused(refusal) => Err(MapError::NatPmpRefused(refusal)),
             }
-            MappedBy::NatPmp => {
-                let request = NatPmpMap {
-                    internal_port,
-                    external_port: 0,
-                    lifetime: Duration::ZERO,
-                };
-                match self.nat_pmp(&request, once)? {
-                    NatPmpReply::Granted(_) => Ok(()),
-                    NatPmpReply::Refused(refusal) => Err(MapError::NatPmpRefused(refusal)),
+        } else {
+            let request = PcpMap {
+                nonce: self.nonce,
+                client: self.client,
+                internal_port,
+                external: NO_EXTERNAL,
+                lifetime: Duration::ZERO,
+            };
+            match self.pcp(&request, once)? {
+                PcpReply::Granted(_) => Ok(()),
+                PcpReply::Refused { refusal, lasts } => {
+                    Err(MapError::PcpRefused { refusal, lasts })
                 }
+                PcpReply::NatPmpOnly => Err(MapError::NatPmpOnly),
             }
-            MappedBy::Upnp => unreachable!("a UPnP mapping is deleted through its router"),
         }
     }
 

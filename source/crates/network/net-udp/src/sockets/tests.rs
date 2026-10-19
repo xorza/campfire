@@ -3,7 +3,7 @@ use bytes::BytesMut;
 use campfire_net_core::Instant;
 use campfire_net_emulator::{DuplexModel, EmulatedNetwork, LinkModel, WireClock};
 use campfire_net_packets::SessionConfig;
-use campfire_net_packets::internals::plain_host::{CLIENT, PlainHost};
+use campfire_net_packets::internals::{CLIENT, PlainHost};
 use campfire_net_payload::{OutgoingPayload, PayloadFate, PayloadKind, PayloadToken, UnlinkReason};
 use core::num::NonZeroU32;
 use core::time::Duration;

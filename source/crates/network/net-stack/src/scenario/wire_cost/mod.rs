@@ -10,7 +10,7 @@ use campfire_net_core::TickRate;
 use campfire_net_emulator::DuplexModel;
 use campfire_net_endpoint::Endpoint;
 use campfire_net_messages::MessageSender;
-use campfire_net_messages::internals::protocol::StringMessage;
+use campfire_net_messages::internals::StringMessage;
 use campfire_net_packets::EmulatedWires;
 use campfire_net_stepper::AppId;
 use campfire_net_stepper::ClientKind;
@@ -18,12 +18,12 @@ use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
 use campfire_net_sync::LinkEstimator;
 use campfire_net_transport::Transport;
-use campfire_net_transport::internals::protocol::{Channel1, ChannelOrderedReliable};
+use campfire_net_transport::internals::{Channel1, ChannelOrderedReliable};
 use core::num::NonZeroU16;
 use core::ops::Sub;
 use core::time::Duration;
 
-use crate::internals::full_stack::FullStack;
+use crate::fixtures::full_stack::FullStack;
 
 #[cfg(test)]
 mod tests;

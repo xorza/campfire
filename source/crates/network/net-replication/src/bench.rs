@@ -13,8 +13,8 @@ use core::time::Duration;
 use criterion::{BenchmarkId, Criterion};
 use std::time::Instant;
 
-use crate::internals::protocol::CompSimple;
-use crate::internals::replication_stack::ReplicationStack;
+use crate::fixtures::protocol::CompSimple;
+use crate::fixtures::replication_stack::ReplicationStack;
 use crate::replication_target::Replicate;
 
 const ENTITIES: usize = 1000;

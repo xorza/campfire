@@ -1,5 +1,5 @@
 use super::*;
-use crate::internals::replication_stack::ReplicationStack;
+use crate::fixtures::replication_stack::ReplicationStack;
 use crate::replication_target::Replicate;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;

@@ -120,7 +120,11 @@ impl Routes {
     fn pcp(self) -> Result<SocketAddrV4, MapError> {
         match self {
             Self::System => {
-                let gateway = netdev::get_default_gateway().map_err(MapError::NoGateway)?;
+                // `netdev` gives only a message, which goes to the log; the error names the case.
+                let gateway = netdev::get_default_gateway().map_err(|message| {
+                    debug!(%message, "the OS names no default gateway");
+                    MapError::NoGateway
+                })?;
                 let address = gateway.ipv4.first().ok_or(MapError::NoIpv4Gateway)?;
                 Ok(SocketAddrV4::new(*address, PCP_PORT))
             }
@@ -252,9 +256,7 @@ impl PortMapper {
             return;
         };
         let deleted = match held.by {
-            Mapper::Pmp(gateway) => {
-                gateway.delete(self.request.internal_port, &held.mapping, self.times.delete)
-            }
+            Mapper::Pmp(gateway) => gateway.delete(self.request.internal_port, self.times.delete),
             Mapper::Upnp(router) => router.delete(&held.mapping),
         };
         if let Err(error) = deleted {

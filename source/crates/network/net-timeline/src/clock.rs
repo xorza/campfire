@@ -139,7 +139,7 @@ mod tests {
     use bevy_app::App;
     use bevy_time::TimePlugin;
 
-    use crate::timeline_plugin::TimelinePlugin;
+    use crate::timeline_plugins::TimelinePlugins;
     use campfire_net_core::TickRate;
     use core::num::NonZeroU16;
 
@@ -148,7 +148,7 @@ mod tests {
         app.insert_resource(Clock::new(source));
         app.add_plugins((
             TimePlugin,
-            TimelinePlugin {
+            TimelinePlugins {
                 tick_rate: TickRate::new(NonZeroU16::new(100).unwrap()),
             },
         ));

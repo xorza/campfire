@@ -1,7 +1,7 @@
 use super::*;
 use campfire_net_core::TickRate;
 
-use crate::internals::protocol::CompA;
+use crate::fixtures::protocol::CompA;
 use crate::pre_spawned_plugin::PreSpawnedPlugin;
 use crate::pre_spawned_receiver::PreSpawnedReceiver;
 use crate::replication_receiver::ReplicationReceiver;
@@ -12,11 +12,11 @@ use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
 use campfire_net_connection::RemoteId;
 use campfire_net_core::PeerId;
-use campfire_net_timeline::TimelinePlugin;
+use campfire_net_timeline::internals::TestTimelinePlugins;
 
 fn app() -> App {
     let mut app = App::new();
-    app.add_plugins(TimelinePlugin {
+    app.add_plugins(TestTimelinePlugins {
         tick_rate: TickRate::try_from(100).unwrap(),
     });
     app.init_resource::<ComponentRegistry>();

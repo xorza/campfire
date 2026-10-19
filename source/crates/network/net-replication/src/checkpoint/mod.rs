@@ -16,13 +16,13 @@
 //! # How the mapping is carried
 //! The stack stores the authoritative [`NetTick`] in Replicon's replication userdata:
 //!
-//! 1. On the server, `write_authoritative_tick_userdata` writes the current network tick into
-//!    [`ReplicationUserdata`] before Replicon builds
+//! 1. On the server, `ServerRepliconPlugin::write_authoritative_tick_userdata` writes the
+//!    current network tick into Replicon's `ReplicationUserdata` before Replicon builds
 //!    replication messages.
 //! 2. Replicon serializes those bytes into its update and mutation messages.
-//! 3. On the client, Replicon triggers
-//!    [`UserdataReceived`] before applying the message,
-//!    and `record_authoritative_tick_userdata` stores the `RepliconTick -> NetTick` association.
+//! 3. On the client, Replicon triggers `UserdataReceived` before applying the message, and
+//!    `ReplicationCheckpointMap::record_authoritative_tick` stores the `RepliconTick -> NetTick`
+//!    association.
 //!
 //! # Which tick to use
 //! - Use [`RepliconTick`] for Replicon protocol concerns only: packet ordering, completeness, and
@@ -34,17 +34,11 @@
 //!
 //! [`ConfirmHistory`]: bevy_replicon::client::confirm_history::ConfirmHistory
 //! [`ServerMutateTicks`]: bevy_replicon::client::server_mutate_ticks::ServerMutateTicks
+//! [`RepliconTick`]: bevy_replicon::prelude::RepliconTick
+//! [`ReplicationCheckpointMap`]: crate::ReplicationCheckpointMap
 
 use crate::checkpoint_error::CheckpointError;
-use crate::replication_checkpoint_map::ReplicationCheckpointMap;
-use bevy_ecs::prelude::On;
-use bevy_ecs::prelude::Res;
-use bevy_ecs::prelude::ResMut;
-use bevy_replicon::client::UserdataReceived;
-use bevy_replicon::server::ReplicationUserdata;
 use campfire_net_core::NetTick;
-use campfire_net_timeline::LocalTimeline;
-use tracing::error;
 
 pub(crate) const CHECKPOINT_USERDATA_LEN: usize = size_of::<NetTick>();
 
@@ -61,34 +55,6 @@ pub(crate) const fn decode_authoritative_tick(bytes: &[u8]) -> Result<NetTick, C
     Ok(NetTick(u32::from_le_bytes([
         bytes[0], bytes[1], bytes[2], bytes[3],
     ])))
-}
-
-/// Write the authoritative network tick into Replicon's replication userdata.
-pub(crate) fn write_authoritative_tick_userdata(
-    timeline: Res<'_, LocalTimeline>,
-    mut userdata: ResMut<'_, ReplicationUserdata>,
-) {
-    userdata.clear();
-    userdata.extend_from_slice(&encode_authoritative_tick(timeline.tick()));
-}
-
-/// Record the authoritative network tick carried by Replicon userdata.
-pub(crate) fn record_authoritative_tick_userdata(
-    received: On<'_, '_, UserdataReceived>,
-    mut checkpoints: ResMut<'_, ReplicationCheckpointMap>,
-) {
-    match decode_authoritative_tick(received.bytes.as_ref()) {
-        Ok(authoritative_tick) => checkpoints.record(received.message_tick, authoritative_tick),
-        Err(error_kind) => {
-            error!(
-                ?error_kind,
-                replicon_tick = ?received.message_tick,
-                userdata_len = received.bytes.len(),
-                "dropping invalid replicon checkpoint userdata"
-            );
-            checkpoints.count_invalid_userdata();
-        }
-    }
 }
 
 #[cfg(test)]

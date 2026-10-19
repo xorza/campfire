@@ -16,7 +16,7 @@ use campfire_net_core::NetTick;
 use campfire_net_interpolation::HistoryComponent;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::HistoryState;
-use campfire_net_replication::history_write::{self, ReceivedValue};
+use campfire_net_replication::{ReceivedValue, receive_history_diff, replicated_message_tick};
 use campfire_net_timeline::LocalTimeline;
 use tracing::{debug, trace};
 
@@ -59,7 +59,7 @@ fn write_whole<C: HistoryComponent>(
     initial: InitialValue,
 ) -> Result<()> {
     let component: C = rule_fns.deserialize(ctx, message)?;
-    let Some(tick) = history_write::message_tick(entity, ctx.message_tick) else {
+    let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
         debug!(
             message_tick = ?ctx.message_tick,
             "dropping a predicted value that no checkpoint maps"
@@ -103,7 +103,7 @@ fn write_diff<C: HistoryComponent + RepliconDiffable>(
     initial: InitialValue,
 ) -> Result<()> {
     let mut settled = false;
-    history_write::receive_diff::<C>(
+    receive_history_diff::<C>(
         ctx,
         entity,
         message,
@@ -136,7 +136,7 @@ pub(crate) fn remove_history<C: HistoryComponent>(
     ctx: &mut RemoveCtx,
     entity: &mut DeferredEntity<'_>,
 ) {
-    let Some(tick) = history_write::message_tick(entity, ctx.message_tick) else {
+    let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
         debug!(
             message_tick = ?ctx.message_tick,
             "dropping a predicted removal that no checkpoint maps"
@@ -168,7 +168,7 @@ fn materialize<C: HistoryComponent>(
 ///
 /// Normally `PredictionHistory<C>` is added when live `C` is added. A confirmed insertion on a
 /// predicted entity is instead stored in `ConfirmedHistory<C>`, so the `Add<C>` observer does not
-/// run, while `prepare_rollback<C>` needs the history to include the entity. It is seeded with
+/// run, while `RollbackPlugin::prepare_rollback<C>` needs the history to include the entity. It is seeded with
 /// the state the client predicted, absent, so a rollback reads the confirmed value and inserts
 /// `C`, even when this update finds no mismatch, as another component may already have.
 fn seed_unpredicted_insert<C: HistoryComponent>(

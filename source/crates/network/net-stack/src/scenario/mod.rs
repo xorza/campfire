@@ -25,7 +25,7 @@ use core::time::Duration;
 use std::collections::BTreeMap;
 use std::hash::DefaultHasher;
 
-use crate::internals::full_stack::FullStack;
+use crate::fixtures::full_stack::FullStack;
 use crate::scenario::faults::Faults;
 use crate::scenario::message_log::MessageLog;
 use crate::scenario::outcome::Outcome;
@@ -34,7 +34,7 @@ use campfire_log::internals::{LogCheck, Scoped};
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
-use campfire_net_sync::internals::sync_stack::input_timeline_is_synced;
+use campfire_net_sync::internals::input_timeline_is_synced;
 
 /// One seeded run: its clients and their session, its faults, how long they hold, and how long
 /// the healed network gets to deliver what is still owed.

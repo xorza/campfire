@@ -15,46 +15,6 @@ use campfire_net_transport::AppChannelExt;
 use core::time::Duration;
 use tracing::debug;
 
-/// Sends the sender's hello once a link both is connected and replicates, whichever of
-/// the two comes last: a link that never replicates gets none.
-fn send_sender_hello(
-    trigger: On<'_, '_, Add<(Connected, ReplicationSender)>>,
-    replication_timer: Res<'_, ReplicationTimer>,
-    tick_rate: Res<'_, TickRate>,
-    mut query: Query<
-        '_,
-        '_,
-        (Entity, &mut EventSender<SenderHello>),
-        (With<Connected>, With<ReplicationSender>),
-    >,
-) {
-    let send_interval = replication_timer.timer.duration();
-    let send_interval = PositiveTickDelta::from_duration(send_interval, *tick_rate);
-    if let Ok((link, mut event_sender)) = query.get_mut(trigger.entity) {
-        let hello = SenderHello {
-            send_interval,
-            link,
-        };
-        event_sender.trigger::<HelloChannel>(hello);
-    }
-}
-
-/// Maps the link entity a remote peer's hello names to the local link entity.
-fn receive_sender_hello(
-    trigger: On<'_, '_, RemoteEvent<SenderHello>>,
-    mut managers: Query<'_, '_, &mut MessageManager>,
-) {
-    let remote_entity = trigger.event.link;
-    let local_entity = trigger.link;
-    if let Ok(mut manager) = managers.get_mut(local_entity) {
-        debug!(
-            "Received SenderHello: mapping remote {:?} -> local {:?}",
-            remote_entity, local_entity
-        );
-        manager.entity_mapper.insert(remote_entity, local_entity);
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct HelloPlugin;
 
@@ -70,15 +30,57 @@ impl Plugin for HelloPlugin {
         .add_direction(Directions::BOTH);
         app.register_event_to_bytes::<SenderHello>()
             .add_direction(Directions::BOTH);
-        app.add_observer(send_sender_hello);
-        app.add_observer(receive_sender_hello);
+        app.add_observer(Self::send_sender_hello);
+        app.add_observer(Self::receive_sender_hello);
+    }
+}
+
+impl HelloPlugin {
+    /// Sends the sender's hello once a link both is connected and replicates, whichever of
+    /// the two comes last: a link that never replicates gets none.
+    fn send_sender_hello(
+        trigger: On<'_, '_, Add<(Connected, ReplicationSender)>>,
+        replication_timer: Res<'_, ReplicationTimer>,
+        tick_rate: Res<'_, TickRate>,
+        mut query: Query<
+            '_,
+            '_,
+            (Entity, &mut EventSender<SenderHello>),
+            (With<Connected>, With<ReplicationSender>),
+        >,
+    ) {
+        let send_interval = replication_timer.timer.duration();
+        let send_interval = PositiveTickDelta::from_duration(send_interval, *tick_rate);
+        if let Ok((link, mut event_sender)) = query.get_mut(trigger.entity) {
+            let hello = SenderHello {
+                send_interval,
+                link,
+            };
+            event_sender.trigger::<HelloChannel>(hello);
+        }
+    }
+
+    /// Maps the link entity a remote peer's hello names to the local link entity.
+    fn receive_sender_hello(
+        trigger: On<'_, '_, RemoteEvent<SenderHello>>,
+        mut managers: Query<'_, '_, &mut MessageManager>,
+    ) {
+        let remote_entity = trigger.event.link;
+        let local_entity = trigger.link;
+        if let Ok(mut manager) = managers.get_mut(local_entity) {
+            debug!(
+                "Received SenderHello: mapping remote {:?} -> local {:?}",
+                remote_entity, local_entity
+            );
+            manager.entity_mapper.insert(remote_entity, local_entity);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internals::replication_stack::ReplicationStack;
+    use crate::fixtures::replication_stack::ReplicationStack;
     use campfire_net_connection::RemoteId;
     use campfire_net_core::PeerId;
     use campfire_net_stepper::Stepper;
@@ -96,7 +98,7 @@ mod tests {
     #[test]
     fn a_hello_maps_on_the_link_it_arrived_on() {
         let mut world = World::new();
-        world.add_observer(receive_sender_hello);
+        world.add_observer(HelloPlugin::receive_sender_hello);
         let peer = PeerId::Entity(1);
         let dying = world
             .spawn((MessageManager::default(), RemoteId(peer)))

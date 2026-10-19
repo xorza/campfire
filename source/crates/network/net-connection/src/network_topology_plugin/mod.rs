@@ -43,9 +43,9 @@ impl Plugin for NetworkTopologyPlugin {
         // classified on the first update too.
         app.init_resource::<NetworkingState>();
 
-        app.add_observer(mark_dirty_on_insert);
-        app.add_observer(mark_dirty_on_remove);
-        app.add_observer(mark_dirty_on_discard);
+        app.add_observer(Self::mark_dirty_on_insert);
+        app.add_observer(Self::mark_dirty_on_remove);
+        app.add_observer(Self::mark_dirty_on_discard);
 
         // Reconcile lifecycle changes once per frame.
         app.configure_sets(
@@ -54,78 +54,10 @@ impl Plugin for NetworkTopologyPlugin {
         );
         app.add_systems(
             PostUpdate,
-            refresh_network_topology
+            Self::refresh_network_topology
                 .in_set(NetworkTopologySystems::Update)
-                .run_if(network_topology_is_dirty),
+                .run_if(Self::network_topology_is_dirty),
         );
-    }
-}
-
-fn mark_dirty_on_insert(
-    _trigger: On<'_, '_, Insert<TopologyComponents>>,
-    mut networking: ResMut<'_, NetworkingState>,
-) {
-    networking.bypass_change_detection().dirty = true;
-}
-
-fn mark_dirty_on_remove(
-    _trigger: On<'_, '_, Remove<TopologyComponents>>,
-    mut networking: ResMut<'_, NetworkingState>,
-) {
-    networking.bypass_change_detection().dirty = true;
-}
-
-fn mark_dirty_on_discard(
-    _trigger: On<'_, '_, Discard<TopologyComponents>>,
-    mut networking: ResMut<'_, NetworkingState>,
-) {
-    networking.bypass_change_detection().dirty = true;
-}
-
-fn network_topology_is_dirty(networking: Res<'_, NetworkingState>) -> bool {
-    networking.dirty
-}
-
-fn refresh_network_topology(
-    mut networking: ResMut<'_, NetworkingState>,
-    ready_clients: Query<
-        '_,
-        '_,
-        (Entity, Has<HostClient>, Option<&LinkOf>),
-        (With<Client>, With<Connected>),
-    >,
-    ready_servers: Query<'_, '_, Entity, (With<Server>, With<Started>)>,
-    malformed_hosts: Query<'_, '_, Entity, (With<HostClient>, With<Connected>, Without<Client>)>,
-) {
-    let malformed_host = malformed_hosts
-        .iter()
-        .min_by_key(|entity| entity.index_u32());
-    let next = if let Some(client) = malformed_host {
-        NetworkTopology::Invalid(NetworkTopologyError::HostClientWithoutClient { client })
-    } else {
-        let client = unique_ready_client(ready_clients.iter().map(|(entity, is_host, link_of)| {
-            ReadyClient {
-                entity,
-                is_host,
-                server: link_of.map(|link| link.server),
-            }
-        }));
-        match client {
-            Err(error) => NetworkTopology::Invalid(error),
-            Ok(client) => match unique_ready_server(ready_servers.iter()) {
-                Err(error) => NetworkTopology::Invalid(error),
-                Ok(server) => infer_standard_topology(client, server),
-            },
-        }
-    };
-
-    let topology_changed = networking.topology != next;
-    networking.bypass_change_detection().dirty = false;
-    if topology_changed {
-        if let NetworkTopology::Invalid(error) = &next {
-            tracing::error!(error = %ErrorReport::of(error), "invalid networking topology");
-        }
-        networking.topology = next;
     }
 }
 
@@ -197,6 +129,82 @@ fn infer_standard_topology(client: Option<ReadyClient>, server: Option<Entity>) 
                 client: client.entity,
                 server,
             })
+        }
+    }
+}
+
+impl NetworkTopologyPlugin {
+    fn mark_dirty_on_insert(
+        _trigger: On<'_, '_, Insert<TopologyComponents>>,
+        mut networking: ResMut<'_, NetworkingState>,
+    ) {
+        networking.bypass_change_detection().dirty = true;
+    }
+
+    fn mark_dirty_on_remove(
+        _trigger: On<'_, '_, Remove<TopologyComponents>>,
+        mut networking: ResMut<'_, NetworkingState>,
+    ) {
+        networking.bypass_change_detection().dirty = true;
+    }
+
+    fn mark_dirty_on_discard(
+        _trigger: On<'_, '_, Discard<TopologyComponents>>,
+        mut networking: ResMut<'_, NetworkingState>,
+    ) {
+        networking.bypass_change_detection().dirty = true;
+    }
+
+    fn network_topology_is_dirty(networking: Res<'_, NetworkingState>) -> bool {
+        networking.dirty
+    }
+
+    fn refresh_network_topology(
+        mut networking: ResMut<'_, NetworkingState>,
+        ready_clients: Query<
+            '_,
+            '_,
+            (Entity, Has<HostClient>, Option<&LinkOf>),
+            (With<Client>, With<Connected>),
+        >,
+        ready_servers: Query<'_, '_, Entity, (With<Server>, With<Started>)>,
+        malformed_hosts: Query<
+            '_,
+            '_,
+            Entity,
+            (With<HostClient>, With<Connected>, Without<Client>),
+        >,
+    ) {
+        let malformed_host = malformed_hosts
+            .iter()
+            .min_by_key(|entity| entity.index_u32());
+        let next = if let Some(client) = malformed_host {
+            NetworkTopology::Invalid(NetworkTopologyError::HostClientWithoutClient { client })
+        } else {
+            let client =
+                unique_ready_client(ready_clients.iter().map(|(entity, is_host, link_of)| {
+                    ReadyClient {
+                        entity,
+                        is_host,
+                        server: link_of.map(|link| link.server),
+                    }
+                }));
+            match client {
+                Err(error) => NetworkTopology::Invalid(error),
+                Ok(client) => match unique_ready_server(ready_servers.iter()) {
+                    Err(error) => NetworkTopology::Invalid(error),
+                    Ok(server) => infer_standard_topology(client, server),
+                },
+            }
+        };
+
+        let topology_changed = networking.topology != next;
+        networking.bypass_change_detection().dirty = false;
+        if topology_changed {
+            if let NetworkTopology::Invalid(error) = &next {
+                tracing::error!(error = %ErrorReport::of(error), "invalid networking topology");
+            }
+            networking.topology = next;
         }
     }
 }

@@ -18,25 +18,26 @@ mod compression;
 mod compression_algorithm;
 mod compression_config;
 mod compression_scratch;
+#[cfg(feature = "internals")]
+mod fixtures;
 mod fragment_compression;
 mod fragment_count;
 mod fragment_data;
 mod fragment_index;
 mod fragment_receiver;
 mod fragmented_message;
-#[cfg(feature = "internals")]
-pub mod internals;
 mod message_data;
 mod message_id;
 mod message_ref;
-pub mod packet;
+mod packet;
 mod packet_buffer_pool;
 mod packet_builder;
 mod packet_error;
 mod packet_kind;
 mod packet_message;
 mod priority_manager;
-pub mod receive_budget;
+mod queued_message;
+mod receive_budget;
 mod receive_message;
 mod reliable_send_state;
 mod send_candidate;
@@ -62,6 +63,18 @@ pub use crate::channels::RefusedMessage;
 pub use crate::compression_algorithm::CompressionAlgorithm;
 pub use crate::compression_config::CompressionConfig;
 pub use crate::message_id::MessageId;
+pub use crate::packet::fragment_size_for_max_payload;
 pub use crate::packet_error::PacketError;
 pub use crate::packet_kind::PacketKind;
 pub use crate::transport_error::TransportError;
+
+/// What the tests and benches of the layers above share: this layer's stack, test protocol,
+/// fixtures and measurements.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::channels::internals::ChannelCounts;
+    pub use crate::channels::internals::TransportBacklog;
+    pub use crate::channels::internals::TransportCounts;
+    pub use crate::fixtures::compression_mode::CompressionMode;
+    pub use crate::fixtures::payload_pattern::PayloadPattern;
+}

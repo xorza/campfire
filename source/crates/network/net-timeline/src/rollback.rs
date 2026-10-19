@@ -10,7 +10,9 @@ use campfire_net_core::NetTick;
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rollback(pub NetTick);
 
-/// Run condition to check if we are in rollback
-pub const fn is_active(rollback: Option<Res<'_, Rollback>>) -> bool {
-    rollback.is_some()
+impl Rollback {
+    /// The run condition that the app is rolling back.
+    pub const fn is_active(rollback: Option<Res<'_, Self>>) -> bool {
+        rollback.is_some()
+    }
 }

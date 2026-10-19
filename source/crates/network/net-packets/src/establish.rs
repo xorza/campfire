@@ -10,21 +10,12 @@ use crate::stateless_reset;
 
 /// How an endpoint makes its sessions: at once and plain in-process, or by a handshake that
 /// gives the seal over a network. The endpoint calls it with the datagrams that are not a
-/// session's, and it hands back what it established.
+/// session's, and it hands back what it established. A client's establishment is a
+/// [`ClientEstablish`] and a server's a [`ServerEstablish`], so neither holds the calls of the
+/// other side (14-workspace-alignment.md, A state the code cannot reach is a type).
 pub trait Establish: Send + core::fmt::Debug + 'static {
-    /// Opens a session toward `server`, for a client's endpoint, at `now`.
-    fn connect(&mut self, now: Instant, server: SocketAddr, out: &mut Establishing);
-
     /// Takes a datagram whose first bit is the IO's own: a handshake's.
     fn receive(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing);
-
-    /// Takes a session datagram, its prefix still on, that no session of a server's endpoint
-    /// holds: one that takes its peers by their first datagram while it accepts, or answers one
-    /// it no longer knows with a stateless reset.
-    fn unknown(&mut self, now: Instant, datagram: &Datagram, out: &mut Establishing);
-
-    /// Whether a server's establishment takes new peers, from its start to its stop.
-    fn set_accepting(&mut self, accepting: bool);
 
     /// Runs the establishment's timers due at `now`.
     fn poll(&mut self, now: Instant, out: &mut Establishing);
@@ -41,6 +32,23 @@ pub trait Establish: Send + core::fmt::Debug + 'static {
 
     /// The session it established, routed by `route`, left the endpoint.
     fn ended(&mut self, route: Option<ConnectionId>);
+}
+
+/// A client's establishment, which opens the endpoint's one session.
+pub trait ClientEstablish: Establish {
+    /// Opens a session toward `server` at `now`.
+    fn connect(&mut self, now: Instant, server: SocketAddr, out: &mut Establishing);
+}
+
+/// A server's establishment, which takes new peers while it accepts.
+pub trait ServerEstablish: Establish {
+    /// Takes a session datagram, its prefix still on, that no session of the endpoint holds: one
+    /// that takes its peers by their first datagram while it accepts, or answers one it no
+    /// longer knows with a stateless reset.
+    fn unknown(&mut self, now: Instant, datagram: &Datagram, out: &mut Establishing);
+
+    /// Whether it takes new peers, from the server's start to its stop.
+    fn set_accepting(&mut self, accepting: bool);
 }
 
 /// What an establishment hands its endpoint back.

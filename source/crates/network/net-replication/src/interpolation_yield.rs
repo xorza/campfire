@@ -31,7 +31,7 @@ impl InterpolationYield {
             return;
         };
         if let Some(interpolation) = interpolation {
-            warn_overlap(entity, prediction, interpolation, &links);
+            Self::warn_overlap(entity, prediction, interpolation, &links);
         }
         commands
             .entity(entity)
@@ -46,7 +46,7 @@ impl InterpolationYield {
         links: Query<'_, '_, (Entity, &RemoteId)>,
     ) {
         if let Ok((prediction, interpolation)) = targets.get(trigger.entity) {
-            warn_overlap(trigger.entity, prediction, interpolation, &links);
+            Self::warn_overlap(trigger.entity, prediction, interpolation, &links);
         }
     }
 
@@ -60,25 +60,25 @@ impl InterpolationYield {
         }
         commands.entity(trigger.entity).try_remove::<Self>();
     }
-}
 
-/// Logs each connected link that both targets name, which gets `Predicted` alone.
-fn warn_overlap(
-    entity: Entity,
-    prediction: &PredictionTarget,
-    interpolation: &InterpolationTarget,
-    links: &Query<'_, '_, (Entity, &RemoteId)>,
-) {
-    for (link, remote) in links {
-        if prediction.is_visible_for(link, Some(remote))
-            && interpolation.is_visible_for(link, Some(remote))
-        {
-            warn!(
-                ?entity,
-                ?link,
-                peer = ?remote.0,
-                "the prediction and interpolation targets both name a link, which gets Predicted alone"
-            );
+    /// Logs each connected link that both targets name, which gets `Predicted` alone.
+    fn warn_overlap(
+        entity: Entity,
+        prediction: &PredictionTarget,
+        interpolation: &InterpolationTarget,
+        links: &Query<'_, '_, (Entity, &RemoteId)>,
+    ) {
+        for (link, remote) in links {
+            if prediction.is_visible_for(link, Some(remote))
+                && interpolation.is_visible_for(link, Some(remote))
+            {
+                warn!(
+                    ?entity,
+                    ?link,
+                    peer = ?remote.0,
+                    "the prediction and interpolation targets both name a link, which gets Predicted alone"
+                );
+            }
         }
     }
 }
