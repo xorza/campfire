@@ -24,6 +24,7 @@ bevy_ecs.workspace = true
 bytes.workspace = true
 campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
+getrandom.workspace = true
 igd-next.workspace = true
 lightyear.workspace = true
 netdev.workspace = true

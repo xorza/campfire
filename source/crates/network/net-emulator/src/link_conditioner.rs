@@ -1,6 +1,6 @@
 //! Receive-side packet conditioning: a [`LinkModel`] applied to the datagrams an endpoint receives.
 
-use campfire_net_common::ReadyBuffer;
+use crate::ready_buffer::ReadyBuffer;
 use campfire_net_core::Instant;
 
 use crate::link_conditioning::LinkConditioning;

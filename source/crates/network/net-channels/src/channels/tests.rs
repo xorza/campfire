@@ -613,9 +613,7 @@ mod steps {
     fn batch(messages: &[(u16, &[u8])]) -> Vec<u8> {
         let mut payload = vec![0, u8::try_from(messages.len()).unwrap()];
         for &(id, bytes) in messages {
-            SingleData::new(Some(MessageId(id)), Bytes::copy_from_slice(bytes))
-                .write(&mut payload)
-                .unwrap();
+            SingleData::new(Some(MessageId(id)), Bytes::copy_from_slice(bytes)).write(&mut payload);
         }
         data_payload(&payload)
     }
@@ -673,7 +671,7 @@ mod steps {
     /// breaks the protocol, or is refused at the receive budget.
     #[test]
     fn mutated_packets_are_refused_or_read() {
-        use campfire_net_common::internals::mutations::Mutations;
+        use campfire_net_bytes::internals::Mutations;
 
         let unordered = ChannelConfig::default();
         let ordered = ChannelConfig {

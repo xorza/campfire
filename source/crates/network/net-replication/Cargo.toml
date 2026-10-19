@@ -22,6 +22,7 @@ internals = [
 ]
 
 [dependencies]
+campfire-common.workspace = true
 campfire-codec.workspace = true
 campfire-net-channels.workspace = true
 campfire-net-timeline.workspace = true
@@ -42,13 +43,11 @@ tracing.workspace = true
 
 bevy_app = { version = "=0.20.0", default-features = false }
 bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect", "serialize"] }
-bevy_math = { version = "=0.20.0", default-features = false, features = ["std"] }
 bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
 bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
 bevy_replicon = { version = "=0.45.2", default-features = false, features = ["client", "server"] }
 bevy_state = { version = "=0.20.0", default-features = false }
 bevy_time = { version = "=0.20.0", default-features = false, features = ["bevy_reflect"] }
-bevy_transform = { version = "=0.20.0", default-features = false, features = ["libm"] }
 
 [dev-dependencies]
 campfire-net-link.workspace = true

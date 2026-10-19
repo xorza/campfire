@@ -25,12 +25,11 @@ impl ToBytes for FragmentCompression {
         1
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
         match self {
-            Self::None => 0u8.to_bytes(buffer)?,
-            Self::Lz4 => 1u8.to_bytes(buffer)?,
+            Self::None => 0u8.to_bytes(buffer),
+            Self::Lz4 => 1u8.to_bytes(buffer),
         }
-        Ok(())
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>

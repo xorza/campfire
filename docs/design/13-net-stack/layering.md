@@ -32,6 +32,12 @@ The kinds of crate, problem, IO, glue and test support, and their rules are the 
 - **The host client's path stays in the glue.** `net-transport` and `net-messages`
   read `HostClient` and `Disconnected` from `net-connection`, as `api.md`'s "A host client
   keeps an endpoint for each side" decides; `net-channels` does not.
+- **The emulated wires are the packet session's IO, and `net-udp`'s emulated server and client
+  are production.** `net-packets` holds `EmulatedWires`, a `DatagramIo` over `net-emulator`'s
+  model that needs no engine, so `net-packets` stays a problem crate; the sealed singleplayer
+  link runs the emulated server and client ([Workspace alignment](../14-workspace-alignment.md),
+  The singleplayer link is sealed). Refused: the emulated sockets behind `internals`, which the
+  singleplayer link then cannot build.
 
 ## Edges
 

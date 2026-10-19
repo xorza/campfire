@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::system::Query;
-use campfire_math::internals::SplitMix64;
+use campfire_math::SplitMix64;
 use lightyear::link::SendPayload;
 use lightyear::prelude::{Link, PingManager};
 

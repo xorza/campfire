@@ -17,8 +17,8 @@ fn the_seed_alone_decides_losses_and_jitter() {
         .with_latency(Duration::from_millis(100))
         .with_jitter(Duration::from_millis(20))
         .with_fixed_loss(0.5);
-    // From a separate model of the same draws: per packet, one `next_f32` for the state
-    // transition (probability 0), one `next_f32 < 0.5` for the loss, and for a delivered packet
+    // From a separate model of the same draws: per packet, one `fraction` for the state
+    // transition (probability 0), one `fraction < 0.5` for the loss, and for a delivered packet
     // `100 ms + below(40 ms) - 20 ms`, to the nanosecond.
     let ns = |nanos| Some(Duration::from_nanos(nanos));
     assert_eq!(

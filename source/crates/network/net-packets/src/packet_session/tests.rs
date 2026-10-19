@@ -575,7 +575,7 @@ fn datagrams_of_each_type(protection: impl Fn() -> Protection) -> Vec<BytesMut> 
 /// crate's test with ChaCha20-Poly1305 shows that a seal refuses every changed datagram.
 #[test]
 fn mutated_datagrams_are_refused_or_read() {
-    use campfire_net_common::internals::mutations::Mutations;
+    use campfire_net_bytes::internals::Mutations;
 
     type Case = (&'static str, fn() -> Protection);
     let protections: [Case; 2] = [

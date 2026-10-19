@@ -1,7 +1,7 @@
 use crate::packet::Packet;
 use crate::packet_message::PacketMessage;
 use bytes::BytesMut;
-use campfire_net_common::Arena;
+use campfire_net_bytes::Arena;
 
 /// The packets of a payload chunk: a pass of a full window fills about one, and the arena keeps
 /// three more while the session holds their datagrams, 64 payloads in all.

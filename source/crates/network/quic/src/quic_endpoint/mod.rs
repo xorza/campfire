@@ -23,7 +23,6 @@ use quinn_proto::{
     ServerConfig, ValidationTokenConfig,
 };
 use ring::hkdf;
-use ring::rand::{SecureRandom, SystemRandom};
 use tracing::{trace, warn};
 use zeroize::Zeroizing;
 
@@ -188,9 +187,7 @@ impl QuicEndpoint {
     /// The key of the Retry and `NEW_TOKEN` tokens, new at each start: a token outlives no server.
     fn token_key() -> Arc<dyn HandshakeTokenKey> {
         let mut secret = Zeroizing::new([0; 32]);
-        SystemRandom::new()
-            .fill(secret.as_mut_slice())
-            .expect("the OS gives random bytes");
+        getrandom::fill(secret.as_mut_slice()).expect("the OS gives random bytes");
         Arc::new(hkdf::Salt::new(hkdf::HKDF_SHA256, &[]).extract(secret.as_slice()))
     }
 

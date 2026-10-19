@@ -23,10 +23,9 @@ impl ToBytes for SenderHello {
         self.send_interval.bytes_len() + entity_bytes::len(self.link)
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        self.send_interval.to_bytes(buffer)?;
-        entity_bytes::write(self.link, buffer)?;
-        Ok(())
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
+        self.send_interval.to_bytes(buffer);
+        entity_bytes::write(self.link, buffer);
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>

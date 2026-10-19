@@ -9,11 +9,11 @@ kind = "problem"
 
 [features]
 # The model's bench, for the benches of every layer above
-internals = ["dep:campfire-measure", "dep:criterion", "campfire-net-common/internals"]
+internals = ["dep:campfire-measure", "dep:criterion", "campfire-math/internals"]
 
 [dependencies]
 campfire-net-core.workspace = true
-campfire-net-common.workspace = true
+campfire-math.workspace = true
 
 bytes.workspace = true
 campfire-measure = { workspace = true, optional = true }

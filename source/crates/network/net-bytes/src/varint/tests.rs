@@ -1,25 +1,24 @@
 use crate::reader::ReadVarInt;
+use crate::serialization_error::SerializationError;
 use crate::writer::WriteInteger;
 use std::io;
 
 #[test]
 fn a_one_byte_varint_round_trips() {
-    // TEST WITH 1
     let mut writer = vec![];
 
     let val = 1;
-    writer.write_varint(val).unwrap();
+    writer.write_varint(val);
     assert_eq!(writer.len(), 1);
 
     let mut reader = io::Cursor::new(writer);
     let read_val = reader.read_varint().unwrap();
     assert_eq!(val, read_val);
 
-    // TEST WITH 63
     let mut writer = vec![];
 
     let val = 63;
-    writer.write_varint(val).unwrap();
+    writer.write_varint(val);
     assert_eq!(writer.len(), 1);
 
     let mut reader = io::Cursor::new(writer);
@@ -32,7 +31,7 @@ fn a_two_byte_varint_round_trips() {
     let mut writer = vec![];
 
     let val = 64;
-    writer.write_varint(val).unwrap();
+    writer.write_varint(val);
     assert_eq!(writer.len(), 2);
 
     let mut reader = io::Cursor::new(writer);
@@ -42,7 +41,7 @@ fn a_two_byte_varint_round_trips() {
     let mut writer = vec![];
 
     let val = 16383;
-    writer.write_varint(val).unwrap();
+    writer.write_varint(val);
     assert_eq!(writer.len(), 2);
 
     let mut reader = io::Cursor::new(writer);
@@ -55,7 +54,7 @@ fn a_four_byte_varint_round_trips() {
     let mut writer = vec![];
 
     let val = 16384;
-    writer.write_varint(val).unwrap();
+    writer.write_varint(val);
     assert_eq!(writer.len(), 4);
 
     let mut reader = io::Cursor::new(writer);
@@ -65,7 +64,7 @@ fn a_four_byte_varint_round_trips() {
     let mut writer = vec![];
 
     let val = 1_073_741_823;
-    writer.write_varint(val).unwrap();
+    writer.write_varint(val);
     assert_eq!(writer.len(), 4);
 
     let mut reader = io::Cursor::new(writer);
@@ -78,7 +77,7 @@ fn an_eight_byte_varint_round_trips() {
     let mut writer = vec![];
 
     let val = 1_073_741_828;
-    writer.write_varint(val).unwrap();
+    writer.write_varint(val);
     assert_eq!(writer.len(), 8);
 
     let mut reader = io::Cursor::new(writer);
@@ -88,7 +87,7 @@ fn an_eight_byte_varint_round_trips() {
     let mut writer = vec![];
 
     let val = 4_611_686_018_427_387_903;
-    writer.write_varint(val).unwrap();
+    writer.write_varint(val);
     assert_eq!(writer.len(), 8);
 
     let mut reader = io::Cursor::new(writer);
@@ -96,8 +95,10 @@ fn an_eight_byte_varint_round_trips() {
     assert_eq!(val, read_val);
 }
 
-/// The sample encodings of RFC 9000, appendix A.1, whose variable-length integer this is. The
-/// two-byte `0x4025` is a non-minimal 37: it reads back, though the writer never produces it.
+/// The sample encodings of RFC 9000, appendix A.1, whose variable-length integer this is. RFC
+/// 9000 reads a value in more bytes than it needs, as its two-byte `0x4025` for 37; the stack
+/// refuses each such encoding, the largest value of each length one length longer among them,
+/// and reads the smallest value of each length.
 #[test]
 fn encodings_match_rfc_9000() {
     let samples: [(&[u8], u64); 4] = [
@@ -111,9 +112,34 @@ fn encodings_match_rfc_9000() {
     ];
     for (encoded, value) in samples {
         let mut writer = vec![];
-        writer.write_varint(value).unwrap();
+        writer.write_varint(value);
         assert_eq!(writer, encoded, "{value}");
         assert_eq!(io::Cursor::new(encoded).read_varint().unwrap(), value);
     }
-    assert_eq!(io::Cursor::new([0x40, 0x25]).read_varint().unwrap(), 37);
+    let longer: [&[u8]; 4] = [
+        &[0x40, 0x25],
+        &[0x40, 0x3f],
+        &[0x80, 0x00, 0x3f, 0xff],
+        &[0xc0, 0x00, 0x00, 0x00, 0x3f, 0xff, 0xff, 0xff],
+    ];
+    for encoded in longer {
+        assert!(
+            matches!(
+                io::Cursor::new(encoded).read_varint(),
+                Err(SerializationError::NotCanonical)
+            ),
+            "{encoded:x?}"
+        );
+    }
+    let smallest: [(&[u8], u64); 3] = [
+        (&[0x40, 0x40], 64),
+        (&[0x80, 0x00, 0x40, 0x00], 16_384),
+        (
+            &[0xc0, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00],
+            1_073_741_824,
+        ),
+    ];
+    for (encoded, value) in smallest {
+        assert_eq!(io::Cursor::new(encoded).read_varint().unwrap(), value);
+    }
 }

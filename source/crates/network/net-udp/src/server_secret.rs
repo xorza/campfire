@@ -1,7 +1,5 @@
 use zeroize::Zeroizing;
 
-use crate::os_random;
-
 /// A server's secret: 32 bytes from which its raw key and its reset key both derive, so one file
 /// holds its identity (13-net-stack/udp.md, One server secret derives the raw key and the reset
 /// key).
@@ -11,11 +9,6 @@ impl ServerSecret {
     /// The secret of `bytes`, as an app reads them from its file.
     pub const fn new(bytes: Zeroizing<[u8; 32]>) -> Self {
         Self(bytes)
-    }
-
-    /// A new secret from the OS's random numbers, which an app keeps to stay the same server.
-    pub fn generate() -> Self {
-        Self(os_random::secret())
     }
 
     pub const fn as_bytes(&self) -> &Zeroizing<[u8; 32]> {

@@ -326,9 +326,9 @@ impl ToBytes for PositiveTickDelta {
         4 + self.overstep().bytes_len()
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        buffer.write_u32(self.tick_diff())?;
-        self.overstep().to_bytes(buffer)
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
+        buffer.write_u32(self.tick_diff());
+        self.overstep().to_bytes(buffer);
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>

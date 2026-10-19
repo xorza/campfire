@@ -1,6 +1,6 @@
 use bytes::{Bytes, BytesMut};
-use campfire_net_common::Random;
 use campfire_net_core::Instant;
+use campfire_net_core::Random;
 use campfire_net_packets::{
     ConnectionId, Datagram, Establish, Established, Establishing, Outbound, Protection,
 };
@@ -535,7 +535,7 @@ fn an_initial_under_1200_bytes_gets_no_answer() {
 /// than it received.
 #[test]
 fn mutated_handshake_datagrams_are_refused_or_read() {
-    use campfire_net_common::internals::mutations::Mutations;
+    use campfire_net_bytes::internals::Mutations;
 
     let mut done = Exchange::new(&pinned(), &identity(), roomy());
     done.connect(at(0));
@@ -595,7 +595,7 @@ fn mutated_handshake_datagrams_are_refused_or_read() {
 /// changed a byte of the header it authenticates, of the payload or of the tag.
 #[test]
 fn the_seal_refuses_every_changed_datagram() {
-    use campfire_net_common::internals::mutations::Mutations;
+    use campfire_net_bytes::internals::Mutations;
     use campfire_net_payload::PacketNumber;
 
     let mut exchange = Exchange::new(&pinned(), &identity(), roomy());

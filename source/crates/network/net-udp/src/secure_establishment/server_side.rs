@@ -7,8 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use campfire_net_common::Random;
 use campfire_net_core::Instant;
+use campfire_net_core::Random;
 use campfire_net_packets::{
     ConnectionId, Datagram, Establish, Established, Establishing, MIN_RESET_LEN, Outbound,
     Protection,

@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use campfire_math::internals::SplitMix64;
+use campfire_math::SplitMix64;
 use campfire_math::{Num, Vec3};
 use campfire_measure::{Kind, Scale};
 use criterion::{Criterion, Throughput};

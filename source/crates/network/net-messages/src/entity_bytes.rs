@@ -18,13 +18,12 @@ pub fn len(entity: Entity) -> usize {
 }
 
 /// Writes `entity` to `buffer`.
-pub fn write(entity: Entity, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
+pub fn write(entity: Entity, buffer: &mut impl WriteInteger) {
     let generation = entity.generation();
-    buffer.write_varint(index_word(entity))?;
+    buffer.write_varint(index_word(entity));
     if generation != EntityGeneration::FIRST {
-        buffer.write_varint(u64::from(generation.to_bits()))?;
+        buffer.write_varint(u64::from(generation.to_bits()));
     }
-    Ok(())
 }
 
 /// Reads an entity from `buffer`.
@@ -60,7 +59,7 @@ mod tests {
 
     fn round_trip(entity: Entity) -> usize {
         let mut writer = Writer::with_capacity(100);
-        write(entity, &mut writer).unwrap();
+        write(entity, &mut writer);
         let written = writer.len();
         assert_eq!(len(entity), written);
         let mut reader = Reader::from(writer.take_written());

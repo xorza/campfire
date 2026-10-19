@@ -60,10 +60,10 @@ bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 campfire-log = { workspace = true, features = ["internals"] }
+campfire-math = { workspace = true, features = ["internals"] }
 campfire-measure.workspace = true
 campfire-net-bytes = { workspace = true, features = ["internals"] }
 campfire-net-channels = { workspace = true, features = ["internals"] }
-campfire-net-common = { workspace = true, features = ["internals"] }
 campfire-net-emulator = { workspace = true, features = ["internals"] }
 campfire-net-stack = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }

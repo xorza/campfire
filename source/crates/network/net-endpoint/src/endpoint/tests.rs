@@ -15,6 +15,7 @@ use campfire_net_packets::{
     Protection,
 };
 use campfire_net_payload::{OutgoingPayload, PayloadFate, PayloadKind, PayloadToken};
+use campfire_net_timeline::ClockPlugin;
 use campfire_net_timeline::ClockSource;
 use core::net::SocketAddr;
 use core::time::Duration;
@@ -108,7 +109,7 @@ impl Harness {
         let app = || {
             let mut app = App::new();
             app.insert_resource(Clock::new(ClockSource::Frame));
-            app.add_plugins(EndpointPlugin::<EmulatedWires>::default());
+            app.add_plugins((ClockPlugin, EndpointPlugin::<EmulatedWires>::default()));
             app.insert_resource(TimeUpdateStrategy::ManualDuration(FRAME));
             app.init_resource::<Inbox>();
             app.add_systems(Update, Inbox::take);
@@ -398,7 +399,7 @@ fn a_real_clock_runs_the_pass_on_a_thread() {
     let app = || {
         let mut app = App::new();
         app.insert_resource(Clock::new(ClockSource::Os));
-        app.add_plugins(EndpointPlugin::<EmulatedWires>::default());
+        app.add_plugins((ClockPlugin, EndpointPlugin::<EmulatedWires>::default()));
         app.init_resource::<Inbox>();
         app.add_systems(Update, Inbox::take);
         app

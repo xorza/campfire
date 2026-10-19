@@ -4,12 +4,9 @@
 //! [`Arena`]. A chunk is reused once every message split from it is dropped, so a sender whose
 //! messages wait for an ack writes into a reclaimed chunk instead of a new allocation.
 
+use crate::arena::Arena;
 use crate::varint;
-use bytes::Bytes;
-use campfire_codec::{Binary, Sink};
-use campfire_net_common::Arena;
-use serde::Serialize;
-use std::io::{Result, Write};
+use bytes::{Bytes, BytesMut};
 
 /// The size of a chunk. A message that outgrows one gets an allocation of its own.
 const CHUNK: usize = 4096;
@@ -30,32 +27,8 @@ impl Default for Writer {
     }
 }
 
-impl Write for Writer {
-    fn write(&mut self, src: &[u8]) -> Result<usize> {
-        self.extend_from_slice(src);
-        Ok(src.len())
-    }
-
-    fn flush(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-impl Sink for Writer {
-    fn put(&mut self, bytes: &[u8]) {
-        self.extend_from_slice(bytes);
-    }
-}
-
 impl Writer {
-    /// Appends `value` in `codec`'s binary encoding, the one every message and component takes.
-    pub fn encode<T: Serialize + ?Sized>(&mut self, value: &T) {
-        Binary::encode_to(value, self);
-    }
-
     /// A writer with one buffer of `capacity` bytes, which grows as plain [`BytesMut`] does.
-    ///
-    /// [`BytesMut`]: bytes::BytesMut
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             arena: Arena::new(CHUNK, MAX_SPARE_CHUNKS).with_capacity(capacity),
@@ -71,17 +44,13 @@ impl Writer {
         self.arena.is_empty()
     }
 
-    pub fn extend_from_slice(&mut self, src: &[u8]) {
-        self.arena.extend_from_slice(src);
-    }
-
     /// Appends `len` bytes that `fill` writes into the slice it is given, which starts zeroed.
     /// When `fill` fails, the message being written is as it was.
     pub fn fill<E>(
         &mut self,
         len: usize,
-        fill: impl FnOnce(&mut [u8]) -> core::result::Result<(), E>,
-    ) -> core::result::Result<(), E> {
+        fill: impl FnOnce(&mut [u8]) -> Result<(), E>,
+    ) -> Result<(), E> {
         let buffer = self.arena.reserve(len);
         let start = buffer.len();
         buffer.resize(start + len, 0);
@@ -109,38 +78,58 @@ impl Writer {
     }
 }
 
-pub trait WriteInteger: Write {
+/// A buffer that takes the stack's header encodings, big-endian integers and varints. A write
+/// cannot fail: each buffer grows to take it.
+pub trait WriteInteger {
+    fn write_bytes(&mut self, bytes: &[u8]);
+
     #[inline]
-    fn write_u8(&mut self, n: u8) -> Result<()> {
-        self.write_all(&[n])
+    fn write_u8(&mut self, n: u8) {
+        self.write_bytes(&[n]);
     }
 
     #[inline]
-    fn write_u16(&mut self, n: u16) -> Result<()> {
-        self.write_all(&n.to_be_bytes())
+    fn write_u16(&mut self, n: u16) {
+        self.write_bytes(&n.to_be_bytes());
     }
 
     #[inline]
-    fn write_u32(&mut self, n: u32) -> Result<()> {
-        self.write_all(&n.to_be_bytes())
+    fn write_u32(&mut self, n: u32) {
+        self.write_bytes(&n.to_be_bytes());
     }
 
     #[inline]
-    fn write_u64(&mut self, n: u64) -> Result<()> {
-        self.write_all(&n.to_be_bytes())
+    fn write_u64(&mut self, n: u64) {
+        self.write_bytes(&n.to_be_bytes());
     }
 
-    /// Write a variable length integer to the writer, in network byte order: the top two bits
-    /// of the first byte hold the base-2 logarithm of the length.
-    fn write_varint(&mut self, value: u64) -> Result<()> {
+    /// Writes `value` as a variable-length integer in network byte order, in the fewest bytes
+    /// that hold it: the top two bits of the first byte hold the base-2 logarithm of the length.
+    fn write_varint(&mut self, value: u64) {
         let len = varint::len(value);
         let tag = u64::from(len.trailing_zeros());
         let encoded = (value | (tag << (8 * len - 2))).to_be_bytes();
-        self.write_all(&encoded[size_of::<u64>() - len..])
+        self.write_bytes(&encoded[size_of::<u64>() - len..]);
     }
 }
 
-impl<T: Write> WriteInteger for T {}
+impl WriteInteger for Writer {
+    fn write_bytes(&mut self, bytes: &[u8]) {
+        self.arena.extend_from_slice(bytes);
+    }
+}
+
+impl WriteInteger for Vec<u8> {
+    fn write_bytes(&mut self, bytes: &[u8]) {
+        self.extend_from_slice(bytes);
+    }
+}
+
+impl WriteInteger for BytesMut {
+    fn write_bytes(&mut self, bytes: &[u8]) {
+        self.extend_from_slice(bytes);
+    }
+}
 
 #[cfg(test)]
 mod tests;

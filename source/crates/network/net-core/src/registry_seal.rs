@@ -49,15 +49,16 @@ mod tests {
         let mut seal = RegistrySeal::default();
         assert_eq!(seal.hash(), None);
         seal.assert_open("test registry");
-        seal.seal("test registry", 7);
-        assert_eq!(seal.hash(), Some(7));
+        let hash = RegistryHash::new([7; 32]);
+        seal.seal("test registry", hash);
+        assert_eq!(seal.hash(), Some(hash));
     }
 
     #[test]
     #[should_panic(expected = "the test registry takes a registration after its plugin finished")]
     fn a_sealed_registry_refuses_a_registration() {
         let mut seal = RegistrySeal::default();
-        seal.seal("test registry", 7);
+        seal.seal("test registry", RegistryHash::new([7; 32]));
         seal.assert_open("test registry");
     }
 }

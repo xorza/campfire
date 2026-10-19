@@ -9,20 +9,18 @@ kind = "problem"
 
 [features]
 internals = [
+    "dep:campfire-math",
     "dep:campfire-measure",
     "dep:criterion",
-    "campfire-net-common/internals",
-    "campfire-codec/internals",
+    "campfire-math/internals",
 ]
 
 [dependencies]
-campfire-codec.workspace = true
-campfire-net-common.workspace = true
+campfire-math = { workspace = true, optional = true }
 
 bytes.workspace = true
 campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
-serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 variadics_please.workspace = true

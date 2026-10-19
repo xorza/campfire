@@ -17,8 +17,8 @@ use bevy_ecs::world::FilteredEntityMut;
 use bevy_ecs::{component::ComponentId, entity::MapEntities, error::Result, resource::Resource};
 use bevy_reflect::TypePath;
 use bevy_utils::prelude::DebugName;
+use campfire_common::HashDomain;
 use campfire_net_bytes::Reader;
-use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::Writer;
 use campfire_net_core::Direction;
@@ -29,6 +29,9 @@ use campfire_net_core::TypeMapper;
 use campfire_net_core::{RegistryHash, RegistryHasher};
 use std::sync::Arc;
 use tracing::trace;
+
+/// The tag of the message registry's hash.
+const HASH_DOMAIN: HashDomain<RegistryHash> = HashDomain::new("campfire/message-registry/v1");
 
 /// Delivers one message into its side's receiver among `receivers`, which goes on when absent.
 pub(crate) type ReceiveMessageFn = fn(
@@ -222,17 +225,18 @@ pub(crate) fn mapped_context_serialize<M: MapEntities + Clone>(
     message: &M,
     writer: &mut Writer,
     serialize_fn: SerializeFn<M>,
-) -> core::result::Result<(), SerializationError> {
+) {
     // A view that writes each entity as it is maps nothing, so the message is not cloned.
     if matches!(mapper, SendMapView::AsIs) {
-        return serialize_fn(message, writer);
+        serialize_fn(message, writer);
+        return;
     }
     let mut message = message.clone();
     // The view only exposes shared reads, so user mapping code runs without
     // requiring exclusive access to the entity map.
     let mut view = *mapper;
     message.map_entities(&mut view);
-    serialize_fn(&message, writer)
+    serialize_fn(&message, writer);
 }
 
 /// The context deserialize fn of a message or event that maps the entities it holds.
@@ -240,7 +244,7 @@ pub(crate) fn mapped_context_deserialize<M: MapEntities>(
     mapper: &ReceiveMapView<'_>,
     reader: &mut Reader,
     deserialize_fn: DeserializeFn<M>,
-) -> core::result::Result<M, SerializationError> {
+) -> core::result::Result<M, MessageError> {
     let mut message = deserialize_fn(reader)?;
     // The view only exposes shared reads, so user mapping code runs without
     // requiring exclusive access to the entity map.
@@ -333,15 +337,14 @@ impl MessageRegistry {
         message: &M,
         writer: &mut Writer,
         entity_map: &SendMapView<'_>,
-    ) -> Result<(), MessageError> {
+    ) {
         let net_id = self
             .net_id(MessageKind::of::<M>())
             .expect("a message is registered before it is sent");
-        net_id.to_bytes(writer)?;
+        net_id.to_bytes(writer);
         self.message(net_id)
             .serialize_fns
-            .serialize::<M>(message, writer, entity_map)?;
-        Ok(())
+            .serialize::<M>(message, writer, entity_map);
     }
 
     fn open(&self) {
@@ -352,7 +355,7 @@ impl MessageRegistry {
     /// hash holds each message's type, the directions it travels in and whether it maps entities,
     /// in the order of its id.
     pub(crate) fn seal(&mut self) {
-        let mut hasher = RegistryHasher::default();
+        let mut hasher = RegistryHasher::new(HASH_DOMAIN);
         for ((_, name), message) in self.kind_map.iter().zip(&self.messages) {
             hasher.name(name);
             hasher.write(&[

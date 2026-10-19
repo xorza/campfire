@@ -12,7 +12,7 @@ kind = "io"
 internals = [
     "dep:campfire-measure",
     "dep:criterion",
-    "campfire-net-common/internals",
+    "campfire-net-bytes/internals",
     "campfire-net-packets/internals",
     "campfire-net-emulator/internals",
     "campfire-net-payload/internals",
@@ -21,7 +21,7 @@ internals = [
 [dependencies]
 campfire-common.workspace = true
 campfire-net-core.workspace = true
-campfire-net-common = { workspace = true, features = ["os_random"] }
+campfire-net-bytes.workspace = true
 campfire-net-emulator.workspace = true
 campfire-net-packets.workspace = true
 campfire-net-payload.workspace = true

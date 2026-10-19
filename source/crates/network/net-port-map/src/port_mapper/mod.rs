@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use campfire_common::ErrorReport;
 
-use campfire_net_common::Random;
+use campfire_net_core::Random;
 use tracing::{debug, info, warn};
 
 use crate::error::MapError;
@@ -157,7 +157,7 @@ impl Routes {
 }
 
 impl PortMapper {
-    pub(crate) fn new(request: MapRequest, routes: Routes, times: MapTimes) -> Self {
+    pub(crate) const fn new(request: MapRequest, routes: Routes, times: MapTimes) -> Self {
         Self {
             request,
             routes,

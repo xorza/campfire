@@ -56,8 +56,8 @@ impl ToBytes for Overstep {
         1 // we only need 1 byte for a u8
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        Ok(buffer.write_u8(self.to_u8())?)
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
+        buffer.write_u8(self.to_u8());
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>

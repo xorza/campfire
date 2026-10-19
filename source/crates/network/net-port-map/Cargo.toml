@@ -10,7 +10,7 @@ kind = "io"
 [dependencies]
 campfire-store.workspace = true
 campfire-common.workspace = true
-campfire-net-common = { workspace = true, features = ["os_random"] }
+campfire-net-core.workspace = true
 
 netdev.workspace = true
 polling.workspace = true

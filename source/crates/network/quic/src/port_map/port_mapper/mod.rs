@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use campfire_common::ErrorReport;
 use campfire_store::SharedPort;
-use ring::rand::{SecureRandom, SystemRandom};
 use tracing::{debug, info, warn};
 
 use crate::port_map::error::MapError;
@@ -339,9 +338,7 @@ impl PortMapper {
 
     fn draw() -> u16 {
         let mut bytes = [0; 2];
-        SystemRandom::new()
-            .fill(&mut bytes)
-            .expect("the OS gives random bytes");
+        getrandom::fill(&mut bytes).expect("the OS gives random bytes");
         u16::from_le_bytes(bytes)
     }
 }

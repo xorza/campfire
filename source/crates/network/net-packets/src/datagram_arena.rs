@@ -1,4 +1,4 @@
-use campfire_net_common::Arena;
+use campfire_net_bytes::Arena;
 
 /// How many chunks the arena holds.
 const CHUNKS: usize = 4;

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use campfire_common::ErrorReport;
 
-use campfire_net_common::Random;
+use campfire_net_core::Random;
 use tracing::debug;
 use ureq::Agent;
 use xmltree::Element;

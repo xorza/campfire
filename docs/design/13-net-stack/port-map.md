@@ -48,6 +48,5 @@ of it. It takes a bound port and knows nothing of the protocol on it.
 - **The draws come from the mapper's `Random`, the clock from the OS.** A nonce must be unguessable
   (RFC 6887 §11.2), so a build draws from the OS, and a test from a seed, which fixes each nonce and
   renewal time it checks. The thread waits on sockets, so it keeps the OS clock ([A real-socket IO
-  runs on `Os`](time.md)). `Random` is `net-common`'s behind `os_random`. Refused: `ring` in
-  `net-common` for every crate, which builds it into the facade without `udp`; a copy of the type in
-  each crate that draws.
+  runs on `Os`](time.md)). `Random` is `net-core`'s, its OS source `getrandom`, the workspace's one.
+  Refused: a copy of the type in each crate that draws.

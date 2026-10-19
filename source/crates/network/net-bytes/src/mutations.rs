@@ -1,4 +1,4 @@
-use crate::split_mix64::SplitMix64;
+use campfire_math::SplitMix64;
 
 /// A seeded stream of mutations of valid inputs, for a parser's robustness test: each flips a few
 /// bits, cuts the input short, extends it, or overwrites a run of it, by a seeded draw, so a

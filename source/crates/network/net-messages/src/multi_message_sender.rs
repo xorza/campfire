@@ -132,13 +132,13 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
                     .replicon
                     .send_view(manager.entity_mapper.local_to_remote());
                 self.registry
-                    .serialize::<M>(message, &mut self.writer, &view)?;
+                    .serialize::<M>(message, &mut self.writer, &view);
                 self.writer.take_written()
             } else if let Some(bytes) = &as_is {
                 bytes.clone()
             } else {
                 self.registry
-                    .serialize::<M>(message, &mut self.writer, &SendMapView::AsIs)?;
+                    .serialize::<M>(message, &mut self.writer, &SendMapView::AsIs);
                 as_is.insert(self.writer.take_written()).clone()
             };
             let target = match host_client.as_deref_mut() {

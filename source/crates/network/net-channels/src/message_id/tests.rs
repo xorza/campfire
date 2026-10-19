@@ -31,7 +31,7 @@ fn single_data_round_trips_in_its_bytes_len() {
     for (id, len) in [(None, 11), (Some(MessageId(1)), 13)] {
         let data = SingleData::new(id, vec![7u8; 10].into());
         let mut writer = vec![];
-        data.write(&mut writer).unwrap();
+        data.write(&mut writer);
         assert_eq!([writer.len(), data.bytes_len()], [len, len]);
         let mut reader = writer.into();
         let decoded = SingleData::read(&mut reader, id.is_some()).unwrap();
@@ -50,7 +50,7 @@ fn fragment_data_round_trips_in_its_bytes_len() {
         bytes: bytes.clone(),
     };
     let mut writer = vec![];
-    data.to_bytes(&mut writer).unwrap();
+    data.to_bytes(&mut writer);
 
     assert_eq!(writer.len(), data.bytes_len());
 
@@ -66,7 +66,7 @@ fn fragment_data_round_trips_in_its_bytes_len() {
         bytes,
     };
     let mut writer = vec![];
-    initial_data.to_bytes(&mut writer).unwrap();
+    initial_data.to_bytes(&mut writer);
 
     assert_eq!(writer.len(), initial_data.bytes_len());
     assert_eq!(initial_data.bytes_len(), data.bytes_len() + 1);

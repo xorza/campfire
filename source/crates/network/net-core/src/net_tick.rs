@@ -26,9 +26,8 @@ impl ToBytes for NetTick {
         size_of::<u32>()
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        buffer.write_u32(self.0)?;
-        Ok(())
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
+        buffer.write_u32(self.0);
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError> {

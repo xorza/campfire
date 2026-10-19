@@ -6,7 +6,7 @@ use core::time::Duration;
 
 use crate::link_model::LinkModel;
 use crate::loss_state::LossState;
-use campfire_net_common::SplitMix64;
+use campfire_math::SplitMix64;
 
 /// When the model delivers one packet, and when its duplicate arrives, if it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,23 +52,23 @@ impl LinkModelRun {
             LossState::Good => (model.good_loss, model.good_to_bad),
             LossState::Bad => (model.bad_loss, model.bad_to_good),
         };
-        if self.rng.next_f32() < transition {
+        if draw(&mut self.rng) < transition {
             self.loss_state = match self.loss_state {
                 LossState::Good => LossState::Bad,
                 LossState::Bad => LossState::Good,
             };
         }
-        if self.rng.next_f32() < loss {
+        if draw(&mut self.rng) < loss {
             return None;
         }
         let departure = self.depart(model, bytes, now)?;
-        let reordered = model.reorder > 0.0 && self.rng.next_f32() < model.reorder;
+        let reordered = model.reorder > 0.0 && draw(&mut self.rng) < model.reorder;
         let at = if reordered {
             departure
         } else {
             departure + self.delay(model)
         };
-        let duplicated = model.duplicate > 0.0 && self.rng.next_f32() < model.duplicate;
+        let duplicated = model.duplicate > 0.0 && draw(&mut self.rng) < model.duplicate;
         let copy_at = if duplicated {
             self.depart(model, bytes, now)
                 .map(|departure| departure + self.delay(model))
@@ -113,6 +113,12 @@ impl LinkModelRun {
 }
 
 const NANOS: u128 = 1_000_000_000;
+
+/// A uniform `f32` in `[0, 1)`: the generator's fraction, of 24 bits, which an `f32` holds
+/// exactly, for the model's probabilities until they are `Num`s.
+fn draw(rng: &mut SplitMix64) -> f32 {
+    rng.fraction().to_bits() as f32 / 16_777_216.0
+}
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;

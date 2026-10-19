@@ -27,9 +27,8 @@ impl ToBytes for NetId {
         varint::len(u64::from(self.0))
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        buffer.write_varint(u64::from(self.0))?;
-        Ok(())
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
+        buffer.write_varint(u64::from(self.0));
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError> {

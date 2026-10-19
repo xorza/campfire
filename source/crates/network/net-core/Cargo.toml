@@ -14,10 +14,12 @@ reflect = ["dep:bevy_reflect"]
 ecs = ["dep:bevy_ecs"]
 
 [dependencies]
+campfire-common.workspace = true
+campfire-math.workspace = true
 campfire-net-bytes.workspace = true
 
 fixed.workspace = true
-blake3.workspace = true
+getrandom.workspace = true
 serde.workspace = true
 
 bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }

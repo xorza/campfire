@@ -34,15 +34,14 @@ impl ToBytes for FragmentData {
             + self.bytes.bytes_len()
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        self.message_id.to_bytes(buffer)?;
-        self.fragment_index.to_bytes(buffer)?;
-        self.num_fragments.to_bytes(buffer)?;
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
+        self.message_id.to_bytes(buffer);
+        self.fragment_index.to_bytes(buffer);
+        self.num_fragments.to_bytes(buffer);
         if self.is_initial_fragment() {
-            self.compression.unwrap_or_default().to_bytes(buffer)?;
+            self.compression.unwrap_or_default().to_bytes(buffer);
         }
-        self.bytes.to_bytes(buffer)?;
-        Ok(())
+        self.bytes.to_bytes(buffer);
     }
 
     /// We get the FragmentData as a subslice of the original Bytes. O(1) operation.

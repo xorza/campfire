@@ -74,10 +74,10 @@ packet stream under the transport's messages. The sealed handshake is in [UDP](u
   simulated network alike: a read's datagrams share one allocation, which a message slice of the
   frame never promotes, so a sealed frame allocates nothing. Refused: one buffer for each
   datagram; the simulated wire's own bytes, which the sender's payload arena shares.
-- **One `Arena` type, in `net-common`, holds every buffer that views split off:** the
-  writer's messages, the payloads of a flush, a session's control packets and an IO's
-  datagrams. Each fills a chunk from the front, reuses it once its views drop, and keeps a bound
-  of spare chunks. Refused: four versions of the same reclaim, each with its own retention rule.
+- **One `Arena` type, in `net-bytes`, holds every buffer that views split off:** the writer's
+  messages, the payloads of a flush, a session's control packets and an IO's datagrams. Each fills a
+  chunk from the front, reuses it once its views drop, and keeps a bound of spare chunks. Refused:
+  four versions of the same reclaim, each with its own retention rule.
 
 ## Wire
 

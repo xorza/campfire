@@ -146,18 +146,8 @@ impl<M: 'static> SendQueue<M> {
                 .channels
                 .net_id(channel)
                 .expect("a message is sent on a registered channel");
-            let written = net_id
-                .to_bytes(link.writer)
-                .and_then(|()| serialize_fns.serialize::<M>(&value, link.writer, link.entity_map));
-            if let Err(error) = written {
-                link.writer.reset();
-                error!(
-                    ?error,
-                    message = core::any::type_name::<M>(),
-                    "dropped a message that could not be serialized"
-                );
-                continue;
-            }
+            net_id.to_bytes(link.writer);
+            serialize_fns.serialize::<M>(&value, link.writer, link.entity_map);
             let bytes = link.writer.take_written();
             trace!(
                 target: "campfire_net_debug::message",

@@ -1,6 +1,6 @@
 use super::*;
 use bytes::BytesMut;
-use campfire_net_common::SplitMix64;
+use campfire_math::SplitMix64;
 use campfire_net_payload::{OutgoingPayload, PayloadKind, PayloadToken};
 use core::net::{IpAddr, Ipv4Addr};
 use core::time::Duration;
@@ -307,10 +307,10 @@ struct FaultyWire {
 
 impl FaultyWire {
     fn send(&mut self, now: Instant, to: SocketAddr, datagram: &[u8]) {
-        if self.random.next_f32() < 0.2 {
+        if self.random.below(5) == 0 {
             return;
         }
-        let copies = if self.random.next_f32() < 0.1 { 2 } else { 1 };
+        let copies = if self.random.below(10) == 0 { 2 } else { 1 };
         for _ in 0..copies {
             let delay = Duration::from_millis(10 + self.random.below(31));
             self.in_flight

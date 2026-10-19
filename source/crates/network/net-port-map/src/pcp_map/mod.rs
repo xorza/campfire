@@ -1,7 +1,7 @@
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4};
 use std::time::Duration;
 
-use campfire_net_common::Random;
+use campfire_net_core::Random;
 
 use crate::reply_error::ReplyError;
 

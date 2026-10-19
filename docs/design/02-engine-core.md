@@ -53,8 +53,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `server` | built | app | The dedicated server's binary |
 | `net` | built | glue | Lightyear over `quic`, and the session host ([Networking](#networking)) |
 | `quic` | built | glue | QUIC under Lightyear's link ([QUIC transport](11-quic-transport.md)) |
-| `net-common` | built | problem | What several of the network stack's crates share: a writer's chunk arena, a buffer of ready items, seeded randomness and the benches' scheme |
-| `net-core` | built | problem | The network stack's vocabulary, with no engine in it: the app's instant, a link's direction, network ticks, peer and network ids |
+| `net-core` | built | problem | The network stack's vocabulary, with no engine in it: the app's instant, a link's direction, network ticks, peer and network ids, and the source of a link's random bytes |
 | `net-bytes` | built | problem | The network stack's byte buffers: a writer that reuses its chunks, a reader, varints, and `ToBytes` for the stack's own headers |
 | `net-timeline` | built | glue | The app's network clock and its timelines |
 | `net-payload` | built | problem | The queues between the frame and each link's packet session, the payloads in them, and why a link ends |

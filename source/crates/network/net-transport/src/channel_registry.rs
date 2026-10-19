@@ -1,5 +1,6 @@
 use bevy_ecs::resource::Resource;
 use bevy_reflect::TypePath;
+use campfire_common::HashDomain;
 use campfire_net_channels::Channel;
 use campfire_net_channels::ChannelConfig;
 use campfire_net_channels::ChannelKind;
@@ -8,6 +9,9 @@ use campfire_net_core::NetId;
 use campfire_net_core::RegistrySeal;
 use campfire_net_core::TypeMapper;
 use campfire_net_core::{RegistryHash, RegistryHasher};
+
+/// The tag of the channel registry's hash.
+const HASH_DOMAIN: HashDomain<RegistryHash> = HashDomain::new("campfire/channel-registry/v1");
 
 /// The registered [`Channels`](Channel): the config, kind and net id of each.
 ///
@@ -84,7 +88,7 @@ impl ChannelRegistry {
     /// Seals the registry, as `TransportPlugin::finish` does. Its hash holds each channel's type,
     /// config and directions, in the order of its id.
     pub(crate) fn seal(&mut self) {
-        let mut hasher = RegistryHasher::default();
+        let mut hasher = RegistryHasher::new(HASH_DOMAIN);
         for ((_, name), channel) in self.kind_map.iter().zip(&self.channels) {
             hasher.name(name);
             channel.config.hash_into(&mut hasher);

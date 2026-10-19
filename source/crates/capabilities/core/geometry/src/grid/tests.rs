@@ -1,4 +1,4 @@
-use campfire_math::internals::SplitMix64;
+use campfire_math::SplitMix64;
 
 use super::*;
 

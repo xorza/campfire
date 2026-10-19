@@ -1,8 +1,11 @@
+use crate::message_error::MessageError;
 use crate::receive_map_view::ReceiveMapView;
 use crate::send_map_view::SendMapView;
+use bytes::Buf;
+use campfire_codec::{Binary, Sink};
 use campfire_net_bytes::Reader;
-use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
+use campfire_net_bytes::WriteInteger;
 use campfire_net_bytes::Writer;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -113,28 +116,23 @@ impl<M: ToBytes> SerializeFns<M> {
     pub(crate) fn with_to_bytes() -> Self {
         Self {
             serialize: |message, writer| message.to_bytes(writer),
-            deserialize: |reader| M::from_bytes(reader),
+            deserialize: |reader| Ok(M::from_bytes(reader)?),
         }
     }
 }
 
 /// Type of the serialize function without entity mapping
-pub(crate) type SerializeFn<M> =
-    fn(message: &M, writer: &mut Writer) -> Result<(), SerializationError>;
+pub(crate) type SerializeFn<M> = fn(message: &M, writer: &mut Writer);
 
 /// Type of the deserialize function without entity mapping
-pub(crate) type DeserializeFn<M> = fn(reader: &mut Reader) -> Result<M, SerializationError>;
+pub(crate) type DeserializeFn<M> = fn(reader: &mut Reader) -> Result<M, MessageError>;
 
 /// Type of the serialize function with entity mapping.
 ///
 /// The map is a concrete [`SendMapView`] chaining an optional shared map
 /// (e.g. replicon's, on client connections) over the connection-local map.
-pub(crate) type ContextSerializeFn<M> = for<'a> fn(
-    &'a SendMapView<'a>,
-    message: &M,
-    writer: &mut Writer,
-    SerializeFn<M>,
-) -> Result<(), SerializationError>;
+pub(crate) type ContextSerializeFn<M> =
+    for<'a> fn(&'a SendMapView<'a>, message: &M, writer: &mut Writer, SerializeFn<M>);
 
 /// Type of the deserialize function with entity mapping.
 ///
@@ -144,43 +142,50 @@ pub(crate) type ContextDeserializeFn<M> = for<'a> fn(
     &'a ReceiveMapView<'a>,
     reader: &mut Reader,
     DeserializeFn<M>,
-) -> Result<M, SerializationError>;
+) -> Result<M, MessageError>;
 
 fn default_context_serialize<M>(
     _: &SendMapView<'_>,
     message: &M,
     writer: &mut Writer,
     serialize_fn: SerializeFn<M>,
-) -> Result<(), SerializationError> {
-    serialize_fn(message, writer)
+) {
+    serialize_fn(message, writer);
 }
 
 fn default_context_deserialize<M>(
     _: &ReceiveMapView<'_>,
     reader: &mut Reader,
     deserialize_fn: DeserializeFn<M>,
-) -> Result<M, SerializationError> {
+) -> Result<M, MessageError> {
     deserialize_fn(reader)
 }
 
-/// A message's encode in `codec`'s binary encoding.
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "a serialize fn returns a Result, as a `ToBytes` one may fail"
-)]
-fn default_serialize<M: Serialize>(
-    message: &M,
-    buffer: &mut Writer,
-) -> Result<(), SerializationError> {
-    buffer.encode(message);
-    Ok(())
+/// The writer as `codec`'s sink, which the orphan rule keeps from `Writer` itself.
+#[derive(Debug)]
+struct WriterSink<'a>(&'a mut Writer);
+
+impl Sink for WriterSink<'_> {
+    fn put(&mut self, bytes: &[u8]) {
+        self.0.write_bytes(bytes);
+    }
 }
 
-/// A message's decode from its one encoding in `codec`'s binary encoding.
+/// A message's encode in `codec`'s binary encoding, the one every message and component takes.
+fn default_serialize<M: Serialize + ?Sized>(message: &M, writer: &mut Writer) {
+    Binary::encode_to(message, &mut WriterSink(writer));
+}
+
+/// A message's decode from its one encoding in `codec`'s binary encoding; on an error, the reader
+/// stays where it was.
 fn default_deserialize<M: Serialize + DeserializeOwned>(
-    buffer: &mut Reader,
-) -> Result<M, SerializationError> {
-    buffer.decode()
+    reader: &mut Reader,
+) -> Result<M, MessageError> {
+    let taken = Binary::take::<M>(reader.chunk())?;
+    let read = reader.remaining() - taken.rest.len();
+    let value = taken.value;
+    reader.advance(read);
+    Ok(value)
 }
 
 impl ErasedSerializeFns {
@@ -232,9 +237,9 @@ impl ErasedSerializeFns {
         message: &M,
         writer: &mut Writer,
         context: &SendMapView<'_>,
-    ) -> Result<(), SerializationError> {
+    ) {
         let fns = self.typed::<M>().serialize;
-        (fns.context_serialize)(context, message, writer, fns.serialize)
+        (fns.context_serialize)(context, message, writer, fns.serialize);
     }
 
     /// Deserialize the message value from the reader
@@ -242,8 +247,36 @@ impl ErasedSerializeFns {
         &self,
         reader: &mut Reader,
         context: &ReceiveMapView<'_>,
-    ) -> Result<M, SerializationError> {
+    ) -> Result<M, MessageError> {
         let fns = self.typed::<M>().deserialize;
         (fns.context_deserialize)(context, reader, fns.deserialize)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn values_encode_through_codec_and_decode_only_from_their_one_encoding() {
+        // "ab", then 300, the varint 0xAC 0x02, as a packet carries two messages one after
+        // another.
+        let mut writer = Writer::with_capacity(8);
+        default_serialize("ab", &mut writer);
+        default_serialize(&300_u32, &mut writer);
+        let written = writer.take_written();
+        assert_eq!(&*written, [2, b'a', b'b', 0xAC, 0x02]);
+        let mut reader = Reader::from(written);
+        assert_eq!(default_deserialize::<String>(&mut reader).unwrap(), "ab");
+        assert_eq!(reader.remaining(), 2);
+        assert_eq!(default_deserialize::<u32>(&mut reader).unwrap(), 300);
+        assert_eq!(reader.remaining(), 0);
+        // 0 over-long, 0x80 0x00, is no value's one encoding: refused, and the reader stays.
+        let mut reader = Reader::from(vec![0x80, 0x00]);
+        assert!(matches!(
+            default_deserialize::<u32>(&mut reader),
+            Err(MessageError::Binary(_))
+        ));
+        assert_eq!(reader.remaining(), 2);
     }
 }

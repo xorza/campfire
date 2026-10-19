@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use quinn_proto::crypto::HmacKey;
 use ring::hmac;
-use ring::rand::{SecureRandom, SystemRandom};
 use zeroize::Zeroizing;
 
 use crate::derived_secret::DerivedSecret;
@@ -26,9 +25,7 @@ impl ResetKey {
 
     pub(crate) fn random() -> Self {
         let mut secret = Zeroizing::new([0; 32]);
-        SystemRandom::new()
-            .fill(secret.as_mut_slice())
-            .expect("the OS gives random bytes");
+        getrandom::fill(secret.as_mut_slice()).expect("the OS gives random bytes");
         Self::new(&secret)
     }
 

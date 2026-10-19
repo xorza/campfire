@@ -9,7 +9,6 @@ use core::num::NonZeroU32;
 use core::time::Duration;
 use std::thread;
 use std::time::Instant as OsInstant;
-use zeroize::Zeroizing;
 
 use crate::server_secret::ServerSecret;
 

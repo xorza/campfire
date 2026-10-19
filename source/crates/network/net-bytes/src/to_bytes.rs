@@ -18,7 +18,7 @@ use smallvec::{Array, SmallVec};
 /// bytes left can not hold ([`Reader::read_count`]).
 pub trait ToBytes {
     fn bytes_len(&self) -> usize;
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError>;
+    fn to_bytes(&self, buffer: &mut impl WriteInteger);
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>
     where
@@ -33,28 +33,26 @@ impl<M: ToBytes> ToBytes for Option<M> {
         }
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
         match self {
             Some(value) => {
-                buffer.write_u8(1)?;
-                value.to_bytes(buffer)?;
+                buffer.write_u8(1);
+                value.to_bytes(buffer);
             }
-            None => {
-                buffer.write_u8(0)?;
-            }
+            None => buffer.write_u8(0),
         }
-        Ok(())
     }
 
+    /// Refuses a tag other than 0 and 1 (14-workspace-alignment.md, A header decodes from one
+    /// encoding).
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>
     where
         Self: Sized,
     {
-        let has_value = buffer.read_u8()? != 0;
-        if has_value {
-            Ok(Some(M::from_bytes(buffer)?))
-        } else {
-            Ok(None)
+        match buffer.read_u8()? {
+            0 => Ok(None),
+            1 => Ok(Some(M::from_bytes(buffer)?)),
+            _ => Err(SerializationError::InvalidValue),
         }
     }
 }
@@ -65,10 +63,9 @@ impl ToBytes for Bytes {
         varint::len(self.len() as u64) + self.len()
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        buffer.write_varint(self.len() as u64)?;
-        buffer.write_all(self.as_ref())?;
-        Ok(())
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
+        buffer.write_varint(self.len() as u64);
+        buffer.write_bytes(self.as_ref());
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>
@@ -85,9 +82,8 @@ impl ToBytes for u8 {
         1
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        buffer.write_u8(*self)?;
-        Ok(())
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
+        buffer.write_u8(*self);
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>
@@ -103,9 +99,8 @@ impl ToBytes for u16 {
         varint::len(u64::from(*self))
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        buffer.write_varint(u64::from(*self))?;
-        Ok(())
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
+        buffer.write_varint(u64::from(*self));
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>
@@ -127,10 +122,9 @@ macro_rules! impl_tuple_query_data {
                 len
             }
 
-            fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
+            fn to_bytes(&self, buffer: &mut impl WriteInteger) {
                 let ($($name,)*) = self;
-                $($name.to_bytes(buffer)?;)*
-                Ok(())
+                $($name.to_bytes(buffer);)*
             }
 
             fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError> {
@@ -147,10 +141,11 @@ impl<M: ToBytes> ToBytes for Vec<M> {
         varint::len(self.len() as u64) + self.iter().map(ToBytes::bytes_len).sum::<usize>()
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        buffer.write_varint(self.len() as u64)?;
-        self.iter().try_for_each(|item| item.to_bytes(buffer))?;
-        Ok(())
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
+        buffer.write_varint(self.len() as u64);
+        for item in self {
+            item.to_bytes(buffer);
+        }
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>
@@ -177,10 +172,11 @@ where
         varint::len(self.len() as u64) + self.iter().map(ToBytes::bytes_len).sum::<usize>()
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        buffer.write_varint(self.len() as u64)?;
-        self.iter().try_for_each(|item| item.to_bytes(buffer))?;
-        Ok(())
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
+        buffer.write_varint(self.len() as u64);
+        for item in self {
+            item.to_bytes(buffer);
+        }
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>
@@ -206,7 +202,7 @@ mod tests {
     fn bytes_round_trip() {
         let a: Bytes = vec![7; 100].into();
         let mut writer = Writer::with_capacity(5);
-        a.to_bytes(&mut writer).unwrap();
+        a.to_bytes(&mut writer);
 
         let mut reader = Reader::from(writer.into_bytes());
         let read = Bytes::from_bytes(&mut reader).unwrap();
@@ -216,8 +212,8 @@ mod tests {
     #[test]
     fn truncated_bytes_fail_to_deserialize() {
         let mut writer = Writer::default();
-        writer.write_varint(10).unwrap();
-        writer.extend_from_slice(&[7]);
+        writer.write_varint(10);
+        writer.write_bytes(&[7]);
 
         let mut reader = Reader::from(writer.into_bytes());
         assert!(Bytes::from_bytes(&mut reader).is_err());
@@ -228,8 +224,8 @@ mod tests {
     #[test]
     fn counts_beyond_the_remaining_bytes_are_refused() {
         let mut writer = Writer::default();
-        writer.write_varint(varint::MAX).unwrap();
-        writer.extend_from_slice(&[7]);
+        writer.write_varint(varint::MAX);
+        writer.write_bytes(&[7]);
         let bytes = writer.into_bytes();
         let truncated = |error: SerializationError| matches!(error, SerializationError::Io(e) if e.kind() == std::io::ErrorKind::UnexpectedEof);
 
@@ -249,7 +245,7 @@ mod tests {
     fn u16_refuses_a_varint_above_its_range() {
         for (value, expected) in [(65_535, Some(u16::MAX)), (65_536, None)] {
             let mut writer = Writer::default();
-            writer.write_varint(value).unwrap();
+            writer.write_varint(value);
             let decoded = u16::from_bytes(&mut Reader::from(writer.into_bytes()));
             match expected {
                 Some(expected) => assert_eq!(decoded.unwrap(), expected),
@@ -258,13 +254,31 @@ mod tests {
         }
     }
 
+    /// Tag 0 is `None` and tag 1 a value; 2 and 255 would be a second spelling of `Some`.
+    #[test]
+    fn an_option_reads_only_tags_0_and_1() {
+        let decode = |bytes: &[u8]| Option::<u8>::from_bytes(&mut Reader::from(bytes.to_vec()));
+        assert_eq!(decode(&[0]).unwrap(), None);
+        assert_eq!(decode(&[1, 5]).unwrap(), Some(5));
+        for tag in [2, 255] {
+            assert!(matches!(
+                decode(&[tag, 5]),
+                Err(SerializationError::InvalidValue)
+            ));
+        }
+        let mut writer = Writer::default();
+        Some(5_u8).to_bytes(&mut writer);
+        None::<u8>.to_bytes(&mut writer);
+        assert_eq!(&*writer.into_bytes(), [1, 5, 0]);
+    }
+
     #[test]
     fn a_vec_round_trips() {
         let a = [5; 10].to_vec();
         let mut writer = Writer::with_capacity(5);
-        a.to_bytes(&mut writer).unwrap();
+        a.to_bytes(&mut writer);
         let b: Vec<u8> = vec![];
-        b.to_bytes(&mut writer).unwrap();
+        b.to_bytes(&mut writer);
 
         let mut reader = Reader::from(writer.into_bytes());
         let a_read = Vec::<u8>::from_bytes(&mut reader).unwrap();
@@ -279,9 +293,9 @@ mod tests {
         let small = SmallVec::<[u8; 4]>::from_vec(vec.clone());
 
         let mut vec_writer = Writer::default();
-        vec.to_bytes(&mut vec_writer).unwrap();
+        vec.to_bytes(&mut vec_writer);
         let mut small_writer = Writer::default();
-        small.to_bytes(&mut small_writer).unwrap();
+        small.to_bytes(&mut small_writer);
         let vec_bytes = vec_writer.into_bytes();
         let small_bytes = small_writer.into_bytes();
         assert_eq!(vec_bytes, small_bytes);

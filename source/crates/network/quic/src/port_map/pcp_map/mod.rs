@@ -1,8 +1,6 @@
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4};
 use std::time::Duration;
 
-use ring::rand::{SecureRandom, SystemRandom};
-
 use crate::port_map::reply_error::ReplyError;
 
 /// PCP's version; a gateway that speaks NAT-PMP alone answers with its own, 0 (RFC 6887 §9).
@@ -95,9 +93,7 @@ impl PcpMap {
 impl MapNonce {
     pub(crate) fn random() -> Self {
         let mut nonce = [0; 12];
-        SystemRandom::new()
-            .fill(&mut nonce)
-            .expect("the OS gives random bytes");
+        getrandom::fill(&mut nonce).expect("the OS gives random bytes");
         Self(nonce)
     }
 }

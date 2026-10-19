@@ -1,9 +1,6 @@
 use crate::serialization_error::SerializationError;
 use crate::varint;
 use bytes::{Buf, Bytes};
-use campfire_codec::Binary;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
 use std::io::{Error, ErrorKind, Read, Result};
 
 /// The unread bytes of a buffer: each read takes its bytes off the front, and a split shares the
@@ -46,19 +43,6 @@ impl Buf for Reader {
 }
 
 impl Reader {
-    /// The value in `codec`'s binary encoding at the front of the unread bytes, which the reader
-    /// then passes; an error, and the reader where it was, for bytes that are not that value's
-    /// one encoding.
-    pub fn decode<T: Serialize + DeserializeOwned>(
-        &mut self,
-    ) -> core::result::Result<T, SerializationError> {
-        let taken = Binary::take::<T>(&self.0)?;
-        let read = self.0.len() - taken.rest.len();
-        let value = taken.value;
-        self.0.advance(read);
-        Ok(value)
-    }
-
     /// Split of the next `len` bytes from the reader into a separate Bytes.
     ///
     /// This doesn't allocate and just increases some reference counts. O(1) cost.
@@ -130,16 +114,20 @@ pub trait ReadInteger: Read {
 }
 
 pub trait ReadVarInt: ReadInteger {
-    /// Reads an unsigned variable-length integer in network byte-order from
-    /// the current offset and advances the buffer.
-    fn read_varint(&mut self) -> Result<u64> {
+    /// Reads an unsigned variable-length integer in network byte order, and refuses one longer
+    /// than its value needs (14-workspace-alignment.md, A header decodes from one encoding).
+    fn read_varint(&mut self) -> core::result::Result<u64, SerializationError> {
         let first = self.read_u8()?;
         let len = varint::parse_len(first);
         let mut bytes = [0; size_of::<u64>()];
         let start = bytes.len() - len;
         bytes[start] = first & 0x3f;
         self.read_exact(&mut bytes[start + 1..])?;
-        Ok(u64::from_be_bytes(bytes))
+        let value = u64::from_be_bytes(bytes);
+        if varint::len(value) != len {
+            return Err(SerializationError::NotCanonical);
+        }
+        Ok(value)
     }
 }
 
@@ -155,10 +143,10 @@ mod tests {
     #[test]
     fn integers_read_back() {
         let mut writer = vec![];
-        writer.write_u8(1).unwrap();
-        writer.write_u16(2).unwrap();
-        writer.write_u32(3).unwrap();
-        writer.write_u64(4).unwrap();
+        writer.write_u8(1);
+        writer.write_u16(2);
+        writer.write_u32(3);
+        writer.write_u64(4);
 
         let mut reader = Reader::from(writer);
 
@@ -190,7 +178,7 @@ mod tests {
     fn read_count_allows_up_to_the_remaining_bytes() {
         for (count, fits) in [(0, true), (3, true), (4, false)] {
             let mut writer = vec![];
-            writer.write_varint(count).unwrap();
+            writer.write_varint(count);
             writer.extend_from_slice(&[1, 2, 3]);
             let mut reader = Reader::from(writer);
             let read = reader.read_count();
@@ -217,7 +205,7 @@ mod tests {
         ];
         let mut writer = vec![];
         for value in values {
-            writer.write_varint(value).unwrap();
+            writer.write_varint(value);
         }
 
         let mut reader = writer.as_slice();

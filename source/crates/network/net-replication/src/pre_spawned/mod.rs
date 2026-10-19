@@ -1,9 +1,9 @@
 use crate::component_kind::ComponentKind;
 use bevy_ecs::archetype::Archetype;
 use bevy_ecs::component::Components;
+use campfire_common::{DomainHasher, HashDomain, HashOutput};
+use campfire_net_core::NetId;
 use campfire_net_core::NetTick;
-use campfire_net_core::{NetId, StableHasher};
-use core::hash::{Hash, Hasher};
 
 use crate::component_registry::ComponentRegistry;
 use bevy_ecs::lifecycle::HookContext;
@@ -147,8 +147,25 @@ impl PreSpawned {
     }
 }
 
-/// Compute the default PreSpawned hash used to match server entities with pre-spawned client
-/// entities
+/// The tag of the default pre-spawn hash.
+const DEFAULT_HASH_DOMAIN: HashDomain<DefaultHash> = HashDomain::new("campfire/pre-spawn/v1");
+
+/// A default pre-spawn hash: the first 8 bytes of its domain hash, little-endian, as
+/// `PreSpawned` holds a `u64`.
+#[derive(Debug)]
+struct DefaultHash(u64);
+
+impl HashOutput for DefaultHash {
+    fn of_hash(bytes: [u8; 32]) -> Self {
+        let [b0, b1, b2, b3, b4, b5, b6, b7, ..] = bytes;
+        Self(u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]))
+    }
+}
+
+/// The default hash that matches a server's entity with the client's pre-spawned one: the domain
+/// hash of the spawn tick, the count and the sorted net ids of the entity's registered components,
+/// and the salt when one is given, each in explicit little-endian bytes, so a client and a server
+/// in two processes agree (14-workspace-alignment.md, The registry hash is a domain hash).
 pub(crate) fn compute_default_hash(
     component_registry: &ComponentRegistry,
     components: &Components,
@@ -156,16 +173,7 @@ pub(crate) fn compute_default_hash(
     tick: NetTick,
     salt: Option<u64>,
 ) -> u64 {
-    // A seeded std or Bevy hasher differs between processes, which the client and the server are.
-    let mut hasher = StableHasher::default();
-
-    // we include the spawn tick in the hash
-    tick.hash(&mut hasher);
-
-    // NOTE: we cannot call hash() multiple times because the components in the archetype
-    //  might get iterated in any order!
-    //  Instead we will get the sorted list of types to hash first, sorted by type_id
-    let mut kinds_to_hash = archetype
+    let mut ids = archetype
         .iter_components()
         .filter_map(|component_id| {
             let type_id = components.get_info(component_id)?.type_id()?;
@@ -175,17 +183,21 @@ pub(crate) fn compute_default_hash(
                 .copied()
         })
         .collect::<SmallVec<[NetId; 16]>>();
-    kinds_to_hash.sort_unstable();
-    for kind in kinds_to_hash {
-        kind.hash(&mut hasher);
+    // An archetype lists its components in an order of its own.
+    ids.sort_unstable();
+    let count = u32::try_from(ids.len()).expect("a registry's net ids are u16");
+    let mut hasher = DomainHasher::new(DEFAULT_HASH_DOMAIN);
+    hasher
+        .update(&tick.0.to_le_bytes())
+        .update(&count.to_le_bytes());
+    for id in ids {
+        hasher.update(&id.get().to_le_bytes());
     }
-
-    // if a user salt is provided, hash after the sorted component list
-    if let Some(salt) = salt {
-        salt.hash(&mut hasher);
-    }
-
-    hasher.finish()
+    match salt {
+        None => hasher.update(&[0]),
+        Some(salt) => hasher.update(&[1]).update(&salt.to_le_bytes()),
+    };
+    hasher.finish().0
 }
 
 #[cfg(test)]

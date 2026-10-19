@@ -4,9 +4,13 @@ use bevy_platform::collections::HashMap;
 use bevy_reflect::TypePath;
 
 use crate::replication_kind::Replication;
+use campfire_common::HashDomain;
 use campfire_net_core::RegistrySeal;
 use campfire_net_core::TypeMapper;
 use campfire_net_core::{RegistryHash, RegistryHasher};
+
+/// The tag of the component registry's hash.
+const HASH_DOMAIN: HashDomain<RegistryHash> = HashDomain::new("campfire/component-registry/v1");
 
 /// The replicated [`Components`](Component), and how each replicates.
 ///
@@ -126,7 +130,7 @@ impl ComponentRegistry {
     /// Seals the registry, as the shared replication plugin's `finish` does. Its hash holds each
     /// component's type and how it replicates, in the order of its id.
     pub(crate) fn seal(&mut self) {
-        let mut hasher = RegistryHasher::default();
+        let mut hasher = RegistryHasher::new(HASH_DOMAIN);
         for (kind, name) in &self.kind_map {
             hasher.name(name);
             hasher.write(&[match self.replication(kind) {

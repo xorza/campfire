@@ -5,7 +5,7 @@ use bytes::{Buf, BytesMut};
 use core::time::Duration;
 use std::collections::VecDeque;
 
-use campfire_net_common::Arena;
+use campfire_net_bytes::Arena;
 use campfire_net_core::Instant;
 use campfire_net_payload::{
     AppCode, OpenedPayload, OutgoingPayload, PacketNumber, PayloadFate, PayloadKind,

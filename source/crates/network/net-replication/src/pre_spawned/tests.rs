@@ -82,9 +82,20 @@ fn a_receiver_pre_spawn_outside_fixed_main_panics() {
 }
 
 /// A default hash holds the simulated tick, 5, and no other: the hashes at 4 and 6 differ. A
-/// salted one holds its salt too, and a given hash is the hash from the start.
+/// salted one holds its salt too, and a given hash is the hash from the start. The fixture
+/// registers no component, so a default hash is that of the tick 5, the count 0, and the salt
+/// after its tag 1, or the tag 0 alone.
 #[test]
 fn a_default_hash_holds_the_simulated_tick() {
+    let expected = |salt: Option<u64>| {
+        let mut hasher = DomainHasher::new(DEFAULT_HASH_DOMAIN);
+        hasher.update(&[5, 0, 0, 0, 0, 0, 0, 0]);
+        match salt {
+            None => hasher.update(&[0]),
+            Some(salt) => hasher.update(&[1]).update(&salt.to_le_bytes()),
+        };
+        hasher.finish().0
+    };
     let hashes = |pre_spawned: PreSpawned, salt| {
         let mut app = app();
         let entity = pre_spawn_at(&mut app, 5, (CompA(1.0), pre_spawned));
@@ -100,6 +111,7 @@ fn a_default_hash_holds_the_simulated_tick() {
         };
         let hash = world.get::<PreSpawned>(entity).unwrap().hash();
         assert_eq!(hash, Some(hash_at(NetTick(5))));
+        assert_eq!(hash, Some(expected(salt)));
         assert_ne!(hash_at(NetTick(4)), hash_at(NetTick(5)));
         assert_ne!(hash_at(NetTick(6)), hash_at(NetTick(5)));
         hash

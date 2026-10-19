@@ -14,7 +14,6 @@ mod crypto_stream;
 mod derived_secret;
 mod handshake_packet;
 mod invalid_server_name;
-mod os_random;
 mod pinned_key_verifier;
 mod raw_key_signer;
 mod recv_batch;

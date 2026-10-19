@@ -8,7 +8,7 @@ use std::collections::BinaryHeap;
 /// [`pop_ready`](Self::pop_ready) hands the ready items out in key order, and items with equal keys
 /// in the order they were pushed.
 #[derive(Clone, Debug)]
-pub struct ReadyBuffer<K, T> {
+pub(crate) struct ReadyBuffer<K, T> {
     heap: BinaryHeap<Reverse<Entry<K, T>>>,
     pushed: u64,
 }
@@ -47,7 +47,7 @@ impl<K: Ord, T> Default for ReadyBuffer<K, T> {
 }
 
 impl<K: Ord, T> ReadyBuffer<K, T> {
-    pub const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             heap: BinaryHeap::new(),
             pushed: 0,
@@ -55,7 +55,7 @@ impl<K: Ord, T> ReadyBuffer<K, T> {
     }
 
     /// Queues `item` to become ready at `key`.
-    pub fn push(&mut self, key: K, item: T) {
+    pub(crate) fn push(&mut self, key: K, item: T) {
         self.heap.push(Reverse(Entry {
             key,
             order: self.pushed,
@@ -64,26 +64,13 @@ impl<K: Ord, T> ReadyBuffer<K, T> {
         self.pushed += 1;
     }
 
-    pub fn len(&self) -> usize {
-        self.heap.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.heap.is_empty()
-    }
-
-    /// Drops every queued item, ready or not.
-    pub fn clear(&mut self) {
-        self.heap.clear();
-    }
-
     /// The key the next item becomes ready at.
-    pub fn next_key(&self) -> Option<&K> {
+    pub(crate) fn next_key(&self) -> Option<&K> {
         self.heap.peek().map(|Reverse(entry)| &entry.key)
     }
 
     /// Removes and returns the next item whose key is at or before `now`.
-    pub fn pop_ready(&mut self, now: &K) -> Option<T> {
+    pub(crate) fn pop_ready(&mut self, now: &K) -> Option<T> {
         if self
             .heap
             .peek()

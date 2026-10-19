@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use campfire_net_common::Random;
+use campfire_net_core::Random;
 
 use super::*;
 use crate::gateway::fake_gateway::FakeGateway;

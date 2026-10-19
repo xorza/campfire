@@ -27,11 +27,11 @@ impl SingleData {
         self.id.map_or(0, |id| id.bytes_len()) + self.bytes.bytes_len()
     }
 
-    pub(crate) fn write(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
+    pub(crate) fn write(&self, buffer: &mut impl WriteInteger) {
         if let Some(id) = self.id {
-            id.to_bytes(buffer)?;
+            id.to_bytes(buffer);
         }
-        self.bytes.to_bytes(buffer)
+        self.bytes.to_bytes(buffer);
     }
 
     /// Reads a message of a channel whose messages carry an id when `has_id`.

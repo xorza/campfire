@@ -390,6 +390,6 @@ pub use crate::interpolation_state::InterpolationState;
 pub use crate::interpolation_systems::InterpolationSystems;
 pub use crate::interpolation_timeline::InterpolationTimeline;
 pub use crate::into_interpolation_fn::{ComponentShape, IntoContextLerpFn, IntoLerpFn};
-pub use crate::lerps::{linear_lerp, transform_lerp};
+pub use crate::lerps::linear_lerp;
 pub use crate::skip_frame_interpolation::SkipFrameInterpolation;
 pub use crate::synced_interpolation_timeline::SyncedInterpolationTimeline;

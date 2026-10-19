@@ -5,8 +5,8 @@ use core::time::Duration;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use campfire_net_common::Random;
 use campfire_net_core::Instant;
+use campfire_net_core::Random;
 use campfire_net_packets::{
     ChannelBinding, ConnectionId, Datagram, Establish, Established, Establishing, Outbound,
     Protection,

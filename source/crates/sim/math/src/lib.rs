@@ -23,17 +23,13 @@ pub use crate::num::error::{IntToNumError, ParseNumError};
 pub use crate::num::{Num, SinCos};
 pub use crate::rng::Rng;
 pub use crate::rng::rng_stream::RngStream;
+pub use crate::rng::split_mix64::SplitMix64;
 pub use crate::root::{FloorRoot, RoundedRoot};
 pub use crate::rounding::Rounding;
 pub use crate::simd::i64x4::I64x4;
 pub use crate::simd::mask64x4::Mask64x4;
 pub use crate::simd::u64x4::U64x4;
 pub use crate::vec3::Vec3;
-
-#[cfg(feature = "internals")]
-pub mod internals {
-    pub use crate::rng::split_mix64::SplitMix64;
-}
 
 #[cfg(feature = "internals")]
 pub mod bench {

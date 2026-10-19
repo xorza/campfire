@@ -1,6 +1,6 @@
 use campfire_codec::Binary;
 use campfire_math::FloorRoot;
-use campfire_math::internals::SplitMix64;
+use campfire_math::SplitMix64;
 
 use super::*;
 use crate::placed::Placed;

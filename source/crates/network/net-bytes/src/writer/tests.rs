@@ -1,9 +1,7 @@
 use super::*;
-use crate::reader::Reader;
-use crate::serialization_error::SerializationError;
 
 fn message(writer: &mut Writer, len: usize, fill: u8) -> Bytes {
-    writer.write_all(&vec![fill; len]).unwrap();
+    writer.write_bytes(&vec![fill; len]);
     writer.take_written()
 }
 
@@ -56,8 +54,8 @@ fn the_first_switch_makes_the_spare_the_second_takes() {
 fn a_message_that_crosses_a_chunk_moves_whole() {
     let mut writer = Writer::default();
     let head = message(&mut writer, 4000, 1);
-    writer.write_all(&[2; 25]).unwrap();
-    writer.write_all(&[3; 100]).unwrap();
+    writer.write_bytes(&[2; 25]);
+    writer.write_bytes(&[3; 100]);
     let crossing = writer.take_written();
     assert_eq!(crossing.len(), 125);
     assert_eq!(crossing[..25], [2; 25]);
@@ -80,10 +78,10 @@ fn a_message_above_a_chunk_gets_its_own_allocation() {
 #[test]
 fn reset_drops_the_message_being_written() {
     let mut writer = Writer::default();
-    writer.write_all(&[1, 2, 3]).unwrap();
+    writer.write_bytes(&[1, 2, 3]);
     writer.reset();
     assert!(writer.is_empty());
-    writer.write_all(&[4]).unwrap();
+    writer.write_bytes(&[4]);
     assert_eq!(&*writer.take_written(), &[4][..]);
 }
 
@@ -107,8 +105,8 @@ fn a_chunk_left_by_a_crossing_message_is_reused() {
     let mut writer = Writer::default();
     let head = message(&mut writer, 4000, 1);
     let base = head.as_ptr();
-    writer.write_all(&[2; 50]).unwrap();
-    writer.write_all(&[3; 100]).unwrap();
+    writer.write_bytes(&[2; 50]);
+    writer.write_bytes(&[3; 100]);
     let crossing = writer.take_written();
     let held: Vec<Bytes> = (0..3).map(|i| message(&mut writer, 1300, i)).collect();
     drop((head, crossing));
@@ -122,7 +120,7 @@ fn a_chunk_left_by_a_crossing_message_is_reused() {
 #[test]
 fn fill_appends_what_it_writes_and_nothing_on_failure() {
     let mut writer = Writer::default();
-    writer.write_all(&[1]).unwrap();
+    writer.write_bytes(&[1]);
     writer
         .fill(3, |out| {
             assert_eq!(out, [0, 0, 0]);
@@ -132,26 +130,4 @@ fn fill_appends_what_it_writes_and_nothing_on_failure() {
         .unwrap();
     assert_eq!(writer.fill(2, |_| Err(())), Err(()));
     assert_eq!(&*writer.take_written(), &[1, 2, 3, 4][..]);
-}
-
-#[test]
-fn values_encode_through_codec_and_decode_only_from_their_one_encoding() {
-    // "ab", then 300, the varint 0xAC 0x02, as a packet carries two messages one after another.
-    let mut writer = Writer::with_capacity(8);
-    writer.encode("ab");
-    writer.encode(&300_u32);
-    let written = writer.take_written();
-    assert_eq!(&*written, [2, b'a', b'b', 0xAC, 0x02]);
-    let mut reader = Reader::from(written);
-    assert_eq!(reader.decode::<String>().unwrap(), "ab");
-    assert_eq!(reader.remaining(), 2);
-    assert_eq!(reader.decode::<u32>().unwrap(), 300);
-    assert_eq!(reader.remaining(), 0);
-    // 0 over-long, 0x80 0x00, is no value's one encoding: refused, and the reader stays.
-    let mut reader = Reader::from(vec![0x80, 0x00]);
-    assert!(matches!(
-        reader.decode::<u32>(),
-        Err(SerializationError::Binary(_))
-    ));
-    assert_eq!(reader.remaining(), 2);
 }

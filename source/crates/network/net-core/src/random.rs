@@ -1,18 +1,17 @@
-use ring::rand::{SecureRandom, SystemRandom};
+use campfire_math::SplitMix64;
 
-use crate::split_mix64::SplitMix64;
-
-/// Where random bytes come from: the OS in a real run, a seed in a simulated or tested one, so a
-/// run of a seed repeats.
+/// Where random bytes come from: the OS in a real run, through `getrandom`, the one source of the
+/// workspace's OS random bytes, and a seed in a simulated or tested one, so a run of a seed
+/// repeats (14-workspace-alignment.md, One source of OS random bytes).
 #[derive(Debug)]
 pub enum Random {
-    Os(SystemRandom),
+    Os,
     Seeded(SplitMix64),
 }
 
 impl Random {
-    pub fn os() -> Self {
-        Self::Os(SystemRandom::new())
+    pub const fn os() -> Self {
+        Self::Os
     }
 
     pub const fn seeded(seed: u64) -> Self {
@@ -23,7 +22,7 @@ impl Random {
     /// little-endian bytes of its next `u64`.
     pub fn fill(&mut self, bytes: &mut [u8]) {
         match self {
-            Self::Os(random) => random.fill(bytes).expect("the OS gives random bytes"),
+            Self::Os => getrandom::fill(bytes).expect("the OS gives random bytes"),
             Self::Seeded(random) => {
                 for chunk in bytes.chunks_mut(8) {
                     let word = random.next_u64().to_le_bytes();

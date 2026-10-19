@@ -8,7 +8,6 @@ license.workspace = true
 kind = "glue"
 
 [dependencies]
-campfire-net-timeline.workspace = true
 campfire-net-payload = { workspace = true, features = ["reflect"] }
 
 tracing.workspace = true

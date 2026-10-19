@@ -7,7 +7,6 @@ use crate::rng::rng_stream::RngStream;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod rng_stream;
-#[cfg(feature = "internals")]
 pub(crate) mod split_mix64;
 
 /// Starts every message, so no other use of a segment seed can produce the same output.
@@ -110,7 +109,7 @@ impl Rng {
 
 /// One draw of Lemire's method with `BITS`-bit words: the value below `bound`, or `None` when
 /// this word must be rejected. `bound` is at most 2^`BITS`.
-const fn lemire_step<const BITS: u32>(word: u64, bound: u64) -> Option<u64> {
+pub(crate) const fn lemire_step<const BITS: u32>(word: u64, bound: u64) -> Option<u64> {
     let product = word as u128 * bound as u128;
     let low = product & ((1 << BITS) - 1);
     if low < bound as u128 {
@@ -125,13 +124,13 @@ const fn lemire_step<const BITS: u32>(word: u64, bound: u64) -> Option<u64> {
 }
 
 /// The top 24 bits of `word`, as a number in `[0, 1)`.
-const fn fraction_of_word(word: u64) -> Num {
+pub(crate) const fn fraction_of_word(word: u64) -> Num {
     Num::from_bits((word >> (u64::BITS - Num::FRAC_BITS)).cast_signed())
 }
 
 /// Whether `word` falls below the probability: exact for every `Num` in `[0, 1]`, since its 24
 /// fractional bits are compared with the word's top 24 bits.
-const fn chance_from_word(word: u64, probability: Num) -> bool {
+pub(crate) const fn chance_from_word(word: u64, probability: Num) -> bool {
     let threshold = probability.to_bits();
     if threshold <= 0 {
         false

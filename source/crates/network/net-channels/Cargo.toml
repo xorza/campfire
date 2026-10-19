@@ -14,13 +14,11 @@ compression_lz4 = ["dep:lz4_flex"]
 internals = [
     "dep:campfire-measure",
     "dep:criterion",
-    "campfire-net-common/internals",
     "campfire-net-payload/internals",
     "campfire-net-bytes/internals",
 ]
 
 [dependencies]
-campfire-net-common.workspace = true
 campfire-net-core.workspace = true
 campfire-net-payload.workspace = true
 campfire-net-bytes.workspace = true

@@ -169,8 +169,6 @@ mod server_replication_plugin;
 mod server_replicon_plugin;
 mod server_send_plugin;
 mod shared_component_registration_plugin;
-mod transform_diff;
-mod transform_diff_2d;
 mod visibility_bits;
 mod visibility_ext;
 
@@ -237,6 +235,4 @@ pub use crate::room_plugin::RoomPlugin;
 pub use crate::rooms::Rooms;
 pub use crate::sender_hello::SenderHello;
 pub use crate::server_replication_plugin::ServerReplicationPlugin;
-pub use crate::transform_diff::TransformDiff;
-pub use crate::transform_diff_2d::TransformDiff2d;
 pub use crate::visibility_ext::VisibilityExt;

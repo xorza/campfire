@@ -24,9 +24,7 @@ impl MessageRegistry {
             .get(net_id)
             .ok_or(MessageError::UnrecognizedNetId(net_id))?
             .serialize_fns;
-        erased_fns
-            .deserialize::<M>(reader, entity_map)
-            .map_err(Into::into)
+        erased_fns.deserialize::<M>(reader, entity_map)
     }
 }
 use crate::app_event_ext::AppEventExt;
@@ -34,6 +32,7 @@ use crate::remote_entity_map::RemoteEntityMap;
 use bevy_ecs::entity::EntityMapper;
 use bevy_ecs::event::Event;
 use campfire_net_bytes::ReadInteger;
+use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::WriteInteger;
 use serde::Deserialize;
 
@@ -44,18 +43,14 @@ pub(super) struct Message1(pub f32);
 #[derive(Debug, PartialEq, Clone, Reflect)]
 pub(super) struct Message2(pub f32);
 
-pub(crate) fn serialize_message2(
-    data: &Message2,
-    writer: &mut Writer,
-) -> core::result::Result<(), SerializationError> {
-    writer.write_u32(data.0.to_bits())?;
-    Ok(())
+pub(crate) fn serialize_message2(data: &Message2, writer: &mut Writer) {
+    writer.write_u32(data.0.to_bits());
 }
 
 pub(crate) fn deserialize_message2(
     reader: &mut Reader,
-) -> core::result::Result<Message2, SerializationError> {
-    let data = f32::from_bits(reader.read_u32()?);
+) -> core::result::Result<Message2, MessageError> {
+    let data = f32::from_bits(reader.read_u32().map_err(SerializationError::from)?);
     Ok(Message2(data))
 }
 
@@ -88,9 +83,7 @@ fn a_message_round_trips() {
 
     let message = Message1(1.0);
     let mut writer = Writer::default();
-    registry
-        .serialize(&message, &mut writer, &SendMapView::AsIs)
-        .unwrap();
+    registry.serialize(&message, &mut writer, &SendMapView::AsIs);
     let data = writer.into_bytes();
 
     let mut reader = Reader::from(data);
@@ -114,9 +107,7 @@ fn a_message_round_trips_through_custom_fns() {
 
     let message = Message2(1.0);
     let mut writer = Writer::default();
-    registry
-        .serialize(&message, &mut writer, &SendMapView::AsIs)
-        .unwrap();
+    registry.serialize(&message, &mut writer, &SendMapView::AsIs);
     let data = writer.into_bytes();
 
     let mut reader = Reader::from(data);
@@ -143,18 +134,14 @@ fn a_message_maps_its_entities_on_the_client() {
         shared: None,
         local: client_map.local_to_remote(),
     };
-    registry
-        .serialize(&Message3(client), &mut writer, &client_send)
-        .unwrap();
+    registry.serialize(&Message3(client), &mut writer, &client_send);
     let mut reader = Reader::from(writer.take_written());
     let read = registry
         .deserialize::<Message3>(&mut reader, &ReceiveMapView::AsIs)
         .unwrap();
     assert_eq!(read.0, server);
 
-    registry
-        .serialize(&Message3(server), &mut writer, &SendMapView::AsIs)
-        .unwrap();
+    registry.serialize(&Message3(server), &mut writer, &SendMapView::AsIs);
     let mut reader = Reader::from(writer.take_written());
     let client_receive = ReceiveMapView::Lookup {
         shared: None,
@@ -251,14 +238,14 @@ fn only_a_mapping_view_clones_the_message() {
     let clones = core::cell::Cell::new(0);
     let message = Counted(&clones);
     let mut writer = Writer::default();
-    let serialize: SerializeFn<Counted<'_>> = |_, _| Ok(());
-    mapped_context_serialize(&SendMapView::AsIs, &message, &mut writer, serialize).unwrap();
+    let serialize: SerializeFn<Counted<'_>> = |_, _| {};
+    mapped_context_serialize(&SendMapView::AsIs, &message, &mut writer, serialize);
     assert_eq!(clones.get(), 0);
     let local = SendEntityMap::default();
     let lookup = SendMapView::Lookup {
         shared: None,
         local: &local,
     };
-    mapped_context_serialize(&lookup, &message, &mut writer, serialize).unwrap();
+    mapped_context_serialize(&lookup, &message, &mut writer, serialize);
     assert_eq!(clones.get(), 1);
 }

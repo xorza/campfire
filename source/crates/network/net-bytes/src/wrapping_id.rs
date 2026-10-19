@@ -21,11 +21,8 @@ macro_rules! wrapping_id {
                 2
             }
 
-            fn to_bytes(
-                &self,
-                buffer: &mut impl $crate::WriteInteger,
-            ) -> Result<(), $crate::SerializationError> {
-                Ok(buffer.write_u16(self.0)?)
+            fn to_bytes(&self, buffer: &mut impl $crate::WriteInteger) {
+                buffer.write_u16(self.0);
             }
 
             fn from_bytes(buffer: &mut $crate::Reader) -> Result<Self, $crate::SerializationError>
@@ -98,7 +95,7 @@ mod tests {
     #[test]
     fn an_id_takes_two_bytes() {
         let mut writer = Writer::default();
-        TestId(513).to_bytes(&mut writer).unwrap();
+        TestId(513).to_bytes(&mut writer);
         assert_eq!(TestId(513).bytes_len(), 2);
         let mut reader = Reader::from(writer.take_written());
         assert_eq!(TestId::from_bytes(&mut reader).unwrap(), TestId(513));

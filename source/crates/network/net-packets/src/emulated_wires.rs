@@ -13,7 +13,7 @@ use crate::datagram_io::Outbound;
 use crate::datagram_io::{Datagram, DatagramIo};
 use crate::io_failed::IoFailed;
 use crate::signal::Signal;
-use campfire_net_common::Arena;
+use campfire_net_bytes::Arena;
 
 /// The simulated network's wires an endpoint holds: a client's one, a server's one for each
 /// client.

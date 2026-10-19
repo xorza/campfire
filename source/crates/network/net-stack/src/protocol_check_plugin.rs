@@ -6,6 +6,7 @@ use campfire_net_connection::ClientOf;
 use campfire_net_connection::Connected;
 use campfire_net_connection::HostClient;
 use campfire_net_core::Direction;
+use campfire_net_core::RegistryHash;
 use campfire_net_link::Unlink;
 use campfire_net_messages::MessageRegistry;
 use campfire_net_messages::{AppEventExt, EventSender, RemoteEvent};
@@ -19,9 +20,9 @@ use tracing::{trace, warn};
 /// The protocol checksums the server sends to each client that connects.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default, Clone, Copy, Event)]
 pub(crate) struct ProtocolCheck {
-    messages: Option<u64>,
-    components: Option<u64>,
-    channels: Option<u64>,
+    messages: Option<RegistryHash>,
+    components: Option<RegistryHash>,
+    channels: Option<RegistryHash>,
 }
 
 /// This app's own checksums, frozen once its plugins finish registering.
@@ -132,18 +133,23 @@ mod tests {
     fn a_differing_protocol_unlinks() {
         let (mut app, link) = client_app();
         let local = app.world().resource::<ProtocolHashes>().0;
+        let zero = Some(RegistryHash::new([0; 32]));
         let differing = [
             local,
             ProtocolCheck {
-                messages: local.messages.map(|hash| hash ^ 1),
+                messages: local.messages.map(|hash| {
+                    let mut bytes = hash.get();
+                    bytes[0] ^= 1;
+                    RegistryHash::new(bytes)
+                }),
                 ..local
             },
             ProtocolCheck {
-                components: Some(0),
+                components: zero,
                 ..local
             },
             ProtocolCheck {
-                channels: Some(0),
+                channels: zero,
                 ..local
             },
         ];

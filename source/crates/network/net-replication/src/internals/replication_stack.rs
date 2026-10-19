@@ -1,7 +1,6 @@
 use bevy_app::App;
 use bevy_ecs::world::{EntityWorldMut, World};
 use bevy_state::app::StatesPlugin;
-use bevy_transform::TransformPlugin;
 use campfire_net_core::TickRate;
 use campfire_net_messages::internals::messages_stack::MessagesStack;
 use campfire_net_stepper::Stack;
@@ -23,9 +22,6 @@ impl ReplicationStack {
     fn add_shared(app: &mut App) {
         if !app.is_plugin_added::<StatesPlugin>() {
             app.add_plugins(StatesPlugin);
-        }
-        if !app.is_plugin_added::<TransformPlugin>() {
-            app.add_plugins(TransformPlugin);
         }
         if !app.is_plugin_added::<HelloPlugin>() {
             app.add_plugins(ReplicationPlugins);

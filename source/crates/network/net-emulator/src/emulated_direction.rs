@@ -1,5 +1,5 @@
+use crate::ready_buffer::ReadyBuffer;
 use bytes::Bytes;
-use campfire_net_common::ReadyBuffer;
 use campfire_net_core::Instant;
 use core::time::Duration;
 

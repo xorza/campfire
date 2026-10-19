@@ -1,5 +1,5 @@
-use crate::collections::HashMap;
 use crate::net_id::NetId;
+use bevy_platform::collections::HashMap;
 use core::any::TypeId;
 use core::hash::Hash;
 

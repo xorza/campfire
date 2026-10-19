@@ -15,35 +15,11 @@ use crate::send_message_key::SendMessageKey;
 use crate::single_data::SingleData;
 use crate::tick_encoder::EncodedTick;
 use bytes::BytesMut;
-use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
+use campfire_net_bytes::WriteInteger;
 use campfire_net_core::NetId;
 use campfire_net_payload::OutgoingPayload;
-use std::io::{self, Write};
 use tracing::trace;
-
-/// Borrowed adapter for the serialization traits, which are based on `std::io::Write`.
-/// Packet storage itself remains a plain [`BytesMut`].
-#[derive(Debug)]
-struct PayloadWriter<'a>(&'a mut BytesMut);
-
-impl Write for PayloadWriter<'_> {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.0.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-pub(crate) fn write_to_payload<T: ToBytes + ?Sized>(
-    value: &T,
-    payload: &mut BytesMut,
-) -> Result<(), SerializationError> {
-    value.to_bytes(&mut PayloadWriter(payload))
-}
 
 const MAX_MESSAGES_PER_CHANNEL_BATCH: u8 = u8::MAX;
 
@@ -213,8 +189,8 @@ impl PacketBuilder {
                     self.new_staged_packet(PacketKind::DataFragment, tick),
                     limit,
                 );
-                write_to_payload(&first.channel_id, &mut open.packet.payload)?;
-                fragment.write(&mut PayloadWriter(&mut open.packet.payload))?;
+                first.channel_id.to_bytes(&mut open.packet.payload);
+                fragment.write(&mut open.packet.payload);
                 open.packet.record_message(PacketMessage {
                     commit: SendCommit {
                         channel_id: first.channel_id,
@@ -445,9 +421,9 @@ impl OpenPacket {
                 packet.payload.as_mut()[state.count_offset] = state.count;
             }
             batch => {
-                write_to_payload(&candidate.channel_id, &mut packet.payload)?;
+                candidate.channel_id.to_bytes(&mut packet.payload);
                 let count_offset = packet.payload.len();
-                write_to_payload(&1u8, &mut packet.payload)?;
+                packet.payload.write_u8(1);
                 *batch = Some(SingleBatchState {
                     channel_id: candidate.channel_id,
                     count_offset,
@@ -455,7 +431,7 @@ impl OpenPacket {
                 });
             }
         }
-        message.write(&mut PayloadWriter(&mut packet.payload))?;
+        message.write(&mut packet.payload);
         packet.record_message(PacketMessage {
             commit: SendCommit {
                 channel_id: candidate.channel_id,

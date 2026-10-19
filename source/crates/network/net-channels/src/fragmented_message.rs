@@ -6,7 +6,6 @@ use crate::compression_scratch::CompressionScratch;
 use crate::fragment_compression::FragmentCompression;
 use crate::message_id::MessageId;
 use bytes::Bytes;
-use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::WriteInteger;
 use campfire_net_bytes::varint;
@@ -209,17 +208,16 @@ impl<'a> FragmentRef<'a> {
     /// Writes the fragment as [`FragmentData`](crate::fragment_data::FragmentData) reads it: the
     /// message id, the fragment's index and count, the message's compression on its first
     /// fragment, and its bytes.
-    pub(crate) fn write(self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
-        self.message.message_id.to_bytes(buffer)?;
-        buffer.write_varint(u64::from(self.index))?;
-        buffer.write_varint(u64::from(self.message.num_fragments()))?;
+    pub(crate) fn write(self, buffer: &mut impl WriteInteger) {
+        self.message.message_id.to_bytes(buffer);
+        buffer.write_varint(u64::from(self.index));
+        buffer.write_varint(u64::from(self.message.num_fragments()));
         if self.index == 0 {
-            self.message.compression.to_bytes(buffer)?;
+            self.message.compression.to_bytes(buffer);
         }
         let payload = self.payload();
-        buffer.write_varint(payload.len() as u64)?;
-        buffer.write_all(payload)?;
-        Ok(())
+        buffer.write_varint(payload.len() as u64);
+        buffer.write_bytes(payload);
     }
 }
 
@@ -299,7 +297,7 @@ mod tests {
             let fragment = message.fragment(index);
             assert_eq!(fragment.is_last(), index == 2);
             let mut writer = Writer::default();
-            fragment.write(&mut writer).unwrap();
+            fragment.write(&mut writer);
             let written = writer.take_written();
             assert_eq!(written.len(), fragment.bytes_len());
             let read = FragmentData::from_bytes(&mut Reader::from(written)).unwrap();

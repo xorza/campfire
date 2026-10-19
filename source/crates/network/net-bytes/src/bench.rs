@@ -30,7 +30,7 @@ fn varint(criterion: &mut Criterion) {
     let bytes: usize = values.iter().map(|&value| varint::len(value)).sum();
     let mut encoded = Writer::with_capacity(bytes);
     for &value in &values {
-        encoded.write_varint(value).unwrap();
+        encoded.write_varint(value);
     }
     let encoded = encoded.into_bytes();
 
@@ -40,7 +40,7 @@ fn varint(criterion: &mut Criterion) {
         bencher.iter(|| {
             writer.reset();
             for &value in &values {
-                writer.write_varint(black_box(value)).unwrap();
+                writer.write_varint(black_box(value));
             }
             debug_assert_eq!(writer.len(), bytes);
         });

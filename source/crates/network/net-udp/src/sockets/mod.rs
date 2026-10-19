@@ -4,13 +4,12 @@
 use core::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 
-use campfire_net_common::Random;
+use campfire_net_core::Random;
 use campfire_net_emulator::EmulatedIo;
 use campfire_net_packets::{DatagramIo, EmulatedWires, EndpointParts};
 
 use crate::admission_config::AdmissionConfig;
 use crate::bind_error::BindError;
-use crate::os_random;
 use crate::secure_establishment::client_side::ClientSide;
 use crate::secure_establishment::server_side::ServerSide;
 use crate::server_identity::ServerIdentity;
@@ -19,6 +18,7 @@ use crate::server_trust::ServerTrust;
 use crate::udp_config::UdpConfig;
 use crate::udp_io::UdpIo;
 use crate::udp_port::UdpPort;
+use zeroize::Zeroizing;
 
 /// A server's socket, bound, and what its endpoint takes: it serves once its admission is known,
 /// so no server's endpoint exists without one.
@@ -65,13 +65,16 @@ impl ServerSocket {
             identity,
             config,
         } = self;
+        let mut random = Random::os();
+        let mut token_secret = Zeroizing::new([0; 32]);
+        random.fill(token_secret.as_mut_slice());
         let establishment = ServerSide::new(
             tls,
             identity.reset_key(),
-            &os_random::secret(),
+            &token_secret,
             admission,
             config.session.idle_timeout,
-            Random::os(),
+            random,
         );
         EndpointParts::server(io, Box::new(establishment), config.endpoint())
     }

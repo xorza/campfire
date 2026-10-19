@@ -1,4 +1,4 @@
-use campfire_net_common::SplitMix64;
+use campfire_math::SplitMix64;
 use campfire_net_core::Direction;
 use campfire_net_emulator::{LinkModel, Phase, RateLimit};
 use core::time::Duration;
@@ -41,17 +41,17 @@ impl Faults {
     /// its values are drawn too, so seeds explore runs with few faults as well as with many.
     pub(crate) fn from_seed(seed: u64) -> Self {
         let mut rng = SplitMix64::new(seed);
-        let flags = [(); 6].map(|()| rng.next_f32() < 0.5);
+        let flags = [(); 6].map(|()| rng.below(2) == 0);
         let latency = flags[0].then(|| Latency {
             latency: millis(&mut rng, 10, 150),
             jitter: millis(&mut rng, 0, 30),
         });
         let loss = flags[1].then(|| Loss {
-            mean: rng.next_f32() * 0.1,
-            burst: 1.0 + rng.next_f32() * 7.0,
+            mean: upto(&mut rng, 0.1),
+            burst: 1.0 + upto(&mut rng, 7.0),
         });
-        let duplicate = flags[2].then(|| rng.next_f32() * 0.05);
-        let reorder = flags[3].then(|| rng.next_f32() * 0.1);
+        let duplicate = flags[2].then(|| upto(&mut rng, 0.05));
+        let reorder = flags[3].then(|| upto(&mut rng, 0.1));
         let rate = flags[4].then(|| {
             let bytes_per_second = 30_000 + u32::try_from(rng.below(170_000)).unwrap();
             RateLimit::new(bytes_per_second, bytes_per_second)
@@ -116,6 +116,11 @@ impl Faults {
         phases.push(Phase::recovery(heal, LinkModel::perfect()));
         phases
     }
+}
+
+/// A value in `[0, max]`, in 10,000 even steps.
+fn upto(rng: &mut SplitMix64, max: f32) -> f32 {
+    rng.below(10_001) as f32 / 10_000.0 * max
 }
 
 fn millis(rng: &mut SplitMix64, low: u64, high: u64) -> Duration {

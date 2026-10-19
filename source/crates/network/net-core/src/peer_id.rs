@@ -38,43 +38,36 @@ impl ToBytes for PeerId {
         }
     }
 
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) -> Result<(), SerializationError> {
+    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
         match self {
             Self::Entity(id) => {
-                buffer.write_u8(0)?;
-                buffer.write_u64(*id)?;
+                buffer.write_u8(0);
+                buffer.write_u64(*id);
             }
-            Self::Raw(socket) => {
-                match socket {
-                    SocketAddr::V4(v4) => {
-                        buffer.write_u8(1)?;
-                        // Write IPv4 bytes
-                        for byte in &v4.ip().octets() {
-                            buffer.write_u8(*byte)?;
-                        }
-                        // Write port
-                        buffer.write_u16(v4.port())?;
+            Self::Raw(socket) => match socket {
+                SocketAddr::V4(v4) => {
+                    buffer.write_u8(1);
+                    for byte in &v4.ip().octets() {
+                        buffer.write_u8(*byte);
                     }
-                    SocketAddr::V6(v6) => {
-                        buffer.write_u8(2)?;
-                        // Write IPv6 bytes
-                        for segment in &v6.ip().segments() {
-                            buffer.write_u16(*segment)?;
-                        }
-                        // Write port
-                        buffer.write_u16(v6.port())?;
-                    }
+                    buffer.write_u16(v4.port());
                 }
-            }
+                SocketAddr::V6(v6) => {
+                    buffer.write_u8(2);
+                    for segment in &v6.ip().segments() {
+                        buffer.write_u16(*segment);
+                    }
+                    buffer.write_u16(v6.port());
+                }
+            },
             Self::Local(id) => {
-                buffer.write_u8(5)?;
-                buffer.write_u64(*id)?;
+                buffer.write_u8(5);
+                buffer.write_u64(*id);
             }
             Self::Server => {
-                buffer.write_u8(6)?;
+                buffer.write_u8(6);
             }
         }
-        Ok(())
     }
 
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>
@@ -84,7 +77,6 @@ impl ToBytes for PeerId {
         match buffer.read_u8()? {
             0 => Ok(Self::Entity(buffer.read_u64()?)),
             1 => {
-                // Read IPv4 address
                 let a = buffer.read_u8()?;
                 let b = buffer.read_u8()?;
                 let c = buffer.read_u8()?;
@@ -97,7 +89,6 @@ impl ToBytes for PeerId {
                 Ok(Self::Raw(addr))
             }
             2 => {
-                // Read IPv6 address
                 let mut segments = [0u16; 8];
                 for segment in &mut segments {
                     *segment = buffer.read_u16()?;
