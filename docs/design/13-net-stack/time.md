@@ -21,7 +21,7 @@ How the stack answers "what time is it".
   so an app whose ticks follow a driven time can never measure its network on the OS clock.
   Refused: `Os` as the default, which gave a harness that forgot to pick `Frame` exactly the
   run-to-run RTTs the clock exists to remove.
-- **the stack's own `Instant`, a `Duration` since the app's first update.** It shares the origin
+- **The stack's own `Instant`, a `Duration` since the app's first update.** It shares the origin
   of `Time<Real>::elapsed()`, so both sources count from one moment and two runs of one seed print
   the same times. Refused: `bevy_platform::time::Instant`, which a driven clock can only offset
   from a real OS instant, and which `net-core` re-exported.
