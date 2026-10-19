@@ -9,6 +9,7 @@ use campfire_actions::{ActionSlots, SlotKind, TimedSlots};
 use campfire_common::{Seat, Ticks};
 use campfire_declare::internals::BookLoad;
 use campfire_math::{Num, Vec3};
+use campfire_measure::{Kind, Scale};
 use campfire_players::{Players, PlayersWorld};
 use campfire_production::{
     GatherOrder, GatherSpec, GatherStep, Gatherer, Node, NodeAt, NodeBook, Production, ResourceSet,
@@ -38,7 +39,7 @@ const NODES: i64 = 8;
 /// waiting. The nodes never run out: the bench measures the loop's steady state.
 fn gather(c: &mut Criterion) {
     let mut fields = None;
-    let mut group = c.benchmark_group("integration/gather");
+    let mut group = Kind::Integration.group(c, "gather", Scale::Sample);
     group.throughput(Throughput::Elements(2 * WORKERS.unsigned_abs()));
     group.bench_function("two_fields", |bench| {
         let world = fields.get_or_insert_with(two_fields);

@@ -1,8 +1,7 @@
 //! The crate's criterion cases, which `benches/net-transport.rs` runs.
 
-use campfire_net_common::bench;
-use campfire_net_common::bench::kind::Kind;
-use campfire_net_common::bench::scale::Scale;
+use campfire_measure::Kind;
+use campfire_measure::Scale;
 use criterion::{BatchSize, BenchmarkId, Criterion};
 
 use campfire_net_channels::internals::compression_mode::CompressionMode;
@@ -11,7 +10,7 @@ use crate::internals::compression_case::{CompressionCase, CompressionRun};
 
 /// Runs each case of the crate whose id criterion's filter takes.
 pub fn run(criterion: &mut Criterion) {
-    bench::without_logs(criterion, compression);
+    campfire_measure::without_logs(criterion, compression);
 }
 
 /// `integration/compression/<case>_<mode>`: one frame of each [`CompressionCase`] in each

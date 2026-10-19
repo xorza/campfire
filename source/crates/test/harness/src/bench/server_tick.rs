@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use bevy_ecs::world::World;
 use campfire_capabilities::Match;
+use campfire_measure::{Kind, Scale};
 use campfire_protocol::SessionLog;
 use campfire_runner::SessionWorld;
 use campfire_sim::internals::StageClock;
@@ -39,8 +40,7 @@ pub(crate) fn server(c: &mut Criterion) {
 /// the mean tick of such a match, `mean_3v3`, a whole match each iteration, its throughput the
 /// ticks. A rollback re-simulates whole ticks, so it costs its depth times these.
 fn server_tick(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
-    let mut group = c.benchmark_group("integration/server_tick");
-    group.sample_size(10);
+    let mut group = Kind::Integration.group(c, "server_tick", Scale::Frame);
     group.bench_function("first_3v3", |b| {
         b.iter_custom(|matches| {
             (0..matches)
@@ -95,8 +95,7 @@ fn server_stage(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
     let id = |statistic: &str, stage: SimSet| {
         format!("{statistic}_3v3_{}", format!("{stage:?}").to_lowercase())
     };
-    let mut group = c.benchmark_group("integration/server_stage");
-    group.sample_size(10);
+    let mut group = Kind::Integration.group(c, "server_stage", Scale::Frame);
     let stage_match =
         |stage: SimSet| MatchCost::of_match(&mut clocked(moba), |game| stage_tick(game, stage));
     for stage in SimSet::ALL {
@@ -123,8 +122,7 @@ fn server_stage(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
 /// iteration, its throughput the ticks: the creeps' targeting, strikes, bolts and damage at the
 /// scale of a large battle, where a 3v3 match's few creeps leave them small.
 fn battle(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
-    let mut group = c.benchmark_group("integration/battle");
-    group.sample_size(10);
+    let mut group = Kind::Integration.group(c, "battle", Scale::Frame);
     group.throughput(Throughput::Elements(BATTLE_TICKS));
     for stage in SimSet::ALL {
         let id = format!("crowded_{}", format!("{stage:?}").to_lowercase());
@@ -174,7 +172,7 @@ impl PlayedLog {
 fn session_log(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
     let mut played = None;
     let mut out = Vec::new();
-    let mut group = c.benchmark_group("integration/session_log");
+    let mut group = Kind::Integration.group(c, "session_log", Scale::Sample);
     group.bench_function("encode_3v3", |b| {
         let PlayedLog { fixed, .. } = played.get_or_insert_with(|| PlayedLog::new(moba));
         b.iter(|| {

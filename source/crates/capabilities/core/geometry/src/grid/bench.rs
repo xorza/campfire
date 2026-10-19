@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use campfire_math::{Num, Vec3};
+use campfire_measure::{Kind, Scale};
 use criterion::{Criterion, Throughput};
 
 use crate::body_box::BodyBox;
@@ -41,7 +42,7 @@ pub(crate) fn grid(c: &mut Criterion) {
     let grid = Grid::new(Num::HALF, Bounds::new([-edge; 2], [edge; 2]).unwrap()).unwrap();
     let reach = Num::HALF;
 
-    let mut group = c.benchmark_group("atomic/grid");
+    let mut group = Kind::Atomic.group(c, "grid", Scale::Sample);
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("spans_closer", |bench| {
         bench.iter(|| {

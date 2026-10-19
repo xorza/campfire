@@ -10,8 +10,8 @@ kind = "glue"
 
 [features]
 internals = [
+    "dep:campfire-measure",
     "campfire-codec/internals",
-    "campfire-common/internals",
     "campfire-math/internals",
     "campfire-schedule/internals",
     "dep:criterion",
@@ -26,6 +26,7 @@ campfire-schedule.workspace = true
 arrayvec.workspace = true
 bevy_ecs.workspace = true
 blake3.workspace = true
+campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true

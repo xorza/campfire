@@ -9,8 +9,8 @@ kind = "problem"
 
 [features]
 internals = [
+    "dep:campfire-measure",
     "campfire-codec/internals",
-    "campfire-common/internals",
     "dep:criterion",
 ]
 
@@ -18,6 +18,7 @@ internals = [
 campfire-codec.workspace = true
 campfire-common.workspace = true
 
+campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 getrandom.workspace = true
 nostr.workspace = true

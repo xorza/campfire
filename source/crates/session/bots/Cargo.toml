@@ -12,7 +12,6 @@ internals = [
     "campfire-actions/internals",
     "campfire-capabilities/internals",
     "campfire-codec/internals",
-    "campfire-common/internals",
     "campfire-geometry/internals",
     "campfire-items/internals",
     "campfire-math/internals",

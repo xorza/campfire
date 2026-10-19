@@ -50,13 +50,12 @@ pub use crate::udp_io::UdpIo;
 /// The crate's criterion cases, which `benches/net-udp.rs` runs.
 #[cfg(feature = "internals")]
 pub mod bench {
-    use campfire_net_common::bench;
     use criterion::Criterion;
 
     use crate::admission;
 
     /// Runs each case of the crate whose id criterion's filter takes.
     pub fn run(criterion: &mut Criterion) {
-        bench::without_logs(criterion, admission::bench::admission);
+        campfire_measure::without_logs(criterion, admission::bench::admission);
     }
 }

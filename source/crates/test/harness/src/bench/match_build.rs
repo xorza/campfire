@@ -3,6 +3,7 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use campfire_capabilities::Release;
+use campfire_measure::{Kind, Scale};
 use campfire_mode::OptionPicks;
 use campfire_package_disk::PackageDir;
 use campfire_runner::MatchBuild;
@@ -23,8 +24,7 @@ use crate::moba_3v3::Moba3v3;
 pub(crate) fn build(c: &mut Criterion) {
     let moba = LazyCell::new(Moba3v3::load);
     let per_call = || moba.packages().manifest().script_limits.per_call;
-    let mut group = c.benchmark_group("integration/package_load");
-    group.sample_size(20);
+    let mut group = Kind::Integration.group(c, "package_load", Scale::Frame);
     group.bench_function("3v3", |b| {
         let (dir, map) = (TestMode::Moba3v3.dir(), TestMode::Moba3v3.map());
         b.iter(|| {
@@ -36,8 +36,7 @@ pub(crate) fn build(c: &mut Criterion) {
         });
     });
     group.finish();
-    let mut group = c.benchmark_group("integration/match_build");
-    group.sample_size(20);
+    let mut group = Kind::Integration.group(c, "match_build", Scale::Frame);
     group.bench_function("3v3", |b| {
         let packages = moba.packages();
         let rate = TickRate::new(packages.manifest().tick_hz.default());
@@ -54,8 +53,7 @@ pub(crate) fn build(c: &mut Criterion) {
         });
     });
     group.finish();
-    let mut group = c.benchmark_group("integration/script_compile");
-    group.sample_size(20);
+    let mut group = Kind::Integration.group(c, "script_compile", Scale::Frame);
     group.bench_function("3v3", |b| {
         let (packages, per_call) = (moba.packages(), per_call());
         b.iter_custom(|builds| {
@@ -74,8 +72,7 @@ pub(crate) fn build(c: &mut Criterion) {
         });
     });
     group.finish();
-    let mut group = c.benchmark_group("integration/script_bind");
-    group.sample_size(20);
+    let mut group = Kind::Integration.group(c, "script_bind", Scale::Frame);
     group.bench_function("3v3", |b| {
         let per_call = per_call();
         b.iter_custom(|builds| {

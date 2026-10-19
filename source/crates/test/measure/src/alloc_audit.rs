@@ -8,12 +8,9 @@
     reason = "an audit reports its frames, and a failing one each allocation's backtrace, to the terminal"
 )]
 
-mod alloc_trace;
-pub(crate) mod counting_allocator;
-
 use std::panic::Location;
 
-use crate::alloc_audit::counting_allocator::{AllocWindow, CountingAllocator};
+use crate::counting_allocator::{AllocWindow, CountingAllocator};
 
 /// One audit: how its fixture warms up, how many frames it measures, and what each of those may
 /// allocate. `AllocAudit::new().run(frame)` is the whole call for most fixtures: the probe, 64

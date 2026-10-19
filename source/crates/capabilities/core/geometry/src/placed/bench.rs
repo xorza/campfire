@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use campfire_math::{Num, Vec3};
+use campfire_measure::{Kind, Scale};
 use criterion::{Criterion, Throughput};
 
 use crate::body_box::BodyBox;
@@ -52,7 +53,7 @@ fn beside(seed: u64, boxes: bool) -> Vec<Beside> {
 /// reach of 0.5 m: a path against a circle, `comes_closer_circle`, and against a box,
 /// `comes_closer_box`.
 pub(crate) fn placed(c: &mut Criterion) {
-    let mut group = c.benchmark_group("atomic/placed");
+    let mut group = Kind::Atomic.group(c, "placed", Scale::Sample);
     group.throughput(Throughput::Elements(COUNT as u64));
     let reach = Num::HALF;
     for (case, boxes) in [("comes_closer_circle", false), ("comes_closer_box", true)] {

@@ -10,7 +10,6 @@ kind = "glue"
 [features]
 internals = [
     "campfire-actions/internals",
-    "campfire-common/internals",
     "campfire-declare/internals",
     "campfire-deliveries/internals",
     "campfire-math/internals",

@@ -8,7 +8,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use campfire_common::internals::{AllocAudit, CountingAllocator};
+use campfire_measure::{AllocAudit, CountingAllocator};
 use campfire_store::Worker;
 
 #[global_allocator]

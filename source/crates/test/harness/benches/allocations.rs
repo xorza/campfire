@@ -1,5 +1,5 @@
 use campfire_harness::bench::run_allocations;
-use campfire_harness::{Allocations, CountingAllocator};
+use campfire_measure::{Allocations, CountingAllocator};
 use criterion::{Criterion, criterion_group, criterion_main};
 
 #[global_allocator]

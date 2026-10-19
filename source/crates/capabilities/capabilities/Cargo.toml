@@ -10,12 +10,12 @@ kind = "glue"
 
 [features]
 internals = [
+    "dep:campfire-measure",
     "campfire-abilities/internals",
     "campfire-actions/internals",
     "campfire-areas/internals",
     "campfire-codec/internals",
     "campfire-combat/internals",
-    "campfire-common/internals",
     "campfire-declare/internals",
     "campfire-deliveries/internals",
     "campfire-geometry/internals",
@@ -72,6 +72,7 @@ campfire-visibility.workspace = true
 campfire-vision.workspace = true
 
 bevy_ecs.workspace = true
+campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true

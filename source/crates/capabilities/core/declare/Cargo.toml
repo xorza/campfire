@@ -10,7 +10,6 @@ kind = "glue"
 [features]
 internals = [
     "campfire-codec/internals",
-    "campfire-common/internals",
     "campfire-math/internals",
     "campfire-script/internals",
     "campfire-sim/internals",

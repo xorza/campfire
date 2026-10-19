@@ -12,6 +12,7 @@ compression_lz4 = ["dep:lz4_flex"]
 # The channels' measurements and payload fixtures, and the fragment bench, for the tests and
 # benches of every layer above
 internals = [
+    "dep:campfire-measure",
     "dep:criterion",
     "campfire-net-common/internals",
     "campfire-net-payload/internals",
@@ -25,6 +26,7 @@ campfire-net-payload.workspace = true
 campfire-net-bytes.workspace = true
 
 bytes.workspace = true
+campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 lz4_flex = { workspace = true, optional = true }
 thiserror.workspace = true

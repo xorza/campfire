@@ -11,11 +11,10 @@ kind = "glue"
 # The channels' LZ4 compression, in `net-channels`
 compression_lz4 = ["campfire-net-channels/compression_lz4"]
 internals = [
+    "dep:campfire-measure",
     "dep:bevy_utils",
     "dep:bytes",
     "dep:criterion",
-    "dep:campfire-net-common",
-    "campfire-net-common/internals",
     "dep:campfire-net-stepper",
     "campfire-net-channels/internals",
     "campfire-net-timeline/internals",
@@ -25,7 +24,6 @@ internals = [
 [dependencies]
 campfire-net-channels.workspace = true
 campfire-net-timeline.workspace = true
-campfire-net-common = { workspace = true, optional = true }
 campfire-net-core.workspace = true
 campfire-net-link.workspace = true
 campfire-net-connection.workspace = true
@@ -33,6 +31,7 @@ campfire-net-stepper = { workspace = true, optional = true }
 campfire-net-payload.workspace = true
 
 bytes = { workspace = true, optional = true }
+campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 tracing.workspace = true
 

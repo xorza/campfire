@@ -4,7 +4,7 @@ use std::time::Duration;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bytes::Bytes;
-use campfire_common::internals::AllocAudit;
+use campfire_measure::AllocAudit;
 use campfire_quic::{AddressLimit, LinkTimes, ServerSocket};
 use lightyear::link::server::LinkOf;
 use lightyear::link::{Link, LinkStart, Linked};

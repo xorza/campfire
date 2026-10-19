@@ -3,6 +3,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
 
+use campfire_measure::{Kind, Scale};
 use criterion::{BatchSize, Criterion, Throughput};
 
 use crate::address_limit::AddressLimit;
@@ -32,7 +33,7 @@ pub(crate) fn admission(c: &mut Criterion) {
             (address(nth % PLAYERS), at)
         })
         .collect();
-    let mut group = c.benchmark_group("atomic/admission");
+    let mut group = Kind::Atomic.group(c, "admission", Scale::Sample);
     group.throughput(Throughput::Elements(u64::from(COUNT)));
     for (name, handshakes) in [("flood", &flood), ("rejoins", &rejoins)] {
         group.bench_function(name, |b| {

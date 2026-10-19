@@ -2,6 +2,7 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use campfire_geometry::internals::{COUNT, Density, KernelScene};
+use campfire_measure::{Kind, Scale};
 use campfire_units::Layer;
 use criterion::{Criterion, Throughput};
 
@@ -37,7 +38,7 @@ pub(crate) fn body_index(c: &mut Criterion) {
         })
         .collect();
 
-    let mut group = c.benchmark_group("atomic/body_index");
+    let mut group = Kind::Atomic.group(c, "body_index", Scale::Sample);
     group.bench_function("update", |bench| {
         bench.iter_custom(|runs| {
             let mut spent = Duration::ZERO;

@@ -17,8 +17,8 @@ use campfire_store::internals::Parallel;
 
 use crate::internals::full_stack::FullStack;
 use crate::scenario::Scenario;
-use crate::scenario::error_capture::ErrorCapture;
 use crate::scenario::faults::{Faults, Latency, Loss, Outage};
+use campfire_log::internals::LogCheck;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
@@ -28,7 +28,7 @@ use campfire_net_sync::internals::sync_stack::input_timeline_is_synced;
 /// broke, and the command that replays it.
 ///
 /// The seeds run in parallel, so the default run fits the test budget: a seed is
-/// single-threaded and its error capture is the thread's.
+/// single-threaded and its log check is the thread's.
 fn run_swarm(seeds: impl IntoIterator<Item = u64>) {
     let seeds: Vec<u64> = seeds.into_iter().collect();
     let broken: Vec<String> = Parallel::map(seeds.len(), |index| broken_seed(seeds[index]))
@@ -138,15 +138,10 @@ fn one_seed_repeats_exactly_under_every_fault() {
     }
 }
 
+/// The outage logs no warning or error.
 #[test]
 fn a_full_outage_times_out_and_the_client_connects_again_over_a_new_link() {
-    let capture = ErrorCapture::default();
-    capture.around(full_outage_then_reconnect);
-    assert_eq!(
-        capture.errors(),
-        Vec::<String>::new(),
-        "the outage logged errors"
-    );
+    drop(LogCheck::scoped(full_outage_then_reconnect));
 }
 
 fn full_outage_then_reconnect() {
@@ -209,8 +204,7 @@ struct Unlinks(Vec<(Entity, UnlinkReason)>);
 /// its session and disconnects.
 #[test]
 fn a_protocol_violation_unlinks_the_peer() {
-    let capture = ErrorCapture::default();
-    capture.around(|| {
+    drop(LogCheck::scoped(|| {
         let mut stepper = Stepper::new(FullStack, StepperConfig::single());
         stepper.server_app_mut().init_resource::<Unlinks>();
         stepper.server_app_mut().add_observer(
@@ -247,6 +241,5 @@ fn a_protocol_violation_unlinks_the_peer() {
                 AppCode::ENDED
             )))
         );
-    });
-    assert_eq!(capture.errors(), Vec::<String>::new());
+    }));
 }

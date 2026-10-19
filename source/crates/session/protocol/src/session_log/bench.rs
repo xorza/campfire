@@ -2,6 +2,7 @@ use std::hint::black_box;
 use std::num::NonZeroU32;
 
 use campfire_common::{MapName, PackageFingerprint, Seat, Tick, Version};
+use campfire_measure::{Kind, Scale};
 use criterion::{BatchSize, Criterion};
 
 use crate::delegation::seed_contribution::SeedContribution;
@@ -23,7 +24,7 @@ use crate::signature::Signature;
 /// and with 32. Each run records into a log fresh from its header, which the timing leaves
 /// out.
 pub(crate) fn record_tick(c: &mut Criterion) {
-    let mut group = c.benchmark_group("integration/session_log");
+    let mut group = Kind::Integration.group(c, "session_log", Scale::Sample);
     for players in [8, 32] {
         let tick = TickPackets::new(players);
         group.bench_function(format!("record_tick_{players}"), |b| {

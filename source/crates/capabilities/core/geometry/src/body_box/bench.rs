@@ -2,6 +2,7 @@ use std::hint::black_box;
 
 use campfire_math::internals::SplitMix64;
 use campfire_math::{Num, Vec3};
+use campfire_measure::{Kind, Scale};
 use criterion::{Criterion, Throughput};
 
 use crate::body_box::BodyBox;
@@ -53,7 +54,7 @@ fn near(scene: &[(BodyBox, Vec3, Vec3)], radius: Num, seed: u64) -> Vec<(BodyBox
 /// two boxes' reach of 3 m, `reach_box`, as `Metric::reaches` takes it, and the push of a walker
 /// of 0.5 m out of a box it may overlap, `push_out`, as the collider pushes one.
 pub(crate) fn body_box(c: &mut Criterion) {
-    let mut group = c.benchmark_group("atomic/body_box");
+    let mut group = Kind::Atomic.group(c, "body_box", Scale::Sample);
     group.throughput(Throughput::Elements(COUNT as u64));
     let points = scene(1);
     let reach = Num::int(3);

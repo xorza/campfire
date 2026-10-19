@@ -10,9 +10,8 @@ kind = "glue"
 [features]
 # The replication layer's stack and test components, for the tests and benches of every layer above
 internals = [
+    "dep:campfire-measure",
     "dep:criterion",
-    "dep:campfire-net-common",
-    "campfire-net-common/internals",
     "campfire-net-messages/internals",
     "dep:campfire-net-stepper",
     "campfire-codec/internals",
@@ -26,7 +25,6 @@ internals = [
 campfire-codec.workspace = true
 campfire-net-channels.workspace = true
 campfire-net-timeline.workspace = true
-campfire-net-common = { workspace = true, optional = true }
 campfire-net-bytes.workspace = true
 campfire-net-core.workspace = true
 campfire-net-despawn.workspace = true
@@ -36,6 +34,7 @@ campfire-net-transport.workspace = true
 campfire-net-messages.workspace = true
 
 bytes.workspace = true
+campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 serde.workspace = true
 smallvec.workspace = true

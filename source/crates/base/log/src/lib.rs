@@ -26,5 +26,5 @@ pub use crate::logging::Logging;
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::json_layer::internals::{LogCheck, round_trip};
+    pub use crate::json_layer::internals::{LogCheck, Scoped, round_trip};
 }

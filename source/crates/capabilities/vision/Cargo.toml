@@ -9,7 +9,7 @@ kind = "glue"
 
 [features]
 internals = [
-    "campfire-common/internals",
+    "dep:campfire-measure",
     "campfire-declare/internals",
     "campfire-geometry/internals",
     "campfire-math/internals",
@@ -35,6 +35,7 @@ campfire-units.workspace = true
 campfire-values.workspace = true
 
 bevy_ecs.workspace = true
+campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true

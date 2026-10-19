@@ -1,4 +1,4 @@
-use crate::audit::Audit;
+use crate::fixtures::AUDIT;
 use crate::fixtures::LINK;
 use bevy::prelude::{App, Query, ResMut, Resource, Update};
 use campfire_net_channels::Channel;
@@ -48,7 +48,7 @@ fn audit_both_ways<C: Channel>(kind: ClientKind) {
         app.init_resource::<Received>().add_systems(Update, count);
     }
     send_both_ways::<C>(&mut stepper);
-    Audit::new().budget(LINK).run(|| {
+    AUDIT.budget(LINK).run(|| {
         let server = received(stepper.server_app_mut());
         let client = received(stepper.client_app_mut(0));
         send_both_ways::<C>(&mut stepper);

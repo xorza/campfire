@@ -11,11 +11,12 @@ use std::{mem, thread};
 
 use backtrace::Backtrace;
 
-use crate::alloc_audit::alloc_trace::AllocTrace;
+use crate::alloc_trace::AllocTrace;
 
-/// The allocator of a crate's `tests/alloc` binary: `System`, which counts each allocation and
-/// reallocation of every thread of the process but its main one inside an open window, and keeps
-/// its backtrace, so a fixture's workers count as its own thread does. A window is the process's,
+/// The allocator of a crate's `tests/alloc` binary and of an allocation bench: `System`, which
+/// counts each allocation and reallocation of the process for the benches, and each of every
+/// thread but its main one inside an open window, with its backtrace, so a fixture's workers
+/// count as its own thread does. A window is the process's,
 /// as nextest runs each test in a process of its own; a thread's excluded part is that thread's
 /// alone. The main thread is libtest's harness, which runs the test on a thread of its own and
 /// allocates as it first waits for it, at a time no window can foresee.
@@ -37,6 +38,8 @@ static IN_WINDOW: AtomicBool = AtomicBool::new(false);
 static ALLOCS: AtomicU64 = AtomicU64::new(0);
 static BYTES: AtomicU64 = AtomicU64::new(0);
 static TRACES: Mutex<Vec<AllocTrace>> = Mutex::new(Vec::new());
+/// Every allocation and reallocation of the process, which criterion's measure reads.
+static TOTAL: AtomicU64 = AtomicU64::new(0);
 /// Whether the process allocated yet: its first allocation is its main thread's, as no other
 /// thread runs before the runtime starts it.
 static ALLOCATED: AtomicBool = AtomicBool::new(false);
@@ -107,7 +110,13 @@ impl CountingAllocator {
         result
     }
 
+    /// Every allocation and reallocation of the process so far, of every thread.
+    pub fn total() -> u64 {
+        TOTAL.load(Ordering::Acquire)
+    }
+
     fn track(size: usize) {
+        TOTAL.fetch_add(1, Ordering::AcqRel);
         if !ALLOCATED.load(Ordering::Relaxed) && !ALLOCATED.swap(true, Ordering::AcqRel) {
             MAIN.set(true);
         }

@@ -2,6 +2,7 @@ use std::hint::black_box;
 use std::ops::ControlFlow;
 
 use campfire_math::{Num, Vec3};
+use campfire_measure::{Kind, Scale};
 use criterion::{Criterion, Throughput};
 
 use crate::body_box::bench::COUNT;
@@ -35,7 +36,7 @@ pub(crate) fn body_grid(c: &mut Criterion) {
         .collect();
     let mut grid = BodyGrid::default();
 
-    let mut group = c.benchmark_group("atomic/body_grid");
+    let mut group = Kind::Atomic.group(c, "body_grid", Scale::Sample);
     group.throughput(Throughput::Elements(KernelScene::UNITS as u64));
     group.bench_function("rebuild", |bench| {
         bench.iter(|| grid.rebuild(black_box(&bodies).iter().copied()));

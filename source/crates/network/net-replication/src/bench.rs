@@ -4,9 +4,8 @@
 //! frame that replicates `ENTITIES` entities, each timed alone.
 
 use bevy_ecs::query::With;
-use campfire_net_common::bench;
-use campfire_net_common::bench::kind::Kind;
-use campfire_net_common::bench::scale::Scale;
+use campfire_measure::Kind;
+use campfire_measure::Scale;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
@@ -47,7 +46,7 @@ struct Case {
 
 /// Runs each case of the crate whose id criterion's filter takes.
 pub fn run(criterion: &mut Criterion) {
-    bench::without_logs(criterion, updates);
+    campfire_measure::without_logs(criterion, updates);
 }
 
 fn updates(criterion: &mut Criterion) {
@@ -59,7 +58,7 @@ fn updates(criterion: &mut Criterion) {
             side: Side::Server,
         };
         group.bench_function(
-            BenchmarkId::from_parameter(bench::count(clients, "client")),
+            BenchmarkId::from_parameter(campfire_measure::count(clients, "client")),
             |bencher| bencher.iter_custom(|iters| case.time(iters)),
         );
     }
@@ -77,7 +76,7 @@ fn updates(criterion: &mut Criterion) {
         };
         let mut group = Kind::Integration.group(criterion, name, Scale::Frame);
         group.bench_function(
-            BenchmarkId::from_parameter(bench::count(1, "client")),
+            BenchmarkId::from_parameter(campfire_measure::count(1, "client")),
             |bencher| bencher.iter_custom(|iters| case.time(iters)),
         );
         group.finish();

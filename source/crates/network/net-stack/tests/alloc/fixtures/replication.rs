@@ -1,5 +1,5 @@
-use crate::audit::Audit;
 use crate::fixtures;
+use crate::fixtures::AUDIT;
 use crate::fixtures::LINK;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_interpolation::internals::protocol::CompFull;
@@ -32,7 +32,7 @@ fn audit_replication(kind: ClientKind) {
         .spawn((CompFull(0.0), Replicate::to_clients(NetworkTarget::All)))
         .id();
     let client_entity = fixtures::replicate_to_client(&mut stepper, server_entity);
-    Audit::new().budget(LINK + 1).run(|| {
+    AUDIT.budget(LINK + 1).run(|| {
         let mut component = stepper
             .server_app_mut()
             .world_mut()

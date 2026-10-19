@@ -94,6 +94,7 @@ default-members = [
     "crates/session/verifier",
     "crates/sim/math",
     "crates/sim/sim",
+    "crates/test/measure",
     "crates/test/rules",
 ]
 
@@ -156,6 +157,7 @@ campfire-declare = { path = "crates/capabilities/core/declare" }
 campfire-deliveries = { path = "crates/capabilities/core/deliveries" }
 campfire-geometry = { path = "crates/capabilities/core/geometry" }
 campfire-harness = { path = "crates/test/harness" }
+campfire-measure = { path = "crates/test/measure" }
 campfire-players = { path = "crates/capabilities/core/players" }
 campfire-interaction = { path = "crates/capabilities/interaction" }
 campfire-items = { path = "crates/capabilities/items" }

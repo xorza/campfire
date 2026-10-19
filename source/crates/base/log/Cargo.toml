@@ -10,7 +10,6 @@ kind = "problem"
 [features]
 internals = [
     "campfire-codec/internals",
-    "campfire-common/internals",
     "campfire-store?/internals",
     "dep:tracing-subscriber",
 ]
@@ -30,6 +29,7 @@ tracing-subscriber = { workspace = true, optional = true }
 
 [dev-dependencies]
 campfire-log = { workspace = true, features = ["internals"] }
+campfire-store = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

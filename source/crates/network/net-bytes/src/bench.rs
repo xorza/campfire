@@ -3,9 +3,8 @@
 //! `atomic/varint/…`: `VALUES` varints written to a buffer, and read back, a quarter of
 //! them in each encoded length.
 
-use campfire_net_common::bench;
-use campfire_net_common::bench::kind::Kind;
-use campfire_net_common::bench::scale::Scale;
+use campfire_measure::Kind;
+use campfire_measure::Scale;
 use criterion::{BatchSize, BenchmarkId, Criterion};
 use std::hint::black_box;
 
@@ -20,7 +19,7 @@ const LARGEST: [u64; 4] = [63, 16_383, 1_073_741_823, varint::MAX];
 
 /// Runs each case of the crate whose id criterion's filter takes.
 pub fn run(criterion: &mut Criterion) {
-    bench::without_logs(criterion, varint);
+    campfire_measure::without_logs(criterion, varint);
 }
 
 fn varint(criterion: &mut Criterion) {

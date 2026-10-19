@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::panic;
 
 use crate::bans::{PROXIES, foreign_names};
-use crate::manifest::{Kind, Manifest, WorkspaceManifest};
+use crate::manifest::{CrateKind, Manifest, WorkspaceManifest};
 use crate::source_file::SourceFile;
 use crate::workspace::{
     Crate, crate_dependencies, crates, holder, manifests, read, required_closure, sim_closure,
@@ -12,14 +12,12 @@ use crate::workspace::{
 #[test]
 fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
     // `common` holds plain values, so it needs serde and its derives, its own derives' crate,
-    // the two hashes that make its 32-byte values, SHA-256 and BLAKE3, `zeroize`, which erases
-    // a secret as it drops, and `backtrace` for the allocation audit, which only a test build
-    // turns on; a proxy reaches only its own group's crates, so its exemption covers no call of
-    // another group.
+    // the two hashes that make its 32-byte values, SHA-256 and BLAKE3, and `zeroize`, which
+    // erases a secret as it drops; a proxy reaches only its own group's crates, so its exemption
+    // covers no call of another group.
     assert_eq!(
         crate_dependencies("base/common"),
         [
-            "backtrace",
             "blake3",
             "campfire-common-derive",
             "derive_more",
@@ -27,21 +25,6 @@ fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
             "sha2",
             "zeroize"
         ]
-    );
-    let manifest = Manifest::parse(&read(
-        source()
-            .join("crates/base/common/Cargo.toml")
-            .to_str()
-            .unwrap(),
-    ));
-    assert!(
-        manifest
-            .dependencies()
-            .any(|(name, dependency)| name == "backtrace" && dependency.optional)
-    );
-    assert_eq!(
-        manifest.feature("internals"),
-        Some(&["dep:backtrace".to_owned()][..])
     );
     for proxy in &PROXIES {
         assert_eq!(
@@ -114,7 +97,7 @@ fn the_design_marks_built_exactly_the_crates_of_the_workspace_with_their_kinds()
     let crates: Vec<(String, String)> = manifests()
         .into_iter()
         .map(|(name, manifest)| {
-            let kind = manifest.kind().map_or("none", Kind::name);
+            let kind = manifest.kind().map_or("none", CrateKind::name);
             (name, kind.to_owned())
         })
         .collect();
@@ -143,18 +126,21 @@ fn kind_problems(manifests: &[(String, Manifest)]) -> Vec<String> {
             problems.push(format!("{name} names no kind"));
             continue;
         };
-        if matches!(own, Kind::Problem | Kind::Io) {
+        if matches!(own, CrateKind::Problem | CrateKind::Io) {
             let engines = required_closure(manifests, name).into_iter();
             for other in engines.filter(|other| is_engine(other)) {
                 problems.push(format!("{name} requires {other}"));
             }
         }
-        let library = matches!(own, Kind::Problem | Kind::Io | Kind::Proxy | Kind::Glue);
+        let library = matches!(
+            own,
+            CrateKind::Problem | CrateKind::Io | CrateKind::Proxy | CrateKind::Glue
+        );
         for other in manifest.required() {
-            if own == Kind::Glue && kind(other) == Some(Kind::Io) {
+            if own == CrateKind::Glue && kind(other) == Some(CrateKind::Io) {
                 problems.push(format!("{name} requires the IO crate {other}"));
             }
-            if library && kind(other) == Some(Kind::Test) {
+            if library && kind(other) == Some(CrateKind::Test) {
                 problems.push(format!("{name} requires the test crate {other}"));
             }
         }
@@ -170,7 +156,7 @@ fn each_crate_keeps_the_rule_of_its_kind() {
     // A proxy crate is exactly a proxy of the bans, whose dependencies those pin.
     let mut proxies: Vec<&str> = crates
         .iter()
-        .filter(|krate| krate.manifest.kind() == Some(Kind::Proxy))
+        .filter(|krate| krate.manifest.kind() == Some(CrateKind::Proxy))
         .map(|krate| krate.path.trim_start_matches("crates/"))
         .collect();
     proxies.sort_unstable();
@@ -288,14 +274,14 @@ fn nested_crates(crates: &[Crate]) -> Vec<String> {
 }
 
 /// The crates whose test infrastructure any crate's tests may take: `store`'s test directories and
-/// pinned files, `log`'s check of the warnings, `common`'s allocation audit, `codec` for a type's
+/// pinned files, `log`'s check of the warnings, `measure`'s allocation audit, `codec` for a type's
 /// encoded form, `math` for the numbers a crate's values hold, and the test packages
 /// (02-engine-core.md, One rule of test homes).
 const TEST_INFRASTRUCTURE: [&str; 6] = [
     "campfire-codec",
-    "campfire-common",
     "campfire-log",
     "campfire-math",
+    "campfire-measure",
     "campfire-store",
     "campfire-test-packages",
 ];
@@ -815,6 +801,18 @@ fn the_default_members_are_the_build_that_ships() {
         WorkspaceManifest::parse(listed).default_members(),
         ["crates/a", "checks/b"]
     );
+}
+
+#[test]
+fn each_optional_dependency_is_turned_on_by_a_feature() {
+    let found: Vec<String> = crates()
+        .iter()
+        .flat_map(|krate| {
+            let unturned = krate.manifest.unturned_optionals().into_iter();
+            unturned.map(|name| format!("{} {name}", krate.name))
+        })
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
 }
 
 #[test]

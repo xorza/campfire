@@ -10,7 +10,6 @@ kind = "app"
 
 [features]
 internals = [
-    "campfire-common/internals",
     "campfire-log/internals",
     "campfire-package/internals",
     "campfire-package-disk/internals",

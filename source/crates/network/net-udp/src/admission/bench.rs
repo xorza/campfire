@@ -6,8 +6,8 @@ use std::hint::black_box;
 use std::net::{IpAddr, Ipv4Addr};
 use std::num::NonZeroU32;
 
-use campfire_net_common::bench::kind::Kind;
-use campfire_net_common::bench::scale::Scale;
+use campfire_measure::Kind;
+use campfire_measure::Scale;
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput};
 
 use crate::admission::Admission;

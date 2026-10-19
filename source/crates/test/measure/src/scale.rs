@@ -1,19 +1,22 @@
-use core::time::Duration;
-use criterion::measurement::WallTime;
+use std::time::Duration;
+
+use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, SamplingMode};
 
-/// How long one iteration of a case takes, which sets how criterion samples it.
+/// How long one iteration of a case takes, which sets how criterion samples it: the one place a
+/// group's sampling is set.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scale {
     /// Microseconds an iteration.
     Sample,
-    /// Milliseconds an iteration, as a stepper frame takes: fewer and longer samples.
+    /// Milliseconds an iteration, as a match's tick or a stepper's frame takes: fewer and longer
+    /// samples.
     Frame,
 }
 
 impl Scale {
     /// Sets the sampling of the cases `group` registers from here on.
-    pub fn apply(self, group: &mut BenchmarkGroup<'_, WallTime>) {
+    pub fn apply<M: Measurement>(self, group: &mut BenchmarkGroup<'_, M>) {
         match self {
             Self::Sample => group
                 .sample_size(50)

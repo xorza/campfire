@@ -9,7 +9,7 @@ kind = "problem"
 
 [features]
 internals = [
-    "campfire-common/internals",
+    "dep:campfire-measure",
     "dep:criterion",
 ]
 
@@ -17,6 +17,7 @@ internals = [
 campfire-common.workspace = true
 
 blake3.workspace = true
+campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true

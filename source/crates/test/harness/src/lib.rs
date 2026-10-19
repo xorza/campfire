@@ -22,7 +22,6 @@ mod scripted_mode;
 
 pub use crate::archetype_watch::ArchetypeWatch;
 pub use crate::arena::Arena;
-pub use crate::bench::allocations::{Allocations, CountingAllocator};
 pub use crate::fixed_session::FixedSession;
 pub use crate::fixed_session::fixed_match::FixedMatch;
 pub use crate::hash_trail::{Difference, HashTrail};

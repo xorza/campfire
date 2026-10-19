@@ -1,8 +1,8 @@
 //! `atomic/link/link_model_run/admit/…`: one packet through [`LinkModelRun::admit`] under each
 //! kind of model.
 
-use campfire_net_common::bench::kind::Kind;
-use campfire_net_common::bench::scale::Scale;
+use campfire_measure::Kind;
+use campfire_measure::Scale;
 use campfire_net_core::Instant;
 use core::time::Duration;
 use criterion::{BenchmarkId, Criterion};

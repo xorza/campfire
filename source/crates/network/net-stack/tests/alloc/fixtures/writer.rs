@@ -1,4 +1,4 @@
-use crate::audit::Audit;
+use crate::fixtures::AUDIT;
 use campfire_net_bytes::Writer;
 use std::collections::VecDeque;
 use std::io::Write;
@@ -11,7 +11,7 @@ fn a_writer_with_messages_alive() {
     let mut writer = Writer::default();
     let mut alive = VecDeque::with_capacity(11);
     let message = [7u8; 64];
-    Audit::new().run(|| {
+    AUDIT.run(|| {
         writer.write_all(&message).unwrap();
         alive.push_back(writer.take_written());
         if alive.len() > 10 {

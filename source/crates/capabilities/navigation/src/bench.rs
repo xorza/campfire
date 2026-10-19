@@ -6,6 +6,7 @@ use campfire_common::{Seat, Tick};
 use campfire_geometry::internals::{Density, KernelScene};
 use campfire_geometry::{BodyBox, Bounds, Grid, Shape};
 use campfire_math::{Num, Vec3};
+use campfire_measure::{Kind, Scale};
 use campfire_sim::IdAllocator;
 use campfire_units::{Layer, Wall};
 use criterion::measurement::WallTime;
@@ -44,7 +45,7 @@ const ROUTES: usize = 100;
 /// index meets and no walker, at most 1.19 m, touches: finding the contacts, then parting them,
 /// from the same scene every run.
 fn collision(c: &mut Criterion) {
-    let mut group = c.benchmark_group("integration/collision");
+    let mut group = Kind::Integration.group(c, "collision", Scale::Sample);
     group.throughput(Throughput::Elements(KernelScene::UNITS as u64));
     let crowded = Density::Crowded.span();
     let cases = Density::ALL
@@ -103,7 +104,7 @@ fn pathing_grid(c: &mut Criterion) {
     index.update(&statics);
     grid.update(&index);
 
-    let mut group = c.benchmark_group("integration/pathing_grid");
+    let mut group = Kind::Integration.group(c, "pathing_grid", Scale::Sample);
     group.bench_function("enter", |bench| {
         bench.iter_custom(|runs| {
             let mut spent = Duration::ZERO;
@@ -165,7 +166,7 @@ fn route_planner(c: &mut Criterion) {
         .map(|&[start, goal]| u64::from(planner.plan(walkable, start, goal, &mut waypoints).work))
         .sum();
 
-    let mut group = c.benchmark_group("integration/route_planner");
+    let mut group = Kind::Integration.group(c, "route_planner", Scale::Sample);
     group.throughput(Throughput::Elements(work));
     group.bench_function("walled", |bench| {
         bench.iter(|| {

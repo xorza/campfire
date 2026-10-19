@@ -1,5 +1,6 @@
 use std::hint::black_box;
 
+use campfire_measure::{Kind, Scale};
 use criterion::{Criterion, Throughput};
 
 use crate::num::bench::COUNT;
@@ -27,7 +28,7 @@ pub(crate) fn rounding(c: &mut Criterion) {
         .map(|at| u32::try_from(at % 120).expect("a shift below 120") + 1)
         .collect();
 
-    let mut group = c.benchmark_group("atomic/rounding");
+    let mut group = Kind::Atomic.group(c, "rounding", Scale::Sample);
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("divide", |bench| {
         bench.iter(|| {

@@ -1,6 +1,7 @@
 use std::hint::black_box;
 use std::num::{NonZeroU32, NonZeroU64};
 
+use campfire_measure::{Kind, Scale};
 use criterion::{Criterion, Throughput};
 
 use crate::seed_chain::SeedChain;
@@ -14,8 +15,7 @@ const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 pub(crate) fn server_seeds(c: &mut Criterion) {
     let chain = SeedChain::new([5; 32], SEGMENTS);
     let seeds = chain.seeds();
-    let mut group = c.benchmark_group("atomic/server_seeds");
-    group.sample_size(10);
+    let mut group = Kind::Atomic.group(c, "server_seeds", Scale::Frame);
     group.bench_function("derive", |b| {
         b.iter(|| black_box(&chain).seeds());
     });

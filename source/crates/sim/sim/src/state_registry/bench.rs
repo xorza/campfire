@@ -8,6 +8,7 @@ use bevy_ecs::query::With;
 use bevy_ecs::world::World;
 use campfire_common::SegmentSeed;
 use campfire_math::{Num, Vec3};
+use campfire_measure::{Kind, Scale};
 use criterion::{BatchSize, Criterion, Throughput};
 use serde::{Deserialize, Serialize};
 
@@ -157,7 +158,7 @@ pub(crate) fn state_hash(c: &mut Criterion) {
     let registry = units_registry();
     let mut per_type = Vec::new();
 
-    let mut group = c.benchmark_group("integration/state_hash");
+    let mut group = Kind::Integration.group(c, "state_hash", Scale::Sample);
     group.throughput(Throughput::Elements(UNITS.unsigned_abs()));
     group.bench_function("all", |b| {
         b.iter(|| black_box(registry.hash(black_box(&world))));
@@ -177,7 +178,7 @@ pub(crate) fn snapshot(c: &mut Criterion) {
     let mut taken = Vec::new();
     registry.snapshot(&world, &mut taken);
 
-    let mut group = c.benchmark_group("integration/snapshot");
+    let mut group = Kind::Integration.group(c, "snapshot", Scale::Sample);
     group.throughput(Throughput::Elements(UNITS.unsigned_abs()));
     group.bench_function("all", |b| {
         b.iter(|| {
@@ -221,7 +222,7 @@ pub(crate) fn state_delta(c: &mut Criterion) {
         }
     };
 
-    let mut group = c.benchmark_group("integration/state_delta");
+    let mut group = Kind::Integration.group(c, "state_delta", Scale::Sample);
     group.throughput(Throughput::Elements(UNITS.unsigned_abs()));
     let mut round = 0;
     group.bench_function("changes", |b| {

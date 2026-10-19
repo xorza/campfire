@@ -13,7 +13,6 @@ internals = [
     "campfire-client-files/internals",
     "campfire-codec/internals",
     "campfire-combat/internals",
-    "campfire-common/internals",
     "campfire-geometry/internals",
     "campfire-log/internals",
     "campfire-math/internals",

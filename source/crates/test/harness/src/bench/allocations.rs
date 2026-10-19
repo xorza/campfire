@@ -1,101 +1,17 @@
-use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use campfire_combat::{Damage, DamageCause, DamageHandle};
 use campfire_common::Tick;
 use campfire_math::Num;
+use campfire_measure::{Allocations, Kind, Scale};
 use campfire_script::{Budget, CallStart, Ctx, ListPlace, ScriptArgs, ScriptHost, ScriptId};
 use campfire_sim::{SimTick, StableId};
 use campfire_units::Units;
 use campfire_values::{DamageKind, UnitType};
-use criterion::measurement::{Measurement, ValueFormatter};
-use criterion::{Criterion, Throughput};
+use criterion::Criterion;
 
 use crate::fixed_session::fixed_match::FixedMatch;
 use crate::moba_3v3::Moba3v3;
-
-/// The allocations the process made, as `CountingAllocator` counts them: the outside world's
-/// allocator interface keeps its state in a static.
-static ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
-
-/// The global allocator of the allocation benches: the system's, which counts each allocation,
-/// a growth among them.
-#[derive(Debug)]
-pub struct CountingAllocator;
-
-// SAFETY: each call passes its arguments to the system's allocator unchanged.
-unsafe impl GlobalAlloc for CountingAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
-        unsafe { System.alloc(layout) }
-    }
-
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
-        unsafe { System.alloc_zeroed(layout) }
-    }
-
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
-        unsafe { System.realloc(ptr, layout, new_size) }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        unsafe { System.dealloc(ptr, layout) }
-    }
-}
-
-/// Criterion's measure of the allocations a sample makes, as `CountingAllocator` counts them.
-#[derive(Debug)]
-pub struct Allocations;
-
-impl Measurement for Allocations {
-    type Intermediate = u64;
-    type Value = u64;
-
-    fn start(&self) -> u64 {
-        ALLOCATIONS.load(Ordering::SeqCst)
-    }
-
-    fn end(&self, start: u64) -> u64 {
-        ALLOCATIONS.load(Ordering::SeqCst) - start
-    }
-
-    fn add(&self, a: &u64, b: &u64) -> u64 {
-        a + b
-    }
-
-    fn zero(&self) -> u64 {
-        0
-    }
-
-    fn to_f64(&self, value: &u64) -> f64 {
-        *value as f64
-    }
-
-    fn formatter(&self) -> &dyn ValueFormatter {
-        &AllocationsFormatter
-    }
-}
-
-/// The unit of `Allocations`, unscaled.
-#[derive(Debug)]
-struct AllocationsFormatter;
-
-impl ValueFormatter for AllocationsFormatter {
-    fn scale_values(&self, _: f64, _: &mut [f64]) -> &'static str {
-        "allocations"
-    }
-
-    fn scale_throughputs(&self, _: f64, _: &Throughput, _: &mut [f64]) -> &'static str {
-        "allocations"
-    }
-
-    fn scale_for_machines(&self, _: &mut [f64]) -> &'static str {
-        "allocations"
-    }
-}
 
 /// A case of the allocation benches: a query, a creep's think, or the mode's weigh of a damage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,7 +124,7 @@ impl CallScene {
 /// calls it, each with its call started, as the architecture review's decision D30 asks.
 pub(crate) fn allocations(c: &mut Criterion<Allocations>) {
     let mut scene = None;
-    let mut group = c.benchmark_group("integration/script_allocations");
+    let mut group = Kind::Integration.group(c, "script_allocations", Scale::Sample);
     for case in Case::ALL {
         group.bench_function(case.name(), |b| {
             let scene = scene.get_or_insert_with(CallScene::new);

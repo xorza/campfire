@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use campfire_math::Vec3;
+use campfire_measure::{Kind, Scale};
 use criterion::Criterion;
 use lightyear::prelude::RollbackMode;
 
@@ -17,7 +18,7 @@ use crate::in_process_match::{InProcessMatch, StepCost};
 /// the harness: Lightyear resends every unacked reliable message after its wall-clock round
 /// trip, which a step of the manual clock hardly takes.
 pub(crate) fn client_frame(c: &mut Criterion) {
-    let mut group = c.benchmark_group("integration/client_frame");
+    let mut group = Kind::Integration.group(c, "client_frame", Scale::Frame);
     for (name, mode) in [
         ("walk", RollbackMode::Check),
         ("walk_rollback", RollbackMode::Always),
@@ -58,7 +59,6 @@ pub(crate) fn client_frame(c: &mut Criterion) {
             });
         });
     }
-    group.sample_size(10);
     group.bench_function("worst_1v1", |b| {
         b.iter_custom(|matches| {
             (0..matches)

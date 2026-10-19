@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use campfire_math::Vec3;
+use campfire_measure::{Kind, Scale};
 use criterion::Criterion;
 use lightyear::prelude::RollbackMode;
 
@@ -11,7 +12,7 @@ use crate::in_process_match::{InProcessMatch, StepCost};
 /// its first wave, `walk_3v3`, as `integration/client_frame/walk_3v3` plays it; and the server's
 /// worst frame in the lane 1v1, its journal writing, `worst_1v1`.
 pub(crate) fn server_frame(c: &mut Criterion) {
-    let mut group = c.benchmark_group("integration/server_frame");
+    let mut group = Kind::Integration.group(c, "server_frame", Scale::Frame);
     let mut local = None;
     let mut frame: u64 = 0;
     let mut spent = StepCost::default();
@@ -39,7 +40,6 @@ pub(crate) fn server_frame(c: &mut Criterion) {
             spent.server
         });
     });
-    group.sample_size(10);
     group.bench_function("worst_1v1", |b| {
         b.iter_custom(|matches| {
             (0..matches)

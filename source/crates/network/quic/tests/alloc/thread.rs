@@ -1,4 +1,4 @@
-use campfire_common::internals::{AllocAudit, CountingAllocator};
+use campfire_measure::{AllocAudit, CountingAllocator};
 use campfire_quic::internals::ThreadFixture;
 
 use crate::loopback::FIRST_KEY_UPDATE;

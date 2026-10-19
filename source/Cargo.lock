@@ -2679,6 +2679,7 @@ dependencies = [
  "campfire-items",
  "campfire-log",
  "campfire-math",
+ "campfire-measure",
  "campfire-mode",
  "campfire-navigation",
  "campfire-orders",
@@ -2805,10 +2806,8 @@ dependencies = [
 name = "campfire-common"
 version = "0.1.0"
 dependencies = [
- "backtrace",
  "blake3",
  "campfire-codec",
- "campfire-common",
  "campfire-common-derive",
  "campfire-store",
  "derive_more",
@@ -2870,6 +2869,7 @@ dependencies = [
  "campfire-common",
  "campfire-geometry",
  "campfire-math",
+ "campfire-measure",
  "criterion 0.8.2",
  "serde",
  "thiserror 2.0.21",
@@ -2897,6 +2897,7 @@ dependencies = [
  "campfire-items",
  "campfire-log",
  "campfire-math",
+ "campfire-measure",
  "campfire-mode",
  "campfire-navigation",
  "campfire-net",
@@ -3041,10 +3042,21 @@ dependencies = [
  "campfire-codec",
  "campfire-common",
  "campfire-math",
+ "campfire-measure",
  "criterion 0.8.2",
  "proptest",
  "serde",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "campfire-measure"
+version = "0.1.0"
+dependencies = [
+ "backtrace",
+ "campfire-store",
+ "criterion 0.8.2",
+ "tracing",
 ]
 
 [[package]]
@@ -3087,6 +3099,7 @@ dependencies = [
  "campfire-deliveries",
  "campfire-geometry",
  "campfire-math",
+ "campfire-measure",
  "campfire-navigation",
  "campfire-script",
  "campfire-sim",
@@ -3147,6 +3160,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "campfire-codec",
+ "campfire-measure",
  "campfire-net-bytes",
  "campfire-net-common",
  "criterion 0.8.2",
@@ -3162,6 +3176,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_platform 0.20.0",
  "bytes",
+ "campfire-measure",
  "campfire-net-bytes",
  "campfire-net-channels",
  "campfire-net-common",
@@ -3179,9 +3194,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "campfire-net-common",
- "criterion 0.8.2",
  "ring",
- "tracing",
 ]
 
 [[package]]
@@ -3231,6 +3244,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_platform 0.20.0",
  "bytes",
+ "campfire-measure",
  "campfire-net-common",
  "campfire-net-core",
  "campfire-net-emulator",
@@ -3312,9 +3326,9 @@ dependencies = [
  "bevy_utils 0.20.0",
  "bytes",
  "campfire-common",
+ "campfire-measure",
  "campfire-net-bytes",
  "campfire-net-channels",
- "campfire-net-common",
  "campfire-net-connection",
  "campfire-net-core",
  "campfire-net-link",
@@ -3415,9 +3429,9 @@ dependencies = [
  "bevy_transform 0.20.0",
  "bytes",
  "campfire-codec",
+ "campfire-measure",
  "campfire-net-bytes",
  "campfire-net-channels",
- "campfire-net-common",
  "campfire-net-connection",
  "campfire-net-core",
  "campfire-net-despawn",
@@ -3441,6 +3455,8 @@ dependencies = [
  "bevy_app 0.20.0",
  "bevy_ecs 0.20.0",
  "bevy_replicon 0.45.2",
+ "campfire-log",
+ "campfire-measure",
  "campfire-net-bytes",
  "campfire-net-channels",
  "campfire-net-common",
@@ -3464,7 +3480,6 @@ dependencies = [
  "campfire-store",
  "serde",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -3531,8 +3546,8 @@ dependencies = [
  "bevy_reflect 0.20.0",
  "bevy_utils 0.20.0",
  "bytes",
+ "campfire-measure",
  "campfire-net-channels",
- "campfire-net-common",
  "campfire-net-connection",
  "campfire-net-core",
  "campfire-net-link",
@@ -3550,6 +3565,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "campfire-common",
+ "campfire-measure",
  "campfire-net-common",
  "campfire-net-core",
  "campfire-net-emulator",
@@ -3722,6 +3738,7 @@ dependencies = [
  "blake3",
  "campfire-codec",
  "campfire-common",
+ "campfire-measure",
  "campfire-protocol",
  "campfire-store",
  "criterion 0.8.2",
@@ -3744,6 +3761,7 @@ dependencies = [
  "bevy_time 0.19.1",
  "bytes",
  "campfire-common",
+ "campfire-measure",
  "campfire-quic",
  "campfire-store",
  "criterion 0.8.2",
@@ -3816,6 +3834,7 @@ dependencies = [
  "campfire-common",
  "campfire-geometry",
  "campfire-math",
+ "campfire-measure",
  "campfire-script",
  "campfire-sim",
  "campfire-values",
@@ -3863,6 +3882,7 @@ dependencies = [
  "campfire-common",
  "campfire-log",
  "campfire-math",
+ "campfire-measure",
  "campfire-schedule",
  "campfire-sim",
  "criterion 0.8.2",
@@ -4003,6 +4023,7 @@ dependencies = [
  "campfire-declare",
  "campfire-geometry",
  "campfire-math",
+ "campfire-measure",
  "campfire-players",
  "campfire-script",
  "campfire-sim",

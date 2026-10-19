@@ -38,10 +38,8 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Client.** **Plan: 11.** A slot's charges come from progression's `Learning`, so a mode without progression shows none (`progression/src/learning.rs:44`, `client/src/hud/mod.rs:103`).
 - **Combat.** **Plan: 10.** A splash reaches a unit within `<` its radius, where the one reach rule is `≤` (`attacks.rs:120-122`, `metric.rs:54-73`).
 - **Mode.** A spatial map's height grid and `[ground]` load into its `MapBook`, and the sim reads neither: `MapBook::point` takes a spatial map's position as its point in space.
-- **Net-common.** **Plan: 3.** The stack's bench groups take their sampling from one policy, `Scale` (`net-common/src/bench/scale.rs`), and Campfire's set theirs in each group (`harness/src/bench/*.rs`): two sampling policies for one workspace's benches.
-- **Net-stack.** **Plan: 3.** Three counting allocators do one job: `common`'s allocation audit (`common/src/alloc_audit/counting_allocator.rs`), the harness's (`harness/src/bench/allocations.rs`) and `net-stack`'s (`net-stack/tests/alloc/allocator/mod.rs`), each with its own report.
 - **Net-stack.** **Plan: 6.** Bevy's component hooks of the stack are named `on_add_hook`, `on_insert_hook` and `on_remove_hook` (13 functions, as in `net-messages/src/event_sender.rs`), where a hook is the scripts' alone (02-engine-core.md, Names) and Campfire's own hooks are named by what they do, as `Route::pushed`.
-- **Net-stack.** **Plan: 3.** No lane of `cargo drive` lints the channels without `compression_lz4`, runs rustdoc with its warnings denied, or measures coverage, which `13-net-stack/testing.md` plans.
+- **Net-stack.** No lane of `cargo drive` measures coverage, which `13-net-stack/testing.md` plans.
 - **Net.** **Plan: 8.** A fragment count from the peer sizes an allocation before any check, in the Lightyear fork's `transport/channel/fragments/receive.rs:137-147` at `54e6be2`: one datagram that names 2³⁵ fragments stops the server.
 - **Net.** **Plan: 9.** A link that did not join uses every channel with no budget (`net_protocol/mod.rs:96-117`, `offering.rs:40, 176-193`).
 - **Net.** **Plan: 9.** The offer, the input ack and the chain history allocate for each message (`offering.rs:259-263`, `input_ack.rs:18-27`, `chain_history/mod.rs:45-52`).

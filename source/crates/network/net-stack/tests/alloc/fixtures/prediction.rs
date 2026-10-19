@@ -1,5 +1,5 @@
-use crate::audit::Audit;
 use crate::fixtures;
+use crate::fixtures::AUDIT;
 use crate::fixtures::LINK;
 use bevy::prelude::{App, Entity, FixedUpdate, Query, With};
 use campfire_net_connection::NetworkTarget;
@@ -66,7 +66,7 @@ fn audit_prediction(kind: ClientKind) {
         .id();
     let client_entity = fixtures::replicate_to_client(&mut stepper, server_entity);
     stepper.step(SETTLE, stepper.frame_interval(), Order::ServerFirst);
-    Audit::new().budget(LINK + 1).run(|| {
+    AUDIT.budget(LINK + 1).run(|| {
         let server = value(stepper.server_app_mut(), server_entity);
         let client = value(stepper.client_app_mut(0), client_entity);
         stepper.step(1, stepper.frame_interval(), Order::ServerFirst);

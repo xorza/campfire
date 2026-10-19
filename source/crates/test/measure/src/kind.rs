@@ -1,24 +1,25 @@
-use crate::bench::scale::Scale;
-use criterion::measurement::WallTime;
+use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion};
 
-/// What a case times, the first part of its id.
+use crate::scale::Scale;
+
+/// What a case times, the first part of its id `<kind>/<group>/<case>`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     /// One stage on a made input, in the crate that owns the stage.
     Atomic,
-    /// Frames of the whole stack on the stepper.
+    /// A whole system's frames or ticks: a match, or the network stack on its stepper.
     Integration,
 }
 
 impl Kind {
     /// The group `<kind>/<name>`, sampled as `scale` says.
-    pub fn group<'a>(
+    pub fn group<'a, M: Measurement>(
         self,
-        criterion: &'a mut Criterion,
+        criterion: &'a mut Criterion<M>,
         name: &str,
         scale: Scale,
-    ) -> BenchmarkGroup<'a, WallTime> {
+    ) -> BenchmarkGroup<'a, M> {
         let kind = match self {
             Self::Atomic => "atomic",
             Self::Integration => "integration",

@@ -3,6 +3,7 @@ use std::hint::black_box;
 use campfire_geometry::internals::{Density, KernelScene};
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Vec3};
+use campfire_measure::{Kind, Scale};
 use campfire_values::{Relations, Team};
 use criterion::{Criterion, Throughput};
 
@@ -67,7 +68,7 @@ fn fog(c: &mut Criterion) {
         black_box(&seen);
     };
 
-    let mut group = c.benchmark_group("integration/fog");
+    let mut group = Kind::Integration.group(c, "fog", Scale::Sample);
     group.throughput(Throughput::Elements(KernelScene::UNITS as u64));
     let mut turn = false;
     group.bench_function("sight", |bench| {

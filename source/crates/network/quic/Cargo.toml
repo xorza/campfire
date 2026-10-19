@@ -9,7 +9,7 @@ kind = "glue"
 
 [features]
 internals = [
-    "campfire-common/internals",
+    "dep:campfire-measure",
     "campfire-store/internals",
     "dep:criterion",
 ]
@@ -22,6 +22,7 @@ attohttpc.workspace = true
 bevy_app.workspace = true
 bevy_ecs.workspace = true
 bytes.workspace = true
+campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 igd-next.workspace = true
 lightyear.workspace = true

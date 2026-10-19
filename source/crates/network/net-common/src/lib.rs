@@ -2,8 +2,6 @@
 
 mod arena;
 #[cfg(feature = "internals")]
-pub mod bench;
-#[cfg(feature = "internals")]
 pub mod internals;
 #[cfg(feature = "os_random")]
 mod random;

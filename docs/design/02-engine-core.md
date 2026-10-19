@@ -6,7 +6,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 
 | Module | Status | Kind | Does |
 | --- | --- | --- | --- |
-| `common` | built | problem | The plain values crates that do not depend on each other share, the named enums, the domain hashers, the error report and the allocation audit |
+| `common` | built | problem | The plain values crates that do not depend on each other share, the named enums, the domain hashers and the error report |
 | `common-derive` | built | problem | `common`'s derives, which `common` alone names and re-exports: an enum's members, their identifiers and their names |
 | `codec` | built | proxy | The one gateway of serialization, a proxy crate ([Serialization](#serialization)) |
 | `schedule` | built | proxy | The sim schedules' build settings, a proxy crate |
@@ -49,6 +49,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `harness` | built | test | The session and network tests' match harness; never shipped |
 | `rules` | built | test | The workspace's structural rules as tests; never shipped |
 | `test-packages` | built | test | The workspace's test packages; never shipped |
+| `measure` | built | test | What the tests and benches measure with: the counting allocator and the allocation audit, criterion's measure of allocations, and every bench's kinds and sampling; never shipped |
 | `server` | built | app | The dedicated server's binary |
 | `net` | built | glue | Lightyear over `quic`, and the session host ([Networking](#networking)) |
 | `quic` | built | glue | QUIC under Lightyear's link ([QUIC transport](11-quic-transport.md)) |
@@ -159,9 +160,10 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 | Restored state is checked like package data: every flaw is an error, never a panic; times and counts stay within 2⁶², every period at least a tick. | The `Tick` decode; each state type's check; the snapshot, structured and mutation fuzz |
 | Each rule of a network session has one home on each side, and a client that follows the rules is never refused. | The net scenarios under load |
 | A function that acts on a match has one home, by what it acts on: the whole match a trait on `World`, the match's content an associated function of its module's type, a value made from the world a constructor of its own type, a test fixture a struct of the ids it places. | The world rule test of `rules` |
-| `common` depends on no crate but `serde`, `derive_more`, its hashers and, behind `internals`, `backtrace`. | The manifest test of `rules` |
+| `common` depends on no crate but `serde`, `derive_more`, its hashers and `zeroize`. | The manifest test of `rules` |
 | Each crate names its kind: a problem or IO crate has no engine crate in its required closure, a glue crate requires no IO crate, a library requires no test crate, a proxy is a proxy of the bans, and the crates table gives each kind. | `each_crate_keeps_the_rule_of_its_kind`, `the_design_marks_built_exactly_the_crates_of_the_workspace_with_their_kinds` |
 | Each crate takes the workspace's lints. | `each_crate_takes_the_workspaces_lints` |
+| Each optional dependency is turned on by a feature of its crate, by `dep:` or by a feature of its own, so a build of the crate's features holds it, not only `--all-features`. | `each_optional_dependency_is_turned_on_by_a_feature` |
 | A dev-dependency that turns on `internals` of a normal dependency names a crate whose `internals` gates code of its own. | `a_dev_dependency_turns_on_internals_that_gate_code` |
 | A required dependency is one production code names; one only `internals` code uses is optional, and one only tests use is a dev-dependency. | `a_required_dependency_is_named_by_production_code`, `an_optional_dependency_is_named_by_library_code`; cargo's `unused_dependencies` |
 | No sibling modules of a crate import each other in a cycle; two types that are one table in two parts share a module. | `no_crates_modules_import_each_other_in_a_cycle` |
@@ -289,7 +291,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 - **Two goldens.** The state golden pins each tick's state hash and moves with the layout; the behaviour golden pins a digest of each tick's units, deaths and resources, and does not.
 - **One scripted match for each mode.** A new rule of a mode joins its scripted match, the one test exempt from the 1 s bound; the suite keeps 30 s.
 - **nextest.** A process per test, as libtest cannot end a stuck test; a test is slow past 1 s, and no profile stops at the first failure.
-- **Allocation audits.** A crate's `tests/alloc` counts each hot path's allocations a frame at a time, zero unless a fixture names each one it allows. A window counts every thread of the process but its main one, as nextest runs each test in a process of its own, so a fixture's workers count too; a thread's excluded part is its own. The main thread is libtest's harness, which runs the test on a thread of its own and allocates as it first waits for it, so the allocator marks the thread of the process's first allocation and counts none of its allocations. Refused: a window of the test's thread alone, which passes a worker that allocates.
+- **Allocation audits.** A crate's `tests/alloc` counts each hot path's allocations a frame at a time, zero unless a fixture names each one it allows. A window counts every thread of the process but its main one, as nextest runs each test in a process of its own, so a fixture's workers count too; a thread's excluded part is its own. The main thread is libtest's harness, which runs the test on a thread of its own and allocates as it first waits for it, so the allocator marks the thread of the process's first allocation and counts none of its allocations. `campfire-measure` holds the one allocator and audit of the workspace. Refused: a window of the test's thread alone, which passes a worker that allocates; a counter of each crate's own, as three were.
 - **One test feature.** What only tests and benches build is behind `internals` and one gate; `#[cfg(test)]` holds a crate's own test modules alone, and every test build turns `internals` on.
 - **The archetype shuffle.** A test moves every unit to a new archetype before each tick and checks both goldens, so no order depends on archetypes.
 - **The work record.** A redesign records the instruction count of the proving match and the 3v3; a stage that makes either worse by more than 10 % says why.
@@ -302,6 +304,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 - **One bench target for each crate,** whose cases share one id scheme, `<kind>/<group>/<case>`, chosen by criterion's filter.
 - **The gate runs each case once.** The gate runs the bench lane with Criterion's `--test`, which runs each case once, so a bench that no longer builds or runs fails it, on the build `cargo drive bench` shares. Refused: the benches outside the gate, where two breaks of the gather bench went unseen, and a run of the bench targets as tests, a new cache shape built without the bench profile's optimizations.
 - **One selection for every run.** The bench lane builds exactly the crates with a `[[bench]]`, each with `internals`, so a case builds with the same features whichever cases run.
+- **One sampling policy.** A group takes its kind from `campfire-measure`'s `Kind` and its sampling from its `Scale`, a case of microseconds or a frame of milliseconds, the one place a group's sampling is set. Refused: a kind spelled in each group's name and a sample size set by hand, which gave each group a sampling of its own and the workspace two schemes of ids.
 - **Atomic and integration cases.** An atomic case runs one operation over 4,096 inputs; an integration case runs a system for a tick on a scene of 1,000 units, the scale of a large Zero Hour battle, or one end on the test packages.
 - **The worst tick is the budget.** An end has a `mean` and a `worst` case, as the worst tick sets the budget ([Tick rate](04-capabilities/00-overview.md#tick-rate)).
 - **Stage probes keep the hashes.** `StageClock` times each stage of the real tick from outside the state.

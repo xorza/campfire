@@ -7,12 +7,8 @@ license.workspace = true
 [package.metadata.campfire]
 kind = "problem"
 
-[features]
-internals = ["dep:backtrace"]
-
 [dependencies]
 campfire-common-derive.workspace = true
-backtrace = { workspace = true, optional = true }
 blake3.workspace = true
 derive_more.workspace = true
 serde.workspace = true
@@ -21,13 +17,7 @@ zeroize.workspace = true
 
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }
-campfire-common = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
-
-[[test]]
-name = "alloc"
-path = "tests/alloc/main.rs"
-required-features = ["internals"]
 
 [lints]
 workspace = true

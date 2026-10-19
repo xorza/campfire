@@ -5,6 +5,7 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_geometry::internals::KernelScene;
+use campfire_measure::{Kind, Scale};
 use campfire_script::internals::ScriptsWorldInternals;
 use campfire_sim::Position;
 use campfire_values::Team;
@@ -45,7 +46,7 @@ impl ViewScene {
 /// creeps, which the 3v3's own few units join.
 pub(crate) fn script_view(c: &mut Criterion) {
     let mut scene = None;
-    let mut group = c.benchmark_group("integration/script_view");
+    let mut group = Kind::Integration.group(c, "script_view", Scale::Sample);
     group.throughput(Throughput::Elements(KernelScene::UNITS as u64));
     for (case, every) in [("read", 1), ("reread", REREAD_CHANGED)] {
         let mut round = 0;

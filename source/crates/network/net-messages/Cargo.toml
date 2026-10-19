@@ -10,23 +10,20 @@ kind = "glue"
 [features]
 # The messages layer's stack and test messages, for the tests and benches of every layer above
 internals = [
+    "dep:campfire-measure",
     "dep:criterion",
-    "dep:campfire-net-common",
-    "campfire-net-common/internals",
     "dep:campfire-net-stepper",
     "campfire-net-transport/internals",
     "campfire-net-channels/internals",
     "campfire-net-timeline/internals",
     "campfire-net-bytes/internals",
     "campfire-net-payload/internals",
-    "campfire-common/internals",
 ]
 
 [dependencies]
 campfire-common.workspace = true
 campfire-net-channels.workspace = true
 campfire-net-timeline.workspace = true
-campfire-net-common = { workspace = true, optional = true }
 campfire-net-bytes.workspace = true
 campfire-net-core.workspace = true
 campfire-net-link.workspace = true
@@ -36,6 +33,7 @@ campfire-net-transport.workspace = true
 campfire-net-payload.workspace = true
 
 bytes.workspace = true
+campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true

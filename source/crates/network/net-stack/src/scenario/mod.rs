@@ -6,7 +6,6 @@
 //! drain, the run checks each channel's guarantee, the replicated state, the connection and the
 //! sync, and that no `error!` was logged.
 
-pub(crate) mod error_capture;
 pub(crate) mod faults;
 pub(crate) mod guarantee;
 pub(crate) mod message_log;
@@ -27,11 +26,11 @@ use std::collections::BTreeMap;
 use std::hash::DefaultHasher;
 
 use crate::internals::full_stack::FullStack;
-use crate::scenario::error_capture::ErrorCapture;
 use crate::scenario::faults::Faults;
 use crate::scenario::message_log::MessageLog;
 use crate::scenario::outcome::Outcome;
 use crate::scenario::replication_workload::ReplicationWorkload;
+use campfire_log::internals::{LogCheck, Scoped};
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperConfig;
@@ -68,19 +67,20 @@ impl Scenario {
         }
     }
 
+    /// The run's outcome, each warning or error it logged a failure of it.
     pub(crate) fn run(&self) -> Outcome {
-        let capture = ErrorCapture::default();
-        let mut outcome = capture.around(|| self.run_captured());
-        outcome.failures.extend(
-            capture
-                .errors()
-                .into_iter()
-                .map(|error| format!("logged {error}")),
-        );
+        let Scoped {
+            value: mut outcome,
+            check,
+        } = LogCheck::scoped(|| self.run_unchecked());
+        let logged = check.untaken().into_iter();
+        outcome
+            .failures
+            .extend(logged.map(|line| format!("logged {line}")));
         outcome
     }
 
-    fn run_captured(&self) -> Outcome {
+    fn run_unchecked(&self) -> Outcome {
         let mut config = StepperConfig::with_clients(vec![self.kind; self.clients]);
         config.seed = self.seed;
         let mut stepper = Stepper::new(FullStack, config);

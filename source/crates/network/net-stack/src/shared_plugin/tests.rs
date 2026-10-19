@@ -1,8 +1,6 @@
-use core::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-
 use bevy_ecs::prelude::{Add, Entity, On, Query, ResMut, Resource};
 use bevy_ecs::schedule::{Schedules, SingleThreadedExecutor};
+use campfire_log::internals::LogCheck;
 use campfire_net_connection::Connected;
 use campfire_net_connection::Disconnected;
 use campfire_net_connection::DisconnectedReason;
@@ -25,10 +23,6 @@ use campfire_net_stepper::{Order, Stepper};
 use campfire_net_sync::internals::sync_stack::input_timeline_is_synced;
 use campfire_net_sync::{LinkEstimator, LocalTimelineSync, RemoteTimeline};
 use campfire_net_transport::Transport;
-use tracing::dispatcher;
-use tracing::{Event, Level, Subscriber};
-use tracing_subscriber::layer::Context;
-use tracing_subscriber::{Layer, prelude::*};
 
 use super::*;
 use crate::client_plugins::ClientPlugins;
@@ -151,52 +145,12 @@ fn a_host_server_has_every_layers_components() {
     assert!(stepper.server().contains::<Endpoint<EmulatedWires>>());
 }
 
-#[derive(Debug, Clone, Default)]
-struct ErrorCapture {
-    count: Arc<AtomicUsize>,
-}
-
-impl ErrorCapture {
-    fn clear(&self) {
-        self.count.store(0, Ordering::Relaxed);
-    }
-
-    fn count(&self) -> usize {
-        self.count.load(Ordering::Relaxed)
-    }
-}
-
-impl<S: Subscriber> Layer<S> for ErrorCapture {
-    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-        let metadata = event.metadata();
-        if *metadata.level() != Level::ERROR || !metadata.target().starts_with("campfire_net") {
-            return;
-        }
-        self.count.fetch_add(1, Ordering::Relaxed);
-    }
-}
-
-fn with_error_capture(f: impl FnOnce(&ErrorCapture)) {
-    let capture = ErrorCapture::default();
-    let subscriber = tracing_subscriber::registry().with(capture.clone());
-    let dispatch = tracing::Dispatch::new(subscriber);
-    dispatcher::with_default(&dispatch, || f(&capture));
-}
-
 fn use_single_threaded_schedules(stepper: &mut Stepper<FullStack>) {
     for app in stepper.apps_mut() {
         for (_, schedule) in app.world_mut().resource_mut::<Schedules>().iter_mut() {
             schedule.set_executor(SingleThreadedExecutor::new());
         }
     }
-}
-
-fn assert_no_stack_errors(capture: &ErrorCapture) {
-    assert_eq!(
-        capture.count(),
-        0,
-        "disconnection emitted unexpected stack error logs"
-    );
 }
 
 /// Regression test for https://github.com/cBournhonesque/lightyear/issues/613.
@@ -207,13 +161,11 @@ fn assert_no_stack_errors(capture: &ErrorCapture) {
 /// per-client entity without emitting any stack errors in that frame or subsequent frames.
 #[test]
 fn server_requested_disconnection_does_not_emit_error_logs() {
-    with_error_capture(|capture| {
-        let mut stepper = Stepper::new(FullStack, StepperConfig::single());
-        use_single_threaded_schedules(&mut stepper);
-        let server = stepper.server_entity();
-        let server_client = stepper.client_of_entity(0);
-
-        capture.clear();
+    let mut stepper = Stepper::new(FullStack, StepperConfig::single());
+    use_single_threaded_schedules(&mut stepper);
+    let server = stepper.server_entity();
+    let server_client = stepper.client_of_entity(0);
+    drop(LogCheck::scoped(|| {
         stepper
             .server_app_mut()
             .world_mut()
@@ -228,8 +180,7 @@ fn server_requested_disconnection_does_not_emit_error_logs() {
                 .is_err(),
             "server-side client entity should be removed after server-requested disconnection"
         );
-        assert_no_stack_errors(capture);
-    });
+    }));
 }
 
 #[derive(Debug, Resource, Default)]
@@ -251,14 +202,12 @@ fn record_disconnect(
 /// frames.
 #[test]
 fn abrupt_unlink_does_not_emit_error_logs() {
-    with_error_capture(|capture| {
-        let mut stepper = Stepper::new(FullStack, StepperConfig::single());
-        use_single_threaded_schedules(&mut stepper);
-        let server_client = stepper.client_of_entity(0);
-        stepper.server_app_mut().init_resource::<Disconnects>();
-        stepper.server_app_mut().add_observer(record_disconnect);
-
-        capture.clear();
+    let mut stepper = Stepper::new(FullStack, StepperConfig::single());
+    use_single_threaded_schedules(&mut stepper);
+    let server_client = stepper.client_of_entity(0);
+    stepper.server_app_mut().init_resource::<Disconnects>();
+    stepper.server_app_mut().add_observer(record_disconnect);
+    drop(LogCheck::scoped(|| {
         // The client stops, as an abrupt close leaves it.
         stepper.stall(AppId::Client(0), Duration::from_secs(3600));
         stepper
@@ -289,8 +238,7 @@ fn abrupt_unlink_does_not_emit_error_logs() {
         // Keep running after the disconnection so a stale higher-level sender cannot hide
         // behind the disconnection frame.
         stepper.frame_step(20);
-        assert_no_stack_errors(capture);
-    });
+    }));
 }
 
 fn app_with(groups: impl FnOnce(&mut App)) -> App {

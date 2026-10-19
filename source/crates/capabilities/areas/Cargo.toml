@@ -11,7 +11,6 @@ kind = "glue"
 internals = [
     "campfire-actions/internals",
     "campfire-codec/internals",
-    "campfire-common/internals",
     "campfire-declare/internals",
     "campfire-deliveries/internals",
     "campfire-geometry/internals",

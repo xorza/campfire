@@ -9,13 +9,14 @@ kind = "problem"
 
 [features]
 # The model's bench, for the benches of every layer above
-internals = ["dep:criterion", "campfire-net-common/internals"]
+internals = ["dep:campfire-measure", "dep:criterion", "campfire-net-common/internals"]
 
 [dependencies]
 campfire-net-core.workspace = true
 campfire-net-common.workspace = true
 
 bytes.workspace = true
+campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 
 bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }

@@ -2,8 +2,8 @@
 //! by a fresh [`FragmentReceiver`] until it returns the message.
 
 use bytes::Bytes;
-use campfire_net_common::bench::kind::Kind;
-use campfire_net_common::bench::scale::Scale;
+use campfire_measure::Kind;
+use campfire_measure::Scale;
 use campfire_net_core::NetTick;
 use criterion::{BatchSize, BenchmarkId, Criterion};
 use std::hint::black_box;

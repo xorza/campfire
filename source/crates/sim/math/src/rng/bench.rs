@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use campfire_common::{SegmentSeed, Tick};
+use campfire_measure::{Kind, Scale};
 use criterion::{Criterion, Throughput};
 
 use crate::num::Num;
@@ -34,7 +35,7 @@ pub(crate) fn rng(c: &mut Criterion) {
     let mut entity = 0_u64;
     let mut rng = Rng::new(&seed, RngStream::new("bench"), u64::MAX, tick);
 
-    let mut group = c.benchmark_group("atomic/rng");
+    let mut group = Kind::Atomic.group(c, "rng", Scale::Sample);
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("open", |b| {
         b.iter(|| {

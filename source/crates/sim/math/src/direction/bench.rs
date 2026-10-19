@@ -1,5 +1,6 @@
 use std::hint::black_box;
 
+use campfire_measure::{Kind, Scale};
 use criterion::{Criterion, Throughput};
 
 use crate::direction::Direction;
@@ -31,7 +32,7 @@ pub(crate) fn direction(c: &mut Criterion) {
         .map(|&vector| Direction::of(vector).expect("an axis of at least one bit"))
         .collect();
 
-    let mut group = c.benchmark_group("atomic/direction");
+    let mut group = Kind::Atomic.group(c, "direction", Scale::Sample);
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("of", |bench| {
         bench.iter(|| {

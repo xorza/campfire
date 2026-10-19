@@ -1,14 +1,11 @@
-//! Per-frame allocation audits of the whole stack on the stepper.
-//!
-//! `fixtures/` drives one workload each through [`audit::Audit`], which fails on the first frame
-//! over its budget and prints where that frame allocated. The counting allocator is per-thread,
-//! so the audits run in parallel.
+//! Per-frame allocation audits of the whole stack on the stepper: each fixture drives one workload
+//! through `campfire-measure`'s audit, which fails on the first frame over its budget and prints
+//! where that frame allocated. The allocator counts every thread of the process but its main one,
+//! as nextest runs each test in a process of its own.
 
-use crate::allocator::CountingAllocator;
+use campfire_measure::CountingAllocator;
 
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator;
 
-mod allocator;
-mod audit;
 mod fixtures;

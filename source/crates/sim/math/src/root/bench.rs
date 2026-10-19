@@ -1,5 +1,6 @@
 use std::hint::black_box;
 
+use campfire_measure::{Kind, Scale};
 use criterion::{Criterion, Throughput};
 
 use crate::num::bench::COUNT;
@@ -27,7 +28,7 @@ pub(crate) fn root(c: &mut Criterion) {
         .map(|&lanes| U64x4::from_array(lanes))
         .collect();
 
-    let mut group = c.benchmark_group("atomic/root");
+    let mut group = Kind::Atomic.group(c, "root", Scale::Sample);
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("floor_wide", |b| {
         b.iter(|| {

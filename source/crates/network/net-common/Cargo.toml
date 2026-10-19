@@ -8,15 +8,13 @@ license.workspace = true
 kind = "problem"
 
 [features]
-internals = ["dep:criterion", "dep:tracing"]
+internals = []
 # `Random`, whose OS source is `ring`'s, for the crates that draw random bytes
 os_random = ["dep:ring"]
 
 [dependencies]
 bytes.workspace = true
-criterion = { workspace = true, optional = true }
 ring = { workspace = true, optional = true }
-tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
 campfire-net-common = { workspace = true, features = ["internals"] }

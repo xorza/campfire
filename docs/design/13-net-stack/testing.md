@@ -38,7 +38,7 @@ How the stack is tested over a simulated network; the clocks are in [Time](time.
 - **Invariants, not traces.** A scenario runs numbered messages on every channel mode both ways
   and a replicated workload under seeded faults, heals the network, and checks each channel's
   guarantee, the replicated state, the connection and the sync, the backlogs a frame after the
-  drain, and that nothing logged `error!`.
+  drain, and that nothing logged a warning or an error.
 - **Swarm runs leave features out.** Each seed turns each fault on with probability one half,
   which finds more failures than one run with every fault on (Groce et al., ISSTA 2012). The
   default run fits the suite's time budget; `CAMPFIRE_SWARM_SEEDS` runs more, and
@@ -69,12 +69,13 @@ How the stack is tested over a simulated network; the clocks are in [Time](time.
   `#[global_allocator]` is per binary.
 - **The full stack's home is `net-stack`:** the scenarios and the swarm under `#[cfg(test)]`, and
   the allocation audit.
-- **One allocation binary, with a per-thread counter of our own.** `net-stack`'s
-  `tests/alloc` counts each thread's allocations, so the audits run in parallel, and a failure
-  prints `std::backtrace` traces cut to the allocating call and the workspace's frames. Refused:
-  `stats_alloc`, whose process-wide counters need a lock and give no trace; the `backtrace`
-  crate, a dependency for what `std` captures. The audit asserts one task-pool thread, which
-  holds while `bevy_tasks` builds without `multi_threaded`.
+- **One allocation binary, on the workspace's audit.** `net-stack`'s `tests/alloc` runs its
+  fixtures through `campfire-measure`'s allocator and audit, whose window counts every thread of
+  the process but its main one, and a failure prints each trace cut to the dependency frames that
+  made the allocating call and the workspace's frames down to the fixture (02-engine-core.md,
+  Allocation audits). Refused: a per-thread counter of the stack's own, which misses a worker and
+  held only while every task pool ran on one thread, which the workspace's Bevy does not keep;
+  `stats_alloc`, whose counters give no trace.
 - **An audit holds each frame to a budget after a fixed warmup.** The budget defaults to zero and
   names each allocation it allows. The warmup outlasts the last growth of the workload's buffers,
   and a buffer bounded by time reserves its bound when it is made, so no warmup waits for it to
@@ -86,17 +87,16 @@ How the stack is tested over a simulated network; the clocks are in [Time](time.
 - **Each crate's cases are a bench target of its own, with one sampling policy.** A crate's
   `benches/<crate>.rs` calls its `bench::run`; each case sits in the `bench.rs` of the module
   whose code it measures, under `internals`, on that crate's stack, and its id is
-  `<kind>/<group>/<case>` (02-engine-core.md, One bench target for each crate). `Scale` in
-  `net-common`'s `bench`, the crate every other depends on, is the one place a group's sampling
-  is set. Refused: one target for the whole stack, whose ids carry the crate as a fourth part.
-  Practice: palantir's bench layout.
+  `<kind>/<group>/<case>` (02-engine-core.md, One bench target for each crate), its kind and its
+  sampling `campfire-measure`'s (02-engine-core.md, One sampling policy). Refused: one target for
+  the whole stack, whose ids carry the crate as a fourth part. Practice: palantir's bench layout.
 - **Bytes are golden tests, not benches.** A byte count on the deterministic stepper is exact, so
   replication and compression costs are asserted to the byte. Refused: a criterion `Measurement`
   of bytes, whose zero variance turns its plots off and whose number nothing compares.
 - **A test runs in 1 s or less.** `cargo drive test` runs cargo-nextest for its per-test timing,
   and `.config/nextest.toml` names a test past 1 s, so a slow test shows in the run instead of
   slowing it. The swarm and the canary run their seeds in parallel through `store`'s `Parallel`,
-  a seed on one thread at a time, which the per-thread error capture allows, and each reserves
+  a seed on one thread at a time, which a log check scoped to its run allows, and each reserves
   every core while it runs (`threads-required = "num-cpus"`), as five of them at once with the
   rest of the suite oversubscribed the cores past the budget. Refused:
   `cargo test`, which times no single test; a lower seed count, which would trade coverage for the
@@ -112,9 +112,9 @@ How the stack is tested over a simulated network; the clocks are in [Time](time.
   overwrites of each packet type reach the session, the handshake and the transport, and none
   panics; a sealed datagram that changed one byte never opens. Refused: a fuzzer run in CI,
   whose inputs no seed replays.
-- **Every gate builds the code a feature gates off.** Planned: a lint of the channels without
-  `compression_lz4`, which `--all-features` turns on everywhere else, and rustdoc with its warnings
-  denied, as lanes of `cargo drive`.
+- **Every gate builds the code a feature gates off.** The `ship` lint, at default features, lints
+  the channels without `compression_lz4`, which the lint of every feature turns on. Refused: a
+  rustdoc lane, as 02 decides (02-engine-core.md, No docs lane).
 - **Coverage is a command, and it counts each library line once.** Planned: a `cargo drive` lane
   that builds the tests with `-C instrument-coverage` under `target/coverage`, runs them, and reads
   `llvm-cov show` without instantiations: a line is run when any test binary ran it. Tests,
@@ -122,6 +122,6 @@ How the stack is tested over a simulated network; the clocks are in [Time](time.
   `llvm-cov report`, which sums per function and counts a line that several functions share once
   for each; `cargo-llvm-cov`, a tool to install for what the system LLVM tools do.
 - **A test has the std `#[test]` and no subscriber,** as the audits and benches run, and a test
-  that reads logs installs its own capture, as the scenarios' error capture does. A test name
-  states the behaviour it checks. Refused: `test-log`, a dependency whose shadowed `#[test]`
+  that reads logs holds `campfire-log`'s check, scoped to its run, as the scenarios do, which a
+  warning fails as an error does. A test name states the behaviour it checks. Refused: `test-log`, a dependency whose shadowed `#[test]`
   installs a subscriber that every test pays for.

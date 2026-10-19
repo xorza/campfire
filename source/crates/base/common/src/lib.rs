@@ -7,10 +7,8 @@
 //! plain value: construction, parsing, display and serde, no other logic. The exceptions are
 //! `NamedEnum`, which names an enum's members from one table, with the derives
 //! `campfire-common-derive` holds for it; the hashers, SHA-256 and domain-tagged BLAKE3, which
-//! construct the 32-byte values (05-protocol-spec.md, Hashes, ids and keys); and, behind
-//! `internals`, the allocation audit every crate's `tests/alloc` suite runs on. The crate depends
-//! on nothing but `serde`, `derive_more`, `sha2`, `blake3` and its derives, and, for the audit,
-//! `backtrace`.
+//! construct the 32-byte values (05-protocol-spec.md, Hashes, ids and keys). The crate depends on
+//! nothing but `serde`, `derive_more`, `sha2`, `blake3`, `zeroize` and its derives.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
@@ -21,8 +19,6 @@
 extern crate self as campfire_common;
 
 mod after_leave;
-#[cfg(feature = "internals")]
-mod alloc_audit;
 mod bytes32;
 mod channel_binding;
 mod content_hash;
@@ -69,9 +65,3 @@ pub use crate::version::error::NotVersion;
 /// proc-macro crate can export nothing else, so a caller takes a trait and its derive from one
 /// path, as from `serde`. No other crate names `campfire-common-derive`.
 pub use campfire_common_derive::{EnumAll, EnumIdents, NamedEnum};
-
-#[cfg(feature = "internals")]
-pub mod internals {
-    pub use crate::alloc_audit::counting_allocator::{AllocWindow, CountingAllocator};
-    pub use crate::alloc_audit::{AllocAudit, AuditReport};
-}

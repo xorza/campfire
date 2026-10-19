@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use campfire_common::{Seat, Tick};
+use campfire_measure::{Kind, Scale};
 use criterion::Criterion;
 
 use crate::entropy::Entropy;
@@ -24,7 +25,7 @@ pub(crate) fn chain_head(c: &mut Criterion) {
     chain.extend(Tick::new(40), b"an order");
     let signature = signer.sign(&chain.signed_head(session_id));
 
-    let mut group = c.benchmark_group("atomic/chain_head");
+    let mut group = Kind::Atomic.group(c, "chain_head", Scale::Sample);
     group.bench_function("sign", |b| {
         b.iter(|| signer.sign_with(&chain.signed_head(black_box(session_id)), &mut scratch));
     });

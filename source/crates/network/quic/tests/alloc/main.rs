@@ -3,7 +3,7 @@
 //! among them; `thread` drives a server's thread a pass at a time on the test's own thread, so a
 //! window of a pass counts the pass alone.
 
-use campfire_common::internals::CountingAllocator;
+use campfire_measure::CountingAllocator;
 
 #[global_allocator]
 static ALLOCATOR: CountingAllocator = CountingAllocator;

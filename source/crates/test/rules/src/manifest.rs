@@ -7,7 +7,7 @@ use serde::Deserialize;
 /// (14-workspace-alignment.md, Every crate declares its kind in its manifest).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum Kind {
+pub(crate) enum CrateKind {
     /// One problem, with no engine under it.
     Problem,
     /// A problem crate that holds an IO: sockets, or the emulator's wires.
@@ -24,7 +24,7 @@ pub(crate) enum Kind {
     App,
 }
 
-impl Kind {
+impl CrateKind {
     /// Its name, as a manifest writes it.
     pub(crate) const fn name(self) -> &'static str {
         match self {
@@ -82,7 +82,7 @@ struct Metadata {
 
 #[derive(Debug, Default, Deserialize)]
 struct Campfire {
-    kind: Option<Kind>,
+    kind: Option<CrateKind>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -162,7 +162,7 @@ impl Manifest {
     }
 
     /// The kind the manifest names, if it names one.
-    pub(crate) const fn kind(&self) -> Option<Kind> {
+    pub(crate) const fn kind(&self) -> Option<CrateKind> {
         self.package.metadata.campfire.kind
     }
 
@@ -192,6 +192,28 @@ impl Manifest {
     /// The entries of the feature `name`, if the manifest has it.
     pub(crate) fn feature(&self, name: &str) -> Option<&[String]> {
         self.features.get(name).map(Vec::as_slice)
+    }
+
+    /// The optional dependencies that no feature turns on, by `dep:` or by a feature of theirs
+    /// not marked `?`: only the implicit feature of each name turns them on, which
+    /// `--all-features` sets and no build of the crate's own features does.
+    pub(crate) fn unturned_optionals(&self) -> Vec<&str> {
+        let entries: Vec<&str> = self
+            .features
+            .values()
+            .flatten()
+            .map(String::as_str)
+            .collect();
+        self.dependencies()
+            .filter(|(_, dependency)| dependency.optional)
+            .map(|(name, _)| name)
+            .filter(|name| {
+                !entries.iter().any(|entry| {
+                    entry.strip_prefix("dep:") == Some(name)
+                        || entry.split_once('/').is_some_and(|(of, _)| of == *name)
+                })
+            })
+            .collect()
     }
 
     /// Whether its library is a procedural macro's.
@@ -261,7 +283,7 @@ fn a_manifest_reads_each_form_of_a_dependency_and_fails_on_a_section_it_does_not
     let dev: Vec<&str> = manifest.dev_dependencies().map(|(name, _)| name).collect();
     assert_eq!(dev, ["d"]);
     assert_eq!(manifest.name(), "x");
-    assert_eq!(manifest.kind(), Some(Kind::Glue));
+    assert_eq!(manifest.kind(), Some(CrateKind::Glue));
     assert_eq!(manifest.feature("i"), Some(&["dep:t".to_owned()][..]));
     assert!(manifest.requires_internals() && !manifest.is_proc_macro());
     assert!(!manifest.takes_workspace_lints());
@@ -272,6 +294,14 @@ fn a_manifest_reads_each_form_of_a_dependency_and_fails_on_a_section_it_does_not
         .map(|(name, _)| name)
         .collect();
     assert_eq!(turns, ["u"]);
+    // `t` is turned on by `dep:`, `w` by a feature of its own, and `y` only by its implicit
+    // feature, as `y?/x` turns nothing on.
+    let optionals = Manifest::parse(concat!(
+        "[features]\na = [\"dep:t\", \"w/x\", \"y?/x\"]\n\n[dependencies]\n",
+        "t = { workspace = true, optional = true }\nw = { workspace = true, optional = true }\n",
+        "y = { workspace = true, optional = true }\n",
+    ));
+    assert_eq!(optionals.unturned_optionals(), ["y"]);
     let unknown = Toml::parse::<Manifest>("[build-dependencies]\na = \"1\"\n");
     assert!(unknown.is_err());
 }

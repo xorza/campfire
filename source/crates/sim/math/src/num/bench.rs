@@ -1,5 +1,6 @@
 use std::hint::black_box;
 
+use campfire_measure::{Kind, Scale};
 use criterion::{Criterion, Throughput};
 
 use crate::num::Num;
@@ -33,7 +34,7 @@ pub(crate) fn num(c: &mut Criterion) {
     let huge_angles = spread(4, 1 << 60);
     let near_axis = spread(5, one / 1000);
 
-    let mut group = c.benchmark_group("atomic/num");
+    let mut group = Kind::Atomic.group(c, "num", Scale::Sample);
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("mul", |b| {
         b.iter(|| {

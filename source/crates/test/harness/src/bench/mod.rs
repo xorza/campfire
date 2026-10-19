@@ -4,10 +4,11 @@
 
 use criterion::Criterion;
 
-use crate::bench::allocations::Allocations;
+use campfire_measure::Allocations;
+
 use crate::moba_3v3;
 
-pub(crate) mod allocations;
+mod allocations;
 mod client_frame;
 mod match_build;
 mod server_frame;

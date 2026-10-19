@@ -60,7 +60,14 @@ pub(crate) mod internals {
     #[derive(Debug)]
     pub struct LogCheck(Arc<Kept>);
 
-    /// The events the process's subscriber kept, as JSON lines.
+    /// What a closure gave, and the check of the events it logged.
+    #[derive(Debug)]
+    pub struct Scoped<R> {
+        pub value: R,
+        pub check: LogCheck,
+    }
+
+    /// The events a check kept, as JSON lines.
     #[derive(Debug)]
     struct Kept {
         lines: Arc<Mutex<Vec<u8>>>,
@@ -86,6 +93,34 @@ pub(crate) mod internals {
             let kept = Arc::new(Kept { lines });
             *shared = Arc::downgrade(&kept);
             Self(kept)
+        }
+
+        /// Runs `body` with the events at Warn and Error it logs on this thread kept by a check of
+        /// its own, apart from the process's, so a body that runs beside others in one process,
+        /// as a seed of a swarm, takes and answers for its own.
+        pub fn scoped<R>(body: impl FnOnce() -> R) -> Scoped<R> {
+            let lines = Arc::new(Mutex::new(Vec::new()));
+            let writer = {
+                let lines = Arc::clone(&lines);
+                move || Captured(Arc::clone(&lines))
+            };
+            let layer = json(writer).without_time().with_filter(LevelFilter::WARN);
+            let value = subscriber::with_default(tracing_subscriber::registry().with(layer), body);
+            Scoped {
+                value,
+                check: Self(Arc::new(Kept { lines })),
+            }
+        }
+
+        /// Removes the events no `take` read, as their lines, for a test that reports them itself
+        /// rather than fail as the check drops.
+        pub fn untaken(&self) -> Vec<String> {
+            let lines = mem::take(&mut *self.0.lines.lock().unwrap());
+            String::from_utf8(lines)
+                .unwrap()
+                .lines()
+                .map(str::to_owned)
+                .collect()
         }
 
         /// Removes the kept events of `E`, and reads them, in the order they came.
@@ -170,6 +205,8 @@ mod tests {
     use serde::Deserialize;
     use tracing::{error, info, warn};
 
+    use campfire_store::internals::Parallel;
+
     use crate::json_layer::internals::LogCheck;
     use crate::log_event::LogEvent;
 
@@ -184,6 +221,25 @@ mod tests {
         fn log(&self) {
             warn!(port = self.port, "{}", Self::MESSAGE);
         }
+    }
+
+    #[test]
+    fn a_scoped_check_keeps_its_threads_events_alone() {
+        // The body's warning is its check's, and an error another thread logs meanwhile is not;
+        // an event it takes leaves the rest, which `untaken` gives once.
+        let scoped = LogCheck::scoped(|| {
+            Refused { port: 7 }.log();
+            Parallel::map(1, |_| error!("another thread's"));
+            info!("below the check");
+            warn!("kept");
+            3
+        });
+        assert_eq!(scoped.value, 3);
+        assert_eq!(scoped.check.take::<Refused>(), [Refused { port: 7 }]);
+        let untaken = scoped.check.untaken();
+        assert_eq!(untaken.len(), 1, "{untaken:?}");
+        assert!(untaken[0].contains("\"kept\""), "{}", untaken[0]);
+        assert_eq!(scoped.check.untaken(), Vec::<String>::new());
     }
 
     #[test]

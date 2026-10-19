@@ -12,7 +12,6 @@ internals = [
     "campfire-bots/internals",
     "campfire-capabilities/internals",
     "campfire-codec/internals",
-    "campfire-common/internals",
     "campfire-declare/internals",
     "campfire-log/internals",
     "campfire-mode/internals",
