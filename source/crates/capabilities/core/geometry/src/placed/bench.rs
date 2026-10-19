@@ -36,11 +36,11 @@ fn beside(seed: u64, boxes: bool) -> Vec<Beside> {
             } else {
                 Shape::Circle(Radius::new(length(20, 500)).unwrap())
             };
-            let pos = scene.point(20);
+            let position = scene.point(20);
             let from = scene.point(20);
             let to = from + scene.point(5);
             Beside {
-                body: Placed::new(pos, shape),
+                body: Placed::new(position, shape),
                 from,
                 to,
             }

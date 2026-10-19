@@ -151,7 +151,7 @@ impl Num {
 
     /// `self × rhs`, from the exact product, rounded once by `rounding`, and at the end of the
     /// range of numbers when past it: a step of a compound value, as a stat's
-    /// (09-determinism-core.md, A compound value is a chain of rounded steps).
+    /// (07-determinism-core.md, A compound value is a chain of rounded steps).
     #[must_use]
     pub const fn saturating_mul(self, rhs: Self, rounding: Rounding) -> Self {
         let product = (self.0 as i128).wrapping_mul(rhs.0 as i128);

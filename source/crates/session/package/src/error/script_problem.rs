@@ -47,20 +47,20 @@ pub enum ScriptProblem {
     /// It reads or calls `path`, which is neither a member of `of` nor its function.
     #[error("{path} is no member of {of}, nor its function")]
     UnknownEnumMember { path: String, of: EngineEnum },
-    /// It holds statements outside its functions, which no call runs (08-script-api.md, A script
+    /// It holds statements outside its functions, which no call runs (06-script-api.md, A script
     /// is its functions).
     #[error("holds statements outside its functions, which no call runs")]
     TopLevel,
-    /// It uses `ctx` other than the script API's convention allows (08-script-api.md, `ctx` stays
+    /// It uses `ctx` other than the script API's convention allows (06-script-api.md, `ctx` stays
     /// visible), so the load checks cannot see every use of it.
     #[error(transparent)]
     CtxMisuse(CtxMisuse),
     /// It reads, in a `switch`, the name `.{0}` returns, whose cases the load cannot check
-    /// (08-script-api.md, A returned name is checked where a script compares it).
+    /// (06-script-api.md, A returned name is checked where a script compares it).
     #[error("switches on .{0}, a name whose cases the load cannot check: compare it with `==`")]
     NameSwitch(String),
     /// It compares with a literal the name `.{0}` returns, which holds no package scope, so the
-    /// literal could name another package's (08-script-api.md, A scoped name compares through a
+    /// literal could name another package's (06-script-api.md, A scoped name compares through a
     /// method).
     #[error(".{0} gives a name of no package: compare through the handle's method")]
     ScopedCompare(String),

@@ -1,6 +1,6 @@
 # Zero Hour — research
 
-What an import of Command & Conquer: Generals – Zero Hour reads, measured on a Steam install and read from the released source, for [Zero Hour](../design/12-zero-hour.md). Facts only: what the design takes from them is its own. Measured on 10 October 2026; the source is [TheSuperHackers/GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode) at `ab568af4` (9 October 2026), which every path below names.
+What an import of Command & Conquer: Generals – Zero Hour reads, measured on a Steam install and read from the released source, for [Zero Hour](../design/09-zero-hour.md). Facts only: what the design takes from them is its own. Measured on 10 October 2026; the source is [TheSuperHackers/GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode) at `ab568af4` (9 October 2026), which every path below names.
 
 ## The install
 

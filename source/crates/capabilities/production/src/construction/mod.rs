@@ -23,7 +23,7 @@ use crate::Production;
 use crate::build_book::{BuildBook, Style};
 use crate::builder::{BuildOrder, Builder};
 use crate::completed_sites::CompletedSites;
-use crate::construction::build_view::{BuildPlace, BuildView};
+use crate::construction::build_view::{BuildFootprint, BuildView};
 use crate::construction::building_at::BuildingAt;
 use crate::construction::step::{Start, Step};
 use crate::order_dues::{self, OrderDues};
@@ -182,7 +182,7 @@ impl Construction {
             let pools = pools.expect("a builder's pools").of(life);
             Payer::of(pools, resources).pay(&start.cost, paid);
         };
-        let player = owner.and_then(|owner| world.player_entity(owner.slot()));
+        let player = owner.and_then(|owner| world.player_entity(owner.seat()));
         match (F::PREDICTS, player) {
             (true, _) => {}
             (false, Some(player)) => {
@@ -216,8 +216,8 @@ impl Construction {
             id,
             unit_type: start.unit_type,
             team,
-            pos: start.pos,
-            owner: owner.map(Owner::slot),
+            position: start.position,
+            owner: owner.map(Owner::seat),
             angle: start.angle,
         };
         let spec = world
@@ -334,8 +334,8 @@ impl Construction {
                 continue;
             };
             let range = slots.meters_in(&book, slot);
-            let placed = BuildPlace {
-                pos: at.get(),
+            let placed = BuildFootprint {
+                position: at.get(),
                 body: *site_body,
             };
             let builder = Placed::new(from.get(), Body::shape_of(body));

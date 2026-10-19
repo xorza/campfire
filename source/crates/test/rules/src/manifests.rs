@@ -82,8 +82,8 @@ fn only_common_names_the_crate_of_its_derives() {
 #[test]
 fn the_design_marks_built_exactly_the_crates_of_the_workspace() {
     // The module table (02-engine-core.md, Modules) names each module in its first column and its
-    // status in the second; a built module's crate is `campfire-<module>`, in a folder of `crates/`
-    // or `checks/`.
+    // status in the second; a built module's crate is `campfire-<module>`, in a directory of
+    // `crates/` or `checks/`.
     let design = read(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../../docs/design/02-engine-core.md"
@@ -136,18 +136,43 @@ fn the_sim_reads_no_file_and_logs_nothing_and_the_protocol_reads_no_file() {
 }
 
 #[test]
-fn each_crates_folder_is_its_package_name_without_the_prefix() {
-    let misnamed: Vec<String> = crates()
-        .into_iter()
-        .filter(|krate| krate.name.strip_prefix("campfire-") != Some(krate.folder.as_str()))
-        .map(|krate| format!("{} in {}", krate.name, krate.folder))
+fn each_crates_dir_is_its_package_name_without_the_prefix() {
+    let crates = crates();
+    let misnamed: Vec<String> = crates
+        .iter()
+        .filter(|krate| krate.name.strip_prefix("campfire-") != Some(krate.dir_name.as_str()))
+        .map(|krate| format!("{} in {}", krate.name, krate.dir_name))
         .collect();
     assert_eq!(misnamed, Vec::<String>::new());
+    // A group holds crates and groups, and a crate's directory holds no other crate, as
+    // `sim/sim` and `capabilities/capabilities` stand beside the crates of their groups.
+    assert_eq!(nested_crates(&crates), Vec::<String>::new());
+    let krate = |path: &str| Crate {
+        dir_name: path.rsplit('/').next().unwrap().to_owned(),
+        path: path.to_owned(),
+        name: String::new(),
+        manifest: String::new(),
+    };
+    let sample = [krate("crates/a"), krate("crates/a/b"), krate("crates/ab")];
+    assert_eq!(nested_crates(&sample), ["crates/a holds crates/a/b"]);
 }
 
-/// The crates whose test infrastructure any crate's tests may take: `store`'s scratch and pinned
-/// files, `log`'s check of the warnings, `common`'s allocation audit, `codec` for a type's encoded
-/// form, `math` for the numbers a crate's values hold, and the test packages
+/// Each crate of `crates` whose directory holds another's, with the one it holds.
+fn nested_crates(crates: &[Crate]) -> Vec<String> {
+    crates
+        .iter()
+        .flat_map(|outer| {
+            let inner = crates
+                .iter()
+                .filter(|inner| inner.path.starts_with(&format!("{}/", outer.path)));
+            inner.map(|inner| format!("{} holds {}", outer.path, inner.path))
+        })
+        .collect()
+}
+
+/// The crates whose test infrastructure any crate's tests may take: `store`'s test directories and
+/// pinned files, `log`'s check of the warnings, `common`'s allocation audit, `codec` for a type's
+/// encoded form, `math` for the numbers a crate's values hold, and the test packages
 /// (02-engine-core.md, Tests live at the top).
 const TEST_INFRASTRUCTURE: [&str; 6] = [
     "campfire-codec",
@@ -472,7 +497,7 @@ fn unnamed_dependencies<'a>(manifest: &'a str, production: &str) -> Vec<&'a str>
 }
 
 /// The code `view` keeps of each of `crates`, in their order: each source's that no crate nested
-/// in its folder holds; all of the top test crate's, as all of it is test code.
+/// in its directory holds; all of the top test crate's, as all of it is test code.
 fn code_by_crate(crates: &[Crate], view: fn(&SourceFile) -> Option<String>) -> Vec<String> {
     let mut code = vec![String::new(); crates.len()];
     for file in sources() {
@@ -628,7 +653,7 @@ fn a_dev_dependency_turns_on_internals_that_gate_code() {
     // feature for a target, so neither is. `e` dev-depends on `b` with no dependency on it, a
     // crate its tests read, which the rule leaves alone.
     let krate = |name: &str, manifest: &str| Crate {
-        folder: name.to_owned(),
+        dir_name: name.to_owned(),
         path: format!("crates/{name}"),
         name: name.to_owned(),
         manifest: manifest.to_owned(),
@@ -666,7 +691,7 @@ fn a_dev_dependency_turns_on_internals_that_gate_code() {
 
 #[test]
 fn the_default_members_are_the_build_that_ships() {
-    // Each member but those that unify `internals`, by its folder under `source/`, sorted, so a
+    // Each member but those that unify `internals`, by its directory under `source/`, sorted, so a
     // cargo command at the root with no `--workspace` builds what ships.
     let crates = crates();
     let unifying = unifying_internals(&crates);
@@ -682,7 +707,7 @@ fn the_default_members_are_the_build_that_ships() {
     // A crate that turns `internals` on by a required dependency unifies it, and so does one that
     // depends on it; an optional one, or a dev-dependency, does not.
     let krate = |name: &str, dependencies: &str| Crate {
-        folder: name.to_owned(),
+        dir_name: name.to_owned(),
         path: name.to_owned(),
         name: name.to_owned(),
         manifest: format!("[package]\nname = \"{name}\"\n\n[dependencies]\n{dependencies}"),

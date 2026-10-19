@@ -1,4 +1,4 @@
-use campfire_script::{ApiBuilder, ApiError, ApiOwner, Ctx, MemberSpec, ScriptPosition, Unit};
+use campfire_script::{ApiBuilder, ApiError, ApiHolder, Ctx, MemberDecl, ScriptPosition, Unit};
 
 use crate::mode_navigation_data::ModeNavigationData;
 use crate::navigation_column::NavigationColumn;
@@ -10,8 +10,8 @@ pub struct NavigationApi;
 
 impl NavigationApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        let path = MemberSpec::field(
-            ApiOwner::of::<Unit>(),
+        let path = MemberDecl::field(
+            ApiHolder::of::<Unit>(),
             "path",
             "the name of the path it walks, `()` with none",
         );
@@ -21,10 +21,10 @@ impl NavigationApi {
 
     /// `ctx.teleport`.
     fn register_forced(api: &mut ApiBuilder<'_>) {
-        let teleport = MemberSpec::call(
+        let teleport = MemberDecl::call(
             "teleport",
-            &[&["unit", "pos"]],
-            "puts `unit` at `pos` at once, or at the nearest place it may stand",
+            &[&["unit", "position"]],
+            "puts `unit` at `position` at once, or at the nearest place it may stand",
         );
         api.call(teleport, |ctx: &mut Ctx, of: Unit, to: ScriptPosition| {
             let teleport = NavigationEffect::teleport(ctx.view(), of.id, to.get());

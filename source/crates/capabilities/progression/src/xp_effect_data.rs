@@ -8,7 +8,7 @@ use campfire_common::DeclaredName;
 use campfire_declare::{BookError, Listed};
 use campfire_math::Num;
 use campfire_script::{
-    ApiBuilder, CallError, CapabilityRefusal, Ctx, Frame, MemberSpec, Unit, View,
+    ApiBuilder, CallError, CapabilityRefusal, Ctx, Frame, MemberDecl, Unit, View,
 };
 use campfire_sim::Capability;
 use campfire_values::{Number, TrackId};
@@ -41,7 +41,7 @@ impl Listed for XpEffectData {
     }
 
     fn api(api: &mut ApiBuilder<'_>) {
-        let add_xp = MemberSpec::call(
+        let add_xp = MemberDecl::call(
             "add_xp",
             &[&["unit", "track", "amount"]],
             "gives `unit` `amount` of experience on `track`, one of its unit type's",

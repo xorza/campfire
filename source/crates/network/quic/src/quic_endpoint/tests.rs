@@ -214,7 +214,8 @@ fn a_link_carries_datagrams_of_its_minimum_mtu_both_ways_at_once() {
     // The server presents the key its secret derives, and the client pinned that key (D6).
     assert_eq!(loopback.quic().tls_key(), server_key().public());
     assert_eq!(client.quic().tls_key(), loopback.quic().tls_key());
-    // The connection took one Retry before it was accepted (D8), and its entity names its peer (D9).
+    // The connection took one Retry before it was accepted (D8), and its entity names its peer
+    // (D9).
     assert_eq!(loopback.quic().state().retries(), 1);
     assert_eq!(
         loopback.server.world().get::<RemoteId>(link),
@@ -545,7 +546,7 @@ fn a_failed_socket_ends_each_link_at_once_and_takes_no_new_one() {
     // The thread fails as its socket does: the next frame unlinks the server's link with the
     // failure, not by the idle timeout, and the endpoint takes no connection after.
     loopback.quic().state().fail();
-    assert!(loopback.quic().state().ended());
+    assert!(loopback.quic().state().is_ended());
     loopback.server.update();
     let world = loopback.server.world();
     assert!(world.get::<Unlinked>(link).is_some());
@@ -727,8 +728,8 @@ impl Ending {
                 at_server: None,
                 at_client: Some(LinkEnd::Ended),
             },
-            // The server's endpoint leaves its entity, which unlinks and despawns its links, or goes
-            // with its entity, which despawns them too.
+            // The server's endpoint leaves its entity, which unlinks and despawns its links, or
+            // goes with its entity, which despawns them too.
             Self {
                 act: |loopback, _| {
                     let entity = loopback.endpoint;
@@ -1074,7 +1075,7 @@ impl Limited {
 #[test]
 fn a_server_refuses_an_address_past_its_seats_of_live_connections_or_of_handshakes() {
     // Two seats over 60 s: each handshake of an address comes back 30 s after its bucket was
-    // full again (15-quic-transport.md, Limits for each address, from the session's seats).
+    // full again (11-quic-transport.md, Limits for each address, from the session's seats).
     let seats = NonZeroU32::new(2).unwrap();
     let mut limited = Limited::new(AddressLimit::new(seats, Duration::from_secs(60)));
     let home = |port| SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), port);

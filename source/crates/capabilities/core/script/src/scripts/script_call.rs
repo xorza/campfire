@@ -2,7 +2,7 @@ use bevy_ecs::world::World;
 use campfire_math::{Num, Rng, RngStream};
 use campfire_sim::{RngOpener, SimRng, StableId};
 
-use crate::scripts::call_part::{CallPart, Commit};
+use crate::scripts::call_extension::{CallExtension, Commit};
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::CallError;
 
@@ -23,7 +23,7 @@ pub struct ScriptCall {
     open: Vec<(Option<StableId>, Rng)>,
 }
 
-impl CallPart for ScriptCall {
+impl CallExtension for ScriptCall {
     const COMMITS: Commit = Commit::AfterEffects;
 
     /// The tick's draws, which change only as a tick starts (02-engine-core.md, A batch's calls

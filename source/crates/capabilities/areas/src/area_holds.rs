@@ -39,15 +39,15 @@ impl AreaHolds {
             return;
         }
         let grid = near.current();
-        for (&pos, &team, &unit_type, area) in &areas {
+        for (&position, &team, &unit_type, area) in &areas {
             let Some(spec) = holding(unit_type) else {
                 continue;
             };
-            grid.visit_near(pos.get(), spec.radius, |body| {
+            grid.visit_near(position.get(), spec.radius, |body| {
                 let Some(unit) = targets.living_at(body.key) else {
                     return ControlFlow::Continue(());
                 };
-                if !targets.reaches(Placed::point(pos.get()), spec.radius, &unit) {
+                if !targets.reaches(Placed::point(position.get()), spec.radius, &unit) {
                     return ControlFlow::Continue(());
                 }
                 let by = area.by();

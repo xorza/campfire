@@ -5,10 +5,10 @@ use campfire_values::{EngineEnum, TagProperty};
 use rhai::Engine;
 
 use crate::script_host::ScriptHost;
-use crate::scripts::api_owner::ApiOwner;
+use crate::scripts::api_holder::ApiHolder;
 use crate::scripts::hook::Hook;
+use crate::scripts::member_decl::{ArgKinds, MemberDecl};
 use crate::scripts::member_kind::MemberKind;
-use crate::scripts::member_spec::{ArgKinds, MemberSpec};
 use crate::scripts::script_api::api_builder::ApiBuilder;
 use crate::scripts::script_api::api_member::ApiMember;
 use crate::scripts::script_api::api_reference::ApiReference;
@@ -32,7 +32,7 @@ pub(crate) mod tag_property_status;
 /// the reference read it; nothing else lists the names.
 #[derive(Debug)]
 pub struct ScriptApi {
-    /// Sorted by owner, then name.
+    /// Sorted by holder, then name.
     pub(super) members: Vec<ApiMember>,
     /// Each hook, each tag property, and each data field: whether it runs.
     pub(super) hooks: Vec<HookStatus>,
@@ -89,7 +89,7 @@ impl ScriptApi {
         &self.hooks
     }
 
-    /// Whether the release calls `hook`, and its owner; none for a hook it does not record.
+    /// Whether the release calls `hook`, and its holder; none for a hook it does not record.
     pub fn hook(&self, hook: Hook) -> Option<&HookStatus> {
         self.hook_named(hook.name)
     }
@@ -121,12 +121,12 @@ impl ScriptApi {
         self.builtins.contains(&kind.bound_name(name))
     }
 
-    /// Whether the field or value `name` of some owner leads to data: it gives a type whose
+    /// Whether the field or value `name` of some holder leads to data: it gives a type whose
     /// indexer reads names the data declares, so each name after it is data, not a member.
     pub fn leads_to_data(&self, name: &str) -> bool {
         self.members.iter().any(|member| {
-            member.spec.name == name
-                && matches!(member.spec.kind, MemberKind::Field | MemberKind::Value)
+            member.decl.name == name
+                && matches!(member.decl.kind, MemberKind::Field | MemberKind::Value)
                 && member
                     .output
                     .is_some_and(|output| self.indexed.contains(&output.ty))
@@ -201,11 +201,11 @@ impl ScriptApi {
         self.data.push(field);
     }
 
-    /// The member `name` of `owner`.
-    pub fn member(&self, owner: ApiOwner, name: &str) -> Option<&ApiMember> {
+    /// The member `name` of `holder`.
+    pub fn member(&self, holder: ApiHolder, name: &str) -> Option<&ApiMember> {
         let at = self
             .members
-            .binary_search_by(|member| (member.spec.owner, member.spec.name).cmp(&(owner, name)))
+            .binary_search_by(|member| (member.decl.holder, member.decl.name).cmp(&(holder, name)))
             .ok()?;
         Some(&self.members[at])
     }
@@ -217,9 +217,9 @@ impl ScriptApi {
         self.members
             .iter()
             .filter(|member| {
-                member.spec.owner != ApiOwner::CTX
-                    && member.spec.kind == kind
-                    && member.spec.name == name
+                member.decl.holder != ApiHolder::CTX
+                    && member.decl.kind == kind
+                    && member.decl.name == name
             })
             .find_map(|member| member.output)?
             .names
@@ -227,9 +227,9 @@ impl ScriptApi {
 
     /// The spec of the method `name` of any handle: every handle with a method of that name
     /// gives the same arguments, so a script's literal is checked whatever value it calls it on.
-    pub fn method(&self, name: &str) -> Option<&MemberSpec> {
-        self.members.iter().map(|member| &member.spec).find(|spec| {
-            spec.owner != ApiOwner::CTX && spec.kind == MemberKind::Method && spec.name == name
+    pub fn method(&self, name: &str) -> Option<&MemberDecl> {
+        self.members.iter().map(|member| &member.decl).find(|spec| {
+            spec.holder != ApiHolder::CTX && spec.kind == MemberKind::Method && spec.name == name
         })
     }
 
@@ -242,51 +242,51 @@ impl ScriptApi {
     /// status otherwise.
     pub(crate) fn record(&mut self, member: ApiMember) {
         let ApiMember {
-            spec,
+            decl,
             writable,
             status,
             output,
             ref types,
         } = member;
         if let Some(output) = output
-            && spec.owner != ApiOwner::CTX
+            && decl.holder != ApiHolder::CTX
         {
             let others = self.members.iter().filter(|held| {
-                held.spec.owner != ApiOwner::CTX
-                    && (held.spec.kind, held.spec.name) == (spec.kind, spec.name)
+                held.decl.holder != ApiHolder::CTX
+                    && (held.decl.kind, held.decl.name) == (decl.kind, decl.name)
             });
             for held in others.filter_map(|held| held.output) {
                 assert_eq!(
                     held.names, output.names,
                     "every handle's `{}` gives the same kind of name",
-                    spec.name
+                    decl.name
                 );
             }
         }
-        let key = (spec.owner, spec.name);
+        let key = (decl.holder, decl.name);
         match self
             .members
-            .binary_search_by(|held| (held.spec.owner, held.spec.name).cmp(&key))
+            .binary_search_by(|held| (held.decl.holder, held.decl.name).cmp(&key))
         {
             Ok(at) => {
                 let held = &mut self.members[at];
                 let args = ArgKinds {
-                    names: merged(&held.spec.names, &spec.names, &spec),
-                    enums: merged(&held.spec.enums, &spec.enums, &spec),
+                    names: merged(&held.decl.names, &decl.names, &decl),
+                    enums: merged(&held.decl.enums, &decl.enums, &decl),
                 };
                 assert!(
-                    held.spec.with_args(args) == spec.with_args(args) && held.status == status,
+                    held.decl.with_args(args) == decl.with_args(args) && held.status == status,
                     "the bindings of {}.{} agree",
-                    spec.owner.name(),
-                    spec.name
+                    decl.holder.name(),
+                    decl.name
                 );
                 assert!(
                     held.output.is_none() || output.is_none() || held.output == output,
                     "the forms of {}.{} give one type",
-                    spec.owner.name(),
-                    spec.name
+                    decl.holder.name(),
+                    decl.name
                 );
-                held.spec = held.spec.with_args(args);
+                held.decl = held.decl.with_args(args);
                 held.writable |= writable;
                 held.output = held.output.or(output);
                 held.take_types(types);
@@ -296,20 +296,20 @@ impl ScriptApi {
     }
 }
 
-/// What the forms of `spec` say each argument is, by place: the `held` forms' and this one's,
+/// What the forms of `decl` say each argument is, by place: the `held` forms' and this one's,
 /// which agree where both say.
 fn merged<T: Copy + PartialEq>(
-    held: &[Option<T>; MemberSpec::ARGS],
-    form: &[Option<T>; MemberSpec::ARGS],
-    spec: &MemberSpec,
-) -> [Option<T>; MemberSpec::ARGS] {
+    held: &[Option<T>; MemberDecl::ARGS],
+    form: &[Option<T>; MemberDecl::ARGS],
+    decl: &MemberDecl,
+) -> [Option<T>; MemberDecl::ARGS] {
     let mut merged = *held;
     for (merged, &said) in merged.iter_mut().zip(form) {
         assert!(
             merged.is_none() || said.is_none() || *merged == said,
             "the forms of {}.{} say alike what an argument is",
-            spec.owner.name(),
-            spec.name
+            decl.holder.name(),
+            decl.name
         );
         *merged = merged.or(said);
     }

@@ -2,7 +2,7 @@
 //! mode's hooks on the capabilities below it.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
@@ -15,12 +15,12 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, ActionsSet};
 use campfire_combat::{Weigh, Weighers};
-use campfire_common::{EnumAll, PlayerSlot};
+use campfire_common::{EnumAll, Seat};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_navigation::{
     ModeNavigationData, Navigation, NavigationBook, OnPath, PathArrivals, WalkerOnPath,
 };
-use campfire_players::{MatchEntity, Player, Players, PlayersWorld, Seating, SlotStart};
+use campfire_players::{MatchEntity, Player, Players, PlayersWorld, SeatStart, Seating};
 use campfire_production::{CompletedSites, ProductionSet, TrainedUnits};
 use campfire_progression::LevelUps;
 use campfire_script::{
@@ -106,7 +106,7 @@ mod team_manifest;
 mod timer_id;
 mod timers;
 mod unanswered_deaths;
-mod unanswered_slot_events;
+mod unanswered_seat_events;
 mod victory;
 mod victory_data;
 
@@ -154,7 +154,7 @@ pub use crate::team_manifest::TeamManifest;
 pub use crate::timer_id::TimerId;
 pub use crate::timers::{Timer, TimerStart, Timers};
 pub use crate::unanswered_deaths::{DeathCall, UnansweredDeaths};
-pub use crate::unanswered_slot_events::UnansweredSlotEvents;
+pub use crate::unanswered_seat_events::UnansweredSeatEvents;
 pub use crate::victory::VictoryBook;
 pub use crate::victory_data::{Defeat, VictoryData};
 
@@ -172,7 +172,7 @@ pub enum ModeSet {
     /// Once the trains spawned: the tick's deaths end players and the match, then pay their
     /// bounties.
     Deaths,
-    /// Then the slots' events, the due timers and the deaths run the mode's hooks, which read how
+    /// Then the seats' events, the due timers and the deaths run the mode's hooks, which read how
     /// the match ended.
     Hooks,
     /// Then the levels units reached run theirs.
@@ -235,7 +235,7 @@ impl Module for Mode {
         d.resource::<Choices>();
         d.resource::<Timers>();
         d.resource::<UnansweredDeaths>();
-        d.resource::<UnansweredSlotEvents>();
+        d.resource::<UnansweredSeatEvents>();
         d.report::<SaveAsked>();
         d.loaded::<MatchMode>();
         d.check::<Player>(Self::players_spawned);
@@ -323,11 +323,11 @@ impl Module for Mode {
         if defines(Hook::of::<OnInput>()) {
             cx.add(ModeSet::Inputs, ModeHooks::mode_inputs);
         }
-        let slot_events = ModeHooks::answer::<UnansweredSlotEvents>;
-        if answers(UnansweredSlotEvents::HOOKS) {
+        let seat_events = ModeHooks::answer::<UnansweredSeatEvents>;
+        if answers(UnansweredSeatEvents::HOOKS) {
             cx.add(
                 ModeSet::Hooks,
-                slot_events.before(timers.0).before(timers.1),
+                seat_events.before(timers.0).before(timers.1),
             );
         }
         if defines(Hook::of::<OnTimer>()) {
@@ -423,18 +423,18 @@ impl Mode {
         world.insert_resource(MatchMode(Arc::clone(&book)));
     }
 
-    /// Whether each slot of the session has its entity, as the mode's start spawns them, so no
+    /// Whether each seat of the session has its entity, as the mode's start spawns them, so no
     /// call finds one missing.
     fn players_spawned(world: &World) -> Result<(), Breach> {
         let players = world.resource::<MatchMode>().teams.players();
         let seated = (0..players)
-            .map(PlayerSlot::new)
-            .all(|slot| world.player_entity(slot).is_some());
+            .map(Seat::new)
+            .all(|seat| world.player_entity(seat).is_some());
         Breach::of_match(seated)
     }
 
-    /// Starts the match, before its first tick: the players spawn, each slot held or open as
-    /// `seatings` gives it, one for each slot in order; the map's placed units spawn, on their
+    /// Starts the match, before its first tick: the players spawn, each seat held or open as
+    /// `seatings` gives it, one for each seat in order; the map's placed units spawn, on their
     /// paths and walking them as they name; then `on_match_start` runs. A timer it sets counts
     /// from the start. An error when the call fails: a match its mode cannot start would run
     /// without its rules.
@@ -443,14 +443,14 @@ impl Mode {
         let teams = &book.teams;
         assert_eq!(
             seatings.len(),
-            usize::try_from(teams.players()).expect("slots fit usize"),
-            "a start gives each slot of the session its seating"
+            usize::try_from(teams.players()).expect("seats fit usize"),
+            "a start gives each seat of the session its seating"
         );
-        let slots = (0..teams.players()).map(PlayerSlot::new).zip(seatings);
+        let seats = (0..teams.players()).map(Seat::new).zip(seatings);
         Players::spawn_match(
             world,
-            slots.map(|(slot, &seating)| SlotStart {
-                team: teams.of(slot).expect("every player has a team"),
+            seats.map(|(seat, &seating)| SeatStart {
+                team: teams.of(seat).expect("every player has a team"),
                 seating,
             }),
         );
@@ -459,7 +459,7 @@ impl Mode {
                 id: world.resource_mut::<IdAllocator>().allocate(),
                 unit_type: placed.unit_type,
                 team: placed.team,
-                pos: placed.pos,
+                position: placed.position,
                 owner: None,
                 angle: placed.angle,
             };
@@ -497,7 +497,7 @@ pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::Actions;
     use campfire_combat::{Damage, DamageCause, DamagePass, PassEntry};
-    use campfire_common::PlayerSlot;
+    use campfire_common::Seat;
     use campfire_math::{Num, Vec3};
     use campfire_navigation::{PathEnd, PathWalker};
     use campfire_players::Seating;
@@ -507,7 +507,7 @@ pub mod internals {
     };
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
-        EntityIndex, IdAllocator, Position, SimTick, SimWorld, SlotEvent, SlotEventKind, StableId,
+        EntityIndex, IdAllocator, Position, SeatEvent, SeatEventKind, SimTick, SimWorld, StableId,
         TickInputs,
     };
     use campfire_stats::{Application, Modifiers, NewInstance, StatBook, StatOp, StatShare, Stats};
@@ -535,30 +535,30 @@ pub mod internals {
         pub fn marker_point(world: &World, of: MarkerOf<'_>) -> Option<Vec3> {
             let ctx = world.non_send::<Ctx>();
             let frame = ctx.frame();
-            frame.part::<ModeCall>()?.map().point_of(of)
+            frame.extension::<ModeCall>()?.map().point_of(of)
         }
 
-        /// Spawns a unit of the mode's type `name` at `pos` on `team`, of the next stable id, with
-        /// `parts`, as the mode's own spawns do.
+        /// Spawns a unit of the mode's type `name` at `position` on `team`, of the next stable id,
+        /// with `parts`, as the mode's own spawns do.
         pub fn spawn_typed(
             world: &mut World,
             name: &str,
-            pos: Vec3,
+            position: Vec3,
             team: Team,
             parts: impl Bundle<Effect: NoBundleEffect>,
         ) -> StableId {
             let unit_type =
                 Units::type_named(world, name).unwrap_or_else(|| panic!("no unit type {name}"));
-            Self::spawn_at(world, unit_type, pos, Num::ZERO, team, parts)
+            Self::spawn_at(world, unit_type, position, Num::ZERO, team, parts)
         }
 
-        /// Spawns a unit of the mode's type `unit_type` at `pos`, turned `angle` degrees, on
+        /// Spawns a unit of the mode's type `unit_type` at `position`, turned `angle` degrees, on
         /// `team`, of the next stable id, with `parts`, through the match's spawner, as the mode's
         /// own spawns do.
         pub(super) fn spawn_at(
             world: &mut World,
             unit_type: UnitType,
-            pos: Vec3,
+            position: Vec3,
             angle: Num,
             team: Team,
             parts: impl Bundle<Effect: NoBundleEffect>,
@@ -569,7 +569,7 @@ pub mod internals {
                 unit_type,
                 team,
                 owner: None,
-                pos,
+                position,
                 angle,
             };
             Spawner::place_any(world, at, parts);
@@ -578,91 +578,91 @@ pub mod internals {
     }
 
     impl Mode {
-        /// Spawns a unit of the mode's type `unit_type` at `pos` on `team`, of the next stable
+        /// Spawns a unit of the mode's type `unit_type` at `position` on `team`, of the next stable
         /// id, with `parts`, as the mode's own spawns do, once the match loaded its types: the
         /// first spawn seals their tags, with no effect for a tag, as a mode's load does once
         /// its packages load. On a client's match too, as the server would send the unit.
         pub fn spawn(
             world: &mut World,
             unit_type: UnitType,
-            pos: impl Into<Vec3>,
+            position: impl Into<Vec3>,
             team: Team,
             parts: impl Bundle<Effect: NoBundleEffect>,
         ) -> StableId {
-            Self::spawn_turned(world, unit_type, pos, Num::ZERO, team, parts)
+            Self::spawn_turned(world, unit_type, position, Num::ZERO, team, parts)
         }
 
         /// Spawns a unit as `spawn` does, turned `angle` degrees.
         pub fn spawn_turned(
             world: &mut World,
             unit_type: UnitType,
-            pos: impl Into<Vec3>,
+            position: impl Into<Vec3>,
             angle: Num,
             team: Team,
             parts: impl Bundle<Effect: NoBundleEffect>,
         ) -> StableId {
             Units::seal_once(world);
-            Self::spawn_at(world, unit_type, pos.into(), angle, team, parts)
+            Self::spawn_at(world, unit_type, position.into(), angle, team, parts)
         }
 
-        /// Starts the match as `start` does, every slot held.
+        /// Starts the match as `start` does, every seat held.
         pub fn start_held(world: &mut World) -> Result<(), CallError> {
-            Self::start(world, &vec![Seating::Held; Self::slots(world)])
+            Self::start(world, &vec![Seating::Held; Self::seats(world)])
         }
 
-        /// How many slots the session of the installed mode has.
-        pub fn slots(world: &World) -> usize {
+        /// How many seats the session of the installed mode has.
+        pub fn seats(world: &World) -> usize {
             let players = world.resource::<MatchMode>().teams.players();
-            usize::try_from(players).expect("slots fit usize")
+            usize::try_from(players).expect("seats fit usize")
         }
 
         /// Spawns a unit of the mode's type `name`, as `spawn` does.
         pub fn spawn_named(
             world: &mut World,
             name: &str,
-            pos: impl Into<Vec3>,
+            position: impl Into<Vec3>,
             team: Team,
             parts: impl Bundle<Effect: NoBundleEffect>,
         ) -> StableId {
             let unit_type =
                 Units::type_named(world, name).unwrap_or_else(|| panic!("no unit type {name}"));
-            Self::spawn(world, unit_type, pos, team, parts)
+            Self::spawn(world, unit_type, position, team, parts)
         }
 
-        /// Player `slot` picks `hero` in a tick: the hero it then owns.
-        pub fn pick(world: &mut World, slot: u32, hero: &str) -> Entity {
+        /// Player `seat` picks `hero` in a tick: the hero it then owns.
+        pub fn pick(world: &mut World, seat: u32, hero: &str) -> Entity {
             let input = ModeInput {
                 name: "hero",
                 value: InputValue::String(hero),
             };
-            Self::tick_inputs(world, &[(slot, input)]);
-            let player = PlayerSlot::new(slot);
+            Self::tick_inputs(world, &[(seat, input)]);
+            let player = Seat::new(seat);
             let mut owned = world.query::<(Entity, &Owner)>();
             let mut heroes = owned
                 .iter(world)
-                .filter(|(_, owner)| owner.slot() == player);
+                .filter(|(_, owner)| owner.seat() == player);
             let (hero, _) = heroes.next().expect("the player picked a hero");
             assert!(heroes.next().is_none(), "the player owns one hero");
             hero
         }
 
-        /// Runs a tick with `inputs`, each a player's slot and a mode input.
+        /// Runs a tick with `inputs`, each a player's seat and a mode input.
         pub fn tick_inputs(world: &mut World, inputs: &[(u32, ModeInput<'_>)]) {
             let (mut body, mut payload) = (Vec::new(), Vec::new());
-            for (slot, input) in inputs {
+            for (seat, input) in inputs {
                 payload.clear();
                 input.write_payload(&mut body, &mut payload);
-                world.push_input(PlayerSlot::new(*slot), &payload);
+                world.push_input(Seat::new(*seat), &payload);
             }
             world.step();
         }
 
         /// Runs a tick in which the session logged `events`, each a player's join or leave.
-        pub fn tick_slots(world: &mut World, events: &[(u32, SlotEventKind)]) {
-            for &(slot, kind) in events {
-                let slot = PlayerSlot::new(slot);
+        pub fn tick_seats(world: &mut World, events: &[(u32, SeatEventKind)]) {
+            for &(seat, kind) in events {
+                let seat = Seat::new(seat);
                 let mut inputs = world.resource_mut::<TickInputs>();
-                inputs.push_slot_event(SlotEvent { slot, kind });
+                inputs.push_seat_event(SeatEvent { seat, kind });
             }
             world.step();
         }

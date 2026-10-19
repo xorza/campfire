@@ -1,6 +1,6 @@
 use campfire_actions::ActionsColumn;
 use campfire_script::{
-    ApiBuilder, CapabilityRefusal, Checked, Ctx, MemberSpec, RoleSet, ScriptPosition, Unit,
+    ApiBuilder, CapabilityRefusal, Checked, Ctx, MemberDecl, RoleSet, ScriptPosition, Unit,
 };
 
 use crate::ai_data::AiData;
@@ -15,7 +15,7 @@ pub struct OrdersApi;
 impl OrdersApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let order = |name, signature, description| {
-            MemberSpec::call(name, signature, description).roles(RoleSet::AI)
+            MemberDecl::call(name, signature, description).roles(RoleSet::AI)
         };
         api.call(
             order(
@@ -36,8 +36,8 @@ impl OrdersApi {
         .call(
             order(
                 "order_move",
-                &[&["pos"]],
-                "the unit that thinks drops its target and walks to `pos`, within the map, off its path",
+                &[&["position"]],
+                "the unit that thinks drops its target and walks to `position`, within the map, off its path",
             ),
             |ctx: &mut Ctx, to: ScriptPosition| {
                 let to = to.get();

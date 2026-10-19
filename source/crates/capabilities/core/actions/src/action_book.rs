@@ -98,7 +98,7 @@ impl ActionBook {
 
     /// Whether the book holds `id` with `rank` among its ranks, as a restored value that names an
     /// action at a rank needs.
-    pub fn ranked(&self, id: ActionId, rank: Rank) -> bool {
+    pub fn is_ranked(&self, id: ActionId, rank: Rank) -> bool {
         self.get(id).is_some_and(|action| action.has_rank(rank))
     }
 }

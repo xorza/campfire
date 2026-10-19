@@ -8,11 +8,11 @@ use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::game_path;
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_import::{Converted, ModelImport};
-use crate::zero_hour::model_parts::ModelParts;
+use crate::zero_hour::model_nodes::ModelNodes;
 use crate::zero_hour::{SkipReason, SkippedModel};
 
 /// The models of an import: each converted once, at `client/models/<name>.glb`, into the
-/// package's writer; the parts each one's looks read; the models
+/// package's writer; the nodes each one's looks read; the models
 /// the objects name that the package lacks; and the textures the models name that no archive
 /// holds.
 #[derive(Debug)]
@@ -21,13 +21,13 @@ pub(crate) struct ModelWriter<'i, 'w> {
     written: BTreeMap<String, WrittenModel>,
 }
 
-/// What a model the objects name gives their looks: the parts its looks read and the bounds its
+/// What a model the objects name gives their looks: the nodes its looks read and the bounds its
 /// looks' tops are measured from; nothing, as it draws nothing, as a `NULL` or a collision box;
 /// or nothing, as the package lacks it, which the report names.
 #[derive(Debug)]
 pub(crate) enum WrittenModel {
-    Parts {
-        parts: ModelParts,
+    Nodes {
+        nodes: ModelNodes,
         bounds: ModelBounds,
     },
     Nothing,
@@ -97,8 +97,8 @@ impl Converter<'_, '_> {
                         name,
                         reason: SkipReason::Aggregate,
                     }));
-                return Ok(WrittenModel::Parts {
-                    parts: import.parts,
+                return Ok(WrittenModel::Nodes {
+                    nodes: import.nodes,
                     bounds,
                 });
             }

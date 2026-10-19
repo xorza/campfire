@@ -1,10 +1,10 @@
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_math::{Num, Vec3};
 use campfire_values::{EngineEnum, Relation};
 use rhai::{Array, Dynamic, ImmutableString, Variant};
 
 use crate::script_host::error::{NumError, Raised};
-use crate::scripts::api_owner::ScriptHandle;
+use crate::scripts::api_holder::ScriptHandle;
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::player_handle::PlayerHandle;
@@ -172,7 +172,7 @@ impl ScriptArg for Num {
 }
 
 /// A player a script holds, as the slot of its handle.
-impl ScriptArg for PlayerSlot {
+impl ScriptArg for Seat {
     type Raw = PlayerHandle;
     type Int = PlayerHandle;
     const NAME_KIND: Option<NameKind> = None;
@@ -181,11 +181,11 @@ impl ScriptArg for PlayerSlot {
     const TYPE: &'static str = PlayerHandle::NAME;
 
     fn take(raw: PlayerHandle, _: &ArgCtx<'_>) -> Checked<Self> {
-        Ok(raw.slot())
+        Ok(raw.seat())
     }
 
     fn take_int(raw: PlayerHandle, _: &ArgCtx<'_>) -> Checked<Self> {
-        Ok(raw.slot())
+        Ok(raw.seat())
     }
 }
 

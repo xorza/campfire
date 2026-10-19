@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_capabilities::{Action, Order};
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_math::Vec3;
 use campfire_players::OrderUnits;
 use campfire_script::Filter;
@@ -48,12 +48,12 @@ pub struct BotOrder {
 /// Where a bot's step sends what its script has due: each payload, a mode input's or an order's,
 /// as its player's client writes it, and each order that goes unsent.
 pub trait BotSink {
-    /// Takes `payload`, an input of the bot of `slot`.
-    fn send(&mut self, slot: PlayerSlot, payload: &[u8]);
+    /// Takes `payload`, an input of the bot of `seat`.
+    fn send(&mut self, seat: Seat, payload: &[u8]);
 
-    /// Hears that the order of `action`, as its script names it, of the bot of `slot` goes
+    /// Hears that the order of `action`, as its script names it, of the bot of `seat` goes
     /// unsent to all of its units or to some, as `cause` says.
-    fn unsent(&mut self, slot: PlayerSlot, action: &Action<Named>, cause: OrderUnsent);
+    fn unsent(&mut self, seat: Seat, action: &Action<Named>, cause: OrderUnsent);
 }
 
 /// The buffers of a bot's step, kept so that no input allocates: the payload, the body of the
@@ -132,14 +132,14 @@ impl BotScript {
         &self.inputs[first..self.next_input]
     }
 
-    /// Sends `sink` what the script has due by `tick` for the bot of `slot`: its mode inputs,
+    /// Sends `sink` what the script has due by `tick` for the bot of `seat`: its mode inputs,
     /// then its orders, each for the slot's units as `view` holds them now; an order that goes
     /// unsent `sink` hears of. The one step of a bot, which the server's driver and every check
     /// take.
     pub fn step<S: TeamSight>(
         &mut self,
         tick: Tick,
-        slot: PlayerSlot,
+        seat: Seat,
         view: &BotView<'_, '_, S>,
         buffers: &mut BotBuffers,
         sink: &mut impl BotSink,
@@ -153,18 +153,18 @@ impl BotScript {
         for input in self.due_inputs(tick) {
             payload.clear();
             input.write_payload(body, payload);
-            sink.send(slot, payload);
+            sink.send(seat, payload);
         }
         for scripted in self.due_orders(tick) {
             orders.clear();
-            let unsent = scripted.orders(slot, view, scratch, orders);
+            let unsent = scripted.orders(seat, view, scratch, orders);
             for order in orders.iter() {
                 payload.clear();
                 order.write_payload(body, payload);
-                sink.send(slot, payload);
+                sink.send(seat, payload);
             }
             if let Some(cause) = unsent {
-                sink.unsent(slot, &scripted.named, cause);
+                sink.unsent(seat, &scripted.named, cause);
             }
         }
     }
@@ -193,13 +193,13 @@ impl BotScript {
 }
 
 impl BotOrder {
-    /// Puts in `out` the orders it gives for the player of `slot`, for its units as `view` holds
+    /// Puts in `out` the orders it gives for the player of `seat`, for its units as `view` holds
     /// them now: one, or for an action of a slot one for each place among their slots its units
     /// hold the action at, each to the units that hold it there, in increasing stable id; and
     /// why it goes unsent to all of its units or to some, the first cause of several.
     pub fn orders<S: TeamSight>(
         &self,
-        slot: PlayerSlot,
+        seat: Seat,
         view: &BotView<'_, '_, S>,
         scratch: &mut OrderScratch,
         out: &mut Vec<Order>,
@@ -207,11 +207,11 @@ impl BotOrder {
         let OrderScratch { units, slotted } = scratch;
         units.clear();
         match self.units {
-            BotUnits::Avatar => match view.avatar(slot) {
+            BotUnits::Avatar => match view.avatar(seat) {
                 Some(avatar) => units.push(avatar.id),
                 None => return Some(OrderUnsent::NoAvatar),
             },
-            BotUnits::Typed(unit_type) => view.typed(slot, unit_type, units),
+            BotUnits::Typed(unit_type) => view.typed(seat, unit_type, units),
         }
         if units.is_empty() {
             return Some(OrderUnsent::NoUnit);

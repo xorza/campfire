@@ -8,24 +8,24 @@ use serde::{Deserialize, Serialize};
 
 use crate::player::Player;
 
-/// Marks a player whose slot a player or a bot held as the match started, on its entity, which
-/// spawns with it: a slot open then has none, so a mode places nothing for it, as Zero Hour places
-/// no start for an empty slot (12-zero-hour.md, Eight teams of one). A join or a leave after the
+/// Marks a player whose seat a player or a bot held as the match started, on its entity, which
+/// spawns with it: a seat open then has none, so a mode places nothing for it, as Zero Hour places
+/// no start for an empty seat (09-zero-hour.md, Eight teams of one). A join or a leave after the
 /// start changes it not; the mode hears those by their hooks.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 pub(crate) struct Seated;
 
-/// Whether a player or a bot held a slot as the match started.
+/// Whether a player or a bot held a seat as the match started.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Seating {
     Held,
     Open,
 }
 
-/// A slot as the match starts: its team, and whether a player or a bot holds it.
+/// A seat as the match starts: its team, and whether a player or a bot holds it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SlotStart {
+pub struct SeatStart {
     pub team: Team,
     pub seating: Seating,
 }

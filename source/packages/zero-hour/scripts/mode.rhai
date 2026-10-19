@@ -10,19 +10,19 @@ fn on_match_start(ctx) {
         if !player.seated {
             continue;
         }
-        let n = player.slot + 1;
+        let n = player.seat + 1;
         let starts = start_marker(ctx, `Player_${n}_Start`);
         if starts.is_empty() {
             continue;
         }
-        let at = starts[0].pos;
+        let at = starts[0].position;
         let team = player.team;
         ctx.spawn_unit(ctx.params.start_building, team, at, player);
         let rallies = start_marker(ctx, `Player_${n}_Rally`);
         let rally = if rallies.is_empty() {
             at + vector(0, 0, ctx.params.start_offset)
         } else {
-            rallies[0].pos
+            rallies[0].position
         };
         for unit in ctx.params.start_units {
             ctx.spawn_unit(unit, team, rally, player);

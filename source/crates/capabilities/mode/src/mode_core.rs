@@ -46,7 +46,7 @@ impl Module for ModeCore {
         d.rule(Self::choices_rule);
         d.rule(Self::walk_rule);
         d.component::<MatchEnd>();
-        d.stages_run_if(MatchEnd::running);
+        d.stages_run_if(MatchEnd::is_running);
     }
 
     fn install(_: &mut InstallCx<'_, Self::Set>) {}

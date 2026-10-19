@@ -72,7 +72,9 @@ pub use crate::sim_server::journal_watch::JournalWatch;
 pub use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
 pub use crate::sim_server::lobby::{Lobby, LobbyOpening, LobbySetup};
 pub use crate::sim_server::pending_restore::{PendingRestore, UncheckedRestore};
-pub use crate::sim_server::server_bots::{ServerBots, SlotBot, SlotScript};
+pub use crate::sim_server::seat_bot_file::SeatBotFile;
+pub use crate::sim_server::seat_bot_file::error::SeatBotFileError;
+pub use crate::sim_server::server_bots::{SeatBot, SeatScript, ServerBots};
 pub use crate::sim_server::server_dir::ServerDir;
 pub use crate::sim_server::server_layout::ServerLayout;
 pub use crate::sim_server::server_setup::ServerSetup;
@@ -83,8 +85,6 @@ pub use crate::sim_server::session_dir::{Publisher, RestoredSession, SessionDir,
 pub use crate::sim_server::session_journal::SessionJournal;
 pub use crate::sim_server::sim_server_plugins::SimServerPlugins;
 pub use crate::sim_server::sim_server_world::{SessionOpening, SimServerWorld, StopRequest};
-pub use crate::sim_server::slot_bot_file::SlotBotFile;
-pub use crate::sim_server::slot_bot_file::error::SlotBotFileError;
 pub use crate::sim_server::snapshot_dir::SnapshotDir;
 
 #[cfg(feature = "internals")]

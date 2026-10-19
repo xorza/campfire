@@ -1,10 +1,10 @@
 //! The state types each module adds, named once in its declarations, which every consumer reads:
 //! the state registry, for the hash, the snapshot and the copy, and the network layer, for what
-//! replicates, how and to whom (14-replication-audiences.md, Each capability names its state types
+//! replicates, how and to whom (10-replication-audiences.md, Each capability names its state types
 //! once). Each type declares its kind and how it is sent; the list names it and nothing more.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
 use std::fmt::Debug;
@@ -44,11 +44,11 @@ pub trait StateTypes: Sized {
 
     /// `C`, derived as a derived component is, and no part of the hash or the snapshot, but sent on
     /// each change to its kind's audience, which cannot derive it: a player's supply, from units
-    /// its audience may not hold (14-replication-audiences.md, Each capability names its state
+    /// its audience may not hold (10-replication-audiences.md, Each capability names its state
     /// types once).
     fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self);
 
-    /// `R`, a resource, which no client receives (14-replication-audiences.md, A resource never
+    /// `R`, a resource, which no client receives (10-replication-audiences.md, A resource never
     /// replicates).
     fn resource<R: SimResource + Default>(&mut self);
 }

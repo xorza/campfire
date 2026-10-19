@@ -3,7 +3,7 @@
 //! failures, script state, and the script view the modules fill.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
 mod script_host;
@@ -13,11 +13,11 @@ pub use crate::script_host::budget::Budget;
 pub use crate::script_host::error::{NumError, Raised, ScriptError};
 pub use crate::script_host::script_prints::{PrintKind, ScriptPrint, ScriptPrints};
 pub use crate::script_host::{ScriptHost, ScriptId};
-pub use crate::scripts::api_owner::{ApiOwner, ScriptHandle};
+pub use crate::scripts::api_holder::{ApiHolder, ScriptHandle};
 pub use crate::scripts::api_version::ApiVersion;
 pub use crate::scripts::applies::Applies;
 pub use crate::scripts::arg_ctx::ArgCtx;
-pub use crate::scripts::call_part::{CallParams, CallPart, Commit};
+pub use crate::scripts::call_extension::{CallExtension, CallParams, Commit};
 pub use crate::scripts::call_start::{CallStart, Purity, Spent};
 pub use crate::scripts::capability_refusal::CapabilityRefusal;
 pub use crate::scripts::core_api::CoreApi;
@@ -30,11 +30,11 @@ pub use crate::scripts::error::{
 };
 pub use crate::scripts::frame::Frame;
 pub use crate::scripts::frame::effects::{Effect, EffectKind};
-pub use crate::scripts::hook::{Hook, HookSpec};
+pub use crate::scripts::hook::{Hook, HookDecl};
 pub use crate::scripts::hook_set::HookSet;
 pub use crate::scripts::id_name::{IdName, MaybeName};
+pub use crate::scripts::member_decl::{ArgKinds, MemberDecl};
 pub use crate::scripts::member_kind::MemberKind;
-pub use crate::scripts::member_spec::{ArgKinds, MemberSpec};
 pub use crate::scripts::mode_events::{ListedScript, ModeAnswer, ModeEvents};
 pub use crate::scripts::mode_scripts::{ListPlace, ModeScripts};
 pub use crate::scripts::pending_calls::PendingCalls;

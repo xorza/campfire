@@ -76,7 +76,7 @@ pub enum ProjectilesRefusal {
 }
 
 impl CapabilityRefusal for ProjectilesRefusal {
-    const OWNER: Capability = Capability::Projectiles;
+    const CAPABILITY: Capability = Capability::Projectiles;
     const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {

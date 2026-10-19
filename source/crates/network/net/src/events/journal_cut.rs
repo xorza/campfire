@@ -5,7 +5,7 @@ use tracing::warn;
 
 /// A restore found a frame of the session's journal torn or corrupt, and cut the journal there:
 /// the `bytes` from it to the end are gone, and the session goes on from the last whole frame
-/// (10-sessions.md, A journal is cut at its first bad frame).
+/// (08-sessions.md, A journal is cut at its first bad frame).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct JournalCut {
     #[serde(deserialize_with = "LogLine::text")]

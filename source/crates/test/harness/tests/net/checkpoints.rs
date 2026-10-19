@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use bevy_app::AppExit;
 use campfire_common::{ExitStatus, StateHash, Tick};
-use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
+use campfire_harness::{End, InProcessMatch, InProcessSetup, LinkModel};
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::internals::TickHashes;
 use campfire_net::{
@@ -21,7 +21,7 @@ use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, JournalFrames, Outcome, SeedChain, SessionLog, Signer};
 use campfire_runner::{Replay, Session, SessionWorld};
 use campfire_sim::StateRegistry;
-use campfire_store::internals::Scratch;
+use campfire_store::internals::TestDir;
 use campfire_store::{EntryKind, InputFile};
 
 /// The chain of the scenario's sessions, of room for three checkpoints.
@@ -31,9 +31,9 @@ const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap(
 /// after 180 steps with both records logged; with the state hash after each tick the server ran.
 /// The second checkpoint's delta holds the changes from tick 130 on: the server sent those before
 /// it, 100 ticks after the first.
-fn checkpointed(scratch: &Scratch) -> (InProcessMatch, Vec<StateHash>) {
-    let mut local = InProcessMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
-    local.keep_data(scratch.path("data"));
+fn checkpointed(test_dir: &TestDir) -> (InProcessMatch, Vec<StateHash>) {
+    let mut local = InProcessMatch::new(InProcessSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
+    local.keep_data(test_dir.path("data"));
     local.start_match();
     local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     for tick in [30, 160] {
@@ -64,9 +64,9 @@ fn log(local: &InProcessMatch) -> &SessionLog {
 }
 
 /// The directory the session's snapshots go to.
-fn snapshots(scratch: &Scratch, local: &InProcessMatch) -> PathBuf {
+fn snapshots(test_dir: &TestDir, local: &InProcessMatch) -> PathBuf {
     let id = log(local).session_id();
-    scratch
+    test_dir
         .path("data/sessions")
         .join(id.to_string())
         .join("snapshots")
@@ -104,8 +104,8 @@ fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
 
 #[test]
 fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_snapshots() {
-    let scratch = Scratch::new();
-    let (mut local, before) = checkpointed(&scratch);
+    let test_dir = TestDir::new();
+    let (mut local, before) = checkpointed(&test_dir);
     let cut = local.next_tick(End::Server);
     local.restart_server();
     // The restore builds the match from the snapshot before tick 160, and replays from there.
@@ -116,7 +116,7 @@ fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_sn
     for _ in 0..30 {
         local.step();
     }
-    let snapshots = snapshots(&scratch, &local);
+    let snapshots = snapshots(&test_dir, &local);
     verifies(&mut local, &snapshots);
 }
 
@@ -124,13 +124,13 @@ fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_sn
 fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
     // Stopped after its checkpoint before tick 160: the abort builds the match from that
     // snapshot, and its aborted result holds the state the server left.
-    let scratch = Scratch::new();
-    let (mut local, before) = checkpointed(&scratch);
+    let test_dir = TestDir::new();
+    let (mut local, before) = checkpointed(&test_dir);
     let cut = local.next_tick(End::Server);
-    let snapshots = snapshots(&scratch, &local);
+    let snapshots = snapshots(&test_dir, &local);
     let latest = log(&local).checkpoints().last().unwrap().snapshot;
     local.stop_server();
-    let data = ServerDir::open(&scratch.path("data")).unwrap();
+    let data = ServerDir::open(&test_dir.path("data")).unwrap();
     let abort = |data: &ServerDir| {
         let session = SessionDir::find(data).unwrap().unwrap();
         let session = session.restore().unwrap().unwrap();
@@ -142,13 +142,13 @@ fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
     };
     // With the latest snapshot gone, it reads that snapshot, and fails.
     let latest = snapshots.join(latest.to_string());
-    let kept = scratch.read(&latest);
-    scratch.remove(&latest);
+    let kept = test_dir.read(&latest);
+    test_dir.remove(&latest);
     assert!(matches!(
         abort(&data),
         Err(AbortError::Replay(MatchBeginError::ReadSnapshot(_)))
     ));
-    scratch.write(&latest, kept);
+    test_dir.write(&latest, kept);
     let file = abort(&data).unwrap();
     let published =
         SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
@@ -161,10 +161,10 @@ fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
 
 #[test]
 fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
-    let scratch = Scratch::new();
-    let (mut local, before) = checkpointed(&scratch);
+    let test_dir = TestDir::new();
+    let (mut local, before) = checkpointed(&test_dir);
     let second = log(&local).checkpoint_at(Tick::new(160)).unwrap().clone();
-    let snapshots = snapshots(&scratch, &local);
+    let snapshots = snapshots(&test_dir, &local);
     let id = log(&local).session_id();
     local.stop_server();
 
@@ -172,11 +172,11 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
     // ticks the server ran after its begin, and no record, and the snapshot is gone. The record
     // came in its own time, by the disk's: its frame alone goes, so the ticks after the begin
     // stay whatever frame it came in.
-    let journal = scratch
+    let journal = test_dir
         .path("data/sessions")
         .join(id.to_string())
         .join("journal");
-    let bytes = scratch.read(&journal);
+    let bytes = test_dir.read(&journal);
     let mut frames = JournalFrames::new(&bytes).unwrap();
     let mut done = Vec::new();
     loop {
@@ -190,13 +190,13 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
     }
     assert_eq!(done.len(), 2);
     let without = [&bytes[..done[1].start], &bytes[done[1].end..]].concat();
-    scratch.write(&journal, without);
+    test_dir.write(&journal, without);
     let file = snapshots.join(second.snapshot.to_string());
-    scratch.remove(&file);
+    test_dir.remove(&file);
 
     // The restore builds the match from the first checkpoint, replays to the cut, and takes the
     // second again as its replay passes tick 160: the same record, its snapshot written again.
-    let stopped = ServerDir::open(&scratch.path("data")).unwrap();
+    let stopped = ServerDir::open(&test_dir.path("data")).unwrap();
     let dir = SessionDir::find(&stopped).unwrap().unwrap();
     let cut = dir.restore().unwrap().unwrap().log.next_tick();
     drop(stopped);
@@ -210,19 +210,19 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
         (again.state_hash, again.snapshot, &again.carry),
         (second.state_hash, second.snapshot, &second.carry)
     );
-    assert!(scratch.exists(&file));
+    assert!(test_dir.exists(&file));
     verifies(&mut local, &snapshots);
 }
 
 #[test]
 fn a_checkpoint_past_the_seed_chain_or_a_full_log_ends_the_session() {
     // A chain of one segment: the checkpoint before tick 30 would start a second.
-    let scratch = Scratch::new();
-    let mut local = InProcessMatch::new(MatchSetup::duo(
+    let test_dir = TestDir::new();
+    let mut local = InProcessMatch::new(InProcessSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(scratch.path("data"));
+    local.keep_data(test_dir.path("data"));
     local.start_match();
     local
         .server_mut()
@@ -247,9 +247,9 @@ fn a_checkpoint_past_the_seed_chain_or_a_full_log_ends_the_session() {
     // A log full once tick 9 ran, as weeks of play would leave it, past the frame that passed the
     // boundary before tick 10: the session ends at the next boundary, before tick 11, and its
     // log, within its file's bound, decodes.
-    let scratch = Scratch::new();
-    let mut local = InProcessMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
-    local.keep_data(scratch.path("data"));
+    let test_dir = TestDir::new();
+    let mut local = InProcessMatch::new(InProcessSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
+    local.keep_data(test_dir.path("data"));
     local.start_match();
     while local.next_tick(End::Server) < 10 {
         local.step();
@@ -282,12 +282,12 @@ fn a_checkpoint_past_the_seed_chain_or_a_full_log_ends_the_session() {
 fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
     // A file holds the place of the session's snapshots' directory, so the snapshot of the
     // checkpoint before tick 30 is not written, on every OS.
-    let scratch = Scratch::new();
-    let mut local = InProcessMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
-    local.keep_data(scratch.path("data"));
+    let test_dir = TestDir::new();
+    let mut local = InProcessMatch::new(InProcessSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
+    local.keep_data(test_dir.path("data"));
     local.start_match();
-    let place = snapshots(&scratch, &local);
-    scratch.write(&place, b"");
+    let place = snapshots(&test_dir, &local);
+    test_dir.write(&place, b"");
     local
         .server_mut()
         .world_mut()
@@ -306,5 +306,5 @@ fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
     assert_eq!(world.exit_due(StopRequest::NotAsked), None);
     assert_eq!(log(&local).checkpoint_at(Tick::new(30)), None);
     assert_eq!(local.log().take::<CheckpointFailed>().len(), 1);
-    assert_eq!(scratch.kind(&place), Some(EntryKind::File));
+    assert_eq!(test_dir.kind(&place), Some(EntryKind::File));
 }

@@ -8,8 +8,8 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
 use campfire_actions::{ActionProgress, ActionSlots, ActionTarget};
 use campfire_areas::Area;
-use campfire_capabilities::{MatchKind, MatchSpec, Order, Release};
-use campfire_common::{PlayerSlot, SegmentSeed};
+use campfire_capabilities::{MatchKind, MatchSetup, Order, Release};
+use campfire_common::{Seat, SegmentSeed};
 use campfire_declare::{CapabilitySet, MatchFacts, Role};
 use campfire_harness::{ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
 use campfire_math::{Num, Vec3};
@@ -81,9 +81,9 @@ impl Removals {
 /// The lancer's weapon's range, its `attack` action's in its package.
 const LANCER_RANGE: Num = Num::int(4);
 
-/// The hero of player `slot` in `world`, by its stable id.
-fn hero(world: &World, slot: u32) -> (StableId, EntityRef<'_>) {
-    let id = MatchUnits::of(world).hero(slot);
+/// The hero of player `seat` in `world`, by its stable id.
+fn hero(world: &World, seat: u32) -> (StableId, EntityRef<'_>) {
+    let id = MatchUnits::of(world).hero(seat);
     (id, world.entity_ref_of(id).unwrap())
 }
 
@@ -138,15 +138,15 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
             seen.modified_heroes += 1;
         }
         if unit.contains::<Lifespan>() {
-            let pos = unit.get::<Position>().unwrap().get();
+            let position = unit.get::<Position>().unwrap().get();
             if unit
                 .get::<Owner>()
-                .is_some_and(|owner| owner.slot().get() == 1)
+                .is_some_and(|owner| owner.seat().get() == 1)
             {
-                seen.wisp.push((tick, pos));
+                seen.wisp.push((tick, position));
             } else {
                 seen.ward
-                    .push((tick, pos, unit.get::<SeenBy>().unwrap().get().unwrap()));
+                    .push((tick, position, unit.get::<SeenBy>().unwrap().get().unwrap()));
             }
         }
         let north = Team::new(0);
@@ -163,7 +163,7 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
             && !unit.contains::<Projectile>()
             && !unit.contains::<Area>()
         {
-            seen.trained[usize::try_from(owner.slot().get()).unwrap()] += 1;
+            seen.trained[usize::try_from(owner.seat().get()).unwrap()] += 1;
         }
     }
 }
@@ -237,7 +237,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         watch.tick(fixed.game(), tick);
         assert_sound(&fixed, tick, capabilities);
         look(&fixed, tick, &mut seen);
-        if fixed.game().save_due() {
+        if fixed.game().is_save_due() {
             seen.saves.push(tick + 1);
         }
     }
@@ -304,22 +304,22 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // of north sees it otherwise.
     let ticks: Vec<u64> = seen.ward.iter().map(|&(tick, ..)| tick).collect();
     assert_eq!(ticks, (300..=338).collect::<Vec<_>>());
-    let pos = Vec3::from((12, 0, 9));
+    let position = Vec3::from((12, 0, 9));
     let north_alone =
         |teams: TeamSet| (0..3).all(|team| teams.contains(Team::new(team)) == (team == 0));
     assert!(
         seen.ward
             .iter()
-            .all(|&(_, place, teams)| place == pos && north_alone(teams))
+            .all(|&(_, place, teams)| place == position && north_alone(teams))
     );
     assert_eq!(seen.barracks_watched, (300..=339).collect::<Vec<_>>());
     // A summon: the sage's wisp, a unit type its own package declares, posted at (2, 6) in tick
     // 100, its order's, stands its 3000 ms, 60 ticks, from 100 to 159, so the state after each
     // of ticks 100 to 158 holds it.
-    let pos = Vec3::from((2, 0, 6));
+    let position = Vec3::from((2, 0, 6));
     assert_eq!(
         seen.wisp,
-        (100..=158).map(|tick| (tick, pos)).collect::<Vec<_>>()
+        (100..=158).map(|tick| (tick, position)).collect::<Vec<_>>()
     );
     // A save is due after tick 0, whose first wave asked for one, and at each 12 s of 20 Hz,
     // every 240 ticks, from the start.
@@ -453,7 +453,7 @@ fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
             if target.restore_in_place(&flawed).is_ok() {
                 restored += 1;
                 let orders = every_slot_orders(&target);
-                let inputs: Vec<(PlayerSlot, &[u8])> = orders
+                let inputs: Vec<(Seat, &[u8])> = orders
                     .iter()
                     .map(|(slot, payload)| (*slot, payload.as_slice()))
                     .collect();
@@ -481,12 +481,12 @@ fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
 /// For each player, an order of each slot of each living unit it controls, at a living unit of
 /// the match: a slot's at the unit as many places past it, by stable id, as the slot's number,
 /// plus one, so the slots of a unit meet different units.
-fn every_slot_orders(world: &World) -> Vec<(PlayerSlot, Vec<u8>)> {
+fn every_slot_orders(world: &World) -> Vec<(Seat, Vec<u8>)> {
     let units: Vec<_> = MatchUnits::of(world)
         .all()
         .filter(|(_, unit)| unit.contains::<Position>() && !unit.contains::<Dead>())
         .collect();
-    let mut by_player: BTreeMap<PlayerSlot, Vec<Order>> = BTreeMap::new();
+    let mut by_player: BTreeMap<Seat, Vec<Order>> = BTreeMap::new();
     for (at, (id, unit)) in units.iter().enumerate() {
         let (Some(owner), Some(slots)) = (unit.get::<Owner>(), unit.get::<ActionSlots>()) else {
             continue;
@@ -499,7 +499,7 @@ fn every_slot_orders(world: &World) -> Vec<(PlayerSlot, Vec<u8>)> {
                 target: ActionTarget::Unit(target),
             };
             by_player
-                .entry(owner.slot())
+                .entry(owner.seat())
                 .or_default()
                 .push(Order::one(*id, action));
         }
@@ -571,9 +571,9 @@ fn every_order_each_mode_relies_on_in_each_role_is_stated() {
     // server's with its mode, the rules alone, and a predicting client's, each of its own books.
     for mode in TestMode::ALL {
         let packages = mode.packages();
-        let slots = u32::try_from(packages.manifest().slots()).unwrap();
+        let seats = u32::try_from(packages.manifest().seats()).unwrap();
         drop(MatchBuild::test_target_without_sync_points(
-            &packages, slots,
+            &packages, seats,
         ));
         let manifest = packages.manifest();
         let rate = TickRate::new(manifest.tick_hz.default());
@@ -581,9 +581,9 @@ fn every_order_each_mode_relies_on_in_each_role_is_stated() {
             (Role::Rules, MatchKind::Rules),
             (Role::Client, MatchKind::Predicting),
         ] {
-            let spec = MatchSpec::new(SegmentSeed::ZERO, rate, role).set(manifest.capabilities);
+            let setup = MatchSetup::new(SegmentSeed::ZERO, rate, role).set(manifest.capabilities);
             let books = packages.books(rate);
-            Release::build(&mut World::new(), spec.without_sync_points(), books, kind);
+            Release::build(&mut World::new(), setup.without_sync_points(), books, kind);
         }
     }
     let proving = ProvingMatch::load();

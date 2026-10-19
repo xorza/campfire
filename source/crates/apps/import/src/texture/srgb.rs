@@ -73,7 +73,7 @@ mod tests {
     const BASE: u128 = 10_761;
 
     /// The product of three factors, exact, in base-2³² digits, the least significant first: the
-    /// test's own reference past 128 bits (09-determinism-core.md, Wider exact references stay in
+    /// test's own reference past 128 bits (07-determinism-core.md, Wider exact references stay in
     /// tests), at most 384 bits, so 12 digits.
     fn product(factors: [u128; 3]) -> [u64; 12] {
         let mut digits = [0_u64; 12];

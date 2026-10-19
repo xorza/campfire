@@ -7,7 +7,7 @@ use campfire_units::{BuildTarget, MapPoint};
 use campfire_values::FilterData;
 
 use super::*;
-use crate::place::{MarkerPlace, Place};
+use crate::location::{Location, MarkerLocation};
 
 /// The order of `action`, with names, at `tick`, to the avatar.
 const fn order(tick: u64, action: Action<Named>) -> ScriptedOrder {
@@ -23,9 +23,9 @@ fn name(name: &str) -> DeclaredName {
     DeclaredName::new(name).unwrap()
 }
 
-/// The place on the ground at `x`, `z`.
-fn at(x: Num, z: Num) -> Place {
-    Place::At(MapPoint::Ground([x, z]))
+/// The location on the ground at `x`, `z`.
+fn at(x: Num, z: Num) -> Location {
+    Location::At(MapPoint::Ground([x, z]))
 }
 
 #[test]
@@ -142,7 +142,7 @@ fn an_order_names_its_units_by_type_its_slot_and_item_by_name_its_target_by_a_fi
     .unwrap();
     let num = |value| Num::from_int(value).unwrap();
     let filter = |text| FilterData::parse(text).unwrap();
-    let marker = |text| Place::Marker(MarkerPlace { marker: name(text) });
+    let marker = |text| Location::Marker(MarkerLocation { marker: name(text) });
     let typed = |text| ScriptedUnits::Typed(name(text));
     let build = OrdersAction::Build {
         slot: name("barracks"),

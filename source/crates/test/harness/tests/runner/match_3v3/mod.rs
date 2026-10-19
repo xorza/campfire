@@ -116,7 +116,7 @@ struct Unit {
     id: StableId,
     team: Team,
     kind: UnitType,
-    pos: Vec3,
+    position: Vec3,
     controller: Option<u32>,
     walks: bool,
     slots: Vec<ActionSlot>,
@@ -148,8 +148,8 @@ fn units(game: &Match) -> Vec<Unit> {
                 id,
                 team: *unit.get::<Team>()?,
                 kind: *unit.get::<UnitType>()?,
-                pos: unit.get::<Position>()?.get(),
-                controller: unit.get::<Owner>().map(|owner| owner.slot().get()),
+                position: unit.get::<Position>()?.get(),
+                controller: unit.get::<Owner>().map(|owner| owner.seat().get()),
                 walks: unit.contains::<PathWalker>(),
                 slots: unit
                     .get::<ActionSlots>()
@@ -259,10 +259,10 @@ impl Seen {
         match tick {
             2460 => self.wolf_answers = target(wolf),
             2500..2620 => {
-                let away = units.pos(wolf).distance(home);
+                let away = units.position(wolf).distance(home);
                 self.wolf_farthest = self.wolf_farthest.max(away);
             }
-            2640 => self.wolf_home = Some((target(wolf), units.pos(wolf))),
+            2640 => self.wolf_home = Some((target(wolf), units.position(wolf))),
             2993 | 2994 => self.xp_at_wolf_fall.push(xp()),
             _ => {}
         }
@@ -281,8 +281,11 @@ impl Seen {
 
 /// The unit that stood at `x`, `z` at the pick's end: a structure or a camp.
 fn placed(run: &Run<'_>, x: i16, z: i16) -> StableId {
-    let pos = Vec3::from((x, 0, z));
-    let unit = run.at_pick_end.iter().find(|unit| unit.pos == pos);
+    let position = Vec3::from((x, 0, z));
+    let unit = run
+        .at_pick_end
+        .iter()
+        .find(|unit| unit.position == position);
     unit.expect("a placed unit").id
 }
 
@@ -337,7 +340,7 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run<'_>) -> UnitType {
     };
     let heroes: Vec<_> = run.at_pick_end[16..22]
         .iter()
-        .map(|unit| (unit.team, unit.pos, unit.controller))
+        .map(|unit| (unit.team, unit.position, unit.controller))
         .collect();
     assert_eq!(heroes, (0..Moba3v3::PLAYERS).map(hero).collect::<Vec<_>>());
     // Each hero's slots, kind after kind: its three basic abilities and its ultimate, unlearned,
@@ -375,20 +378,20 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run<'_>) -> UnitType {
     // Each camp on its marker, in the map's order.
     let camps: Vec<_> = run.at_pick_end[22..]
         .iter()
-        .map(|unit| (unit.team, unit.pos))
+        .map(|unit| (unit.team, unit.position))
         .collect();
     let markers = packages.map().markers.iter();
     let camp_markers =
         markers.filter(|marker| marker.tags.iter().any(|tag| tag.as_str() == "camp"));
     let neutral = Team::new(2);
     let expected: Vec<_> = camp_markers
-        .map(|marker| (neutral, marker.pos.unwrap().pos().unwrap()))
+        .map(|marker| (neutral, marker.position.unwrap().position().unwrap()))
         .collect();
     assert_eq!(expected.len(), 5);
     assert_eq!(camps, expected);
     // The first wave: on each lane, west then east, each team's six creeps at its end: 24.
     let wave = &run.at_first_wave[27..];
-    let seen: Vec<_> = wave.iter().map(|unit| (unit.team, unit.pos)).collect();
+    let seen: Vec<_> = wave.iter().map(|unit| (unit.team, unit.position)).collect();
     let ends = [(0, -6, -50), (1, -6, 50), (0, 6, -50), (1, 6, 50)];
     let expected: Vec<_> = ends
         .iter()

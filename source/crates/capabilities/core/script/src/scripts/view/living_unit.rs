@@ -8,7 +8,7 @@ use campfire_values::{TagSet, Team};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LivingUnit {
     pub id: StableId,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub team: Team,
     pub shape: Shape,
     pub tags: TagSet,

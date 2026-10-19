@@ -3,9 +3,9 @@ use std::num::NonZeroU32;
 use campfire_actions::ActionTarget;
 use campfire_capabilities::Order;
 use campfire_common::ErrorReport;
-use campfire_common::{AfterLeave, PlayerSlot, Tick};
+use campfire_common::{AfterLeave, Seat, Tick};
 use campfire_math::{Num, Vec3};
-use campfire_protocol::{LeaveReason, ServerInput, SlotPlan};
+use campfire_protocol::{LeaveReason, SeatPlan, ServerInput};
 
 use crate::fixed_session::fixed_match::FixedMatch;
 use crate::match_units::MatchUnits;
@@ -14,7 +14,7 @@ use campfire_runner::SessionWorld;
 /// The tick rate of the scripted matches.
 pub(crate) const TICK_HZ: NonZeroU32 = NonZeroU32::new(20).unwrap();
 
-/// One cue of a scripted player `slot` in tick `stamp`: an order, as a plan its match resolves to
+/// One cue of a scripted player `seat` in tick `stamp`: an order, as a plan its match resolves to
 /// the units that stand when it is sent, or the player's join or leave, which its server logs.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Scripted<P> {
@@ -46,7 +46,7 @@ pub enum Aim {
     Hero {
         slot: u32,
     },
-    /// The point player `slot`'s hero stands at as the input is sent.
+    /// The point player `seat`'s hero stands at as the input is sent.
     HeroPoint {
         slot: u32,
     },
@@ -54,11 +54,11 @@ pub enum Aim {
 
 /// What a scripted input orders, by the role of the units it names.
 pub trait Plan: Copy {
-    /// The order this plan of player `slot` stands for, with its units' stable ids in `units`.
-    fn order(self, units: MatchUnits<'_>, slot: u32) -> Order;
+    /// The order this plan of player `seat` stands for, with its units' stable ids in `units`.
+    fn order(self, units: MatchUnits<'_>, seat: u32) -> Order;
 
     /// What the players of `slots` send at tick 0 of `fixed`, before their first order.
-    fn start(fixed: &mut FixedMatch, slots: &[SlotPlan]);
+    fn start(fixed: &mut FixedMatch, slots: &[SeatPlan]);
 }
 
 impl<P: Plan> Scripted<P> {
@@ -98,7 +98,7 @@ impl<P: Plan> Scripted<P> {
                 Cue::Join => fixed.join(scripted.slot).unwrap_or_else(refused),
                 Cue::Leave => {
                     let leave = ServerInput::Leave {
-                        slot: PlayerSlot::new(scripted.slot),
+                        seat: Seat::new(scripted.slot),
                         reason: LeaveReason::Asked,
                         becomes: AfterLeave::Reserve,
                     };
@@ -123,7 +123,7 @@ impl Aim {
         match self {
             Self::Nothing => ActionTarget::None,
             Self::Hero { slot } => ActionTarget::Unit(units.hero(slot)),
-            Self::HeroPoint { slot } => ActionTarget::Point(units.pos(units.hero(slot))),
+            Self::HeroPoint { slot } => ActionTarget::Point(units.position(units.hero(slot))),
             Self::Point { x, z } => {
                 let at = Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
                 ActionTarget::Point(at)

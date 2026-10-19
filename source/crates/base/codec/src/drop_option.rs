@@ -15,8 +15,8 @@ pub(crate) struct OptionCount {
 /// A postcard serializer that writes the `Some` `count` names as `None`, and every other value as
 /// postcard does. Postcard's wire format, stable since 1.0, writes an option as a tag byte, 0 or
 /// 1, then a `Some`'s value, and a compound value as its prefix alone, its length or its variant,
-/// then its parts: so each value writes through the inner serializer, and each part through this
-/// one again.
+/// then its elements: so each value writes through the inner serializer, and each element through
+/// this one again.
 pub(crate) struct DropOption<'a, S> {
     pub(crate) inner: &'a mut S,
     pub(crate) count: &'a mut OptionCount,
@@ -34,7 +34,7 @@ impl<S> DropOption<'_, S>
 where
     for<'b> &'b mut S: ser::Serializer<Ok = (), Error = postcard::Error>,
 {
-    fn part<T: Serialize + ?Sized>(&mut self, value: &T) -> postcard::Result<()> {
+    fn element<T: Serialize + ?Sized>(&mut self, value: &T) -> postcard::Result<()> {
         value.serialize(DropOption {
             inner: &mut *self.inner,
             count: &mut *self.count,
@@ -95,7 +95,7 @@ where
             return ser::Serializer::serialize_none(&mut *self.inner);
         }
         ser::Serializer::serialize_u8(&mut *self.inner, 1)?;
-        self.part(value)
+        self.element(value)
     }
 
     fn serialize_newtype_struct<T: Serialize + ?Sized>(
@@ -103,7 +103,7 @@ where
         _: &'static str,
         value: &T,
     ) -> postcard::Result<()> {
-        self.part(value)
+        self.element(value)
     }
 
     fn serialize_newtype_variant<T: Serialize + ?Sized>(
@@ -114,7 +114,7 @@ where
         value: &T,
     ) -> postcard::Result<()> {
         ser::Serializer::serialize_unit_variant(&mut *self.inner, name, index, variant)?;
-        self.part(value)
+        self.element(value)
     }
 
     fn serialize_seq(self, len: Option<usize>) -> postcard::Result<Self> {
@@ -177,7 +177,7 @@ where
     type Error = postcard::Error;
 
     fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> postcard::Result<()> {
-        self.part(value)
+        self.element(value)
     }
 
     fn end(self) -> postcard::Result<()> {
@@ -193,7 +193,7 @@ where
     type Error = postcard::Error;
 
     fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> postcard::Result<()> {
-        self.part(value)
+        self.element(value)
     }
 
     fn end(self) -> postcard::Result<()> {
@@ -209,7 +209,7 @@ where
     type Error = postcard::Error;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, value: &T) -> postcard::Result<()> {
-        self.part(value)
+        self.element(value)
     }
 
     fn end(self) -> postcard::Result<()> {
@@ -225,7 +225,7 @@ where
     type Error = postcard::Error;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, value: &T) -> postcard::Result<()> {
-        self.part(value)
+        self.element(value)
     }
 
     fn end(self) -> postcard::Result<()> {
@@ -241,11 +241,11 @@ where
     type Error = postcard::Error;
 
     fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> postcard::Result<()> {
-        self.part(key)
+        self.element(key)
     }
 
     fn serialize_value<T: Serialize + ?Sized>(&mut self, value: &T) -> postcard::Result<()> {
-        self.part(value)
+        self.element(value)
     }
 
     fn end(self) -> postcard::Result<()> {
@@ -265,7 +265,7 @@ where
         _: &'static str,
         value: &T,
     ) -> postcard::Result<()> {
-        self.part(value)
+        self.element(value)
     }
 
     fn end(self) -> postcard::Result<()> {
@@ -285,7 +285,7 @@ where
         _: &'static str,
         value: &T,
     ) -> postcard::Result<()> {
-        self.part(value)
+        self.element(value)
     }
 
     fn end(self) -> postcard::Result<()> {

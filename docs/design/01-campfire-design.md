@@ -73,7 +73,7 @@ The engine knows no genre. It provides capabilities, one mechanism each (health 
 
 One server is the single authority for each match or world. Peer-to-peer was rejected: every player would hold the full state, and fog of war could be read.
 
-- **Players see only what they should:** hidden information never reaches their machine ([Replication audiences](14-replication-audiences.md)).
+- **Players see only what they should:** hidden information never reaches their machine ([Replication audiences](10-replication-audiences.md)).
 - **Every result is verifiable:** anyone who holds a session's packages can replay its log on the release it names and confirm that the result follows from the logged inputs. The log does not prove the host fair ([What verification proves](05-protocol-spec.md#verification)).
 
 **Anti-cheat** runs on the server only: no kernel drivers, no scanning. Hosts get checks that every action is possible (range, cooldown, resources, sight); limits on action rate and inhuman reaction times; detection plugins that read session logs; community review, where a reported replay goes to reviewers other players trust and their verdicts are Nostr reputation statements; tools to flag and ban identities; and reputation and stake caps for new identities.
@@ -92,7 +92,7 @@ A world is one session: its dungeons are regions of the same sim, which at 1,000
 
 ## Singleplayer and saves
 
-A singleplayer game is a session with one player, on a server that runs as a thread of the client, as Minecraft's integrated server does: one code path for singleplayer, LAN and online play ([Sessions](10-sessions.md#local-server)).
+A singleplayer game is a session with one player, on a server that runs as a thread of the client, as Minecraft's integrated server does: one code path for singleplayer, LAN and online play ([Sessions](08-sessions.md#local-server)).
 
 - **Saves.** The player saves when the mode allows; a save is a checkpoint with the log before it, and loading it starts a new segment of the same session ([Saves](02-engine-core.md#saves)).
 - **Newer releases.** A save loads on its release and every later one, through converters each release carries, one way, as Factorio and Minecraft convert old saves.
@@ -116,7 +116,7 @@ No central server list or account system: Nostr provides both.
 - **Reputation:** players and servers publish signed statements after matches, and each player chooses whom to trust. Servers may form groups that share bans, ratings and dispute handling.
 - **Matchmaking** runs on each server.
 
-**The host decides:** which modes, maps and characters are allowed, and whether ownership is enforced; tick rate, player limits, grace period and restore window; whether spectators may watch, how many, and what spectators and players out of play see, within what the mode leaves to it ([Replication audiences](14-replication-audiences.md)); the settings each capability leaves to the host, as hitboxes' rewind limit; payment models, prices, caps, stake rules and spectator betting; ranking, matchmaking and plugins. Settings can differ per map or mode.
+**The host decides:** which modes, maps and characters are allowed, and whether ownership is enforced; tick rate, player limits, grace period and restore window; whether spectators may watch, how many, and what spectators and players out of play see, within what the mode leaves to it ([Replication audiences](10-replication-audiences.md)); the settings each capability leaves to the host, as hitboxes' rewind limit; payment models, prices, caps, stake rules and spectator betting; ranking, matchmaking and plugins. Settings can differ per map or mode.
 
 ## Lightning payments
 
@@ -134,7 +134,7 @@ An optional module, off by default. Hosts turn on the models they want and set p
 
 **Player consent.** Every price is shown before joining; nothing else can be charged. Time-based and per-event payments draw on a budget the player's wallet grants and can cancel.
 
-**Wager pools.** The host sets stake rules (equal or free) and payout split (even or by stake); the default is equal and even. A crashed match is restored; it aborts only if its server is not back within the restore window, and an abort refunds everyone. A leaver, who left or stayed disconnected past the grace period, loses the stake. Bot slots never stake, and the defaults keep bots out of wagers.
+**Wager pools.** The host sets stake rules (equal or free) and payout split (even or by stake); the default is equal and even. A crashed match is restored; it aborts only if its server is not back within the restore window, and an abort refunds everyone. A leaver, who left or stayed disconnected past the grace period, loses the stake. Bot seats never stake, and the defaults keep bots out of wagers.
 
 **Spectator bets** are off by default. The host sets when betting closes and the spectator delay; players in the match cannot bet.
 
@@ -156,7 +156,7 @@ Owning a character or skin is the right to pick it on servers that enforce owner
 
 ## Imported games
 
-An imported game is one players already know, rebuilt on Campfire's sim: Generals: Zero Hour first, then Worms 4: Mayhem ([Games](04-capabilities/games.md), [Zero Hour](12-zero-hour.md)).
+An imported game is one players already know, rebuilt on Campfire's sim: Generals: Zero Hour first, then Worms 4: Mayhem ([Games](04-capabilities/games.md), [Zero Hour](09-zero-hour.md)).
 
 - **From the player's own copy.** The `import` app writes one package from an install, the same bytes on every machine, so its fingerprint names it in a session. Each player, server and verifier makes their own ([Packages](05-protocol-spec.md#packages)).
 - **Rules as content.** What a game shares with others is a capability; what only it does is Rhai in its rules package, which holds no file of the game and ships with the importer. Only what Rhai cannot match, as a pathfinder, runs natively, behind a backend interface ([Backends](02-engine-core.md#backends)). If a game needs something scripts cannot do and no backend should, the script API is incomplete.

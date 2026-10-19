@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_declare::{Report, Role};
 use campfire_sim::StableId;
 use campfire_values::Team;
@@ -35,7 +35,7 @@ struct Death {
 pub struct Fallen {
     pub id: StableId,
     pub team: Option<Team>,
-    pub owner: Option<PlayerSlot>,
+    pub owner: Option<Seat>,
     pub avatar: bool,
 }
 

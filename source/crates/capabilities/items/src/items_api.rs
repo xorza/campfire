@@ -1,4 +1,4 @@
-use campfire_script::{ApiBuilder, MemberSpec};
+use campfire_script::{ApiBuilder, MemberDecl};
 
 use crate::inventory_data::InventoryData;
 use crate::item_data::ItemData;
@@ -11,12 +11,12 @@ pub struct ItemsApi;
 
 impl ItemsApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        api.plan(MemberSpec::call(
+        api.plan(MemberDecl::call(
             "give_item",
             &[&["unit", "id"]],
             "gives `unit` the item `id`, in its first slot that takes it",
         ))
-        .plan(MemberSpec::call(
+        .plan(MemberDecl::call(
             "drop",
             &[&["unit", "slot"]],
             "drops the item in `unit`'s inventory slot `slot` at its feet",

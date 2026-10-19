@@ -20,7 +20,7 @@ impl Callbacks for Deliverers {
     type Key = Capability;
     type Callback = Deliver;
 
-    fn owner(capability: Capability) -> Option<Capability> {
+    fn capability(capability: Capability) -> Option<Capability> {
         Some(capability)
     }
 

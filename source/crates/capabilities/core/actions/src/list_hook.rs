@@ -1,4 +1,4 @@
-use campfire_script::{Ctx, Hook, HookSpec, ScriptRole, ScriptValue, Unit};
+use campfire_script::{Ctx, Hook, HookDecl, ScriptRole, ScriptValue, Unit};
 
 /// The hook an action's effect list runs before: its resolve's, or its delivery's hit or end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,21 +22,21 @@ pub struct OnHit;
 #[derive(Debug)]
 pub struct OnEnd;
 
-impl HookSpec for OnResolve {
+impl HookDecl for OnResolve {
     const NAME: &'static str = "on_resolve";
     const ROLE: ScriptRole = ScriptRole::Action;
     const PARAMS: &'static [&'static str] = &["ctx", "caster", "target"];
     type Args = (Ctx, Unit, ScriptValue);
 }
 
-impl HookSpec for OnHit {
+impl HookDecl for OnHit {
     const NAME: &'static str = "on_hit";
     const ROLE: ScriptRole = ScriptRole::Action;
     const PARAMS: &'static [&'static str] = &["ctx", "caster", "target", "hit"];
     type Args = (Ctx, ScriptValue, ScriptValue, ScriptValue);
 }
 
-impl HookSpec for OnEnd {
+impl HookDecl for OnEnd {
     const NAME: &'static str = "on_end";
     const ROLE: ScriptRole = ScriptRole::Action;
     const PARAMS: &'static [&'static str] = &["ctx", "caster", "hit"];

@@ -176,7 +176,7 @@ impl Share {
                 let Some(victim) = index.get(death.fallen.id) else {
                     continue;
                 };
-                let Ok((&pos, unit_type, team, experience)) = units.get(victim) else {
+                let Ok((&position, unit_type, team, experience)) = units.get(victim) else {
                     continue;
                 };
                 let gives = unit_type.and_then(|&unit_type| share.gives.get(unit_type));
@@ -212,24 +212,26 @@ impl Share {
                     }
                     To::Near { radius, filter } => {
                         near.clear();
-                        let from = Placed::point(pos.get());
-                        units_near.current().visit_near(pos.get(), radius, |body| {
-                            let Some(unit) = targets.target_at(body.key) else {
-                                return ControlFlow::Continue(());
-                            };
-                            let relation = targets.relation(team, unit.team);
-                            if targets.reaches(from, radius, &unit)
-                                && filter.selects(relation, unit.tags)
-                                && holds(body.key)
-                            {
-                                near.push(Grant {
-                                    entity: body.key,
-                                    id: unit.id,
-                                    amount,
-                                });
-                            }
-                            ControlFlow::Continue(())
-                        });
+                        let from = Placed::point(position.get());
+                        units_near
+                            .current()
+                            .visit_near(position.get(), radius, |body| {
+                                let Some(unit) = targets.target_at(body.key) else {
+                                    return ControlFlow::Continue(());
+                                };
+                                let relation = targets.relation(team, unit.team);
+                                if targets.reaches(from, radius, &unit)
+                                    && filter.selects(relation, unit.tags)
+                                    && holds(body.key)
+                                {
+                                    near.push(Grant {
+                                        entity: body.key,
+                                        id: unit.id,
+                                        amount,
+                                    });
+                                }
+                                ControlFlow::Continue(())
+                            });
                         let Ok(count) = i64::try_from(near.len()) else {
                             continue;
                         };

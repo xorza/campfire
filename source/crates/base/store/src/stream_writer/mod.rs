@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::{Arc, Condvar};
 
 use crate::path_error::PathError;
-use crate::platform::owner_only::OwnerOnly;
+use crate::platform::user_only::UserOnly;
 use crate::stream_writer::error::StreamError;
 use crate::stream_writer::stream_sender::StreamSender;
 use crate::worker::Worker;
@@ -19,7 +19,7 @@ pub(crate) mod stream_sender;
 /// and writes it, so a caller never waits for the disk. A caller waits while the buffer holds
 /// `bound` bytes or more, so no piece is lost and the buffer holds less than `bound` bytes and
 /// one piece. A failed write or flush is not retried: the worker stops, keeps the failure for
-/// the owner to take once, and the pieces after it are dropped. Dropping the writer writes what
+/// the holder to take once, and the pieces after it are dropped. Dropping the writer writes what
 /// the buffer holds, then ends the worker; a piece put after the drop began is dropped, so
 /// callers that go on putting never keep it running. A crash loses what the buffer held.
 #[derive(Debug)]
@@ -52,12 +52,12 @@ struct Pending {
 }
 
 impl StreamWriter {
-    /// A file at `path` emptied, or a new one, its owner's only, as every file `store` makes; one
+    /// A file at `path` emptied, or a new one, its user's only, as every file `store` makes; one
     /// it empties keeps the access it had. Written on the worker `name`, with a buffer of `bound`
     /// bytes.
     pub fn create(name: &str, path: &Path, bound: usize) -> Result<Self, PathError<io::Error>> {
         let open = || {
-            let file = OwnerOnly::open_or_create(path)?;
+            let file = UserOnly::open_or_create(path)?;
             file.set_len(0)?;
             Ok(file)
         };

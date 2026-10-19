@@ -37,7 +37,7 @@ impl SimResource for NextDamage {
     fn check(&self, world: &World) -> bool {
         let book = world.resource::<ActionBook>();
         self.0.iter().all(|entry| match entry {
-            PassEntry::Damage(damage) => damage.known(world),
+            PassEntry::Damage(damage) => damage.is_known(world),
             PassEntry::Heal(heal) => heal.action.is_none_or(|action| book.get(action).is_some()),
         })
     }

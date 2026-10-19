@@ -1,12 +1,12 @@
 use campfire_geometry::Shape;
 use campfire_values::{Named, Param, Tag, Team, UnitType};
 
-use crate::scripts::api_owner::ApiOwner;
-use crate::scripts::api_owner::ScriptHandle;
+use crate::scripts::api_holder::ApiHolder;
+use crate::scripts::api_holder::ScriptHandle;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::id_name::IdName;
-use crate::scripts::member_spec::MemberSpec;
+use crate::scripts::member_decl::MemberDecl;
 use crate::scripts::player_handle::PlayerHandle;
 use crate::scripts::script_api::api_builder::ApiBuilder;
 use crate::scripts::script_position::ScriptPosition;
@@ -33,10 +33,10 @@ impl ViewApi {
 
     fn unit_fields(api: &mut ApiBuilder<'_>) {
         let field =
-            |name, description| MemberSpec::field(ApiOwner::of::<Unit>(), name, description);
+            |name, description| MemberDecl::field(ApiHolder::of::<Unit>(), name, description);
         api.ty::<Unit>()
-            .bind(field("pos", "where it stands"), |unit: &mut Unit| {
-                unit.read(|row| row.pos)
+            .bind(field("position", "where it stands"), |unit: &mut Unit| {
+                unit.read(|row| row.position)
             })
             .bind(
                 field(
@@ -94,7 +94,7 @@ impl ViewApi {
 
     fn unit_methods(api: &mut ApiBuilder<'_>) {
         let method = |name, signature, description| {
-            MemberSpec::method(ApiOwner::of::<Unit>(), name, signature, description)
+            MemberDecl::method(ApiHolder::of::<Unit>(), name, signature, description)
         };
         api.method(
             method(
@@ -117,12 +117,16 @@ impl ViewApi {
             },
         )
         .method(
-            MemberSpec::operator(ApiOwner::of::<Unit>(), "==", "whether the two are one unit"),
+            MemberDecl::operator(
+                ApiHolder::of::<Unit>(),
+                "==",
+                "whether the two are one unit",
+            ),
             |a: Unit, b: Unit| Ok(a.id == b.id),
         )
         .method(
-            MemberSpec::operator(
-                ApiOwner::of::<Unit>(),
+            MemberDecl::operator(
+                ApiHolder::of::<Unit>(),
                 "!=",
                 "whether the two are two units",
             ),
@@ -132,16 +136,20 @@ impl ViewApi {
 
     /// `ctx.find`.
     pub fn register_queries(api: &mut ApiBuilder<'_>) {
-        let find = MemberSpec::call(
+        let find = MemberDecl::call(
             "find",
-            &[&["of", "pos", "radius", "filter"]],
-            "the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id",
+            &[&["of", "position", "radius", "filter"]],
+            "the living targets whose bodies come within `radius` of `position`, as an area's, that `filter` selects for `of`, seen or not, by stable id",
         );
         api.call(
             find,
-            |ctx: &mut Ctx, of: Unit, pos: ScriptPosition, radius: ScriptRadius, filter: Filter| {
+            |ctx: &mut Ctx,
+             of: Unit,
+             position: ScriptPosition,
+             radius: ScriptRadius,
+             filter: Filter| {
                 ctx.view()
-                    .find(&of, pos.get(), radius.get(), &filter, |_, _| true)
+                    .find(&of, position.get(), radius.get(), &filter, |_, _| true)
             },
         );
     }

@@ -1,20 +1,20 @@
 use bevy::math::{UVec2, Vec2};
 use campfire_client_files::{GroundQuad, TerrainQuads, TerrainSurface, TerrainTexture};
 use campfire_math::Num;
-use campfire_store::internals::Scratch;
+use campfire_store::internals::TestDir;
 
 use super::*;
 use crate::view::package_source::internals::package;
 
 #[test]
 fn a_package_gives_its_units_and_skips_a_file_that_does_not_read() {
-    let scratch = Scratch::new();
+    let test_dir = TestDir::new();
     let units = br#"[units.tank]
 models = [{ model = "client/models/tank.glb", hide = ["tank.flash"] }]
 "#;
-    let files = package(&scratch, "mode", &[("client/units.toml", units)]);
-    let none = package(&scratch, "bare", &[("data/units.toml", b"")]);
-    let broken = package(&scratch, "broken", &[("client/units.toml", b"units = 1")]);
+    let files = package(&test_dir, "mode", &[("client/units.toml", units)]);
+    let none = package(&test_dir, "bare", &[("data/units.toml", b"")]);
+    let broken = package(&test_dir, "broken", &[("client/units.toml", b"units = 1")]);
     let mut data = ClientData::default();
     data.read_package(PackageIndex::MODE, &files);
     data.read_package(PackageIndex::new(1), &none);
@@ -32,13 +32,13 @@ models = [{ model = "client/models/tank.glb", hide = ["tank.flash"] }]
 
 #[test]
 fn a_map_gives_its_lights_and_its_client_objects_and_skips_what_does_not_read() {
-    let scratch = Scratch::new();
+    let test_dir = TestDir::new();
     let lights = b"ambient = [0.25, 0.25, 0.25]
 lights = [{ color = [1.0, 1.0, 1.0], direction = [0.0, -1.0, 0.0] }]
 ";
     let objects = br#"[[objects]]
 look = "oak"
-pos = [3, "-2.5"]
+position = [3, "-2.5"]
 height = 1
 angle = 90
 "#;
@@ -51,7 +51,7 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
     .unwrap();
     let map = MapName::parse("desert").unwrap();
     let mode = package(
-        &scratch,
+        &test_dir,
         "mode",
         &[
             ("client/maps/desert/lights.toml", lights),
@@ -78,19 +78,19 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
     let oak = &data.objects.objects[0];
     assert_eq!(data.objects.objects.len(), 1);
     assert_eq!(oak.look.as_str(), "oak");
-    assert_eq!(oak.pos, [Num::int(3), Num::int(-5) / Num::int(2)]);
+    assert_eq!(oak.position, [Num::int(3), Num::int(-5) / Num::int(2)]);
     assert_eq!((oak.height, oak.angle), (Num::ONE, Num::int(90)));
     // A map of no objects file has none, as one whose file does not read; no heights or
     // camera file gives none either. No conditions file: the lamp draws its own models.
     let broken = package(
-        &scratch,
+        &test_dir,
         "broken",
         &[(
             "client/maps/desert/objects.toml",
             b"[[objects]]\nlook = 1\n",
         )],
     );
-    for files in [package(&scratch, "bare", &[]), broken] {
+    for files in [package(&test_dir, "bare", &[]), broken] {
         let mut data = ClientData {
             packages: vec![PackageClient {
                 units: looks.clone(),
@@ -107,7 +107,7 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
 
 #[test]
 fn a_map_keeps_its_terrain_over_its_heights_and_splits_their_cells_as_it_draws_them() {
-    let scratch = Scratch::new();
+    let test_dir = TestDir::new();
     let map = MapName::parse("desert").unwrap();
     // 3 × 2 samples, 10 m apart from (0, 0): 0, 16 and 0 steps of 0.625 m on row 0, then 16, 0
     // and 16, so the cells' two diagonals differ.
@@ -146,7 +146,7 @@ fn a_map_keeps_its_terrain_over_its_heights_and_splits_their_cells_as_it_draws_t
     };
     let read = |name: &str, terrain: &[u8]| {
         let files = package(
-            &scratch,
+            &test_dir,
             name,
             &[("client/maps/desert/terrain.bin", terrain)],
         );

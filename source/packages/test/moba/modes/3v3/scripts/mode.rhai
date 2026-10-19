@@ -18,7 +18,7 @@ fn on_timer(ctx, name, data) {
         ctx.state.phase = "play";
         spawn_heroes(ctx);
         for camp in ctx.map.markers("camp") {
-            ctx.spawn_unit(camp.params.unit_type, "camps", camp.pos);
+            ctx.spawn_unit(camp.params.unit_type, "camps", camp.position);
         }
         ctx.after("wave", ctx.params.first_wave_ms);
         ctx.every("income", ctx.params.income_ms);
@@ -122,7 +122,7 @@ fn spawn_hero(ctx, player) {
         return;
     }
     let team = player.team;
-    let unit = ctx.spawn_unit(hero[0], team, spawn_marker(ctx, team).pos, player);
+    let unit = ctx.spawn_unit(hero[0], team, spawn_marker(ctx, team).position, player);
     ctx.grant(unit, "spell", ctx.chosen(player, "spells"));
 }
 

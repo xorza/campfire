@@ -6,7 +6,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declare::Cache;
 use campfire_geometry::{
-    BodyBox, CellLevels, Grid, MAX_BOUND, Placed, RowDirectory, RowEntries, Shape,
+    BodyBox, CellLevels, Grid, MAX_BOUND, Placed, RowEntries, RowIndex, Shape,
 };
 use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
@@ -36,7 +36,7 @@ pub struct BodyIndex {
     /// Each body once in each bucket its box covers at its level, sorted, and where each row of
     /// buckets starts.
     entries: Vec<Entry>,
-    rows: RowDirectory<LayerLevel>,
+    rows: RowIndex<LayerLevel>,
     /// The bodies the last update took away, and those it put in, by stable id: a body that
     /// changed is in both.
     removed: Vec<IndexedBody>,
@@ -53,7 +53,7 @@ pub struct BodyIndex {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IndexedBody {
     pub id: StableId,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub shape: Shape,
     pub layer: Layer,
 }
@@ -140,11 +140,11 @@ impl BucketKey {
 }
 
 impl IndexedBody {
-    /// The body `body` of unit `id`, standing at `pos`.
-    pub const fn of(id: StableId, pos: Vec3, body: &Body) -> Self {
+    /// The body `body` of unit `id`, standing at `position`.
+    pub const fn of(id: StableId, position: Vec3, body: &Body) -> Self {
         Self {
             id,
-            pos,
+            position,
             shape: body.shape(),
             layer: body.layer(),
         }
@@ -153,15 +153,15 @@ impl IndexedBody {
     /// Whether `segment` comes closer than `reach` to the body: a walker of that radius along
     /// it would overlap it. Touching is not closer.
     pub(crate) fn comes_closer(&self, segment: Segment, reach: Num) -> bool {
-        Placed::new(self.pos, self.shape).comes_closer(segment.start(), segment.end(), reach)
+        Placed::new(self.position, self.shape).comes_closer(segment.start(), segment.end(), reach)
     }
 
-    /// Whether the insides of the body and of `body`, a box at `pos`, share a point: touching is
-    /// not overlap.
-    pub fn overlaps_box(&self, pos: Vec3, body: &BodyBox) -> bool {
+    /// Whether the insides of the body and of `body`, a box at `position`, share a point: touching
+    /// is not overlap.
+    pub fn overlaps_box(&self, position: Vec3, body: &BodyBox) -> bool {
         match &self.shape {
-            Shape::Circle(radius) => body.closer(pos, self.pos, radius.get()),
-            Shape::Box(other) => body.overlaps(pos, other, self.pos),
+            Shape::Circle(radius) => body.closer(position, self.position, radius.get()),
+            Shape::Box(other) => body.overlaps(position, other, self.position),
         }
     }
 
@@ -169,8 +169,8 @@ impl IndexedBody {
     /// `reach` to the body, as a walker of that radius may not stand in them. Rows in order.
     pub(crate) fn spans_closer(&self, grid: &Grid, reach: Num, mark: impl FnMut(Range<usize>)) {
         match &self.shape {
-            Shape::Circle(radius) => grid.spans_closer(self.pos, reach + radius.get(), mark),
-            Shape::Box(body) => grid.box_spans_closer(self.pos, body, reach, mark),
+            Shape::Circle(radius) => grid.spans_closer(self.position, reach + radius.get(), mark),
+            Shape::Box(body) => grid.box_spans_closer(self.position, body, reach, mark),
         }
     }
 }
@@ -197,7 +197,7 @@ impl BodyIndex {
             levels,
             bodies: Vec::new(),
             entries: Vec::new(),
-            rows: RowDirectory::default(),
+            rows: RowIndex::default(),
             removed: Vec::new(),
             added: Vec::new(),
             fresh: Vec::new(),
@@ -262,8 +262,8 @@ impl BodyIndex {
                 level: self.levels.level(extent[0].max(extent[1])),
             };
             let cell = self.levels.cell(at.level);
-            let rows = Buckets::covering(cell, body.pos.z, extent[1]);
-            let columns = Buckets::covering(cell, body.pos.x, extent[0]);
+            let rows = Buckets::covering(cell, body.position.z, extent[1]);
+            let columns = Buckets::covering(cell, body.position.x, extent[0]);
             for row in rows.low..=rows.high {
                 debug_assert!(row.abs() < BucketKey::ROWS, "a body's rows fit a key");
                 self.fresh
@@ -300,7 +300,7 @@ impl BodyIndex {
     }
 
     /// Whether an update filled it.
-    pub(crate) const fn filled(&self) -> bool {
+    pub(crate) const fn is_filled(&self) -> bool {
         self.filled
     }
 

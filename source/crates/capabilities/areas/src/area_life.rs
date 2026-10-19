@@ -68,13 +68,13 @@ impl AreaLife {
         let placed = due.iter().filter(|unit| areas.contains(unit.entity));
         let placed = placed.map(|&DueUnit { id, entity }| Keyed { id, entity });
         for &Keyed { id, entity } in order.sort(placed) {
-            let (_, _, &pos, &team, &unit_type, area, trigger) =
+            let (_, _, &position, &team, &unit_type, area, trigger) =
                 areas.get(entity).expect("an area in the order");
             let triggers_at = trigger.map(|trigger| trigger.get());
             let hit = Hit {
                 delivery: Some(id),
                 target: area.aimed(),
-                pos: pos.get(),
+                position: position.get(),
                 distance: Num::ZERO,
                 direction: None,
             };
@@ -89,13 +89,13 @@ impl AreaLife {
                 let spec = specs.get(unit_type).expect("an area's type has a spec");
                 reached.clear();
                 let grid = grid.expect("a trigger finds the units near");
-                grid.visit_near(pos.get(), spec.radius, |body| {
+                grid.visit_near(position.get(), spec.radius, |body| {
                     let Some(unit) = targets.living_at(body.key) else {
                         return ControlFlow::Continue(());
                     };
                     let relation = targets.relation(team, unit.team);
                     if spec.affects.selects(relation, unit.tags)
-                        && targets.reaches(Placed::point(pos.get()), spec.radius, &unit)
+                        && targets.reaches(Placed::point(position.get()), spec.radius, &unit)
                     {
                         reached.push(unit.id);
                     }
@@ -136,7 +136,7 @@ impl AreaLife {
         for &AreaLaunch {
             id,
             by,
-            pos: at,
+            position: at,
             unit_type,
             aimed,
         } in &launches.0
@@ -147,7 +147,7 @@ impl AreaLife {
             let delivery = NewDelivery {
                 source: by.source,
                 unit_type,
-                pos: at,
+                position: at,
                 id,
             };
             spawner.spawn(delivery, |_| {

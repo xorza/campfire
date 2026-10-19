@@ -54,9 +54,9 @@ impl PathFollowing {
             &mut walkers
         {
             let busy = |progress: &ActionProgress| {
-                progress.attack_target().is_some() || progress.approaching()
+                progress.attack_target().is_some() || progress.is_approaching()
             };
-            if walker.left() || progress.is_some_and(busy) {
+            if walker.is_left() || progress.is_some_and(busy) {
                 continue;
             }
             let path = path.get();

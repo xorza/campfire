@@ -87,7 +87,7 @@ pub enum NavigationRefusal {
 }
 
 impl CapabilityRefusal for NavigationRefusal {
-    const OWNER: Capability = Capability::Navigation;
+    const CAPABILITY: Capability = Capability::Navigation;
     const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {

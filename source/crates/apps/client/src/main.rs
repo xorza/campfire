@@ -39,17 +39,17 @@ use campfire_values::{Team, TeamSet};
 use lightyear::prelude::Connect;
 use tracing::error;
 
-use crate::args::{Args, CommandLine};
 use crate::client_module::ClientEnd;
+use crate::command_line::{Args, CommandLine};
 use crate::connection::Connection;
 use crate::link_watch::LinkWatch;
 
 mod action_names;
-mod args;
 mod bot;
 mod build_preview;
 mod client_module;
 mod client_packages;
+mod command_line;
 mod command_panel;
 mod connection;
 mod engine_text;

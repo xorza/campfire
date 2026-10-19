@@ -5,12 +5,12 @@ use crate::zero_hour::format::map::error::TerrainError;
 /// its list.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Terrain {
-    parts: TerrainParts,
+    fields: TerrainFields,
 }
 
 /// A terrain's fields, as `Terrain::new` checks them.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TerrainParts {
+pub(crate) struct TerrainFields {
     /// One for each sample of the map's heights, in their order.
     pub(crate) cells: Vec<TerrainCell>,
     /// The count of source tiles, 64 texels on a side, that the texture classes cut.
@@ -94,7 +94,7 @@ impl Terrain {
     /// unless its cells fill whole rows, every index each cell, blend and cliff names is in its
     /// list, each class's tiles are within its count, and each class is no wider than the atlas
     /// holds.
-    pub(crate) fn new(terrain: TerrainParts, columns: usize) -> Result<Self, TerrainError> {
+    pub(crate) fn new(terrain: TerrainFields, columns: usize) -> Result<Self, TerrainError> {
         if columns == 0 || !terrain.cells.len().is_multiple_of(columns) {
             return Err(TerrainError::Shape);
         }
@@ -147,11 +147,11 @@ impl Terrain {
             terrain.edge_tiles,
             TerrainError::EdgeClassTiles,
         )?;
-        Ok(Self { parts: terrain })
+        Ok(Self { fields: terrain })
     }
 
-    pub(crate) const fn parts(&self) -> &TerrainParts {
-        &self.parts
+    pub(crate) const fn fields(&self) -> &TerrainFields {
+        &self.fields
     }
 }
 
@@ -160,7 +160,7 @@ mod tests {
     use super::*;
 
     /// A terrain of 2 × 2 cells, each naming each list's one entry.
-    fn parts() -> TerrainParts {
+    fn fields() -> TerrainFields {
         let cell = TerrainCell {
             tile: 7,
             blend: Some(0),
@@ -168,7 +168,7 @@ mod tests {
             cliff_uv: Some(0),
             cliff: true,
         };
-        TerrainParts {
+        TerrainFields {
             cells: vec![cell; 4],
             tiles: 2,
             classes: vec![TextureClass {
@@ -197,64 +197,67 @@ mod tests {
 
     #[test]
     fn a_terrain_holds_only_with_each_index_in_its_list() {
-        let parts = parts();
-        assert_eq!(Terrain::new(parts.clone(), 2).unwrap().parts(), &parts);
+        let fields = fields();
+        assert_eq!(Terrain::new(fields.clone(), 2).unwrap().fields(), &fields);
         // Tile 7 is source tile 1 of 2; tile 8 would be source tile 2. Each list holds one entry,
         // so index 1 is past it.
-        let with = |change: fn(&mut TerrainParts)| {
-            let mut parts = parts.clone();
-            change(&mut parts);
-            Terrain::new(parts, 2).unwrap_err()
+        let with = |change: fn(&mut TerrainFields)| {
+            let mut fields = fields.clone();
+            change(&mut fields);
+            Terrain::new(fields, 2).unwrap_err()
         };
         assert_eq!(
-            with(|parts| parts.cells.pop().map(drop).unwrap()),
+            with(|fields| fields.cells.pop().map(drop).unwrap()),
             TerrainError::Shape
         );
         assert_eq!(
-            Terrain::new(parts.clone(), 0).unwrap_err(),
+            Terrain::new(fields.clone(), 0).unwrap_err(),
             TerrainError::Shape
         );
-        assert_eq!(with(|parts| parts.cells[3].tile = 8), TerrainError::Tile(8));
         assert_eq!(
-            with(|parts| parts.cells[1].blend = Some(1)),
+            with(|fields| fields.cells[3].tile = 8),
+            TerrainError::Tile(8)
+        );
+        assert_eq!(
+            with(|fields| fields.cells[1].blend = Some(1)),
             TerrainError::Blend(1)
         );
         assert_eq!(
-            with(|parts| parts.cells[2].extra_blend = Some(1)),
+            with(|fields| fields.cells[2].extra_blend = Some(1)),
             TerrainError::Blend(1)
         );
         assert_eq!(
-            with(|parts| parts.cells[0].cliff_uv = Some(1)),
+            with(|fields| fields.cells[0].cliff_uv = Some(1)),
             TerrainError::CliffUv(1)
         );
         assert_eq!(
-            with(|parts| parts.blends[0].tile = 9),
+            with(|fields| fields.blends[0].tile = 9),
             TerrainError::Tile(9)
         );
         assert_eq!(
-            with(|parts| parts.blends[0].custom_edge = Some(0)),
+            with(|fields| fields.blends[0].custom_edge = Some(0)),
             TerrainError::EdgeClass(0)
         );
         assert_eq!(
-            with(|parts| parts.cliffs[0].tile = 12),
+            with(|fields| fields.cliffs[0].tile = 12),
             TerrainError::Tile(12)
         );
         // A class of the atlas's 28 tiles a side holds; of 29, past its grid, not.
         let wide = |width| {
-            let mut parts = parts.clone();
-            parts.classes[0].width = width;
-            Terrain::new(parts, 2)
+            let mut fields = fields.clone();
+            fields.classes[0].width = width;
+            Terrain::new(fields, 2)
         };
         assert!(wide(28).is_ok());
         assert_eq!(wide(29).unwrap_err(), TerrainError::ClassWidth(0));
         assert_eq!(wide(u32::MAX).unwrap_err(), TerrainError::ClassWidth(0));
         // The class's tiles 0 and 1 are the terrain's 2; from 1 they would reach a third.
         assert_eq!(
-            with(|parts| parts.classes[0].first_tile = 1),
+            with(|fields| fields.classes[0].first_tile = 1),
             TerrainError::Class(0)
         );
         assert_eq!(
-            with(|parts| parts.edge_classes.push(parts.classes[0].clone())),
+            with(|fields| fields.edge_classes.push(fields.classes[0].clone())),
             TerrainError::EdgeClassTiles(0)
         );
     }

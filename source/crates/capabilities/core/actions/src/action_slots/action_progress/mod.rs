@@ -78,9 +78,9 @@ impl ActionProgress {
         self.underway
     }
 
-    /// Starts the ordered cast, to resolve in `resolves_at` at the `target` its check kept, as it
-    /// `start`ed: its unit is due then in `dues`.
-    pub fn start(
+    /// Schedules the ordered cast, to resolve in `resolves_at` at the `target` its check kept, as
+    /// it `start`ed: its unit is due then in `dues`.
+    pub fn schedule(
         &mut self,
         resolves_at: Tick,
         target: ActionTarget,
@@ -102,7 +102,7 @@ impl ActionProgress {
     }
 
     /// Whether an ordered cast walks in range of its target, and so owns the unit's walk.
-    pub const fn approaching(&self) -> bool {
+    pub const fn is_approaching(&self) -> bool {
         matches!(
             self.underway,
             Some(InProgress::Order {
@@ -112,24 +112,24 @@ impl ActionProgress {
         )
     }
 
-    /// Starts the ordered cast that passed its checks as `checked`, from `pos` at `now`: a
+    /// Starts the ordered cast that passed its checks as `checked`, from `position` at `now`: a
     /// charged action charges until its most; any other winds up, to resolve as its windup ends.
     pub fn begin(
         &mut self,
         checked: &CheckedAction<'_>,
-        pos: Vec3,
+        position: Vec3,
         now: Tick,
         dues: &mut ProgressDues<'_>,
     ) {
         let values = checked.values;
         if let Some(most) = values.charge {
-            self.charge(checked.target, pos, now, now.after(most));
+            self.charge(checked.target, position, now, now.after(most));
         } else {
             let start = ActionStart {
-                origin: pos,
+                origin: position,
                 charge: None,
             };
-            self.start(now.after(values.windup), checked.target, start, dues);
+            self.schedule(now.after(values.windup), checked.target, start, dues);
         }
     }
 
@@ -195,7 +195,7 @@ impl ActionProgress {
 
     /// Starts an attack with the weapon in `slot` at the attack target, to resolve in
     /// `resolves_at`: its unit is due then in `dues`.
-    pub fn start_attack(&mut self, slot: u8, resolves_at: Tick, dues: &mut ProgressDues<'_>) {
+    pub fn schedule_attack(&mut self, slot: u8, resolves_at: Tick, dues: &mut ProgressDues<'_>) {
         let target = self.attack_target.expect("an attack starts at its target");
         self.underway = Some(InProgress::Attack {
             slot,
@@ -219,7 +219,7 @@ impl ActionProgress {
     }
 
     /// Ends what is under way, resolved or not; a channel is cut, its unit due in `dues`.
-    pub fn stop(&mut self, dues: &mut ProgressDues<'_>) {
+    pub fn end(&mut self, dues: &mut ProgressDues<'_>) {
         self.halt();
         dues.push(self);
     }
@@ -261,19 +261,19 @@ impl ActionProgress {
     /// it: one that `resolved` channels from the next tick, at the action and rank its slot of
     /// `slots` holds, its slot's times spent by `SlotTimes::spend_cast`; one that did not only
     /// stops.
-    pub fn finish_cast(
+    pub fn complete_cast(
         &mut self,
         slots: &ActionSlots,
         now: Tick,
         resolved: Option<&ResolvedCast>,
         dues: &mut ProgressDues<'_>,
     ) {
-        self.finish(slots, now, resolved);
+        self.complete(slots, now, resolved);
         dues.push(self);
     }
 
-    /// Ends the cast under way, as `finish_cast` does, but makes no unit due.
-    fn finish(&mut self, slots: &ActionSlots, now: Tick, resolved: Option<&ResolvedCast>) {
+    /// Ends the cast under way, as `complete_cast` does, but makes no unit due.
+    fn complete(&mut self, slots: &ActionSlots, now: Tick, resolved: Option<&ResolvedCast>) {
         self.halt();
         let Some(&ResolvedCast { call, values }) = resolved else {
             return;
@@ -340,7 +340,7 @@ impl ActionProgress {
     }
 
     /// Whether a channel runs, or one cut waits for its `on_interrupt`.
-    pub const fn channel_due(&self) -> bool {
+    pub const fn is_channel_due(&self) -> bool {
         self.interrupted.is_some() || matches!(self.underway, Some(InProgress::Channel { .. }))
     }
 
@@ -405,7 +405,7 @@ impl ActionProgress {
             .underway
             .is_some_and(|underway| underway.slot() == slot)
         {
-            self.stop(dues);
+            self.interrupt(dues);
         }
     }
 }

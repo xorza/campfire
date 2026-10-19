@@ -4,8 +4,8 @@ use crate::scripts::script_role::ScriptRole;
 /// A hook the engine calls in a script, a type of the module whose system calls it, which
 /// records it: the script function's name, the role whose scripts define it, the names of its
 /// parameters, `ctx` first, and the types of the arguments its call passes
-/// (08-script-api.md, A hook is its caller's type).
-pub trait HookSpec: 'static {
+/// (06-script-api.md, A hook is its caller's type).
+pub trait HookDecl: 'static {
     const NAME: &'static str;
     const ROLE: ScriptRole;
     const PARAMS: &'static [&'static str];
@@ -30,7 +30,7 @@ impl Hook {
     pub const PREFIXES: [&'static str; 2] = ["on_", Self::PURE];
 
     /// The hook `H` specifies, whose call passes one argument for each of its parameters.
-    pub const fn of<H: HookSpec>() -> Self {
+    pub const fn of<H: HookDecl>() -> Self {
         const {
             assert!(
                 <H::Args as ScriptArgs>::LEN == H::PARAMS.len(),
@@ -45,7 +45,7 @@ impl Hook {
     }
 
     /// Whether it is a pure hook, `calc_<value>`, whose call returns a value and only reads
-    /// (08-script-api.md, Hooks by name).
+    /// (06-script-api.md, Hooks by name).
     pub fn is_pure(self) -> bool {
         self.name.starts_with(Self::PURE)
     }

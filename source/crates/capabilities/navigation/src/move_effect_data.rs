@@ -8,7 +8,7 @@ use campfire_common::DeclaredName;
 use campfire_declare::{BookError, Listed};
 use campfire_math::Num;
 use campfire_script::{
-    ApiBuilder, ApiError, CallError, Checked, Ctx, Frame, MemberSpec, ScriptLasting,
+    ApiBuilder, ApiError, CallError, Checked, Ctx, Frame, MemberDecl, ScriptLasting,
     ScriptPosition, Unit, View,
 };
 use campfire_sim::Capability;
@@ -135,12 +135,12 @@ impl Listed for MoveEffectData {
     }
 
     fn api(api: &mut ApiBuilder<'_>) {
-        let dash = MemberSpec::call(
+        let dash = MemberDecl::call(
             "dash",
             &[&["unit", "to", "speed"]],
             "moves `unit` on the ground plane at `speed` meters a second to `to`: a point, or a unit it follows until their bodies touch",
         );
-        let knock_back = MemberSpec::call(
+        let knock_back = MemberDecl::call(
             "knock_back",
             &[&["unit", "from", "distance", "ms"]],
             "moves `unit` `distance` straight away from `from` over `ms`",
@@ -241,7 +241,7 @@ impl ListedSpec for MoveEffectSpec {
                 NavigationEffect::dash(view, frame, id, DashTo::Unit(to), speed.number(frame))
             }),
             Self::KnockBack { from, distance, ms } => other(from).and_then(|from| {
-                let from = view.row(from).ok_or(ApiError::NoActingUnit)?.pos;
+                let from = view.row(from).ok_or(ApiError::NoActingUnit)?.position;
                 // Whole, as the load checked, so the floor is exact.
                 let lasting = ScriptLasting::of(view.rate(), ms.number(frame).floor())?;
                 NavigationEffect::knock_back(view, id, from, distance.number(frame), lasting)

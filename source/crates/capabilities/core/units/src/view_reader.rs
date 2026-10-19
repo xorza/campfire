@@ -273,7 +273,7 @@ impl ViewReader {
             };
             self.reads.take_clean(&self.sources, rows.columns_mut());
             let kept_row = kept.map(|at| self.kept_units[at]);
-            let row = if kept.is_some() && !self.marks.marked(entity, Self::CORE_MARK) {
+            let row = if kept.is_some() && !self.marks.is_marked(entity, Self::CORE_MARK) {
                 kept_row
             } else {
                 core.row(world, id, entity, kept_row)
@@ -285,7 +285,7 @@ impl ViewReader {
             for (at, (source, read)) in sources {
                 let mark = Self::source_mark(at);
                 match kept {
-                    Some(kept) if !read.refills() && !self.marks.marked(entity, mark) => {
+                    Some(kept) if !read.refills() && !self.marks.is_marked(entity, mark) => {
                         read.keep(source.as_ref(), rows.columns_mut(), kept..kept + 1);
                     }
                     _ => {
@@ -303,7 +303,7 @@ impl ViewReader {
             self.reads
                 .keep_all(&self.sources, rows.columns_mut(), next..end);
         }
-        self.reads.finish(&self.sources, rows.columns_mut());
+        self.reads.end(&self.sources, rows.columns_mut());
         self.marks.clear();
         debug_assert!(
             rows.columns().hold(rows.units().len()),
@@ -384,19 +384,19 @@ impl CoreSource {
         entity: Entity,
         kept: Option<UnitRow>,
     ) -> Option<UnitRow> {
-        let (&pos, &team, &unit_type, body, spawn, owner, tags) =
+        let (&position, &team, &unit_type, body, spawn, owner, tags) =
             self.parts.get_manual(world, entity).ok()?;
         let (alive, targetable) = kept.map_or((true, false), |row| (row.alive, row.targetable));
         Some(UnitRow {
             id,
-            pos: pos.get(),
+            position: position.get(),
             team,
             shape: Body::shape_of(body),
             spawn: spawn.map(|spawn| spawn.get()),
             alive,
             targetable,
             unit_type,
-            owner: owner.map(|owner| owner.slot()),
+            owner: owner.map(|owner| owner.seat()),
             tags: tags.copied().unwrap_or_default(),
         })
     }

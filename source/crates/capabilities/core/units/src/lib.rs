@@ -2,7 +2,7 @@
 //! API, and the read of the script view.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
@@ -60,7 +60,7 @@ mod script_book;
 mod seen_by;
 mod source_reads;
 mod spawn_at;
-mod spawn_hooks;
+mod spawn_callbacks;
 mod spawn_point;
 mod spawner;
 mod stat_id;
@@ -139,7 +139,7 @@ pub use crate::pool_purse::{PoolPayer, PoolPurse};
 pub use crate::script_book::ScriptBook;
 pub use crate::seen_by::SeenBy;
 pub use crate::spawn_at::SpawnAt;
-pub use crate::spawn_hooks::SpawnHooks;
+pub use crate::spawn_callbacks::SpawnCallbacks;
 pub use crate::spawn_point::SpawnPoint;
 pub use crate::spawner::Spawner;
 pub use crate::stat_id::StatId;

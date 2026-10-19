@@ -215,11 +215,11 @@ impl BuildPreview {
         ghost: Single<'_, '_, (&mut Ghost, &mut Transform, &mut Visibility), Without<Shape>>,
     ) {
         let (mut ghost, mut transform, mut visibility) = ghost.into_inner();
-        let ground = pointer.ground().filter(|_| !pointer.over_ui());
+        let ground = pointer.ground().filter(|_| !pointer.is_over_ui());
         let height = index
             .get(ghost.placing.builder)
             .and_then(|builder| builders.get(builder).ok())
-            .map(|pos| pos.get().y);
+            .map(|position| position.get().y);
         let at = ground.zip(height).and_then(|(ground, y)| {
             let x = float_num::to_num(ground.x)?;
             let z = float_num::to_num(ground.z)?;
@@ -309,7 +309,7 @@ impl BuildPreview {
             NextState::set_if_neq(&mut mode, InputMode::Select);
             return;
         }
-        if !buttons.just_pressed(MouseButton::Left) || pointer.over_ui() {
+        if !buttons.just_pressed(MouseButton::Left) || pointer.is_over_ui() {
             return;
         }
         let (Some(at), Fit::Clear) = (ghost.at, ghost.fit) else {

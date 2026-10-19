@@ -1,6 +1,6 @@
 # Spectating and the host's visibility settings
 
-What [Replication audiences](../design/14-replication-audiences.md)' host and spectator settings are taken from: how established games split what spectators and players out of play see between the game and its host. Facts only, each with its source; what a source left open says so.
+What [Replication audiences](../design/10-replication-audiences.md)' host and spectator settings are taken from: how established games split what spectators and players out of play see between the game and its host. Facts only, each with its source; what a source left open says so.
 
 ## Counter-Strike
 

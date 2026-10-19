@@ -108,13 +108,13 @@ impl<'p> Replay<'p> {
             empty => {
                 let session = self.game.session();
                 let header = session.log().header();
-                let slots = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
+                let seats = u32::try_from(header.seats.len()).expect("the log counts seats in u32");
                 let rate = TickRate::new(header.terms.tick_hz);
                 let picks = &session.checked().picks;
                 empty.insert(MatchBuild::restore_target(
                     self.packages,
                     rate,
-                    slots,
+                    seats,
                     picks,
                 ))
             }

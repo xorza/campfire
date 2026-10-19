@@ -7,12 +7,12 @@ use campfire_values::Team;
 use crate::reveals::{Reveal, Reveals};
 use crate::vision_book::VisionBook;
 
-/// A reveal a call queued: to `team`'s vision group, of the cells within `radius` of `pos`, in
+/// A reveal a call queued: to `team`'s vision group, of the cells within `radius` of `position`, in
 /// `ticks` Vision stages from the tick it applies in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct VisionEffect {
     pub team: Team,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub(crate) radius: Num,
     pub(crate) ticks: Ticks,
 }
@@ -29,7 +29,7 @@ impl Effect for VisionEffect {
         let last = now.after(Ticks::new(self.ticks.get() - 1));
         world.resource_mut::<Reveals>().push(Reveal {
             team: self.team,
-            pos: self.pos,
+            position: self.position,
             radius: self.radius,
             last,
         });

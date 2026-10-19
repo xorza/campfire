@@ -1,6 +1,6 @@
 /// A table of the data files, as the reference titles it: the fields of a data type of the
 /// module that reads it, or the keys of a file the modules share, by its title, which tells it from
-/// every other (08-script-api.md, A table is its reader's).
+/// every other (06-script-api.md, A table is its reader's).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DataTable {
     title: &'static str,

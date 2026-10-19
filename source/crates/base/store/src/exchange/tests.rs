@@ -7,13 +7,13 @@ fn each_job_comes_back_with_its_answer_and_its_buffer_is_reused() {
     // The worker sums the job's numbers; the caller refills the buffer it gave back.
     let mut exchange: Exchange<Vec<u32>, u32> =
         Exchange::start("sums", |job: &mut Vec<u32>| job.iter().sum());
-    assert!(!exchange.pending());
+    assert!(!exchange.is_pending());
     assert_eq!(exchange.take(), None);
     assert_eq!(exchange.wait(), None);
     exchange.send(|job| job.extend([1, 2, 3]));
-    assert!(exchange.pending());
+    assert!(exchange.is_pending());
     assert_eq!(exchange.wait(), Some(6));
-    assert!(!exchange.pending());
+    assert!(!exchange.is_pending());
     let buffer = exchange.spare.as_ptr();
     let capacity = exchange.spare.capacity();
     exchange.send(|job| {

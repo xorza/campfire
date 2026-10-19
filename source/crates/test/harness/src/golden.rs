@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use campfire_capabilities::Match;
 use campfire_common::ErrorReport;
-use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick};
+use campfire_common::{DeclaredName, Seat, StateHash, Tick};
 use campfire_package::ModePackages;
 use campfire_players::{PlayersWorld, ResourcesData};
 use campfire_script::ScriptFailures;
@@ -76,8 +76,8 @@ impl Golden {
         for (id, entity) in units.filter(|(id, _)| id.is_allocated()) {
             let unit = game.entity(entity);
             bytes.extend_from_slice(&id.get().to_le_bytes());
-            if let Some(pos) = unit.get::<Position>() {
-                let at = pos.get();
+            if let Some(position) = unit.get::<Position>() {
+                let at = position.get();
                 for axis in [at.x, at.y, at.z] {
                     bytes.extend_from_slice(&axis.to_bits().to_le_bytes());
                 }
@@ -85,7 +85,7 @@ impl Golden {
             bytes.push(unit.get::<Team>().map_or(u8::MAX, |team| team.get()));
             let owner = unit
                 .get::<Owner>()
-                .map_or(u32::MAX, |owner| owner.slot().get());
+                .map_or(u32::MAX, |owner| owner.seat().get());
             bytes.extend_from_slice(&owner.to_le_bytes());
             let meters = PoolMeters::of(game, entity);
             for pool in (0..).map_while(PoolId::new) {
@@ -117,7 +117,7 @@ impl Golden {
                     .expect("text writes into bytes");
             }
         }
-        for slot in (0..self.players).map(PlayerSlot::new) {
+        for slot in (0..self.players).map(Seat::new) {
             let Some(amounts) = game.player_resources(slot) else {
                 continue;
             };
@@ -149,7 +149,7 @@ impl Golden {
     /// writes, and never writes it, so no two tests write one file at once: with
     /// `CAMPFIRE_BLESS=1` it compares nothing, as the file it reads is being written again.
     pub(crate) fn compare(&self, name: &str) {
-        if !PinnedFile::blessing() {
+        if !PinnedFile::is_blessing() {
             self.compare_lines(name, &Self::path(name), &self.lines());
         }
     }

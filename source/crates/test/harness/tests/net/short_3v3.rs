@@ -34,7 +34,7 @@ pub(crate) fn short_3v3(edits: &[(&str, Edit<'_>)], tail: &str) -> ModePackages 
         );
     let map = "modes/3v3/map/two_lanes/map.toml";
     for (team, from, to) in [("north", -60, -28), ("south", 60, -22)] {
-        let marker = |z| format!("team = \"{team}\"\npos = [0, {z}]");
+        let marker = |z| format!("team = \"{team}\"\nposition = [0, {z}]");
         tree.edit(map, Edit::Replace(&marker(from), &marker(to)));
     }
     for &(file, edit) in edits {

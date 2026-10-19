@@ -14,7 +14,7 @@ use crate::match_mode::MatchMode;
 
 /// The fields of a player's script state whose `sync` is `S`'s, on its entity: a value for each
 /// such field the mode's `[player_state]` declares, in the order of their names. Each class is a
-/// component of its own kind (14-replication-audiences.md, One kind for each type); a player's
+/// component of its own kind (10-replication-audiences.md, One kind for each type); a player's
 /// entity is its own owner's.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

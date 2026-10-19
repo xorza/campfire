@@ -9,7 +9,7 @@ use crate::app_code::AppCode;
 const ACCESS_DENIED: u8 = 49;
 
 /// How a link ended, on its entity from the frame it unlinks to the frame it links again
-/// (15-quic-transport.md, A link's end is a type): the IO's account of a lost connection, or the
+/// (11-quic-transport.md, A link's end is a type): the IO's account of a lost connection, or the
 /// code its own end closed it with.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LinkEnd {
@@ -21,7 +21,7 @@ pub enum LinkEnd {
     Reset,
     /// The server refused the connection before its handshake: it has not started, it ended,
     /// or the address holds as many connections or handshakes as its limit lets
-    /// (15-quic-transport.md, Limits for each address, from the session's seats).
+    /// (11-quic-transport.md, Limits for each address, from the session's seats).
     Refused,
     /// The server presented a key the client did not pin.
     WrongServerKey,

@@ -9,7 +9,7 @@ use crate::derived_secret::DerivedSecret;
 
 /// The key of an endpoint's stateless resets: a reset's token is its HMAC of a connection id. A
 /// server's is derived from its key, so a server started again resets the connections its last run
-/// held at their next packet (15-quic-transport.md, Retry, tokens and resets after a restart); a
+/// held at their next packet (11-quic-transport.md, Retry, tokens and resets after a restart); a
 /// client's is drawn at random.
 #[derive(Debug)]
 pub(crate) struct ResetKey(hmac::Key);

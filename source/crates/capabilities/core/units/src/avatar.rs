@@ -13,7 +13,7 @@ impl Avatar {
     pub const TAG: EngineTag = EngineTag::new(0, "avatar", TagProperties::NONE);
 
     /// Whether the unit of `row` is tagged an avatar.
-    pub(crate) const fn tagged(row: &UnitRow) -> bool {
+    pub(crate) const fn is_tagged(row: &UnitRow) -> bool {
         row.tags.tags.contains(Self::TAG.tag())
     }
 }

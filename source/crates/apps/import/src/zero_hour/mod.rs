@@ -60,7 +60,7 @@ pub(crate) mod look_writer;
 pub(crate) mod map_import;
 pub(crate) mod model_assets;
 pub(crate) mod model_import;
-pub(crate) mod model_parts;
+pub(crate) mod model_nodes;
 pub(crate) mod model_writer;
 pub(crate) mod production_import;
 pub(crate) mod rules_package;
@@ -130,7 +130,7 @@ impl ZeroHour {
     /// Writes the new directory `out` of two packages: the rules package as the importer ships
     /// it, `zero-hour/`, and the install's, `game/`, a mode that depends on it; their
     /// fingerprints. Each map the game lists becomes `map/<name>/` and `client/maps/<name>/` of
-    /// the install's, its name its folder's, and every template its objects name a unit type of
+    /// the install's, its name its directory's, and every template its objects name a unit type of
     /// `data/units.toml`; each texture becomes a KTX2 file of `client/textures/`, at its path in
     /// the archives.
     pub fn write(&self, out: &Path) -> Result<Imported, ZeroHourError> {
@@ -169,7 +169,7 @@ impl ZeroHour {
         let mut maps = Vec::new();
         let mut class_sizes = BTreeMap::new();
         for map in self.install.maps() {
-            let name = ImportName::of(map.folder.as_bytes()).map();
+            let name = ImportName::of(map.dir.as_bytes()).map();
             if let Some(first) = names.insert(name.clone(), map.path.to_string()) {
                 return Err(ZeroHourError::MapNameClash {
                     first,

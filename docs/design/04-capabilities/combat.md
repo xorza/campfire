@@ -47,4 +47,4 @@
 
 ## Network
 
-- **Damage only as the server confirms it.** A client predicts the start of its own attacks, never their damage or a death ([Replication audiences](../14-replication-audiences.md)).
+- **Damage only as the server confirms it.** A client predicts the start of its own attacks, never their damage or a death ([Replication audiences](../10-replication-audiences.md)).

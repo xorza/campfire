@@ -38,7 +38,7 @@ use windows::core::{BOOL, Error, HSTRING, Owned, PWSTR};
 use crate::platform::stop_signals::StopSignals;
 
 /// The Windows side of the platform layer: a security descriptor given as a file or directory is
-/// made keeps it its owner's only, `MoveFileExW` writes a rename through, and `FlushFileBuffers`
+/// made keeps it its user's only, `MoveFileExW` writes a rename through, and `FlushFileBuffers`
 /// on a directory's handle keeps its names. A stop's event reaches a console's handler, which
 /// Windows runs on a thread of its own. A shared port takes `SO_REUSEADDR`.
 #[derive(Debug)]
@@ -77,19 +77,19 @@ impl Os {
         socket.set_reuse_address(true)
     }
 
-    pub(crate) fn create_owner_only(path: &Path) -> io::Result<File> {
+    pub(crate) fn create_user_only(path: &Path) -> io::Result<File> {
         Self::create_file(path, CREATE_NEW)
     }
 
-    pub(crate) fn open_owner_only(path: &Path) -> io::Result<File> {
+    pub(crate) fn open_user_only(path: &Path) -> io::Result<File> {
         Self::create_file(path, OPEN_ALWAYS)
     }
 
-    /// The file at `path` for writing, as `disposition` makes or opens it, its owner's only when
+    /// The file at `path` for writing, as `disposition` makes or opens it, its user's only when
     /// made.
     fn create_file(path: &Path, disposition: FILE_CREATION_DISPOSITION) -> io::Result<File> {
         let path = wide(path)?;
-        let descriptor = owner_only(Reach::Object)?;
+        let descriptor = user_only(Reach::Object)?;
         let attributes = attributes(&descriptor);
         // SAFETY: `attributes` and the descriptor it points to live through the call.
         let handle = unsafe {
@@ -108,10 +108,10 @@ impl Os {
         Ok(unsafe { File::from_raw_handle(handle.0) })
     }
 
-    pub(crate) fn create_dir_owner_only(path: &Path) -> io::Result<()> {
+    pub(crate) fn create_dir_user_only(path: &Path) -> io::Result<()> {
         let path = wide(path)?;
-        // Its entry is inherited, so a file made in it by another way is its owner's only too.
-        let descriptor = owner_only(Reach::Children)?;
+        // Its entry is inherited, so a file made in it by another way is its user's only too.
+        let descriptor = user_only(Reach::Children)?;
         let attributes = attributes(&descriptor);
         // SAFETY: as in `create_file`.
         unsafe { CreateDirectoryW(&path, Some(&raw const attributes)) }.map_err(io_error)
@@ -295,7 +295,7 @@ impl Os {
 
 /// A security descriptor whose DACL, protected from inheritance, lets the user alone in, with
 /// its one entry reaching as `reach` says.
-fn owner_only(reach: Reach) -> io::Result<Owned<HLOCAL>> {
+fn user_only(reach: Reach) -> io::Result<Owned<HLOCAL>> {
     let user = user_sid()?;
     let flags = match reach {
         Reach::Object => "",

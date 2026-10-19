@@ -12,7 +12,8 @@ pub(crate) fn read(path: &str) -> String {
     InputFile::read_text(Path::new(path), FILE_LEN).unwrap()
 }
 
-/// The workspace's `source/` folder, three levels over this crate's manifest: `crates/test/rules`.
+/// The workspace's `source/` directory, three levels over this crate's manifest:
+/// `crates/test/rules`.
 pub(crate) fn source() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../.."))
 }
@@ -65,23 +66,23 @@ pub(crate) fn sim_closure(manifests: &[(String, String)]) -> BTreeSet<String> {
     reached
 }
 
-/// A crate of the workspace: its folder's name, its package's name, and its manifest's text.
+/// A crate of the workspace: its directory's name, its package's name, and its manifest's text.
 #[derive(Debug)]
 pub(crate) struct Crate {
-    pub(crate) folder: String,
-    /// Its folder's path under `source/`, as `sources` names a file's.
+    pub(crate) dir_name: String,
+    /// Its directory's path under `source/`, as `sources` names a file's.
     pub(crate) path: String,
     pub(crate) name: String,
     pub(crate) manifest: String,
 }
 
-/// The crates of the workspace, by their packages' names: each folder of `crates/` and `checks/`
-/// that holds a `Cargo.toml`, at any depth of the groups, as a crate's folder may hold other
-/// crates' folders beside its own `src/`.
+/// The crates of the workspace, by their packages' names: each directory of `crates/` and `checks/`
+/// that holds a `Cargo.toml`, at any depth of the groups; the walk goes on into a crate's
+/// directory, so a test finds a crate that one holds.
 pub(crate) fn crates() -> Vec<Crate> {
     let mut found = Vec::new();
-    let mut folders = vec![source().join("crates"), source().join("checks")];
-    while let Some(dir) = folders.pop() {
+    let mut dirs = vec![source().join("crates"), source().join("checks")];
+    while let Some(dir) = dirs.pop() {
         let entries = DirEntries::read(&dir).unwrap();
         if entries
             .iter()
@@ -96,14 +97,14 @@ pub(crate) fn crates() -> Vec<Crate> {
                 .map(|part| part.as_os_str().to_str().unwrap())
                 .collect();
             found.push(Crate {
-                folder: dir.file_name().unwrap().to_str().unwrap().to_owned(),
+                dir_name: dir.file_name().unwrap().to_str().unwrap().to_owned(),
                 path: path.join("/"),
                 name: CargoManifest::package_name(&manifest).to_owned(),
                 manifest,
             });
         }
         let own = ["src", "tests", "benches", "examples"];
-        folders.extend(
+        dirs.extend(
             entries
                 .iter()
                 .filter(|entry| entry.kind == EntryKind::Dir)
@@ -127,10 +128,10 @@ pub(crate) fn manifests() -> Vec<(String, String)> {
 /// with its text.
 pub(crate) fn sources() -> Vec<SourceFile> {
     let mut read = Vec::new();
-    for folder in ["crates", "checks"] {
-        for file in SourceFiles::under(&source().join(folder)) {
+    for dir_name in ["crates", "checks"] {
+        for file in SourceFiles::under(&source().join(dir_name)) {
             read.push(SourceFile {
-                path: format!("{folder}/{}", file.path),
+                path: format!("{dir_name}/{}", file.path),
                 ..file
             });
         }
@@ -139,7 +140,7 @@ pub(crate) fn sources() -> Vec<SourceFile> {
 }
 
 /// The index in `crates` of the crate that holds the source file at `path`, under `source/`: the
-/// deepest whose folder holds it.
+/// deepest whose directory holds it.
 pub(crate) fn holder(crates: &[Crate], path: &str) -> Option<usize> {
     crates
         .iter()

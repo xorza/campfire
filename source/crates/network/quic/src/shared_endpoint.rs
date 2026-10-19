@@ -5,7 +5,7 @@ use crate::udp_port::UdpPort;
 
 /// What an endpoint's thread and the app's frame share: the endpoint's state behind one mutex,
 /// and the socket, which the thread alone reads and writes and the frame only wakes
-/// (15-quic-transport.md, A thread for each endpoint, and no IO in the frame).
+/// (11-quic-transport.md, A thread for each endpoint, and no IO in the frame).
 #[derive(Debug)]
 pub(crate) struct SharedEndpoint {
     state: Mutex<EndpointState>,

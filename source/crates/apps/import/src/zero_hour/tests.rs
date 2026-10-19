@@ -2,7 +2,7 @@ use campfire_client_files::{ClientModel, ClientUnit, LookVariant, ModelScale, Mo
 use campfire_codec::TomlTable;
 use campfire_common::{ContentHash, DeclaredName};
 use campfire_sim::Capability;
-use campfire_store::internals::Scratch;
+use campfire_store::internals::TestDir;
 use serde::Deserialize;
 
 use super::*;
@@ -26,23 +26,23 @@ use crate::zero_hour::production_import::DropCause;
 use crate::zero_hour::weapon_drop::WeaponDrop;
 
 /// The fixture install's version, as its archives hold their bytes now.
-fn version_of(scratch: &Scratch) -> &'static [GameVersion] {
+fn version_of(test_dir: &TestDir) -> &'static [GameVersion] {
     let archives = ["A.big", "b.big", "c.BIG", "ZH_Generals/base.big"]
-        .map(|path| (path, ContentHash::of(&scratch.read(format!("zh/{path}")))));
+        .map(|path| (path, ContentHash::of(&test_dir.read(format!("zh/{path}")))));
     GameVersion::fixture("fixture", archives)
 }
 
 #[test]
 fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
-    let scratch = Scratch::new();
-    fixture(&scratch);
-    let known = version_of(&scratch);
-    let zero_hour = ZeroHour::open_among(&scratch.path("zh"), known).unwrap();
+    let test_dir = TestDir::new();
+    fixture(&test_dir);
+    let known = version_of(&test_dir);
+    let zero_hour = ZeroHour::open_among(&test_dir.path("zh"), known).unwrap();
     assert_eq!(zero_hour.version().name(), "fixture");
 
-    // The fixture map, in its folder `Fixture Map`, is `fixture_map`: its files are the ones
+    // The fixture map, in its directory `Fixture Map`, is `fixture_map`: its files are the ones
     // its import gives, and the unit types it places the package's.
-    let imported = zero_hour.write(&scratch.path("one")).unwrap();
+    let imported = zero_hour.write(&test_dir.path("one")).unwrap();
     let fingerprint = imported.fingerprint;
     // Its terrain's sand of 2 × 1 texels holds no tile, and its grass has no texture, so each
     // of the 3 × 2 cells the game draws is untextured.
@@ -61,9 +61,9 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     );
     // Beside it, the rules package as the workspace holds it, which the imported mode, of
     // its manifest and mode data, depends on and loads with.
-    assert_eq!(scratch.names("one"), ["game", "zero-hour"]);
+    assert_eq!(test_dir.names("one"), ["game", "zero-hour"]);
     assert_eq!(
-        scratch.names("one/game"),
+        test_dir.names("one/game"),
         [
             "client",
             "data",
@@ -74,14 +74,14 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         ]
     );
     assert_eq!(
-        scratch.read("one/zero-hour/package.index"),
+        test_dir.read("one/zero-hour/package.index"),
         include_bytes!("../../../../../packages/zero-hour/package.index")
     );
     // The package's own reader takes its units file: the tank, the wall and the rocks the map
     // places, America's start objects, the barracks and the ranger their command sets make, and the
     // shell the tank's cannon fires. Its units drive, by stats, orders and navigation, no faster
     // than the tank's 30.5 m a second.
-    let mode = PackageDir::new(scratch.path("one/game"))
+    let mode = PackageDir::new(test_dir.path("one/game"))
         .mode_packages(Some(&named))
         .unwrap();
     let types: Vec<String> = mode
@@ -108,9 +108,9 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // `start`, which the load checks a walker can stand on, and with the money its host picks of
     // the fixture's three choices, 10,000 by default.
     // Its mode data lies over the rules package's, as the load lays them.
-    let mut data: TomlTable = Toml::parse(&scratch.read_text("one/game/data/mode.toml")).unwrap();
+    let mut data: TomlTable = Toml::parse(&test_dir.read_text("one/game/data/mode.toml")).unwrap();
     let rules: TomlTable =
-        Toml::parse(&scratch.read_text("one/zero-hour/data/rules.toml")).unwrap();
+        Toml::parse(&test_dir.read_text("one/zero-hour/data/rules.toml")).unwrap();
     data.lay_over(rules);
     let data: ModeView = data.read().unwrap();
     assert_eq!(data.navigation.spawn_tags, ["start"]);
@@ -258,7 +258,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     assert!(!building.contains_key("subdual_unresistable"));
     // Each producer holds its converted buttons in its set's order; a trainer its queue, 9
     // by default, and its exit's points, the game's `y` its `−z`.
-    let units: UnitsView = Toml::parse(&scratch.read_text("one/game/data/units.toml")).unwrap();
+    let units: UnitsView = Toml::parse(&test_dir.read_text("one/game/data/units.toml")).unwrap();
     let command = |name: &str| {
         let slots = units.units[name].slots.as_ref();
         slots.map_or_default(|slots| slots.command.clone())
@@ -411,7 +411,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // `&`, braces escaped as Fluent reads them; the ranger's label the table lacks, so its
     // object's name.
     assert_eq!(
-        scratch.read_text("one/game/locale/en.ftl"),
+        test_dir.read_text("one/game/locale/en.ftl"),
         "mode-name = Zero Hour\nteam-player-1 = Player 1\nteam-player-2 = Player 2\n\
          team-player-3 = Player 3\nteam-player-4 = Player 4\nteam-player-5 = Player 5\n\
          team-player-6 = Player 6\nteam-player-7 = Player 7\nteam-player-8 = Player 8\n\
@@ -457,19 +457,19 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     ];
     // Eight players, each a team of one slot, and the neutral team of none.
     assert_eq!(manifest.teams.len(), 9);
-    assert!(manifest.teams[..8].iter().all(|team| team.slots == 1));
+    assert!(manifest.teams[..8].iter().all(|team| team.seats == 1));
     assert!(
         drives
             .iter()
             .all(|&capability| manifest.capabilities.contains(capability))
     );
-    assert_eq!(scratch.names("one/game/map"), ["fixture_map"]);
+    assert_eq!(test_dir.names("one/game/map"), ["fixture_map"]);
     assert_eq!(
-        scratch.names("one/game/map/fixture_map"),
+        test_dir.names("one/game/map/fixture_map"),
         ["heights.bin", "map.toml"]
     );
     assert_eq!(
-        scratch.names("one/game/client/maps/fixture_map"),
+        test_dir.names("one/game/client/maps/fixture_map"),
         [
             "conditions.toml",
             "lights.toml",
@@ -496,7 +496,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     rules.strings = StringTable::read(&strings()).unwrap();
     rules.weapons.read(WEAPONS.as_bytes()).unwrap();
     rules.armors.read(ARMORS.as_bytes()).unwrap();
-    let looks = Toml::parse(&scratch.read_text("one/game/client/units.toml")).unwrap();
+    let looks = Toml::parse(&test_dir.read_text("one/game/client/units.toml")).unwrap();
     let mut names = ImportNames::default();
     let sources = MapSources {
         rules: &rules,
@@ -511,27 +511,27 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     };
     let expected = MapImport::new(&file, sources).unwrap();
     assert_eq!(
-        scratch.read_text("one/game/map/fixture_map/map.toml"),
+        test_dir.read_text("one/game/map/fixture_map/map.toml"),
         expected.map
     );
     assert_eq!(
-        scratch.read("one/game/map/fixture_map/heights.bin"),
+        test_dir.read("one/game/map/fixture_map/heights.bin"),
         expected.heights
     );
     assert_eq!(
-        scratch.read("one/game/client/maps/fixture_map/terrain.bin"),
+        test_dir.read("one/game/client/maps/fixture_map/terrain.bin"),
         expected.terrain
     );
     assert_eq!(
-        scratch.read_text("one/game/client/maps/fixture_map/lights.toml"),
+        test_dir.read_text("one/game/client/maps/fixture_map/lights.toml"),
         expected.lights
     );
     assert_eq!(
-        scratch.read_text("one/game/client/maps/fixture_map/objects.toml"),
+        test_dir.read_text("one/game/client/maps/fixture_map/objects.toml"),
         expected.objects
     );
     assert_eq!(
-        scratch.read_text("one/game/client/maps/fixture_map/conditions.toml"),
+        test_dir.read_text("one/game/client/maps/fixture_map/conditions.toml"),
         expected.conditions
     );
     // The units file holds the map's types and the start's, which the start's own reading
@@ -548,44 +548,44 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         command: &production.commands,
         production: &production.sections,
     });
-    assert_eq!(scratch.read_text("one/game/data/units.toml"), units.text);
-    let camera = Toml::parse::<CameraFile>(&scratch.read_text("one/game/client/camera.toml"));
+    assert_eq!(test_dir.read_text("one/game/data/units.toml"), units.text);
+    let camera = Toml::parse::<CameraFile>(&test_dir.read_text("one/game/client/camera.toml"));
     let camera = camera.unwrap();
     assert_eq!((camera.field_of_view, camera.click), (50.0, 0.167));
-    let hud = Toml::parse::<HudFile>(&scratch.read_text("one/game/client/hud.toml")).unwrap();
+    let hud = Toml::parse::<HudFile>(&test_dir.read_text("one/game/client/hud.toml")).unwrap();
     assert_eq!(hud.bars, ShownBars::Selected);
-    let colors = scratch.read_text("one/game/client/team_colors.toml");
+    let colors = test_dir.read_text("one/game/client/team_colors.toml");
     let colors = Toml::parse::<TeamColors>(&colors).unwrap();
     assert_eq!(colors.colors(), [[255, 200, 0], [255, 0, 0]]);
     // Each texture once, at its path in the archives, as its conversion gives it.
     let [rock, sign] = ktx2();
     assert_eq!(
-        scratch.names("one/game/client/textures/art/textures"),
+        test_dir.names("one/game/client/textures/art/textures"),
         ["rock.ktx2", "sign.ktx2"]
     );
     assert_eq!(
-        scratch.read("one/game/client/textures/art/textures/rock.ktx2"),
+        test_dir.read("one/game/client/textures/art/textures/rock.ktx2"),
         rock
     );
     assert_eq!(
-        scratch.read("one/game/client/textures/art/textures/sign.ktx2"),
+        test_dir.read("one/game/client/textures/art/textures/sign.ktx2"),
         sign
     );
     assert_eq!(
-        scratch.read("one/game/client/textures/art/terrain/tsand.ktx2"),
+        test_dir.read("one/game/client/textures/art/terrain/tsand.ktx2"),
         sign
     );
     // Two imports write the same bytes, and the package reads as the fingerprint names it.
     assert_eq!(
-        zero_hour.write(&scratch.path("two")).unwrap().fingerprint,
+        zero_hour.write(&test_dir.path("two")).unwrap().fingerprint,
         fingerprint
     );
     assert_eq!(
-        scratch.read("two/game/package.index"),
-        scratch.read("one/game/package.index")
+        test_dir.read("two/game/package.index"),
+        test_dir.read("one/game/package.index")
     );
     assert_eq!(
-        PackageDir::new(scratch.path("one/game"))
+        PackageDir::new(test_dir.path("one/game"))
             .files()
             .unwrap()
             .fingerprint(),
@@ -595,34 +595,34 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
 
 #[test]
 fn an_install_of_two_maps_of_one_name_or_of_an_unknown_version_does_not_import() {
-    let scratch = Scratch::new();
-    fixture(&scratch);
-    // A second folder whose name gives `fixture_map` is refused.
-    scratch.write(
+    let test_dir = TestDir::new();
+    fixture(&test_dir);
+    // A second directory whose name gives `fixture_map` is refused.
+    test_dir.write(
         "zh/c.BIG",
         big(&[
             ("c.ini", b"c"),
             ("Maps\\Fixture_Map\\Fixture_Map.map", &packed_map()),
         ]),
     );
-    let known = version_of(&scratch);
-    let clash = ZeroHour::open_among(&scratch.path("zh"), known).unwrap();
+    let known = version_of(&test_dir);
+    let clash = ZeroHour::open_among(&test_dir.path("zh"), known).unwrap();
     assert!(matches!(
-        clash.write(&scratch.path("three")),
+        clash.write(&test_dir.path("three")),
         Err(ZeroHourError::MapNameClash { first, second })
             if first == "maps\\fixture map\\fixture map.map"
                 && second == "maps\\fixture_map\\fixture_map.map"
     ));
 
     // An archive of other bytes is no version the importer knows.
-    scratch.write("zh/c.BIG", b"BIGF");
+    test_dir.write("zh/c.BIG", b"BIGF");
     assert!(matches!(
-        ZeroHour::open_among(&scratch.path("zh"), known),
+        ZeroHour::open_among(&test_dir.path("zh"), known),
         Err(ZeroHourError::Archive { .. })
     ));
-    scratch.write("zh/c.BIG", big(&[("c.ini", b"C")]));
+    test_dir.write("zh/c.BIG", big(&[("c.ini", b"C")]));
     assert!(matches!(
-        ZeroHour::open_among(&scratch.path("zh"), known),
+        ZeroHour::open_among(&test_dir.path("zh"), known),
         Err(ZeroHourError::UnknownVersion {
             archive,
             difference: VersionDifference::OtherBytes,
@@ -632,11 +632,11 @@ fn an_install_of_two_maps_of_one_name_or_of_an_unknown_version_does_not_import()
 
 #[test]
 fn an_import_writes_each_model_once_and_each_object_s_models() {
-    let scratch = Scratch::new();
-    fixture(&scratch);
-    let known = version_of(&scratch);
-    let zero_hour = ZeroHour::open_among(&scratch.path("zh"), known).unwrap();
-    let imported = zero_hour.write(&scratch.path("one")).unwrap();
+    let test_dir = TestDir::new();
+    fixture(&test_dir);
+    let known = version_of(&test_dir);
+    let zero_hour = ZeroHour::open_among(&test_dir.path("zh"), known).unwrap();
+    let imported = zero_hour.write(&test_dir.path("one")).unwrap();
     // Each model the objects name once, as its conversion gives it; and
     // each object's models with the nodes its default look hides. The tank's turret is hidden
     // with the flash on the bone below it, which its muzzle flash hides as well; the crate's
@@ -683,16 +683,16 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         .collect();
     assert_eq!(textures, ["gone.tga"]);
     assert_eq!(
-        scratch.names("one/game/client/models"),
+        test_dir.names("one/game/client/models"),
         ["rock01.glb", "tank.glb"]
     );
-    let install = Install::open(&scratch.path("zh")).unwrap();
+    let install = Install::open(&test_dir.path("zh")).unwrap();
     let mut assets = ModelAssets::new(&install).unwrap();
     let Ok(Converted::Model(tank)) = ModelImport::convert("tank", &mut assets) else {
         panic!("the tank converts");
     };
     assert_eq!(
-        scratch.read("one/game/client/models/tank.glb"),
+        test_dir.read("one/game/client/models/tank.glb"),
         tank.glb.encode()
     );
     // Each model's top, at its scale, on glTF's axes, `(x, y, z)` as `(x, z, −y)`. The tank's:
@@ -788,23 +788,23 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         ]),
     };
     assert_eq!(
-        Toml::parse::<ClientUnits>(&scratch.read_text("one/game/client/units.toml")).unwrap(),
+        Toml::parse::<ClientUnits>(&test_dir.read_text("one/game/client/units.toml")).unwrap(),
         expected
     );
 
     // Two objects whose names give one unit type, each with a model, are refused.
     let clash = "Object Rock!\nDraw = W3DPropDraw M\nModelName = Rock01\nEnd\nEnd\nObject Rock?\nDraw = W3DPropDraw M\nModelName = Rock01\nEnd\nEnd\n";
-    scratch.write(
+    test_dir.write(
         "zh/c.BIG",
         big(&[
             ("c.ini", b"c"),
             ("Data\\INI\\Object\\Clash.ini", clash.as_bytes()),
         ]),
     );
-    let known = version_of(&scratch);
-    let clash = ZeroHour::open_among(&scratch.path("zh"), known).unwrap();
+    let known = version_of(&test_dir);
+    let clash = ZeroHour::open_among(&test_dir.path("zh"), known).unwrap();
     assert!(matches!(
-        clash.write(&scratch.path("two")),
+        clash.write(&test_dir.path("two")),
         Err(ZeroHourError::NameClash(NameClash { first, second }))
             if first == "Rock!" && second == "Rock?"
     ));

@@ -98,8 +98,8 @@ pub enum ZeroHourError {
         #[source]
         error: ModelError,
     },
-    /// Several language folders hold art, and the importer cannot tell which the game reads.
-    #[error("several language folders hold art: {0:?}")]
+    /// Several language directories hold art, and the importer cannot tell which the game reads.
+    #[error("several language directories hold art: {0:?}")]
     Languages(Vec<String>),
     #[error(transparent)]
     NameClash(#[from] NameClash),
@@ -107,8 +107,9 @@ pub enum ZeroHourError {
     /// names no starting building.
     #[error("player template {0} names no starting building")]
     NoStart(String),
-    /// No language folder holds art, so the import cannot tell which string table the game reads.
-    #[error("no language folder holds art, so no string table is the game's")]
+    /// No language directory holds art, so the import cannot tell which string table the game
+    /// reads.
+    #[error("no language directory holds art, so no string table is the game's")]
     NoLanguage,
     /// The multiplayer settings' choices of starting money make no option of the mode.
     #[error("the multiplayer settings' starting money")]
@@ -143,7 +144,7 @@ pub enum ZeroHourError {
         #[source]
         error: TypeError,
     },
-    /// Two maps' folders give one map name.
+    /// Two maps' directories give one map name.
     #[error("{first} and {second} give one map name")]
     MapNameClash { first: String, second: String },
     #[error(transparent)]

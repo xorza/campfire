@@ -5,9 +5,9 @@
 fn on_match_start(ctx) {
     let heroes = ["hero-walker", "hero-runner"];
     for player in ctx.players {
-        ctx.choose(player, "hero", heroes[player.slot]);
+        ctx.choose(player, "hero", heroes[player.seat]);
         let team = player.team;
-        ctx.spawn_unit(heroes[player.slot], team, spawn_marker(ctx, team).pos, player);
+        ctx.spawn_unit(heroes[player.seat], team, spawn_marker(ctx, team).position, player);
     }
     ctx.after("first_wave", 1);
 }

@@ -1,4 +1,4 @@
-//! Spectators (14-replication-audiences.md, The host admits spectators, and their fog is a
+//! Spectators (10-replication-audiences.md, The host admits spectators, and their fog is a
 //! setting): a link with no slot, admitted while the session holds a place for it, watches every
 //! unit through any fog, or the teams' views it chooses, and holds of each entity what its kind's
 //! audience gives spectators. It predicts nothing.
@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 
 use bevy_app::App;
 use bevy_ecs::query::{Allow, With};
-use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
+use campfire_harness::{InProcessMatch, InProcessSetup, LinkModel};
 use campfire_net::{
     CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, WatchRequest,
 };
@@ -20,11 +20,11 @@ use lightyear::prelude::Replicate;
 const JOIN_STEPS: usize = 300;
 
 /// A duo of the lane mode whose host gives `visibility` and admits `spectators`.
-fn duo(visibility: &'static [&'static str], spectators: u32) -> MatchSetup {
-    MatchSetup {
+fn duo(visibility: &'static [&'static str], spectators: u32) -> InProcessSetup {
+    InProcessSetup {
         visibility,
         max_spectators: spectators,
-        ..MatchSetup::duo(LinkModel::PERFECT, InProcessMatch::SEED_CHAIN)
+        ..InProcessSetup::duo(LinkModel::PERFECT, InProcessMatch::SEED_CHAIN)
     }
 }
 
@@ -138,7 +138,7 @@ fn a_spectator_of_the_teams_views_watches_the_teams_it_chooses() {
     // Its link fails and comes back: the place its old link held is free again, and it watches
     // the west's view alone again, as it chose.
     local.cut_link(spectator);
-    step_until(&mut local, |local| state(local, spectator).rejoining());
+    step_until(&mut local, |local| state(local, spectator).is_rejoining());
     local.mend_link(spectator);
     step_until(&mut local, |local| {
         state(local, spectator).watching_clock().is_some()

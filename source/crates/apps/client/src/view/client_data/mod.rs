@@ -4,7 +4,7 @@ use std::sync::Arc;
 use bevy::app::{App, Plugin};
 use bevy::ecs::resource::Resource;
 use campfire_client_files::{
-    CameraFile, ClientObjects, ClientUnits, HudFile, InputFile, MapConditions, MapLights,
+    CameraFile, ClientObjects, ClientUnits, HudFile, KeysFile, MapConditions, MapLights,
     TeamColors, TerrainFile,
 };
 use campfire_codec::{Binary, Toml};
@@ -59,7 +59,7 @@ pub(crate) struct PackageClient {
 
 /// Reads the mode's client data as the client starts: the one source of `ClientData`, which the
 /// view, the camera, the models, the terrain and the pointer read, of `ClientPackages`, and of
-/// the `InputMap`, the mode's own package's `client/input.toml`.
+/// the `InputMap`, the mode's own package's `client/keys.toml`.
 #[derive(Debug)]
 pub(crate) struct ClientFiles {
     pub(crate) packages: Arc<ModePackages>,
@@ -70,7 +70,7 @@ impl Plugin for ClientFiles {
         app.insert_resource(ClientData::read(&self.packages));
         app.insert_resource(ClientPackages::of(&self.packages));
         let mode = &self.packages.mode().package.files;
-        let input = ClientData::toml::<InputFile>(mode, &InputFile::path()).unwrap_or_default();
+        let input = ClientData::toml::<KeysFile>(mode, &KeysFile::path()).unwrap_or_default();
         app.insert_resource(InputMap::new(input));
     }
 }

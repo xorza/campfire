@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
-use campfire_common::{ChannelBinding, PlayerSlot, Tick};
+use campfire_common::{ChannelBinding, Seat, Tick};
 use campfire_package::ModePackages;
 use campfire_protocol::{
     ConnectAnswer, Delegation, DelegationId, DelegationTerms, InputChain, InputRules,
@@ -65,7 +65,7 @@ enum Step {
     /// It answered an offer, and waits for the match to start, or to take it up again.
     Answered(Answered),
     Playing(Playing),
-    /// It watches the match, with no slot.
+    /// It watches the match, with no seat.
     Watching(Watching),
     /// Its link failed: it tries the link again until the server's grace period and restore
     /// window passed.
@@ -88,7 +88,7 @@ pub enum Loss {
     GaveUp,
     /// The server's copy of its chain is not its own: the server rewrote the chain.
     Rewritten,
-    /// A newer login of the player took the slot.
+    /// A newer login of the player took the seat.
     Superseded,
     /// The server refused the player's join; its log says why.
     JoinRefused,
@@ -157,12 +157,12 @@ struct Watching {
     clock: MatchClock,
 }
 
-/// A player who left while they played: what they hold as a member, their slot and their chain's
+/// A player who left while they played: what they hold as a member, their seat and their chain's
 /// history, which a receipt the server sent before it took the leave is checked against.
 #[derive(Debug)]
 struct Leaving {
     member: Member,
-    slot: PlayerSlot,
+    seat: Seat,
     history: ChainHistory,
 }
 
@@ -247,10 +247,10 @@ impl JoinState {
         Some(&member.session.visibility)
     }
 
-    /// The slot the player plays; `None` while they play none.
-    pub const fn slot(&self) -> Option<PlayerSlot> {
+    /// The seat the player plays; `None` while they play none.
+    pub const fn seat(&self) -> Option<Seat> {
         match &self.step {
-            Step::Playing(playing) => Some(playing.chain.slot()),
+            Step::Playing(playing) => Some(playing.chain.seat()),
             _ => None,
         }
     }
@@ -287,12 +287,12 @@ impl JoinState {
     }
 
     /// Whether the player left.
-    pub const fn left(&self) -> bool {
+    pub const fn is_left(&self) -> bool {
         matches!(self.step, Step::Leaving(_) | Step::Left)
     }
 
     /// Whether the client tries its link again.
-    pub const fn rejoining(&self) -> bool {
+    pub const fn is_rejoining(&self) -> bool {
         matches!(self.step, Step::Rejoining(_))
     }
 
@@ -409,7 +409,7 @@ impl JoinState {
         }
         let (chain, history, discarded, last_stamp) = match (start.chain, answered.history) {
             (SeatChain::New { root }, _) => {
-                let chain = InputChain::new(start.slot, root);
+                let chain = InputChain::new(start.seat, root);
                 member.receipt = None;
                 (chain, ChainHistory::of(&chain), 0, None)
             }
@@ -417,7 +417,7 @@ impl JoinState {
             // and the inputs after it never apply.
             (SeatChain::Held(head), Some(history)) if loaded => {
                 let discarded = history.next_seq().saturating_sub(head.next_seq);
-                let chain = InputChain::resume(start.slot, head.head, head.next_seq);
+                let chain = InputChain::resume(start.seat, head.head, head.next_seq);
                 (chain, ChainHistory::of(&chain), discarded, head.last_stamp)
             }
             (SeatChain::Held(head), Some(mut history)) => {
@@ -426,11 +426,11 @@ impl JoinState {
                     return Started::Rewritten;
                 }
                 let discarded = history.cut(head.next_seq);
-                let chain = InputChain::resume(start.slot, head.head, head.next_seq);
+                let chain = InputChain::resume(start.seat, head.head, head.next_seq);
                 (chain, history, discarded, head.last_stamp)
             }
             (SeatChain::Held(head), None) => {
-                let chain = InputChain::resume(start.slot, head.head, head.next_seq);
+                let chain = InputChain::resume(start.seat, head.head, head.next_seq);
                 (chain, ChainHistory::of(&chain), 0, head.last_stamp)
             }
         };
@@ -521,13 +521,13 @@ impl JoinState {
         receipt: &SignedReceipt,
         verifier: &mut Verifier,
     ) -> Result<(), ReceiptRefusal> {
-        let (member, slot, history) = match &mut self.step {
+        let (member, seat, history) = match &mut self.step {
             Step::Playing(playing) => (
                 &mut playing.member,
-                playing.chain.slot(),
+                playing.chain.seat(),
                 &mut playing.history,
             ),
-            Step::Leaving(leaving) => (&mut leaving.member, leaving.slot, &mut leaving.history),
+            Step::Leaving(leaving) => (&mut leaving.member, leaving.seat, &mut leaving.history),
             _ => return Err(ReceiptRefusal::NotPlaying),
         };
         let signed = receipt.receipt;
@@ -535,7 +535,7 @@ impl JoinState {
             return Err(ReceiptRefusal::BadSignature);
         }
         if signed.session_id != member.session.id
-            || signed.slot != slot
+            || signed.seat != seat
             || (signed.delegation != *member.delegation.id()
                 && Some(signed.delegation) != member.renewed)
         {
@@ -588,7 +588,7 @@ impl JoinState {
                 ..
             }) => Step::Leaving(Leaving {
                 member,
-                slot: chain.slot(),
+                seat: chain.seat(),
                 history,
             }),
             _ => Step::Left,

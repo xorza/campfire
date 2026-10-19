@@ -45,7 +45,7 @@ impl MatchEnd {
     /// Whether the match runs, the condition of every stage: a client holds its entity
     /// unpredicted, as the server sends it. The tick still counts on once it ended, so a log may
     /// hold ticks after the end, which change nothing.
-    pub(crate) fn running(ended: Query<'_, '_, (), (With<Self>, Allow<Unpredicted>)>) -> bool {
+    pub(crate) fn is_running(ended: Query<'_, '_, (), (With<Self>, Allow<Unpredicted>)>) -> bool {
         ended.is_empty()
     }
 }

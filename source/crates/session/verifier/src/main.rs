@@ -12,9 +12,9 @@ use campfire_log::{LogEvent, Logging};
 use campfire_verifier::{Verified, verify_file};
 use tracing::error;
 
-use crate::args::Args;
+use crate::command_line::CommandLine;
 
-mod args;
+mod command_line;
 
 fn main() -> ExitCode {
     let _log = Logging {
@@ -22,7 +22,7 @@ fn main() -> ExitCode {
         file: "info,campfire_runner=debug,campfire_script=debug",
     }
     .start();
-    let args: Args = match Logging::command_line(env::args_os()) {
+    let args: CommandLine = match Logging::command_line(env::args_os()) {
         Ok(args) => args,
         Err(status) => return ExitCode::from(status),
     };

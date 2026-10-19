@@ -6,10 +6,10 @@ use super::*;
 /// its span's ends, as the walk did before it carried its quotient.
 fn touched_by_division(grid: &Grid, from: Vec3, to: Vec3) -> Vec<usize> {
     let min = grid.bounds.min().map(|axis| i128::from(axis.to_bits()));
-    let ground = |pos: Vec3| {
+    let ground = |position: Vec3| {
         [
-            i128::from(pos.x.to_bits()) - min[0],
-            i128::from(pos.z.to_bits()) - min[1],
+            i128::from(position.x.to_bits()) - min[0],
+            i128::from(position.z.to_bits()) - min[1],
         ]
     };
     let (mut a, mut b) = (ground(from), ground(to));
@@ -71,7 +71,7 @@ fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
         Vec3::from((2, 0, Num::int(1) + half)),
     ];
     assert_eq!(
-        edges.map(|pos| grid.cell_of(pos)),
+        edges.map(|position| grid.cell_of(position)),
         [Some(7), Some(10), Some(11)]
     );
     // Outside the bounds, even within the last row's cells, which reach z = 2.
@@ -80,7 +80,10 @@ fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
         Vec3::from((Num::int(-2) - Num::EPSILON, 0, 0)),
         Vec3::from((0, 0, Num::int(1) + half + Num::EPSILON)),
     ];
-    assert_eq!(off.map(|pos| grid.cell_of(pos)), [None, None, None]);
+    assert_eq!(
+        off.map(|position| grid.cell_of(position)),
+        [None, None, None]
+    );
 
     // From (0, 0) the nearest centers, (±0.5, ±0.5), are √0.5 ≈ 0.707 m away, the next
     // ones, such as (1.5, 0.5), √2.5 ≈ 1.58 m. A radius of 1.5 reaches only the four.
@@ -107,15 +110,15 @@ fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
     let twice = |value: Num| 2 * i128::from(value.to_bits());
     for x in -12..12 {
         for z in -8..10 {
-            let pos = Vec3::from((quarter * x, 0, quarter * z));
+            let position = Vec3::from((quarter * x, 0, quarter * z));
             for radius in [0, 1, 2, 3, 5, 6, 7, 9, 12, 20].map(|r| quarter * r) {
                 // Within the radius, and strictly closer than it.
                 for strict in [false, true] {
                     let mut spans = Vec::new();
                     if strict {
-                        grid.spans_closer(pos, radius, |span| spans.extend(span));
+                        grid.spans_closer(position, radius, |span| spans.extend(span));
                     } else {
-                        grid.spans_within(pos, radius, |span| spans.extend(span));
+                        grid.spans_within(position, radius, |span| spans.extend(span));
                     }
                     let alone: Vec<usize> = (0..grid.cells())
                         .filter(|&cell| {
@@ -123,8 +126,8 @@ fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
                                 twice(grid.bounds.min()[axis])
                                     + i128::from(grid.cell.to_bits()) * (2 * index as i128 + 1)
                             };
-                            let dx = twice(pos.x) - center(cell % 4, 0);
-                            let dz = twice(pos.z) - center(cell / 4, 1);
+                            let dx = twice(position.x) - center(cell % 4, 0);
+                            let dz = twice(position.z) - center(cell / 4, 1);
                             let square = dx * dx + dz * dz;
                             let reach = twice(radius) * twice(radius);
                             if strict {
@@ -194,19 +197,19 @@ fn the_rows_in_lanes_are_the_rows_one_by_one() {
                     along
                 }
             };
-            let pos = Vec3::from((Num::from_bits(point()), 0, Num::from_bits(point())));
+            let position = Vec3::from((Num::from_bits(point()), 0, Num::from_bits(point())));
             let radius = match case % 4 {
                 0 => widest - (words.next_u64() % 4).cast_signed(),
                 1 => (words.next_u64() % (4 * Num::ONE.to_bits().cast_unsigned())).cast_signed(),
                 _ => (words.next_u64() % widest.cast_unsigned()).cast_signed(),
             };
             for edge in [DiscEdge::In, DiscEdge::Out] {
-                let rows = grid.disc_rows(pos, Num::from_bits(radius), edge);
+                let rows = grid.disc_rows(position, Num::from_bits(radius), edge);
                 assert!(rows.fit_lanes(bits));
                 assert_eq!(
                     runs(&rows, true),
                     runs(&rows, false),
-                    "{pos:?} {radius} {edge:?}"
+                    "{position:?} {radius} {edge:?}"
                 );
             }
         }

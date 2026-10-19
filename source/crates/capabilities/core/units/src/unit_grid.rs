@@ -68,14 +68,14 @@ impl GridBuild<'_, '_> {
     /// Builds the grid again when its tracker finds the units changed, as a reader that runs
     /// within a system that changes the units needs before it reads.
     pub fn refresh(&mut self) {
-        if self.tracking.stale() {
+        if self.tracking.is_stale() {
             let mut count = 0;
             self.grid.0.rebuild(self.tracking.units().map(|unit| {
                 count += 1;
                 Indexed {
                     id: unit.id,
                     key: unit.entity,
-                    body: Placed::new(unit.pos, Body::shape_of(unit.body)),
+                    body: Placed::new(unit.position, Body::shape_of(unit.body)),
                 }
             }));
             self.tracking.took(count);

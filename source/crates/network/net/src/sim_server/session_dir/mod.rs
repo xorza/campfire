@@ -172,7 +172,7 @@ impl SessionDir {
 
     /// Reads the session back: its private record, and the log its journal rebuilds, the
     /// journal cut at its first bad frame, which logs `JournalCut` with the bytes it drops
-    /// (10-sessions.md, A journal is cut at its first bad frame); none when the journal holds no
+    /// (08-sessions.md, A journal is cut at its first bad frame); none when the journal holds no
     /// record, as a session whose match never started has none, and none when a stop as the
     /// session opened left no private record or no journal. An error for a record that does not
     /// read, a journal whose records do not rebuild a log, as one of another release does not,
@@ -235,7 +235,7 @@ impl SessionDir {
 
     /// Publishes the log of `session`, which its journal under `data` holds whole, with the
     /// server seed `revealed` of its last segment, in `data`, written durably: the file the
-    /// journal publishes in two streaming reads (10-sessions.md, A published log is written from
+    /// journal publishes in two streaming reads (08-sessions.md, A published log is written from
     /// the journal); the file's path.
     pub fn publish(
         data: &ServerDir,
@@ -427,16 +427,16 @@ mod tests {
 
     use campfire_common::{MapName, PackageFingerprint, Ticks};
     use campfire_protocol::internals::TestKey;
-    use campfire_protocol::{InputRules, SeedChain, SlotPlan};
-    use campfire_store::internals::Scratch;
+    use campfire_protocol::{InputRules, SeatPlan, SeedChain};
+    use campfire_store::internals::TestDir;
     use campfire_visibility::Visibility;
 
     use super::*;
 
     #[test]
     fn a_session_stopped_at_any_step_before_its_first_record_goes() {
-        let scratch = Scratch::new();
-        let root = scratch.path("data");
+        let test_dir = TestDir::new();
+        let root = test_dir.path("data");
         let data = ServerDir::open(&root).unwrap();
         let key = TestKey::of(8);
         let seed_chain = SeedChain::new([9; 32], NonZeroU32::MIN);
@@ -454,17 +454,17 @@ mod tests {
             mode: PackageFingerprint::new([1; 32]),
             map: MapName::parse("lane").unwrap(),
             dependencies: Vec::new(),
-            slots: vec![SlotPlan::Open],
+            seats: vec![SeatPlan::Open],
             visibility: Visibility::DEFAULT.encode(),
             options: Vec::new(),
         };
         let private = SessionPrivate { seed_chain };
         let id = terms.session_id();
         let session = Path::new("data/sessions").join(id.to_string());
-        let path = scratch.path(&session);
+        let path = test_dir.path(&session);
         let gone = |data: &ServerDir| {
             assert!(SessionDir::waiting(data).unwrap().is_none());
-            !scratch.exists(&session)
+            !test_dir.exists(&session)
         };
         // Stopped with its directory made, before its private record.
         DurableDir::create(&root.join("sessions")).unwrap();

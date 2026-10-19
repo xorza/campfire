@@ -3,13 +3,13 @@ use campfire_quic::AppCode;
 use serde::{Deserialize, Serialize};
 
 /// Why Campfire ends a link, which `quic` carries as an `AppCode` and the peer reads back
-/// (15-quic-transport.md, A link's end is a type).
+/// (11-quic-transport.md, A link's end is a type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumAll)]
 #[repr(u32)]
 pub enum CloseCode {
     /// The player left the match.
     Left = AppCode::FIRST,
-    /// A newer login of the player took the slot.
+    /// A newer login of the player took the seat.
     Superseded,
     /// The server refused the player's input message.
     InputRefused,

@@ -11,7 +11,7 @@ use campfire_units::StatId;
 use campfire_values::{ActionId, ModifierId, NameId, Names, Param, Rank, Stat};
 
 use crate::applier_param::ApplierParam;
-use crate::live_param::{LiveParam, ParamOwner};
+use crate::live_param::{LiveParam, ParamOrigin};
 use crate::modifier_data::ModifierData;
 use crate::modifier_spec::ParamPlace;
 use crate::param_read::ParamRead;
@@ -40,7 +40,7 @@ struct ApplierPlaces {
     at: Vec<Option<u16>>,
 }
 
-/// A table of params, and the run of one owner's params there.
+/// A table of params, and the run of one origin's params there.
 #[derive(Debug, Clone, Copy)]
 struct TableRun<'a> {
     table: &'a ParamTable,
@@ -82,18 +82,18 @@ impl ParamBook {
         source: Option<&ParamSource<'_>>,
     ) -> ParamRead {
         const CHECKED: &str = "its way checked the param";
-        let (owner, at) = match place {
-            ParamPlace::Own(at) => (ParamOwner::Modifier(modifier), usize::from(at)),
+        let (origin, at) = match place {
+            ParamPlace::Own(at) => (ParamOrigin::Modifier(modifier), usize::from(at)),
             ParamPlace::Applier(param) => {
                 let action = action.expect(CHECKED);
                 let at = self.0.appliers.get(action, param);
-                (ParamOwner::Action(action), at.expect(CHECKED))
+                (ParamOrigin::Action(action), at.expect(CHECKED))
             }
         };
-        let TableRun { table, run } = self.table(owner);
+        let TableRun { table, run } = self.table(origin);
         let value = table.value(run, at, rank, source).to_num().expect(CHECKED);
         let live = table.scales(run, at).then(|| LiveParam {
-            owner,
+            origin,
             at: u16::try_from(at).expect("params fit u16"),
         });
         ParamRead { value, live }
@@ -141,7 +141,7 @@ impl ParamBook {
 
     /// Whether `live` names a scaling param it holds, with a value at `rank`.
     pub fn holds_live(&self, live: LiveParam, rank: Rank) -> bool {
-        let TableRun { table, run } = self.table(live.owner);
+        let TableRun { table, run } = self.table(live.origin);
         let at = usize::from(live.at);
         at < table.len(run) && table.scales(run, at) && table.has_rank(run, at, rank)
     }
@@ -153,19 +153,19 @@ impl ParamBook {
         rank: Rank,
         source: Option<&ParamSource<'_>>,
     ) -> Num {
-        let TableRun { table, run } = self.table(live.owner);
+        let TableRun { table, run } = self.table(live.origin);
         let value = table.value(run, usize::from(live.at), rank, source);
         value.to_num().expect("its way checked the param")
     }
 
-    /// The table of `owner`'s params, and its run there.
-    fn table(&self, owner: ParamOwner) -> TableRun<'_> {
-        match owner {
-            ParamOwner::Modifier(modifier) => TableRun {
+    /// The table of `origin`'s params, and its run there.
+    fn table(&self, origin: ParamOrigin) -> TableRun<'_> {
+        match origin {
+            ParamOrigin::Modifier(modifier) => TableRun {
                 table: self.modifiers(),
                 run: modifier.index(),
             },
-            ParamOwner::Action(action) => TableRun {
+            ParamOrigin::Action(action) => TableRun {
                 table: self.actions(),
                 run: action.index(),
             },

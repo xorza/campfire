@@ -24,17 +24,17 @@ impl<'a> PinnedFile<'a> {
 
     /// Writes `now` into the file when the run blesses, and gives whether it did.
     pub fn bless(&self, now: &[u8]) -> Result<bool, PathError<DurableError>> {
-        self.write_if(PinnedFile::blessing(), now)
+        self.write_if(PinnedFile::is_blessing(), now)
     }
 
     /// Writes `now` into the file when the run blesses, and else asserts that the file, of at
     /// most `max` bytes, holds `now` byte for byte: the rule of a file a test compares whole.
     pub fn pin(&self, now: &[u8], max: usize) {
-        self.pin_if(PinnedFile::blessing(), now, max);
+        self.pin_if(PinnedFile::is_blessing(), now, max);
     }
 
     /// Whether the run writes the pinned files again, by `CAMPFIRE_BLESS`.
-    pub fn blessing() -> bool {
+    pub fn is_blessing() -> bool {
         let value = env::var_os(PinnedFile::BLESS);
         let value = match value.as_deref().map(OsStr::to_str) {
             None => BlessValue::Unset,
@@ -99,7 +99,7 @@ mod tests {
     use std::panic;
 
     use super::*;
-    use crate::scratch::Scratch;
+    use crate::test_dir::TestDir;
 
     #[test]
     fn only_one_blesses_and_a_value_of_neither_meaning_panics() {
@@ -119,8 +119,8 @@ mod tests {
 
     #[test]
     fn a_pinned_file_is_written_only_when_the_run_blesses() {
-        let scratch = Scratch::new();
-        let path = scratch.path("pinned.txt");
+        let test_dir = TestDir::new();
+        let path = test_dir.path("pinned.txt");
         let file = PinnedFile::new(&path);
         assert!(!file.write_if(false, b"made").unwrap());
         assert_eq!(InputFile::read_if_present(&path, 16).unwrap(), None);

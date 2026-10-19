@@ -1,12 +1,12 @@
 use campfire_common::StateHash;
-use campfire_protocol::{CheckpointError, Outcome, SeedError, ServerInputError, SlotChange};
+use campfire_protocol::{CheckpointError, Outcome, SeatChange, SeedError, ServerInputError};
 use campfire_script::CallError;
 use campfire_sim::SnapshotError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::seat_rules::error::SeatRuleError;
 use crate::session_rules::error::TermsError;
-use crate::slot_rules::error::SlotRuleError;
 
 /// Why a session log does not start a match. A published log is untrusted, and so are packages,
 /// so each is an expected failure.
@@ -17,12 +17,12 @@ pub enum StartError {
     Seed(SeedError),
     #[error(transparent)]
     Terms(TermsError),
-    /// A change of a slot's controller the mode's `[players]` does not allow.
-    #[error("slot {} in tick {}", .change.slot.get(), .change.tick)]
-    SlotRule {
-        change: SlotChange,
+    /// A change of a seat's controller the mode's `[players]` does not allow.
+    #[error("seat {} in tick {}", .change.seat.get(), .change.tick)]
+    SeatRule {
+        change: SeatChange,
         #[source]
-        error: SlotRuleError,
+        error: SeatRuleError,
     },
     /// The mode script's `on_match_start` failed.
     #[error("the mode's start failed")]
@@ -75,11 +75,11 @@ pub enum CheckpointBeginError {
 
 /// Why a session refused a server input: the log's structure, or the mode's rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
-pub enum ServerInputRefused {
+pub enum ServerInputRefusal {
     #[error(transparent)]
     Log(ServerInputError),
     #[error(transparent)]
-    Rule(SlotRuleError),
+    Rule(SeatRuleError),
 }
 
 /// Why a log's result does not hold for the state its replay ends in.

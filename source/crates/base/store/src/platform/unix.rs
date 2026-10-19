@@ -13,7 +13,7 @@ use socket2::Socket;
 use crate::platform::stop_signals::StopSignals;
 
 /// The Unix side of the platform layer: a mode given as a file or directory is made keeps it its
-/// owner's only, and `fsync` of a directory keeps its names. A file is its owner's only when its
+/// owner's only, and `fsync` of a directory keeps its names. A file is its user's only when its
 /// owner is the process's effective user, or root, who may open any file, and its mode lets
 /// neither its group nor others in. A stop's signal is caught by `signal-hook`, whose handler
 /// does only what a signal's handler may. A shared port takes `SO_REUSEADDR` and `SO_REUSEPORT`,
@@ -36,7 +36,7 @@ impl Os {
         socket.set_reuse_port(true)
     }
 
-    pub(crate) fn create_owner_only(path: &Path) -> io::Result<File> {
+    pub(crate) fn create_user_only(path: &Path) -> io::Result<File> {
         OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -44,7 +44,7 @@ impl Os {
             .open(path)
     }
 
-    pub(crate) fn open_owner_only(path: &Path) -> io::Result<File> {
+    pub(crate) fn open_user_only(path: &Path) -> io::Result<File> {
         OpenOptions::new()
             .write(true)
             .create(true)
@@ -53,7 +53,7 @@ impl Os {
             .open(path)
     }
 
-    pub(crate) fn create_dir_owner_only(path: &Path) -> io::Result<()> {
+    pub(crate) fn create_dir_user_only(path: &Path) -> io::Result<()> {
         DirBuilder::new().mode(0o700).create(path)
     }
 

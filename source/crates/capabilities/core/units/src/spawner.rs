@@ -4,11 +4,11 @@ use bevy_ecs::world::World;
 use campfire_declare::MatchFacts;
 
 use crate::spawn_at::SpawnAt;
-use crate::spawn_hooks::SpawnHooks;
+use crate::spawn_callbacks::SpawnCallbacks;
 use crate::unit_entity::body_unit::BodyUnit;
 
 /// How the match spawns a unit of a type that stands, owned by a player or none: its core with
-/// the parts the caller gives, and the parts the modules declare, then the spawn hooks of the
+/// the parts the caller gives, and the parts the modules declare, then the spawn callbacks of the
 /// match's capabilities, a type's passive among them. The mode, a capability that spawns a typed
 /// unit, such as production, and a test call it. Only a match that computes its state spawns, as
 /// a client receives its units from the server; the load checks that each spawn of the packages
@@ -18,7 +18,7 @@ pub struct Spawner;
 
 impl Spawner {
     /// Spawns `at` in `world` with `parts`, facing its angle, and the parts the modules declare
-    /// for a unit, but those of `parts`, in one move, then runs the capabilities' spawn hooks.
+    /// for a unit, but those of `parts`, in one move, then runs the capabilities' spawn callbacks.
     pub fn spawn(
         world: &mut World,
         at: SpawnAt,
@@ -33,7 +33,7 @@ impl Spawner {
 
     fn place(world: &mut World, at: SpawnAt, parts: impl Bundle<Effect: NoBundleEffect>) -> Entity {
         let entity = at.core().spawn(world, BodyUnit, parts);
-        SpawnHooks::run(world, entity);
+        SpawnCallbacks::run(world, entity);
         entity
     }
 }

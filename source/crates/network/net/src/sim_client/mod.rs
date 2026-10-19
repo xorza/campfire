@@ -14,7 +14,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_bots::{BotOrder, BotScript, BotUnits, BotView, OrderScratch, ScriptedInput};
-use campfire_capabilities::{MatchKind, MatchSpec, Order, Release};
+use campfire_capabilities::{MatchKind, MatchSetup, Order, Release};
 use campfire_common::ErrorReport;
 use campfire_common::{SegmentSeed, Tick};
 use campfire_declare::Role;
@@ -101,7 +101,7 @@ pub struct SimClient {
     /// This session's key, which the delegation lets sign the player's inputs.
     pub session_key: Keypair,
     pub server: ServerPin,
-    /// Whether the player plays a slot or watches.
+    /// Whether the player plays a seat or watches.
     pub role: JoinRole,
     /// Where the server runs.
     pub hosting: Hosting,
@@ -169,7 +169,7 @@ impl SimClient {
 
     /// Spawns the client's entity, which its link and its connect name. Its link takes
     /// `LINK_MIN_MTU` now, as its transport fixes its fragment size at the spawn, before any IO
-    /// links it (15-quic-transport.md, A link's minimum MTU is QUIC's datagram).
+    /// links it (11-quic-transport.md, A link's minimum MTU is QUIC's datagram).
     pub fn spawn(world: &mut World) -> Entity {
         world
             .spawn((Client, RawClient, ReplicationReceiver, QuicEndpoint::link()))
@@ -198,8 +198,8 @@ impl Plugin for SimClient {
         let packages = &self.packages;
         // A client runs no scripts: it predicts only its own player's units.
         let set = packages.manifest().capabilities;
-        let spec = MatchSpec::new(PREDICTION_SEED, rate, Role::Client).set(set);
-        Release::build(world, spec, packages.books(rate), MatchKind::Predicting);
+        let setup = MatchSetup::new(PREDICTION_SEED, rate, Role::Client).set(set);
+        Release::build(world, setup, packages.books(rate), MatchKind::Predicting);
         mark_unpredicted(world);
         world.insert_resource(PlayerSigner(Signer::new(self.session_key, self.os.entropy)));
         world.insert_resource(self.hosting);
@@ -267,7 +267,7 @@ impl Plugin for SimClient {
             FixedUpdate,
             (send_orders.run_if(not(is_in_rollback)), run_predicted_tick)
                 .chain()
-                .run_if(playing),
+                .run_if(is_playing),
         );
     }
 }
@@ -336,13 +336,13 @@ fn receive_match_start(
                 Started::No => {}
                 Started::Playing { discarded } => {
                     MatchStarted {
-                        slot: start.slot,
+                        seat: start.seat,
                         start_tick: start.start_tick,
                     }
                     .log();
                     if discarded > 0 {
                         InputsDiscarded {
-                            slot: start.slot,
+                            seat: start.seat,
                             count: discarded,
                         }
                         .log();
@@ -497,7 +497,7 @@ fn send_leave(
     mut sender: Single<'_, '_, &mut MessageSender<LeaveMatch>, With<Client>>,
     mut state: ResMut<'_, JoinState>,
 ) {
-    if state.left() {
+    if state.is_left() {
         return;
     }
     info!("leaving the match");
@@ -515,7 +515,7 @@ fn retry_link(
     mut commands: Commands<'_, '_>,
 ) {
     let (entity, unlinked) = *client;
-    if !state.rejoining() || !unlinked {
+    if !state.is_rejoining() || !unlinked {
         return;
     }
     match state.retry(time.elapsed(), os.entropy.random()) {
@@ -541,7 +541,7 @@ fn log_frame(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_,
 /// The client runs a sim tick in this fixed tick; see `JoinState::sim_tick`. A match start's
 /// clock names the server's Lightyear tick, which a server started again counts from 0, while the
 /// client's timeline counts the old link's until its first sync on the new one shifts it.
-fn playing(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_, '_>>) -> bool {
+fn is_playing(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_, '_>>) -> bool {
     state.sim_tick(timeline.as_ref()).is_some()
 }
 
@@ -592,7 +592,7 @@ fn report_deaths(
         let fallen = Fallen {
             id,
             team: team.copied(),
-            owner: owner.map(|owner| owner.slot()),
+            owner: owner.map(|owner| owner.seat()),
             avatar,
         };
         UnitDied::learned(tick, fallen).log();
@@ -653,18 +653,18 @@ fn send_orders(
         for input in bot.due_inputs(stamp) {
             pending.push_input(input.clone());
         }
-        let slot = playing.chain.slot();
-        let avatar = view.avatar(slot).is_some();
+        let seat = playing.chain.seat();
+        let avatar = view.avatar(seat).is_some();
         let ready = |order: &BotOrder| avatar || order.units != BotUnits::Avatar;
         for scripted in bot.due_orders_while(stamp, ready) {
             orders.clear();
-            let unsent = scripted.orders(slot, &view, &mut scratch, &mut orders);
+            let unsent = scripted.orders(seat, &view, &mut scratch, &mut orders);
             for order in orders.drain(..) {
                 pending.push(order);
             }
             if let Some(cause) = unsent {
                 BotOrderUnsent {
-                    slot,
+                    seat,
                     cause,
                     action: scripted.named.clone(),
                 }
@@ -711,7 +711,7 @@ fn send_orders(
         return;
     }
     OrdersSent {
-        slot: playing.chain.slot(),
+        seat: playing.chain.seat(),
         seq: playing.chain.next_seq(),
         stamp,
         orders: payloads.len(),
@@ -737,7 +737,7 @@ fn run_predicted_tick(world: &mut World) {
     if world.match_entity().is_none() {
         return;
     }
-    let slot = playing.chain.slot();
+    let seat = playing.chain.seat();
     let Some(sim_tick) = playing.clock.sim_tick(tick) else {
         return;
     };
@@ -745,7 +745,7 @@ fn run_predicted_tick(world: &mut World) {
     world.resource_scope(|world, sent: Mut<'_, SentInputs>| {
         let mut inputs = world.resource_mut::<TickInputs>();
         for payload in sent.at(sim_tick) {
-            inputs.push(TickInput { slot, payload });
+            inputs.push(TickInput { seat, payload });
         }
     });
     world.run_schedule(SimUpdate);

@@ -9,10 +9,10 @@ use crate::delegation::error::ScopeError;
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::harness::test_key::TestKey;
 use crate::input_rules::InputRules;
+use crate::seat_plan::SeatPlan;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
 use crate::signed;
-use crate::slot_plan::SlotPlan;
 
 const EXPIRATION: u64 = TestKey::NOW + 60;
 
@@ -31,7 +31,7 @@ fn terms() -> SessionTerms {
         mode: PackageFingerprint::new([5; 32]),
         map: MapName::parse("lane").unwrap(),
         dependencies: vec![PackageFingerprint::new([4; 32])],
-        slots: vec![SlotPlan::Player],
+        seats: vec![SeatPlan::Player],
         visibility: Vec::new(),
         options: Vec::new(),
     }

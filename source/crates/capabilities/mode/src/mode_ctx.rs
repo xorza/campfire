@@ -24,7 +24,7 @@ pub(crate) trait ModeCtx {
 
 impl ModeCtx for Ctx {
     fn mode_spec(&self) -> Option<Arc<ModeSpec>> {
-        self.frame().part::<ModeCall>().map(ModeCall::spec)
+        self.frame().extension::<ModeCall>().map(ModeCall::spec)
     }
 
     fn match_mode_spec(&self) -> Arc<ModeSpec> {
@@ -37,7 +37,7 @@ impl ModeCtx for Ctx {
     }
 
     fn mode_map_or_fail(&self) -> Checked<GameMap> {
-        let map = self.frame().part::<ModeCall>().map(ModeCall::map);
+        let map = self.frame().extension::<ModeCall>().map(ModeCall::map);
         map.ok_or_else(|| ApiError::NoMode.fail().into())
     }
 }

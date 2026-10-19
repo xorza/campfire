@@ -17,7 +17,7 @@ pub struct Reveals(Vec<Reveal>);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reveal {
     pub team: Team,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub(crate) radius: Num,
     pub(crate) last: Tick,
 }
@@ -62,7 +62,7 @@ impl SimResource for Reveals {
         self.0.iter().all(|reveal| {
             reveal.radius >= Num::ZERO
                 && grid.is_some_and(|grid| reveal.team.index() < grid.teams)
-                && reveal.pos.within_bound()
+                && reveal.position.within_bound()
         })
     }
 }

@@ -1,12 +1,12 @@
 use campfire_math::Num;
 use campfire_values::{Block, TagProperty};
 
-use crate::scripts::api_owner::ApiOwner;
+use crate::scripts::api_holder::ApiHolder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::{Ctx, Params};
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
-use crate::scripts::member_spec::MemberSpec;
+use crate::scripts::member_decl::MemberDecl;
 use crate::scripts::player_handle::PlayerHandle;
 use crate::scripts::script_api::api_builder::ApiBuilder;
 use crate::scripts::script_call::ScriptCall;
@@ -21,14 +21,14 @@ pub struct CoreApi;
 
 impl CoreApi {
     pub fn register(api: &mut ApiBuilder<'_>) {
-        let chance = MemberSpec::call(
+        let chance = MemberDecl::call(
             "chance",
             &[&["p"]],
             "true with probability `p`, from 0 to 1, from the secret stream",
         );
         api.ty::<Ctx>()
             .call(
-                MemberSpec::value(
+                MemberDecl::value(
                     "params",
                     "the params: an ability's at its rank, a modifier's then its ability's, or the mode's",
                 ),
@@ -36,7 +36,7 @@ impl CoreApi {
             )
             .call(chance, |ctx: &mut Ctx, p: Num| Self::chance(ctx, p))
             .call(
-                MemberSpec::call(
+                MemberDecl::call(
                     "pick",
                     &[&["list"]],
                     "an entry of `list`, each as likely, from the secret stream",
@@ -53,18 +53,18 @@ impl CoreApi {
         );
         api.ty::<Params>()
             .index(|_, params: &mut Params, name: &str| params.get(name));
-        let player = ApiOwner::of::<PlayerHandle>();
+        let player = ApiHolder::of::<PlayerHandle>();
         api.ty::<PlayerHandle>()
             .bind(
-                MemberSpec::field(player, "slot", "its slot's place, from 0"),
-                |player: &mut PlayerHandle| i64::from(player.slot().get()),
+                MemberDecl::field(player, "seat", "its seat's place, from 0"),
+                |player: &mut PlayerHandle| i64::from(player.seat().get()),
             )
             .method(
-                MemberSpec::operator(player, "==", "whether the two are one player"),
+                MemberDecl::operator(player, "==", "whether the two are one player"),
                 |a: PlayerHandle, b: PlayerHandle| Ok(a == b),
             )
             .method(
-                MemberSpec::operator(player, "!=", "whether the two are two players"),
+                MemberDecl::operator(player, "!=", "whether the two are two players"),
                 |a: PlayerHandle, b: PlayerHandle| Ok(a != b),
             );
     }
@@ -90,7 +90,7 @@ impl CoreApi {
 
     fn draws(frame: &mut Frame) -> &mut ScriptCall {
         frame
-            .part_mut::<ScriptCall>()
+            .extension_mut::<ScriptCall>()
             .expect("every match with scripts draws")
     }
 }

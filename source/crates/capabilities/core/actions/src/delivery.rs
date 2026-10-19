@@ -41,7 +41,7 @@ pub enum ProjectileFlight {
 
 impl ProjectileFlight {
     /// Whether a script launches it at a unit, not along a direction.
-    pub const fn at_unit(self) -> bool {
+    pub const fn is_at_unit(self) -> bool {
         matches!(self, Self::Homing | Self::Curve)
     }
 }

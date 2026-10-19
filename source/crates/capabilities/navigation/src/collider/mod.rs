@@ -51,14 +51,14 @@ impl Collider {
                 ContactBodies::Walkers { first, second } => {
                     debug_assert!(first < second);
                     let (head, tail) = colliders.split_at_mut(second);
-                    Self::part(&mut head[first], &mut tail[0]);
+                    Self::separate(&mut head[first], &mut tail[0]);
                 }
                 ContactBodies::Static { walker, body } => {
                     let (walker, mut fixed) = (&mut colliders[walker], Self::fixed(&body));
                     if walker.id < body.id {
-                        Self::part(walker, &mut fixed);
+                        Self::separate(walker, &mut fixed);
                     } else {
-                        Self::part(&mut fixed, walker);
+                        Self::separate(&mut fixed, walker);
                     }
                 }
             }
@@ -71,7 +71,7 @@ impl Collider {
         Self {
             id: body.id,
             entity: Entity::PLACEHOLDER,
-            point: body.pos,
+            point: body.position,
             shape: body.shape,
             layer: body.layer,
             movable: false,
@@ -84,7 +84,7 @@ impl Collider {
     /// not overlap. Two that may not be pushed never part, so they have no contact, nor have two
     /// of other layers, nor two that both gather.
     pub(crate) fn overlaps(&self, other: &Self) -> bool {
-        if !self.may_part(other) {
+        if !self.may_separate(other) {
             return false;
         }
         match Self::boxed(self, other) {
@@ -93,9 +93,9 @@ impl Collider {
         }
     }
 
-    /// Whether the two may part: they stand on one layer, one of them may be pushed, and not both
-    /// gather.
-    fn may_part(&self, other: &Self) -> bool {
+    /// Whether the two may separate: they stand on one layer, one of them may be pushed, and not
+    /// both gather.
+    fn may_separate(&self, other: &Self) -> bool {
         self.layer == other.layer
             && (self.movable || other.movable)
             && !(self.gathering && other.gathering)
@@ -123,7 +123,7 @@ impl Collider {
     /// How `other` lies from `self`, two circles, when the two overlap and may part, in bits of a
     /// `Num`: a position and a radius are within 2⁴⁵ bits, so squares fit i128.
     fn overlap(&self, other: &Self) -> Option<Overlap> {
-        if !self.may_part(other) {
+        if !self.may_separate(other) {
             return None;
         }
         let dx = i128::from(other.point.x.to_bits() - self.point.x.to_bits());
@@ -133,8 +133,8 @@ impl Collider {
         (square < reach * reach).then_some(Overlap { dx, dz, reach })
     }
 
-    fn part(a: &mut Self, b: &mut Self) {
-        if !a.may_part(b) {
+    fn separate(a: &mut Self, b: &mut Self) {
+        if !a.may_separate(b) {
             return;
         }
         if let Some((body, at, _)) = Self::boxed(a, b) {

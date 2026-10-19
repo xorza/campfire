@@ -18,7 +18,7 @@ use campfire_net::{
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, Outcome, SessionLog, Signer};
 use campfire_runner::TermsError;
-use campfire_store::internals::Scratch;
+use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
 use lightyear::prelude::Connect;
 
@@ -27,12 +27,12 @@ const DEADLINE: Duration = Duration::from_secs(10);
 
 #[test]
 fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
-    let scratch = Scratch::new();
+    let test_dir = TestDir::new();
     let packages = Arc::new(TestMode::Lane.packages());
     let pace = Arc::new(Pace::default());
     let mut server = LocalServer::start(LocalServerSetup {
         packages: Arc::clone(&packages),
-        data: scratch.path("data"),
+        data: test_dir.path("data"),
         bots: Vec::new(),
         options: Vec::new(),
         pace,
@@ -131,11 +131,11 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     // Dropped, the server ends the session, aborted as the mode did not end the match, and
     // publishes its log.
     drop(server);
-    let stopped = ServerDir::open(&scratch.path("data")).unwrap();
+    let stopped = ServerDir::open(&test_dir.path("data")).unwrap();
     assert!(SessionDir::find(&stopped).unwrap().is_none());
-    let logs = scratch.names("data/logs");
+    let logs = test_dir.names("data/logs");
     assert_eq!(logs.len(), 1);
-    let log = SessionLog::decode(&scratch.read(format!("data/logs/{}", logs[0]))).unwrap();
+    let log = SessionLog::decode(&test_dir.read(format!("data/logs/{}", logs[0]))).unwrap();
     assert_eq!(
         log.result().map(|result| result.outcome),
         Some(Outcome::Aborted)

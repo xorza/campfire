@@ -54,7 +54,7 @@ struct Cursor {
 impl SessionLog {
     /// Writes into `out`, which is cleared first, the file of the log whose journal `walk` gives,
     /// with the server seed `revealed` of its last segment: the bytes `encode` writes for the log
-    /// the journal rebuilds, each load's cut applied (10-sessions.md, A published log is written
+    /// the journal rebuilds, each load's cut applied (08-sessions.md, A published log is written
     /// from the journal). `walk` gives the journal's records in order to the function it is given,
     /// twice: once to count what the file's counts need, once to write each record the file
     /// keeps, so the memory a publication takes is a record's and the counts'. An error for a

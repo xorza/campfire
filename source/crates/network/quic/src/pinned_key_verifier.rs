@@ -13,7 +13,7 @@ use crate::server_key::ALPN;
 use crate::spki::Spki;
 
 /// A client's check of the server: the raw key the client pinned and no other, with no certificate,
-/// chain, name or date to read (15-quic-transport.md, A raw key derived from the server's key). Any
+/// chain, name or date to read (11-quic-transport.md, A raw key derived from the server's key). Any
 /// other key is refused with `ApplicationVerificationFailure`, which TLS sends as the
 /// `access_denied` alert.
 #[derive(Debug)]

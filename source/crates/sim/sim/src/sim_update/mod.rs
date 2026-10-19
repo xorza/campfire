@@ -81,7 +81,7 @@ impl SimUpdate {
             SimEdge::After(SimSet::Vision).after(SimSet::Vision),
             TickEnd.after(SimEdge::After(SimSet::Vision)),
         ));
-        schedule.add_systems((start_tick.before(SimEdge::Start), end_tick.in_set(TickEnd)));
+        schedule.add_systems((begin_tick.before(SimEdge::Start), end_tick.in_set(TickEnd)));
         schedule
     }
 
@@ -98,7 +98,7 @@ impl SimUpdate {
     }
 }
 
-pub(crate) fn start_tick(tick: Res<'_, SimTick>, mut rng: ResMut<'_, SimRng>) {
+pub(crate) fn begin_tick(tick: Res<'_, SimTick>, mut rng: ResMut<'_, SimRng>) {
     rng.begin_tick(*tick);
 }
 

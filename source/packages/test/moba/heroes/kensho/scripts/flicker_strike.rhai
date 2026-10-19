@@ -6,7 +6,7 @@ fn on_resolve(ctx, caster, target) {
 
 fn on_interval(ctx, m) {
     let options = [];
-    for unit in ctx.find_visible(m.carrier, m.state.last.pos, ctx.params.hop_radius, "enemies") {
+    for unit in ctx.find_visible(m.carrier, m.state.last.position, ctx.params.hop_radius, "enemies") {
         if !m.state.struck.contains(unit) {
             options.push(unit);
         }
@@ -23,7 +23,7 @@ fn strike(ctx, m, target) {
     if !target.is_avatar && ctx.chance(ctx.params.minion_bonus_chance) {
         damage += ctx.params.minion_bonus;
     }
-    ctx.teleport(m.carrier, target.pos);
+    ctx.teleport(m.carrier, target.position);
     ctx.damage(target, "physical", damage);
     m.state.last = target;
     m.state.struck.push(target);

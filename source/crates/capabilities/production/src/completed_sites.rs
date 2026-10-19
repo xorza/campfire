@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_script::{
-    Ctx, Hook, HookSpec, ModeAnswer, ModeEvents, PendingCalls, ScriptRole, Unit,
+    Ctx, Hook, HookDecl, ModeAnswer, ModeEvents, PendingCalls, ScriptRole, Unit,
 };
 use campfire_sim::{SimResource, StableId};
 use serde::{Deserialize, Serialize};
@@ -26,7 +26,7 @@ impl SimResource for CompletedSites {
 #[derive(Debug)]
 pub struct OnSiteComplete;
 
-impl HookSpec for OnSiteComplete {
+impl HookDecl for OnSiteComplete {
     const NAME: &'static str = "on_site_complete";
     const ROLE: ScriptRole = ScriptRole::Mode;
     const PARAMS: &'static [&'static str] = &["ctx", "unit"];

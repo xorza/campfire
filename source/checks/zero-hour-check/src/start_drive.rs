@@ -18,7 +18,7 @@ use crate::pins::HZ;
 /// The most ticks the check waits for the dozer's walk to end, past which it never arrives.
 const DRIVE_LIMIT: u64 = HZ * 60 * 10;
 
-/// The skirmish's start of Tournament Desert and the dozer's drive (12-zero-hour.md, A skirmish
+/// The skirmish's start of Tournament Desert and the dozer's drive (09-zero-hour.md, A skirmish
 /// starts with the faction's start objects): player 1's command center at `Player_1_Start` and its
 /// dozer clear of the center's box, both its own; then the dozer, ordered to `Player_2_Start`,
 /// which stands inside no wall in any tick, and ends its walk `ticks` later at `end`, `left` from
@@ -80,19 +80,19 @@ impl StartDrive {
             });
         };
         let units = MatchUnits::of(play.game());
-        let center = units.pos(building);
+        let center = units.position(building);
         if [center.x, center.z] != [start.x, start.z] {
             failures.push(Failure::BuildingPlace(center));
         }
         let shape = |id| Body::shape_of(units.unit(id).get::<Body>());
         let clear = match (shape(building), shape(dozer)) {
             (Shape::Box(body), Shape::Circle(radius)) => {
-                !body.closer(center, units.pos(dozer), radius.get())
+                !body.closer(center, units.position(dozer), radius.get())
             }
             _ => false,
         };
         if !clear {
-            failures.push(Failure::DozerInBuilding(units.pos(dozer)));
+            failures.push(Failure::DozerInBuilding(units.position(dozer)));
         }
         let layer = Body::layer_of(units.unit(dozer).get::<Body>());
         let walls: Vec<Polygon> = (play.game().resource::<WallBook>().walls().iter())
@@ -114,12 +114,15 @@ impl StartDrive {
             let tick = play.tick().get();
             let units = MatchUnits::of(play.game());
             let unit = units.unit(dozer);
-            let pos = unit
+            let position = unit
                 .get::<Position>()
                 .expect("a unit stands somewhere")
                 .get();
-            if walls.iter().any(|wall| wall.holds_inside([pos.x, pos.z])) {
-                return Err(Failure::DozerInWall { tick, pos });
+            if walls
+                .iter()
+                .any(|wall| wall.holds_inside([position.x, position.z]))
+            {
+                return Err(Failure::DozerInWall { tick, position });
             }
             let walking = unit
                 .get::<Destination>()
@@ -128,8 +131,8 @@ impl StartDrive {
             if ordered && !walking {
                 return Ok(Self {
                     ticks: tick,
-                    end: pos,
-                    left: pos.ground_offset(goal).length(),
+                    end: position,
+                    left: position.ground_offset(goal).length(),
                 });
             }
         }

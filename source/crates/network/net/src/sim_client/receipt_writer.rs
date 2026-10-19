@@ -52,7 +52,7 @@ impl ReceiptWriter {
         let Some(writer) = world.remove_resource::<Self>() else {
             return;
         };
-        if let Some(failure) = writer.0.close() {
+        if let Some(failure) = writer.0.stop() {
             world
                 .resource_mut::<Faults>()
                 .report(Fault::Receipt(failure));

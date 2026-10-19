@@ -40,7 +40,7 @@ pub enum ProgressionRefusal {
 }
 
 impl CapabilityRefusal for ProgressionRefusal {
-    const OWNER: Capability = Capability::Progression;
+    const CAPABILITY: Capability = Capability::Progression;
     const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {

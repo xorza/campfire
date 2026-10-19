@@ -3,10 +3,10 @@ use campfire_common::ErrorReport;
 use campfire_common::Tick;
 use campfire_log::LogEvent;
 use campfire_mode::{MatchEnd, MatchResult, ModeWorld};
-use campfire_protocol::{Checkpoint, Outcome, SessionResult, SlotChangeKind, SnapshotFingerprint};
+use campfire_protocol::{Checkpoint, Outcome, SeatChangeKind, SessionResult, SnapshotFingerprint};
 use campfire_script::ScriptFailures;
 use campfire_sim::{
-    SimRng, SimTick, SimUpdate, SimWorld, SlotEvent, SlotEventKind, TickInput, TickInputs,
+    SeatEvent, SeatEventKind, SimRng, SimTick, SimUpdate, SimWorld, TickInput, TickInputs,
 };
 
 use crate::events::script_call_failed::ScriptCallFailed;
@@ -23,7 +23,7 @@ pub trait SessionWorld {
     fn session_mut(&mut self) -> Mut<'_, Session>;
 
     /// Seals the next tick in the session's log and runs it with the inputs and the changes of
-    /// a slot's controller applied in it, drawing from the seed of the segment that starts there
+    /// a seat's controller applied in it, drawing from the seed of the segment that starts there
     /// when one does, and logs each script call of the tick that failed.
     fn run_session_tick(&mut self);
 
@@ -47,7 +47,7 @@ pub trait SessionWorld {
     /// Whether a save is due at the boundary before the next tick: the mode asked for one in
     /// the tick before, by `ctx.save()`, or the boundary is at a multiple of the mode's
     /// `[saves] autosave_ms` from the session's start.
-    fn save_due(&self) -> bool;
+    fn is_save_due(&self) -> bool;
 
     /// The record of the checkpoint the log began and has no record of, of the state at its
     /// boundary, its snapshot written into `snapshot`, which is cleared first; none when the log
@@ -101,7 +101,7 @@ impl SessionWorld for World {
             let changes = if let Some(replay) = &mut session.replay {
                 for input in replay.seal_tick(&session.log) {
                     inputs.push(TickInput {
-                        slot: input.slot,
+                        seat: input.seat,
                         payload: input.payload,
                     });
                 }
@@ -109,7 +109,7 @@ impl SessionWorld for World {
             } else {
                 for input in session.log.seal_tick(session.journal.as_mut()) {
                     inputs.push(TickInput {
-                        slot: input.slot,
+                        seat: input.seat,
                         payload: input.payload,
                     });
                 }
@@ -117,11 +117,11 @@ impl SessionWorld for World {
             };
             for change in changes {
                 let kind = match change.kind {
-                    SlotChangeKind::Joined { .. } => SlotEventKind::Joined,
-                    SlotChangeKind::Left { .. } => SlotEventKind::Left,
+                    SeatChangeKind::Joined { .. } => SeatEventKind::Joined,
+                    SeatChangeKind::Left { .. } => SeatEventKind::Left,
                 };
-                inputs.push_slot_event(SlotEvent {
-                    slot: change.slot,
+                inputs.push_seat_event(SeatEvent {
+                    seat: change.seat,
                     kind,
                 });
             }
@@ -162,7 +162,7 @@ impl SessionWorld for World {
         }
     }
 
-    fn save_due(&self) -> bool {
+    fn is_save_due(&self) -> bool {
         let session = self.session();
         let next = session.log.next_tick();
         let asked = self.save_asked() == Some(next);

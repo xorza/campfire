@@ -5,7 +5,7 @@ use campfire_math::{Num, Vec3};
 use crate::cell_key::CellKey;
 use crate::cell_levels::CellLevels;
 use crate::placed::Placed;
-use crate::row_directory::{RowDirectory, RowEntries};
+use crate::row_index::{RowEntries, RowIndex};
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -31,7 +31,7 @@ pub struct BodyGrid<K, I> {
     entries: Vec<Indexed<K, I>>,
     /// Each entry's cell, beside it: a search runs over these dense keys, not over the bodies.
     cells: Vec<CellKey>,
-    rows: RowDirectory<u8>,
+    rows: RowIndex<u8>,
     /// The bodies of a build and their order, kept between builds.
     placed: Vec<Indexed<K, I>>,
     order: Vec<Order>,
@@ -77,7 +77,7 @@ impl<K, I> Default for BodyGrid<K, I> {
             widest: Vec::new(),
             entries: Vec::new(),
             cells: Vec::new(),
-            rows: RowDirectory::default(),
+            rows: RowIndex::default(),
             placed: Vec::new(),
             order: Vec::new(),
         }
@@ -103,7 +103,7 @@ impl<K: Copy, I: Copy + Into<u64>> BodyGrid<K, I> {
         self.order.clear();
         self.order
             .extend(self.placed.iter().enumerate().map(|(placed, entry)| {
-                let at = entry.body.pos;
+                let at = entry.body.position;
                 let level = levels.level(entry.body.shape.bound());
                 let (row, column) = (at.z.to_bits(), at.x.to_bits());
                 let (row, column) = (levels.index(level, row), levels.index(level, column));
@@ -193,16 +193,16 @@ impl<K: Copy, I: Copy + Into<u64>> BodyGrid<K, I> {
         }
     }
 
-    /// Calls `visit` with each body whose bound's disc may come within `reach` of `pos` on the
+    /// Calls `visit` with each body whose bound's disc may come within `reach` of `position` on the
     /// ground plane, as `visit` does.
     pub fn visit_near(
         &self,
-        pos: Vec3,
+        position: Vec3,
         reach: Num,
         visit: impl FnMut(&Indexed<K, I>) -> ControlFlow<()>,
     ) {
-        let low = [pos.x, pos.z].map(|axis| axis.checked_sub(reach).unwrap_or(Num::MIN));
-        let high = [pos.x, pos.z].map(|axis| axis.checked_add(reach).unwrap_or(Num::MAX));
+        let low = [position.x, position.z].map(|axis| axis.checked_sub(reach).unwrap_or(Num::MIN));
+        let high = [position.x, position.z].map(|axis| axis.checked_add(reach).unwrap_or(Num::MAX));
         self.visit(low, high, visit);
     }
 }

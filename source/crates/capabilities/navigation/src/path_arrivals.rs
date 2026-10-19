@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_script::{
-    Ctx, Hook, HookSpec, ModeAnswer, ModeEvents, PendingCalls, ScriptRole, ScriptText, Unit,
+    Ctx, Hook, HookDecl, ModeAnswer, ModeEvents, PendingCalls, ScriptRole, ScriptText, Unit,
 };
 use campfire_sim::{SimResource, StableId};
 use campfire_values::{NameId, PathId};
@@ -37,7 +37,7 @@ impl SimResource for PathArrivals {
 #[derive(Debug)]
 pub struct OnPathEnd;
 
-impl HookSpec for OnPathEnd {
+impl HookDecl for OnPathEnd {
     const NAME: &'static str = "on_path_end";
     const ROLE: ScriptRole = ScriptRole::Mode;
     const PARAMS: &'static [&'static str] = &["ctx", "unit", "path"];

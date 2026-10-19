@@ -25,7 +25,7 @@ impl EntityKinds {
 
     /// Whether `entity` of `world` is of one kind alone, as the restore check of each kind's
     /// state marker asks; a world with no declared kinds holds none to count.
-    pub fn alone(world: &World, entity: Entity) -> bool {
+    pub fn is_alone(world: &World, entity: Entity) -> bool {
         world
             .get_resource::<Self>()
             .is_none_or(|kinds| kinds.held(world.entity(entity)) == 1)

@@ -1,4 +1,4 @@
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_mode::PickError;
 use campfire_runner::TermsError;
 use campfire_store::{AppendOpenError, PathError};
@@ -12,14 +12,14 @@ use crate::sim_server::session_dir::error::SessionCreateError;
 pub enum LobbyError {
     #[error(transparent)]
     Terms(TermsError),
-    /// A bot or an open slot names a slot the session does not have.
-    #[error("the session has no slot {}", .0.get())]
-    NoSuchSlot(PlayerSlot),
-    /// Two bots, or a bot and an open slot, name the same slot.
-    #[error("slot {} is a bot's or open twice", .0.get())]
-    SlotNamedTwice(PlayerSlot),
-    /// Every slot is a bot's or open: no player starts the session.
-    #[error("every slot is a bot's or open")]
+    /// A bot or an open seat names a seat the session does not have.
+    #[error("the session has no seat {}", .0.get())]
+    NoSuchSeat(Seat),
+    /// Two bots, or a bot and an open seat, name the same seat.
+    #[error("seat {} is a bot's or open twice", .0.get())]
+    SeatNamedTwice(Seat),
+    /// Every seat is a bot's or open: no player starts the session.
+    #[error("every seat is a bot's or open")]
     NoPlayer,
     /// The host's visibility settings are not ones the mode leaves it.
     #[error("the host's visibility")]

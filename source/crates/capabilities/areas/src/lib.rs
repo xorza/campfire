@@ -1,5 +1,5 @@
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
@@ -135,7 +135,7 @@ impl Areas {
     fn deliver(world: &mut World, launcher: Launcher, from: Vec3, target: ActionTarget) {
         let Launcher { by, delivery } = launcher;
         let unit_type = delivery.unit_type;
-        let at = match target.pos(world) {
+        let at = match target.position(world) {
             Some(at) => at,
             None if target == ActionTarget::None => from,
             None => return,
@@ -143,20 +143,20 @@ impl Areas {
         Self::push(world, by, unit_type, at, target.unit(), None);
     }
 
-    /// Queues an area of `unit_type` of `by` to land at `pos`, aimed at `aimed`; with `id`, the id
-    /// the script that placed it took for it.
+    /// Queues an area of `unit_type` of `by` to land at `position`, aimed at `aimed`; with `id`,
+    /// the id the script that placed it took for it.
     fn push(
         world: &mut World,
         by: Delivering,
         unit_type: UnitType,
-        pos: Vec3,
+        position: Vec3,
         aimed: Option<StableId>,
         id: Option<StableId>,
     ) {
         world.resource_mut::<AreaLaunches>().0.push(AreaLaunch {
             id,
             by,
-            pos,
+            position,
             unit_type,
             aimed,
         });

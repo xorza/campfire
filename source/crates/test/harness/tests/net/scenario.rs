@@ -5,7 +5,7 @@ use bevy_app::App;
 use campfire_actions::SlotTimes;
 use campfire_bots::OrderScript;
 use campfire_common::Tick;
-use campfire_harness::{End, HashTrail, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
+use campfire_harness::{End, HashTrail, InProcessMatch, InProcessSetup, LinkLayout, LinkModel};
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::TickHashes;
 use campfire_orders::OrdersAction;
@@ -23,7 +23,7 @@ const RESPAWN_TICKS: u64 = 150;
 /// Where a hero stands in an app, and whether it is dead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Hero {
-    pos: Vec3,
+    position: Vec3,
     dead: bool,
 }
 
@@ -31,7 +31,7 @@ fn hero(app: &App, id: StableId) -> Hero {
     let world = app.world();
     let unit = world.entity_ref_of(id).unwrap();
     Hero {
-        pos: unit.get::<Position>().unwrap().get(),
+        position: unit.get::<Position>().unwrap().get(),
         dead: unit.contains::<Dead>(),
     }
 }
@@ -63,7 +63,7 @@ impl Downtime {
 
 /// Plays the match through `link` and checks it; gives each client's rollbacks.
 fn play(link: LinkModel) -> [u32; 2] {
-    let mut local = InProcessMatch::new(MatchSetup::duo(link, InProcessMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(InProcessSetup::duo(link, InProcessMatch::SEED_CHAIN));
     local.start_match();
     let heroes = [local.avatar(0), local.avatar(1)];
     let teams = local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
@@ -120,7 +120,7 @@ fn play(link: LinkModel) -> [u32; 2] {
     for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
         let end = [Vec3::from((-3, 0, -2)), Vec3::from((3, 0, 4))][team];
         let end = Hero {
-            pos: end,
+            position: end,
             dead: false,
         };
         assert_eq!(hero(local.server(), id), end, "hero {index} on the server");
@@ -149,7 +149,7 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
     let decoded = SessionLog::decode(&file).unwrap();
     let mut replay = LogReplay::of(&decoded).unwrap();
     let mut applied = Vec::new();
-    while !replay.done(&decoded) {
+    while !replay.is_done(&decoded) {
         let tick = replay.next_tick().get();
         applied.extend(replay.seal_tick(&decoded).map(|input| (input.stamp, tick)));
     }
@@ -207,7 +207,7 @@ const CAST_TICKS: u64 = 360;
 /// the tick none but its owner's client and the server hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Caster {
-    pos: Vec3,
+    position: Vec3,
     health: Num,
     mana: Option<Num>,
     ready_at: Option<Tick>,
@@ -218,7 +218,7 @@ fn caster(app: &App, id: StableId) -> Caster {
     let unit = world.entity_ref_of(id).unwrap();
     let mana = PoolId::new(1).unwrap();
     Caster {
-        pos: unit.get::<Position>().unwrap().get(),
+        position: unit.get::<Position>().unwrap().get(),
         health: unit.get::<Life>().unwrap().current(),
         mana: unit.get::<Pools>().and_then(|pools| pools.current(mana)),
         ready_at: unit
@@ -231,7 +231,7 @@ fn caster(app: &App, id: StableId) -> Caster {
 /// Plays the cast and attack scenario through `link` and checks it; gives the rollbacks of the
 /// walker's client, then of the runner's.
 fn cast(link: LinkModel) -> [u32; 2] {
-    let mut local = InProcessMatch::new(MatchSetup::duo(link, InProcessMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(InProcessSetup::duo(link, InProcessMatch::SEED_CHAIN));
     local.start_match();
     // Player 0 plays the walker, of the west.
     let clients = [0, 1].map(|team| {
@@ -270,7 +270,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
         (
             walker,
             Caster {
-                pos: edge(Num::ZERO),
+                position: edge(Num::ZERO),
                 health: Num::int(600 - 80),
                 mana: Some(Num::int(100 - 40 - 40)),
                 ready_at: Some(Tick::new(190 + 90)),
@@ -279,7 +279,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
         (
             runner,
             Caster {
-                pos: edge(Num::int(1) + Num::HALF),
+                position: edge(Num::int(1) + Num::HALF),
                 health: Num::int(600 - 100 - 100 - 3 * 60),
                 mana: Some(Num::int(100 - 30)),
                 ready_at: Some(Tick::new(140 + 60)),
@@ -324,7 +324,7 @@ const ROUTE_TICKS: u64 = 240;
 /// whose body the straight line passes a third of a meter from its center; the east hero walks
 /// off to (12, 7), out of every unit's reach.
 fn route(link: LinkModel) -> [u32; 2] {
-    let mut local = InProcessMatch::new(MatchSetup::duo(link, InProcessMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(InProcessSetup::duo(link, InProcessMatch::SEED_CHAIN));
     local.start_match();
     let scripts = [
         "[[order]]\ntick = 60\naction.orders.move.to = [-12, -4]\n",
@@ -343,7 +343,7 @@ fn route(link: LinkModel) -> [u32; 2] {
     let mut closest = u128::MAX;
     while local.next_tick(End::Server) < ROUTE_TICKS {
         local.step();
-        let offset = hero(local.server(), walker).pos - tower_at;
+        let offset = hero(local.server(), walker).position - tower_at;
         closest = closest.min(offset.length_squared_bits());
     }
     check_log(&mut local, scripts);
@@ -356,7 +356,7 @@ fn route(link: LinkModel) -> [u32; 2] {
         reach * reach
     );
     let end = Hero {
-        pos: Vec3::from((-12, 0, -4)),
+        position: Vec3::from((-12, 0, -4)),
         dead: false,
     };
     assert_eq!(hero(local.server(), walker), end);
@@ -372,7 +372,7 @@ const ROUND_TICKS: u64 = 70;
 /// client, then of the runner's. In tick 1 the west hero, from (0, −2), is ordered to (0, 5),
 /// through the east hero, which stands on its spawn at (0, 2).
 fn round(link: LinkModel) -> [u32; 2] {
-    let mut local = InProcessMatch::new(MatchSetup::duo(link, InProcessMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(InProcessSetup::duo(link, InProcessMatch::SEED_CHAIN));
     local.start_match();
     let scripts = ["[[order]]\ntick = 1\naction.orders.move.to = [0, 5]\n", ""];
     local.play_by_team(scripts);
@@ -388,7 +388,7 @@ fn round(link: LinkModel) -> [u32; 2] {
     let mut closest = u128::MAX;
     while local.next_tick(End::Server) < ROUND_TICKS {
         local.step();
-        let [walking, standing] = [walker, stander].map(|id| hero(local.server(), id).pos);
+        let [walking, standing] = [walker, stander].map(|id| hero(local.server(), id).position);
         closest = closest.min(walking.ground_offset(standing).length_squared_bits());
     }
     check_log(&mut local, scripts);
@@ -405,7 +405,7 @@ fn round(link: LinkModel) -> [u32; 2] {
         (stander, Vec3::from((0, 0, 2))),
     ] {
         let end = Hero {
-            pos: end,
+            position: end,
             dead: false,
         };
         assert_eq!(hero(local.server(), id), end, "{id:?} on the server");
@@ -441,7 +441,7 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     // the server 9 ticks at most. A stall of 8 ticks, as the first orders go out in tick 60,
     // runs all 8 in one frame, and the orders it held are read after them, 8 ticks late at most:
     // none is late, and the match plays out as it does with no stall.
-    let mut local = InProcessMatch::new(MatchSetup::duo(
+    let mut local = InProcessMatch::new(InProcessSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
@@ -463,7 +463,7 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     // Each hero ends where its last order sent it, on the server and on its client.
     for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
         let end = Hero {
-            pos: [Vec3::from((-3, 0, -2)), Vec3::from((3, 0, 4))][team],
+            position: [Vec3::from((-3, 0, -2)), Vec3::from((3, 0, 4))][team],
             dead: false,
         };
         assert_eq!(hero(local.server(), id), end, "hero {index} on the server");
@@ -516,7 +516,7 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
         assert_eq!([local.rollbacks(0), local.rollbacks(1)], settled);
         for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
             let end = Hero {
-                pos: targets[team],
+                position: targets[team],
                 dead: false,
             };
             assert_eq!(hero(local.server(), id), end, "hero {index} on the server");
@@ -568,9 +568,9 @@ fn a_match_plays_the_same_however_the_server_lays_its_links_out() {
     // plays the east, and the log of the first 100 ticks, whose two orders of tick 60 arrive in
     // one frame, is the same.
     let played = |links: LinkLayout| {
-        let setup = MatchSetup {
+        let setup = InProcessSetup {
             links,
-            ..MatchSetup::duo(LinkModel::PERFECT, InProcessMatch::SEED_CHAIN)
+            ..InProcessSetup::duo(LinkModel::PERFECT, InProcessMatch::SEED_CHAIN)
         };
         let mut local = InProcessMatch::new(setup);
         local.start_match();

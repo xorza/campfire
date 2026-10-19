@@ -1,10 +1,10 @@
 use super::*;
-use crate::scratch::Scratch;
+use crate::test_dir::TestDir;
 
 #[test]
-fn a_secret_file_reads_its_owners_bytes_alone_and_says_why_it_refuses() {
-    let scratch = Scratch::new();
-    let secret = |name| SecretFile::at(scratch.path(name));
+fn a_secret_file_reads_its_users_bytes_alone_and_says_why_it_refuses() {
+    let test_dir = TestDir::new();
+    let secret = |name| SecretFile::at(test_dir.path(name));
     let refused = |file: &SecretFile, max_len| file.read(max_len).map(|_| ()).unwrap_err().error;
     let file = secret("player.nsec");
     file.create_new(b"secret\n").unwrap();
@@ -23,13 +23,13 @@ fn a_secret_file_reads_its_owners_bytes_alone_and_says_why_it_refuses() {
     let empty = secret("empty");
     empty.create_new(b"").unwrap();
     assert_eq!(*empty.read(0).unwrap(), b"");
-    assert_eq!(scratch.exposure("player.nsec"), None);
+    assert_eq!(test_dir.exposure("player.nsec"), None);
 
     assert!(matches!(
         refused(&secret("none.nsec"), 64),
         ReadError::Missing
     ));
-    scratch.create_dir("dir");
+    test_dir.create_dir("dir");
     assert!(matches!(refused(&secret("dir"), 64), ReadError::NotFile));
     // A name no OS takes fails before any call, the same on each.
     assert!(matches!(
@@ -39,17 +39,17 @@ fn a_secret_file_reads_its_owners_bytes_alone_and_says_why_it_refuses() {
 
     // Others may read it: refused, with who they are, before its bytes are read.
     file.expose();
-    let exposure = scratch.exposure("player.nsec").unwrap();
+    let exposure = test_dir.exposure("player.nsec").unwrap();
     assert!(matches!(
         file.read(64),
         Err(PathError { path, error: ReadError::Exposed(refused) })
-            if refused == exposure && path == scratch.path("player.nsec")
+            if refused == exposure && path == test_dir.path("player.nsec")
     ));
-    // Replaced, it is its owner's only once more.
+    // Replaced, it is its user's only once more.
     file.replace(b"again\n").unwrap();
     assert_eq!(*file.read(64).unwrap(), b"again\n");
     assert_eq!(
         file.to_string(),
-        scratch.path("player.nsec").display().to_string()
+        test_dir.path("player.nsec").display().to_string()
     );
 }

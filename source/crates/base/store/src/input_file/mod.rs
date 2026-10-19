@@ -9,7 +9,7 @@ use crate::platform::no_follow::NoFollow;
 
 pub(crate) mod error;
 
-/// A file read never past a bound its caller names: whole, within a bound the owner of its format
+/// A file read never past a bound its caller names: whole, within a bound the module of its format
 /// derives from that format's own limits; in a stream, which its reader bounds; or by ranges, each
 /// within its own. A whole read reserves the length its open handle's metadata gives, once, and
 /// reads at most one byte past the bound, so a file that grows as it is read is refused, not read

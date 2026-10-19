@@ -30,7 +30,7 @@ pub struct Fog {
 /// A box's key among the covers: where it stands, and its shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Covering {
-    pos: Vec3,
+    position: Vec3,
     body: BodyBox,
 }
 
@@ -44,14 +44,14 @@ impl Cache for Fog {
 
 impl Fog {
     /// Whether it holds a Vision stage's sight.
-    pub(crate) const fn filled(&self) -> bool {
+    pub(crate) const fn is_filled(&self) -> bool {
         self.filled
     }
 
-    /// Whether `team`'s vision group saw the cell of `pos` in the last Vision stage, as a
+    /// Whether `team`'s vision group saw the cell of `position` in the last Vision stage, as a
     /// placement asks of its point (04-capabilities/production.md, A build point its team sees).
-    pub fn sees_point(&self, grid: &VisionGrid, pos: Vec3, team: Team) -> bool {
-        let Some(cell) = grid.grid.cell_of(pos).filter(|_| self.filled) else {
+    pub fn sees_point(&self, grid: &VisionGrid, position: Vec3, team: Team) -> bool {
+        let Some(cell) = grid.grid.cell_of(position).filter(|_| self.filled) else {
             return false;
         };
         self.maps.sees(self.groups.of(team), cell..cell + 1, false)
@@ -73,14 +73,14 @@ impl Fog {
         self.covers.begin_tick();
     }
 
-    /// Reveals the cells within `range` of a unit of `team` at `pos` to its group, but the cells
-    /// of every brush other than the one it stands in, and to its group's detection too when it
-    /// `detects`; `slot` is the unit's in the cache of sights.
+    /// Reveals the cells within `range` of a unit of `team` at `position` to its group, but the
+    /// cells of every brush other than the one it stands in, and to its group's detection too when
+    /// it `detects`; `slot` is the unit's in the cache of sights.
     pub(crate) fn sight(
         &mut self,
         grid: &VisionGrid,
         slot: usize,
-        pos: Vec3,
+        position: Vec3,
         team: Team,
         range: Num,
         detects: bool,
@@ -88,27 +88,27 @@ impl Fog {
         let group = self.groups.of(team);
         let stands = grid
             .grid
-            .cell_of(pos)
+            .cell_of(position)
             .expect("every unit stands within the bounds, which the grid covers");
         let hidden = grid.brush.hidden_from(stands);
-        let runs = self.sights.runs(slot, Sighting { pos, range }, |run| {
-            grid.grid.spans_within(pos, range, run);
+        let runs = self.sights.runs(slot, Sighting { position, range }, |run| {
+            grid.grid.spans_within(position, range, run);
         });
         for cells in runs {
             self.maps.reveal(group, cells.clone(), detects, hidden);
         }
     }
 
-    /// Reveals the cells within `radius` of `pos`, brush included, to `team`'s group.
-    pub(crate) fn reveal(&mut self, grid: &VisionGrid, pos: Vec3, team: Team, radius: Num) {
+    /// Reveals the cells within `radius` of `position`, brush included, to `team`'s group.
+    pub(crate) fn reveal(&mut self, grid: &VisionGrid, position: Vec3, team: Team, radius: Num) {
         let group = self.groups.of(team);
         let maps = &mut self.maps;
-        grid.grid.spans_within(pos, radius, |cells| {
+        grid.grid.spans_within(position, radius, |cells| {
             maps.reveal(group, cells, false, None);
         });
     }
 
-    /// The teams that see a unit of `team` at `pos`: its own group's, and those of each group
+    /// The teams that see a unit of `team` at `position`: its own group's, and those of each group
     /// whose cells hold it, or, for a unit its tags hide, `hidden`, whose detection does. A unit
     /// with a box, `body`, stands in each cell the box covers, which the covers keep for `slot`
     /// while it stands where it stood.
@@ -116,7 +116,7 @@ impl Fog {
         &mut self,
         grid: &VisionGrid,
         slot: usize,
-        pos: Vec3,
+        position: Vec3,
         body: Option<BodyBox>,
         team: Team,
         hidden: bool,
@@ -124,11 +124,11 @@ impl Fog {
         let mut teams = self.groups.members(self.groups.of(team));
         let cell = grid
             .grid
-            .cell_of(pos)
+            .cell_of(position)
             .expect("every unit stands within the bounds, which the grid covers");
         let runs: &[Range<usize>] = match body {
-            Some(body) => self.covers.runs(slot, Covering { pos, body }, |run| {
-                grid.grid.box_covers(pos, &body, run);
+            Some(body) => self.covers.runs(slot, Covering { position, body }, |run| {
+                grid.grid.box_covers(position, &body, run);
             }),
             None => &[],
         };

@@ -1,5 +1,5 @@
 use bevy::ecs::system::{Res, SystemParam};
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_net::{JoinState, WatchRequest};
 use campfire_players::{PlayerResources, PlayerRows, ResourceAmount};
 use campfire_units::{Commanded, PlayerUnits};
@@ -18,8 +18,8 @@ pub(crate) struct OwnPlayer<'w, 's> {
 
 impl OwnPlayer<'_, '_> {
     /// The seat the client plays in; none before it plays.
-    pub(crate) fn slot(&self) -> Option<PlayerSlot> {
-        self.state.slot()
+    pub(crate) fn seat(&self) -> Option<Seat> {
+        self.state.seat()
     }
 
     /// The team the client plays on; none before it plays.
@@ -55,7 +55,7 @@ impl OwnPlayer<'_, '_> {
     /// The player's amount of `resource`; 0 before it plays, or before its resources reach the
     /// client.
     pub(crate) fn amount(&self, resource: ResourceId) -> i64 {
-        let held = self.slot().and_then(|slot| self.resources.of_slot(slot));
+        let held = self.seat().and_then(|seat| self.resources.of_seat(seat));
         held.map_or(0, |held| held.amount(resource))
     }
 
@@ -68,7 +68,7 @@ impl OwnPlayer<'_, '_> {
 
     /// The avatar the client commands; none before it plays, or before the avatar spawns.
     pub(crate) fn avatar(&self) -> Option<Commanded> {
-        self.players.avatar(self.slot()?)
+        self.players.avatar(self.seat()?)
     }
 }
 

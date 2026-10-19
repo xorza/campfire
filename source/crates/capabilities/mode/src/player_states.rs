@@ -1,6 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_players::PlayersWorld;
 use campfire_script::{StateField, StateSchema, StateValue, SyncTo};
 use campfire_units::{SyncAll, SyncNone, SyncOwner, SyncTeam};
@@ -21,10 +21,10 @@ pub(crate) struct PlayerStates {
     written: Vec<PlayerWrite>,
 }
 
-/// A call's write of `value` to the field `field` of player `slot`.
+/// A call's write of `value` to the field `field` of player `seat`.
 #[derive(Debug)]
 struct PlayerWrite {
-    slot: PlayerSlot,
+    seat: Seat,
     field: StateField,
     value: StateValue,
 }
@@ -39,7 +39,7 @@ impl PlayerStates {
         }
         let count = usize::try_from(players).expect("players fit usize");
         self.values.reserve_exact(schema.len() * count);
-        for slot in (0..players).map(PlayerSlot::new) {
+        for slot in (0..players).map(Seat::new) {
             let entity = Self::entity(world, slot);
             for place in schema.places() {
                 let class = match place.sync {
@@ -61,9 +61,9 @@ impl PlayerStates {
     /// Writes the call's writes to the players' entities, each class's field at its place in
     /// `schema`, and keeps them for the batch's next calls.
     pub(crate) fn commit(&mut self, world: &mut World, schema: &StateSchema) {
-        for PlayerWrite { slot, field, value } in self.written.drain(..) {
-            self.values[slot.index() * self.fields + field.index()].clone_from(&value);
-            let entity = Self::entity(world, slot);
+        for PlayerWrite { seat, field, value } in self.written.drain(..) {
+            self.values[seat.index() * self.fields + field.index()].clone_from(&value);
+            let entity = Self::entity(world, seat);
             let place = schema.place(field);
             match place.sync {
                 SyncTo::None => Self::write::<SyncNone>(world, entity, place.at, value),
@@ -74,25 +74,25 @@ impl PlayerStates {
         }
     }
 
-    /// The field `field` of player `slot`, as the call last wrote it, or as the batch holds it.
-    pub(crate) fn get(&self, slot: PlayerSlot, field: StateField) -> &StateValue {
+    /// The field `field` of player `seat`, as the call last wrote it, or as the batch holds it.
+    pub(crate) fn get(&self, seat: Seat, field: StateField) -> &StateValue {
         let mut written = self.written.iter().rev();
-        let found = written.find(|write| write.slot == slot && write.field == field);
+        let found = written.find(|write| write.seat == seat && write.field == field);
         found.map_or_else(
-            || &self.values[slot.index() * self.fields + field.index()],
+            || &self.values[seat.index() * self.fields + field.index()],
             |write| &write.value,
         )
     }
 
-    /// Writes `value`, a value of `field`, to the field of player `slot`, for the call to read
+    /// Writes `value`, a value of `field`, to the field of player `seat`, for the call to read
     /// back and to apply when it ends.
-    pub(crate) fn set(&mut self, slot: PlayerSlot, field: StateField, value: StateValue) {
-        self.written.push(PlayerWrite { slot, field, value });
+    pub(crate) fn set(&mut self, seat: Seat, field: StateField, value: StateValue) {
+        self.written.push(PlayerWrite { seat, field, value });
     }
 
-    fn entity(world: &World, slot: PlayerSlot) -> Entity {
+    fn entity(world: &World, seat: Seat) -> Entity {
         world
-            .player_entity(slot)
+            .player_entity(seat)
             .expect("a match that started has each player's entity")
     }
 

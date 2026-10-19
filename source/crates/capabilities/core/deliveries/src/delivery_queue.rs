@@ -19,12 +19,12 @@ pub struct DeliveryQueue {
 }
 
 /// The end of a dash that delivers `dash`, aimed at `target` if a unit, whose unit stands at
-/// `pos` after a last step in `direction`.
+/// `position` after a last step in `direction`.
 #[derive(Debug, Clone, Copy)]
 pub struct DashEnd {
     pub dash: DashDelivering,
     pub target: Option<StableId>,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub direction: Option<Vec3>,
 }
 
@@ -50,14 +50,14 @@ impl DeliveryQueue {
         let DashEnd {
             dash,
             target,
-            pos,
+            position,
             direction,
         } = end;
         let payload = DeliveredPayload::Action(dash.by);
         let hit = Hit {
             delivery: None,
             target,
-            pos,
+            position,
             distance: dash.dashed,
             direction,
         };

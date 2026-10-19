@@ -58,7 +58,7 @@ impl ArmorIni {
 impl IniArmor {
     /// Its share of the damage type `kind`: 1 for a type the game passes whole.
     pub(crate) const fn share(&self, kind: DamageType) -> f32 {
-        if kind.resisted() {
+        if kind.is_resisted() {
             self.shares[kind.index()]
         } else {
             1.0

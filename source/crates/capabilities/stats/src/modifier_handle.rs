@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, CapabilityRefusal, Checked, MemberSpec, ScriptHandle,
+    ApiBuilder, ApiError, ApiHolder, CapabilityRefusal, Checked, MemberDecl, ScriptHandle,
     ScriptValue, StateField, StateSchema, StateValue, View, plain_script_arg,
 };
 use campfire_sim::StableId;
@@ -91,7 +91,7 @@ impl ModifierHandle {
     }
 
     /// Whether only the call that made it holds it: no script keeps a copy.
-    pub(crate) fn unshared(&self) -> bool {
+    pub(crate) fn is_unshared(&self) -> bool {
         Rc::strong_count(&self.0) == 1
     }
 
@@ -109,7 +109,7 @@ impl ModifierHandle {
     /// The `Modifier` handle's fields, and `m.state`.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let field =
-            |name, description| MemberSpec::field(ApiOwner::of::<Self>(), name, description);
+            |name, description| MemberDecl::field(ApiHolder::of::<Self>(), name, description);
         let stacks = field("stacks", "its stacks, which a call may write and read back");
         api.ty::<Self>()
             .bind(

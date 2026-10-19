@@ -182,13 +182,15 @@ impl SimComponent for Projectile {
         let carries = match self.payload {
             Payload::Attack(ShotDamage {
                 action, rank, kind, ..
-            }) => book.ranked(action, rank) && world.resource::<MatchNames>().has_damage_kind(kind),
+            }) => {
+                book.is_ranked(action, rank) && world.resource::<MatchNames>().has_damage_kind(kind)
+            }
             Payload::Action {
                 action,
                 rank,
                 start,
                 ..
-            } => book.ranked(action, rank) && start.is_none_or(ActionStart::check),
+            } => book.is_ranked(action, rank) && start.is_none_or(ActionStart::check),
         };
         flies && origin && carries
     }

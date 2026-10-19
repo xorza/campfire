@@ -1,5 +1,5 @@
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
 use bevy_ecs::schedule::SystemSet;
@@ -97,7 +97,7 @@ impl Deliveries {
                 world.get::<ForcedMove>(entity),
                 Some(ForcedMove::Dash { .. })
             );
-            !dashes || !book.ranked(dash.by.action, dash.by.rank)
+            !dashes || !book.is_ranked(dash.by.action, dash.by.rank)
         })
     }
 }
@@ -115,23 +115,23 @@ pub mod internals {
     use crate::delivery_spawner::{DeliverySpawner, NewDelivery};
 
     impl Deliveries {
-        /// Spawns a delivery of `unit_type` for `source` at `pos`, with `parts`, which make it
+        /// Spawns a delivery of `unit_type` for `source` at `position`, with `parts`, which make it
         /// one, as an action's delivery spawns: its stable id.
         pub fn spawn_of<B: Bundle<Effect: NoBundleEffect>>(
             world: &mut World,
             source: StableId,
             unit_type: UnitType,
-            pos: impl Into<Vec3>,
+            position: impl Into<Vec3>,
             parts: B,
         ) -> StableId {
-            let pos = pos.into();
+            let position = position.into();
             let mut parts = Some(parts);
             let spawn = move |mut spawner: DeliverySpawner<'_, '_>| {
                 let parts = parts.take().expect("one spawn");
                 let delivery = NewDelivery {
                     source,
                     unit_type,
-                    pos,
+                    position,
                     id: None,
                 };
                 spawner.spawn(delivery, |_| parts)

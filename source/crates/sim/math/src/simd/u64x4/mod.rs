@@ -26,7 +26,7 @@ impl U64x4 {
 }
 
 impl FloorRoot for U64x4 {
-    /// Exact for every `u64` (09-determinism-core.md, Float lanes compute exact results). The value
+    /// Exact for every `u64` (07-determinism-core.md, Float lanes compute exact results). The value
     /// rounds once to `f64`, by at most 2⁻⁵³ of itself, and the root once more, so the estimate
     /// lies within 2⁻²⁰ of the root, below 2³²; rounded to the nearest integer, it is the floor or
     /// one above it, and one step down corrects it.

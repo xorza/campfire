@@ -1,4 +1,4 @@
-data_version 40
+data_version 41
 actions.progress 714365e16aeea80d
 actions.slot_times 776040a47152d129
 actions.slots 8792f8e9f8e71af6
@@ -6,9 +6,9 @@ actions.use_group dbfe58d458cf8fc1
 areas.area cb0d38ac66390e3a
 areas.area_trigger 5b5d033e67c80f93
 combat.clip_shots c91c8d3b66b290fa
-combat.held_hits 217df62f22683a54
+combat.held_hits 0812a174065856d0
 combat.kept 6f07fc05a6a4e4ce
-combat.next_damage 22be8d9e036e2753
+combat.next_damage 13b9588dee63763b
 combat.recent_attackers 58e017c445524785
 combat.respawn b1604652186dcd98
 combat.turret_angle b9124b2821c13b2d
@@ -23,14 +23,14 @@ mode.player_state_owner 3520789f505b6f2a
 mode.player_state_team 7719628a49c7dcf5
 mode.state 1a26251bfc37178e
 mode.state_all 02373a7d917d3171
-mode.timers 652ebd175a14c96f
+mode.timers 26e35ad86ea8949f
 mode.unanswered_deaths 9e098aa17d7959be
-mode.unanswered_slot_events 3dcb210ffd593982
+mode.unanswered_seat_events 07e0fae5a2e27452
 navigation.on_path b153d46f94b8fc9a
 navigation.path_arrivals cb1b9cb2a9b21d2a
 navigation.path_walker 54c6412a9193bc13
 navigation.progress 14cdbaa7734a8def
-navigation.route a74f1a486064bbf6
+navigation.route ad26555d27c3bd33
 navigation.route_cursor 7b11c189debaa159
 orders.next_think c59a3a94d26a91f2
 orders.resetting 6f07fc05a6a4e4ce
@@ -42,7 +42,7 @@ players.resources 9ace0a18bed4a033
 players.seated 6f07fc05a6a4e4ce
 production.builder 6b7f8201339fbf7d
 production.completed_sites 1986696506a18e3c
-production.gatherer 4137b7d13733a667
+production.gatherer 5d5a485605df7004
 production.node 7f992cd38c58e8ec
 production.rally 568c8515d38e08c1
 production.site 94249e70e07a2039
@@ -62,7 +62,7 @@ sim.tick 075d9754eb8ef856
 stats.level 63056ba8b2f524d9
 stats.life e7180879287ab77b
 stats.modifier_clocks 3deefb7e37c7aed4
-stats.modifiers 91bdc953f3b4ab1b
+stats.modifiers 1c2ce8ad0bbfcc12
 stats.player_modifiers 231a6834c3db968b
 stats.pools 1a2e521912094b8d
 units.body e28b9727f9dd331a
@@ -85,6 +85,6 @@ units.team 8d8b815537ab99f3
 units.turn_step ffe01a07f9a0a190
 units.unit 6f07fc05a6a4e4ce
 units.unit_type 64f5ae9d41de84f2
-vision.reveals 5103bf5bc48db34c
+vision.reveals 0469159297eb0799
 vision.seen_by ed5708b55d57c40a
 vision.sight 4b370b229eebb0f8

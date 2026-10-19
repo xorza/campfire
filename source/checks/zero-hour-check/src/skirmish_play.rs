@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use campfire_actions::{ActionTarget, TypeSlotsData};
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::Order;
-use campfire_common::{DeclaredName, PlayerSlot};
+use campfire_common::{DeclaredName, Seat};
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::Num;
 use campfire_mode::{MatchEnd, OptionPicks, OptionValue};
@@ -12,7 +12,7 @@ use campfire_package::ModePackages;
 use campfire_players::{OrderUnits, PlayersWorld};
 use campfire_production::{Site, TrainQueue};
 use campfire_projectiles::Projectile;
-use campfire_protocol::{InputRules, SlotPlan};
+use campfire_protocol::{InputRules, SeatPlan};
 use campfire_script::MatchNames;
 use campfire_sim::StableId;
 use campfire_units::{BuildTarget, GroundPoint, Life, UnitsWorld};
@@ -61,15 +61,15 @@ const FACTORY_CHAIN: [Building; 3] = [
 ];
 
 /// The builder bot's orders, which the play's bot plays and a host gives a local server's bot
-/// (12-zero-hour.md, A bot that builds and does not fight).
+/// (09-zero-hour.md, A bot that builds and does not fight).
 const BUILDER: &str = include_str!("../bots/builder.toml");
 
 /// The money every player starts with, the most of Zero Hour's choices, which the session's host
-/// picks (12-zero-hour.md, The import writes Zero Hour's money as an option).
+/// picks (09-zero-hour.md, The import writes Zero Hour's money as an option).
 const START_MONEY: &str = "start_money=50000";
 
 /// The skirmish on Tournament Desert of `START_MONEY` against the builder bot (designs 18 and 19;
-/// 12-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
+/// 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
 /// slow weapons): player 1's command center trains a dozer, its start dozer builds a barracks,
 /// and the barracks trains a ranger; then the dozer builds a power plant, a supply center and a
 /// war factory, the factory trains `CRUSADERS`, and their shells destroy the bot's command
@@ -135,7 +135,7 @@ impl SkirmishPlay {
                 return None;
             }
         };
-        let plan = [SlotPlan::Player, SlotPlan::Bot];
+        let plan = [SeatPlan::Player, SeatPlan::Bot];
         let session =
             FixedSession::planned(packages, rate, InputRules::ROOMY, plan).picked(picks.places());
         let mut playing = MatchPlay::new(session.start());
@@ -389,7 +389,7 @@ impl Play<'_> {
     /// Player 1's money.
     fn money(&self, play: &MatchPlay) -> i64 {
         play.game()
-            .player_resources(PlayerSlot::new(0))
+            .player_resources(Seat::new(0))
             .expect("player 1 holds resources")
             .amount(self.money)
     }

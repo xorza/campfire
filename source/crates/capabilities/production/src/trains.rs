@@ -37,7 +37,7 @@ use crate::trained_units::{Trained, TrainedUnits};
 /// point, and the rally point its player set, else its default one; none of a producer that
 /// names neither.
 #[derive(Debug, Clone, Copy)]
-struct TrainPlaces {
+struct TrainPoints {
     exit: Option<Vec3>,
     rally: Option<Vec3>,
 }
@@ -127,9 +127,9 @@ impl Trains {
             let ordered = progress
                 .ordered(slots, &book, ActionKind::Train)
                 .expect("an ordered train");
-            progress.stop(&mut indexes.of(id, entity));
+            progress.end(&mut indexes.of(id, entity));
             let purse = Purse::of(pools.read(), resources.of(held_by));
-            let owner = held_by.map(|owner| owner.slot());
+            let owner = held_by.map(|owner| owner.seat());
             let no_target = |_| Relation::Friendly;
             let started = times.start(
                 ActionCheck {
@@ -193,7 +193,7 @@ impl Trains {
 
     /// Spawns each train whose time ended this tick, of the units the index of the queues holds
     /// due, of its unit's team and player, by its unit's stable id, then its queue's order,
-    /// through the mode's spawner, at its spawn place; the next in a queue starts in the same
+    /// through the mode's spawner, at its spawn point; the next in a queue starts in the same
     /// tick, and a unit trained toward a rally point is ordered there. Each unit trained joins
     /// the trained units, whose `on_unit_trained` the mode runs. A dead unit's queue waits.
     pub(super) fn finish_trains(
@@ -239,15 +239,15 @@ impl Trains {
                     .unit_type;
                 let producer = world.entity(entity);
                 let team = *producer.get::<Team>().expect("a producer has a team");
-                let owner = producer.get::<Owner>().map(|owner| owner.slot());
-                let places = TrainPlaces::of(world, entity);
-                let pos = places.spawn_place(world, entity, unit_type);
+                let owner = producer.get::<Owner>().map(|owner| owner.seat());
+                let points = TrainPoints::of(world, entity);
+                let position = points.spawn_point(world, entity, unit_type);
                 let id = world.resource_mut::<IdAllocator>().allocate();
                 let at = SpawnAt {
                     id,
                     unit_type,
                     team,
-                    pos,
+                    position,
                     owner,
                     angle: Num::ZERO,
                 };
@@ -258,10 +258,10 @@ impl Trains {
                 }]);
                 let gathers = Self::gather_at_rally(world, entity, trained);
                 if gathers.is_none()
-                    && let Some(to) = places.rally
+                    && let Some(to) = points.rally
                     && let Some(mut destination) = world.get_mut::<Destination>(trained)
                 {
-                    let to = Vec3::new(to.x, pos.y, to.z);
+                    let to = Vec3::new(to.x, position.y, to.z);
                     destination.set_if_neq(Destination::to(Some(to)));
                 }
                 if let Some(order) = gathers
@@ -289,7 +289,7 @@ impl Trains {
         let resource = world
             .resource::<NodeBook>()
             .resource(*target.get::<UnitType>()?)?;
-        let pos = *target.get::<Position>()?;
+        let position = *target.get::<Position>()?;
         let slots = world.get::<ActionSlots>(trained)?;
         let gathers = world.resource::<ByAction<GatherSpec>>();
         let slot = slots.indexed().find_map(|(slot, action_slot)| {
@@ -300,7 +300,7 @@ impl Trains {
             slot,
             node: NodeAt {
                 node,
-                pos: pos.get(),
+                position: position.get(),
             },
             step: GatherStep::Ordered,
         })
@@ -310,11 +310,14 @@ impl Trains {
     /// rallies to stands; `None` with none, or a unit gone or dead.
     fn rally_point(world: &World, entity: Entity) -> Option<Vec3> {
         let producer = world.entity(entity);
-        let pos = producer.get::<Position>().expect("a producer stands").get();
+        let position = producer.get::<Position>().expect("a producer stands").get();
         match producer.get::<Rally>()?.get()? {
-            RallyTarget::Point(GroundPoint { x, z }) => {
-                Some(world.resource::<MapBook>().bounds.ground_point([x, z], pos))
-            }
+            RallyTarget::Point(GroundPoint { x, z }) => Some(
+                world
+                    .resource::<MapBook>()
+                    .bounds
+                    .ground_point([x, z], position),
+            ),
             RallyTarget::Unit(id) => {
                 let unit = world.entity_ref_of(id)?;
                 let unit_pos = *unit.get::<Position>()?;
@@ -324,26 +327,26 @@ impl Trains {
     }
 }
 
-impl TrainPlaces {
-    /// The places of the producer of `entity`: its exit point and its default rally point, of
+impl TrainPoints {
+    /// The points of the producer of `entity`: its exit point and its default rally point, of
     /// its type's `production`, each turned with it and taken into the bounds; and its rally
     /// point, where one is set to a point or a living unit, in place of the default.
     fn of(world: &World, entity: Entity) -> Self {
         let producer = world.entity(entity);
-        let pos = producer.get::<Position>().expect("a producer stands").get();
+        let position = producer.get::<Position>().expect("a producer stands").get();
         let angle = producer
             .get::<Facing>()
             .map_or(Num::ZERO, |facing| facing.degrees());
         let unit_type = *producer.get::<UnitType>().expect("a producer has a type");
         let data = world.resource::<ByType<ProductionData>>().get(unit_type);
         let bounds = &world.resource::<MapBook>().bounds;
-        let place = |point: Option<FramePoint>| {
-            let at = point?.placed(pos, angle);
+        let point_of = |point: Option<FramePoint>| {
+            let at = point?.placed(position, angle);
             Some(bounds.ground_point([at.x, at.z], at))
         };
         Self {
-            exit: place(data.and_then(|data| data.exit)),
-            rally: Trains::rally_point(world, entity).or_else(|| place(data?.rally)),
+            exit: point_of(data.and_then(|data| data.exit)),
+            rally: Trains::rally_point(world, entity).or_else(|| point_of(data?.rally)),
         }
     }
 
@@ -354,15 +357,15 @@ impl TrainPlaces {
     /// position. With neither point, at the producer's position. A box's nearest point rounds to
     /// the nearest bit; a circle's is a step of its radius toward the rally point, as a walker
     /// steps.
-    fn spawn_place(self, world: &mut World, entity: Entity, unit_type: UnitType) -> Vec3 {
+    fn spawn_point(self, world: &mut World, entity: Entity, unit_type: UnitType) -> Vec3 {
         let producer = world.entity(entity);
-        let pos = producer.get::<Position>().expect("a producer stands").get();
+        let position = producer.get::<Position>().expect("a producer stands").get();
         let near = match (self.exit, self.rally) {
             (Some(exit), _) => exit,
-            (None, Some(to)) => Body::shape_of(producer.get::<Body>()).nearest_point(pos, to),
-            (None, None) => return pos,
+            (None, Some(to)) => Body::shape_of(producer.get::<Body>()).nearest_point(position, to),
+            (None, None) => return position,
         };
-        let fallback = self.exit.unwrap_or(pos);
+        let fallback = self.exit.unwrap_or(position);
         let Some(&OpenCellRun(run)) = world.get_resource::<OpenCellRun>() else {
             return fallback;
         };

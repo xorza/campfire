@@ -14,7 +14,7 @@ use bevy_state::app::AppExtStates;
 use bevy_state::condition::in_state;
 use bevy_time::{Real, Time, Virtual};
 use campfire_common::ErrorReport;
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_declare::CapabilitySet;
 use campfire_log::LogEvent;
 use campfire_mode::MatchEnd;
@@ -83,7 +83,8 @@ pub(crate) mod offering;
 pub(crate) mod pending_restore;
 pub(crate) mod player_link;
 pub(crate) mod receipts;
-pub(crate) mod seats;
+pub(crate) mod seat_bot_file;
+pub(crate) mod seat_links;
 pub(crate) mod server_bots;
 pub(crate) mod server_dir;
 pub(crate) mod server_layout;
@@ -94,7 +95,6 @@ pub(crate) mod session_dir;
 pub(crate) mod session_journal;
 pub(crate) mod sim_server_plugins;
 pub(crate) mod sim_server_world;
-pub(crate) mod slot_bot_file;
 pub(crate) mod snapshot_dir;
 pub(crate) mod spectators;
 pub(crate) mod team_rooms;
@@ -181,7 +181,7 @@ impl Plugin for SimServer {
         app.add_systems(
             Update,
             (
-                Checkpoints::finish.run_if(resource_exists::<Checkpoints>),
+                Checkpoints::end.run_if(resource_exists::<Checkpoints>),
                 JournalWatch::warn_slow.run_if(resource_exists::<JournalWatch>),
             )
                 .chain()
@@ -294,7 +294,7 @@ impl SimServer {
     /// fault, as the log can not be published.
     fn at_boundary(world: &mut World) {
         let session = world.session();
-        let ends = if session.log_full() {
+        let ends = if session.is_log_full() {
             LogFilled {
                 tick: session.log().next_tick(),
             }
@@ -318,7 +318,7 @@ impl SimServer {
         (mut links, mut taken): (Local<'_, SaveLinks>, Local<'_, Vec<SaveCommand>>),
     ) {
         for (link, mut receiver) in links.iter_mut(world) {
-            if !link.refused() {
+            if !link.is_refused() {
                 taken.extend(receiver.receive());
             }
         }
@@ -340,7 +340,7 @@ impl SimServer {
 /// Logs each packet received in this frame, before the next tick runs, and tells its player where
 /// each of its inputs takes effect. A refused packet ends its link: a client that follows the
 /// rules sends none, and its chain no longer matches the log's. The links go in the order of
-/// their slots, as the log's order of one frame's inputs must not follow the query's.
+/// their seats, as the log's order of one frame's inputs must not follow the query's.
 fn record_inputs(
     mut commands: Commands<'_, '_>,
     mut links: Query<
@@ -356,34 +356,34 @@ fn record_inputs(
     mut session: ResMut<'_, Session>,
     mut frame: ResMut<'_, FrameStart>,
     mut applied: Local<'_, Vec<Applied>>,
-    mut order: Local<'_, Vec<(PlayerSlot, Entity)>>,
+    mut order: Local<'_, Vec<(Seat, Entity)>>,
 ) {
     frame.0 = session.log().next_tick();
     ServerFrame { tick: frame.0 }.log();
-    order.extend(links.iter().map(|(entity, link, ..)| (link.slot(), entity)));
+    order.extend(links.iter().map(|(entity, link, ..)| (link.seat(), entity)));
     order.sort_unstable();
     for (_, entity) in order.drain(..) {
         let (entity, &(mut link), mut receiver, mut acks) =
             links.get_mut(entity).expect("a link the query just gave");
         for message in receiver.receive() {
-            if link.refused() {
+            if link.is_refused() {
                 continue;
             }
             let next_tick = session.log().next_tick();
-            let slot = link.slot();
+            let seat = link.seat();
             let Some(inputs) = message.inputs() else {
-                InputMessageUnfit { slot }.log();
+                InputMessageUnfit { seat }.log();
                 link = refuse_link(&mut commands, entity, link);
                 continue;
             };
             let packet = PlayerPacket {
-                slot,
+                seat,
                 inputs: inputs.clone(),
                 signature: message.signature(),
             };
             if let Err(error) = session.record(packet, &mut applied) {
                 InputMessageRefused {
-                    slot: link.slot(),
+                    seat: link.seat(),
                     next_tick,
                     error: ErrorReport::of(&error).to_string(),
                 }
@@ -395,23 +395,23 @@ fn record_inputs(
                 link = refuse_link(&mut commands, entity, link);
                 continue;
             }
-            let Some(Controller::Player { chain, .. }) = session.log().controller(link.slot())
+            let Some(Controller::Player { chain, .. }) = session.log().controller(link.seat())
             else {
-                unreachable!("a packet the log took is of a slot a player controls");
+                unreachable!("a packet the log took is of a seat a player controls");
             };
             let first_seq = chain.next_seq() - u64::try_from(applied.len()).expect("a count fits");
             acks.send::<MatchChannel>(InputAck::of(first_seq, &applied));
             for (((stamp, _), &outcome), seq) in inputs.zip(applied.iter()).zip(first_seq..) {
                 match Unapplied::try_from(outcome) {
                     Err(tick) => InputLogged {
-                        slot: link.slot(),
+                        seat: link.seat(),
                         seq,
                         stamp,
                         tick,
                     }
                     .log(),
                     Ok(outcome) => InputNeverApplied {
-                        slot: link.slot(),
+                        seat: link.seat(),
                         stamp,
                         next_tick,
                         outcome,
@@ -424,7 +424,7 @@ fn record_inputs(
 }
 
 /// Refuses `link`, the player link of `entity`, whose packet broke the rules: it carries no more
-/// of its slot's inputs, and its connection closes. The link as refused.
+/// of its seat's inputs, and its connection closes. The link as refused.
 fn refuse_link(commands: &mut Commands<'_, '_>, entity: Entity, link: PlayerLink) -> PlayerLink {
     let refused = link.into_refused();
     commands.entity(entity).insert(refused);

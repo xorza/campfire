@@ -20,7 +20,7 @@ pub enum LocalServerError {
     /// The session an earlier start left does not end.
     #[error("the session an earlier start left")]
     Abort(#[source] AbortError),
-    /// The session does not open, as a bot names slot 0, the client's, or none the mode has, or
+    /// The session does not open, as a bot names seat 0, the client's, or none the mode has, or
     /// it keeps no files.
     #[error(transparent)]
     Open(LobbyOpenError),

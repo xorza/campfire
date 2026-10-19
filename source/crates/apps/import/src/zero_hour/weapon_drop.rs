@@ -1,7 +1,7 @@
 use campfire_common::EnumAll;
 
-/// Why the import drops a weapon (12-zero-hour.md, A weapon converts when it hits one target at
-/// once; 12-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets
+/// Why the import drops a weapon (09-zero-hour.md, A weapon converts when it hits one target at
+/// once; 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets
 /// and slow weapons).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
 pub enum WeaponDrop {
@@ -52,7 +52,7 @@ const FRAMES_PER_MS: f32 = 30.0 / 1000.0;
 
 /// The milliseconds the engine turns into the frames the game turns `ms` into: the game's
 /// `ceil(ms × 0.03)` in its `f32` (`INI::parseDurationUnsignedInt`, `parseShotDelay`), as the
-/// import's rule of times writes it (12-zero-hour.md, Thirty frames a second, the original's
+/// import's rule of times writes it (09-zero-hour.md, Thirty frames a second, the original's
 /// times), `⌊frames × 100 / 3⌋`, which the engine's rounding up turns back into the same frames;
 /// a time below 0 is no number.
 pub(crate) fn game_ms(ms: i32) -> Result<u64, WeaponDrop> {

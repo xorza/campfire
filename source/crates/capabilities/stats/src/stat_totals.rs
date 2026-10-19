@@ -34,7 +34,7 @@ impl StatTotals {
 
     /// `(add) × (1 + pct) × (1 − cut)`, the cut from 0 to 1, each sum and each product stopped
     /// at the range of a number, each product rounded to nearest: within a bit of the product
-    /// rounded once (09-determinism-core.md, A compound value is a chain of rounded steps).
+    /// rounded once (07-determinism-core.md, A compound value is a chain of rounded steps).
     pub fn value(self) -> Num {
         let one = 1_i128 << Num::FRAC_BITS;
         let kept = Num::saturating_from_bits(one - self.cut.clamp(0, one));

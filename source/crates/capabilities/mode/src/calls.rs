@@ -3,10 +3,10 @@ use std::sync::Arc;
 
 use bevy_ecs::world::World;
 use campfire_combat::{CalcDamage, CalcHeal, Damage, DamageHandle, Heal, HealHandle};
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_math::Num;
 use campfire_script::{
-    CallError, CallStart, CapabilityRefusal, Ctx, Hook, HookSpec, ListPlace, ModeAnswer,
+    CallError, CallStart, CapabilityRefusal, Ctx, Hook, HookDecl, ListPlace, ModeAnswer,
     ScriptBatch, ScriptsWorld,
 };
 use campfire_sim::{SimTick, StableId};
@@ -60,7 +60,7 @@ impl<'w> Calls<'_, 'w> {
     /// mode's scripts that defines it, in its list's order: on success a call's state, choices
     /// and ids commit and its effects apply; the first failure ends the run, which changes
     /// nothing of its call.
-    pub(crate) fn run<H: HookSpec>(&mut self, args: impl Fn() -> H::Args) -> Result<(), CallError> {
+    pub(crate) fn run<H: HookDecl>(&mut self, args: impl Fn() -> H::Args) -> Result<(), CallError> {
         let book = self.book();
         let hook = Hook::of::<H>();
         for (at, listed) in book.schema.scripts.iter().enumerate() {
@@ -79,10 +79,10 @@ impl<'w> Calls<'_, 'w> {
     /// Answers with the hook `H` and `args`, for `id` if any, from the pool of `payer`, the
     /// player whose input it answers, or the mode's, as `ModeAnswer::call_from` does: `Break`
     /// when a call waits, so what the caller answers in a later tick waits, from this call on.
-    pub(crate) fn answer<H: HookSpec>(
+    pub(crate) fn answer<H: HookDecl>(
         &mut self,
         id: Option<StableId>,
-        payer: Option<PlayerSlot>,
+        payer: Option<Seat>,
         args: H::Args,
     ) -> ControlFlow<()>
     where
@@ -94,7 +94,7 @@ impl<'w> Calls<'_, 'w> {
 
     /// Answers with the hook `H` and `args` in the script at `place` of the mode's list alone, as
     /// a timer of it runs, from the mode's pool: `Break` when the call waits.
-    pub(crate) fn answer_in<H: HookSpec>(
+    pub(crate) fn answer_in<H: HookDecl>(
         &mut self,
         place: ListPlace,
         args: H::Args,
@@ -130,7 +130,7 @@ impl<'w> Calls<'_, 'w> {
     /// The number the mode's pure hook `H` returns for the arguments `args` gives with the
     /// batch's `ctx`, in `batch`, from the one script of the mode that defines it; none when none
     /// does.
-    fn amount<H: HookSpec>(
+    fn amount<H: HookDecl>(
         batch: &mut ScriptBatch<'_>,
         args: impl FnOnce(Ctx) -> H::Args,
     ) -> Option<Result<Num, CallError>> {

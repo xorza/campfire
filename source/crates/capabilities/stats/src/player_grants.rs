@@ -2,7 +2,7 @@ use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_players::{Player, PlayerRows};
 use campfire_sim::{Removals, StableId};
 use campfire_units::{Dead, Owner};
@@ -53,7 +53,7 @@ impl PlayerGrants {
         mut grants: ResMut<'_, Grants>,
         units: Query<'_, '_, PlayerUnit>,
         (mut changed, mut again, mut wanted): (
-            Local<'_, Vec<PlayerSlot>>,
+            Local<'_, Vec<Seat>>,
             Local<'_, Vec<Entity>>,
             Local<'_, Vec<ModifierId>>,
         ),
@@ -63,7 +63,7 @@ impl PlayerGrants {
             changed_players
                 .iter()
                 .filter(|(_, held)| held.is_changed())
-                .map(|(player, _)| player.slot()),
+                .map(|(player, _)| player.seat()),
         );
         again.clear();
         again.extend(revisits.unowned.read().chain(revisits.revived.read()));
@@ -73,7 +73,7 @@ impl PlayerGrants {
             let visits = every
                 || owner
                     .as_ref()
-                    .is_some_and(|owner| owner.is_changed() || changed.contains(&owner.slot()))
+                    .is_some_and(|owner| owner.is_changed() || changed.contains(&owner.seat()))
                 || tags.as_ref().is_some_and(DetectChanges::is_changed)
                 || modifiers.is_changed()
                 || again.binary_search(&entity).is_ok();

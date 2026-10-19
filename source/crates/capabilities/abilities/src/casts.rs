@@ -11,7 +11,7 @@ use campfire_actions::{
     ProgressDues, ProgressIndexes, Purse, ResolveKind, ResolvedCast, SlotCommit, SlotTimes,
     StartChecked, StartFrom, Targets, UseGroup,
 };
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_math::Vec3;
 use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorld};
@@ -34,7 +34,7 @@ use crate::Abilities;
 struct Prepared {
     start: CallStart,
     caster: Unit,
-    owner: Option<PlayerSlot>,
+    owner: Option<Seat>,
     action: ActionId,
     rank: Rank,
     target: ScriptValue,
@@ -172,13 +172,13 @@ impl Casts {
                     let rank = slot.rank.expect("a slot whose toggle is on is learned");
                     times.cool_down(aim.slot, now.after(action.values(rank).cooldown));
                 }
-                progress.stop(dues);
+                progress.end(dues);
                 continue;
             }
             let purse = Purse::of(pools.of(life), resources.of(owner));
             let relation = |other| targets.relation(team, other);
             let from = StartFrom {
-                pos: position.get(),
+                position: position.get(),
                 body,
                 targets: &targets,
             };
@@ -208,7 +208,7 @@ impl Casts {
                         Self::walk(destination.as_mut(), arrived, Some(to));
                         progress.approach();
                     }
-                    _ => progress.stop(dues),
+                    _ => progress.end(dues),
                 }
                 continue;
             }
@@ -230,7 +230,7 @@ impl Casts {
         if approached {
             Self::walk(destination, arrived, None);
         }
-        progress.stop(dues);
+        progress.end(dues);
     }
 
     /// Walks the unit of `destination`, one that walks, to `to`, or stops it.
@@ -370,7 +370,7 @@ impl Casts {
                     start,
                 })
             });
-            progress.finish_cast(slots, now, resolved.as_ref(), dues);
+            progress.complete_cast(slots, now, resolved.as_ref(), dues);
             if let Some(resolved) = &resolved {
                 times.commit(SlotCommit::cast(resolved, now, second));
             }
@@ -407,7 +407,7 @@ impl Casts {
             let (slots, mut progress) = unit
                 .get_components_mut::<(&ActionSlots, &mut ActionProgress)>()
                 .expect("a caster has slots");
-            progress.finish_cast(slots, now, resolved.as_ref(), dues);
+            progress.complete_cast(slots, now, resolved.as_ref(), dues);
         });
         if let Some(resolved) = &resolved {
             world
@@ -435,7 +435,7 @@ impl Casts {
             .expect("a unit that pays player resources has an owner");
         let mut frame = ctx.frame();
         let players = frame
-            .part_mut::<PlayersCall>()
+            .extension_mut::<PlayersCall>()
             .expect("every call holds the players'");
         let resources = players.resources_mut(owner);
         resources
@@ -522,7 +522,7 @@ impl Casts {
         let checked = times.start(check, None)?.checked;
         let target = Abilities::target(view, casting.target);
         let package = checked.action.package;
-        let owner = owner.map(|owner| owner.slot());
+        let owner = owner.map(|owner| owner.seat());
         let call = CallStart {
             start: Some(start),
             dash_delivers: checked.action.delivery.is_none().then_some(DashDelivery {

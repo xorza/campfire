@@ -137,7 +137,7 @@ impl ListedSpec for LandEffectSpec {
             id: None,
             by,
             unit_type: self.area,
-            pos: row.pos,
+            position: row.position,
         });
         Ok(())
     }

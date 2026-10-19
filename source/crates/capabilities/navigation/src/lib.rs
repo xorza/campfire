@@ -1,5 +1,5 @@
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
@@ -23,7 +23,7 @@ use campfire_math::{Num, Vec3};
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::{Capability, SimEdge, SimSet, Unpredicted};
 use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, LayerNames, MoveStep, OpenCellAsk, OpenCellRun, SpawnHooks,
+    BodyUnit, Dead, DeclaredTags, LayerNames, MoveStep, OpenCellAsk, OpenCellRun, SpawnCallbacks,
     UnitTracker, UnitsSet, WallBook,
 };
 
@@ -169,7 +169,7 @@ impl Module for Navigation {
         d.section::<MapPathsData>();
         d.removals::<Dead>();
         d.removals::<Unpredicted>();
-        d.callback::<SpawnHooks>(Capability::Navigation, Self::make_room);
+        d.callback::<SpawnCallbacks>(Capability::Navigation, Self::make_room);
         d.component::<PathWalker>();
         d.component::<OnPath>();
         d.resource::<PathArrivals>();
@@ -268,7 +268,7 @@ impl Navigation {
         world.resource_mut::<UnitTracker<StaticBodies>>().mark();
     }
 
-    /// The spawn hook that makes room for the body of `entity`, which the mode's spawner just
+    /// The spawn callback that makes room for the body of `entity`, which the mode's spawner just
     /// spawned, when a box: each walker of its layer whose body the box overlaps goes at once to
     /// the nearest cell its walker may stand in, by stable id, as a teleport places a unit but
     /// with no disjoint. The static index and the pathing grid take the box first, so the cell

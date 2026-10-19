@@ -80,7 +80,7 @@ impl MaterialKey {
     /// Its material, of the name `name`, of the model whose file is at `model`. It is rough, not
     /// metallic, and of no specular, as no shader of the game turns its specular on; unlit, white
     /// and of no emissive light, when its shader draws its texture alone; of `MissingTexture`'s
-    /// color times its own in place of a texture no archive holds (12-zero-hour.md, A W3D material
+    /// color times its own in place of a texture no archive holds (09-zero-hour.md, A W3D material
     /// becomes the one material); and, for a triangle of no texture under a shader that textures,
     /// of what its shader draws of the null vector. Its extras go in its extension when its shader
     /// is more than glTF's material says (02-engine-core.md, Material extras in a glTF extension).
@@ -98,7 +98,7 @@ impl MaterialKey {
                 (
                     blend,
                     shader.depth_write,
-                    (!shader.unlit()).then_some(material),
+                    (!shader.is_unlit()).then_some(material),
                 )
             }
             Source::Detail { blend } => (blend, false, None),

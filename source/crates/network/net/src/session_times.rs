@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-/// How long a session waits: a player whose link failed keeps their slot for `grace`, by the
+/// How long a session waits: a player whose link failed keeps their seat for `grace`, by the
 /// server's real clock; a server that stops restores the session within `restore_window` of its
 /// journal's last write. The offer gives both, so a client knows how long to try again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

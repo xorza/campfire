@@ -1,50 +1,50 @@
 use campfire_bots::{BotNames, BotScript, BotScriptError, OrderScript};
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_package::ModePackages;
 
-/// The bots a server plays, each script's names resolved in its match: a script for each slot
-/// its plan gives a bot, and one for each slot that becomes a bot's after its player left, whose
-/// ticks count from then. A bot slot with no script idles.
+/// The bots a server plays, each script's names resolved in its match: a script for each seat
+/// its plan gives a bot, and one for each seat that becomes a bot's after its player left, whose
+/// ticks count from then. A bot seat with no script idles.
 #[derive(Debug, Clone, Default)]
 pub struct ServerBots {
-    pub slots: Vec<SlotBot>,
+    pub seats: Vec<SeatBot>,
     pub takeover: Option<BotScript>,
 }
 
-/// A slot the plan gives a bot, and the script it plays from the start.
+/// A seat the plan gives a bot, and the script it plays from the start.
 #[derive(Debug, Clone)]
-pub struct SlotBot {
-    pub slot: PlayerSlot,
+pub struct SeatBot {
+    pub seat: Seat,
     pub script: BotScript,
 }
 
-/// A slot the plan gives a bot, and the script it plays as its file reads, its names not yet
+/// A seat the plan gives a bot, and the script it plays as its file reads, its names not yet
 /// resolved.
 #[derive(Debug, Clone)]
-pub struct SlotScript {
-    pub slot: PlayerSlot,
+pub struct SeatScript {
+    pub seat: Seat,
     pub script: OrderScript,
 }
 
 impl ServerBots {
-    /// The bots of `slots` and the takeover script `takeover`, each name of their scripts
+    /// The bots of `seats` and the takeover script `takeover`, each name of their scripts
     /// resolved in the match of `packages`, as the server does before any session opens; an
     /// error for the first name a script holds that the match does not have.
     pub fn new(
-        slots: impl IntoIterator<Item = SlotScript>,
+        seats: impl IntoIterator<Item = SeatScript>,
         takeover: Option<&OrderScript>,
         packages: &ModePackages,
     ) -> Result<Self, BotScriptError> {
         let books = packages.name_books();
         let names = BotNames::new(&books);
-        let slots = slots.into_iter().map(|SlotScript { slot, script }| {
-            Ok(SlotBot {
-                slot,
+        let seats = seats.into_iter().map(|SeatScript { seat, script }| {
+            Ok(SeatBot {
+                seat,
                 script: BotScript::new(&script, &names)?,
             })
         });
         Ok(Self {
-            slots: slots.collect::<Result<_, BotScriptError>>()?,
+            seats: seats.collect::<Result<_, BotScriptError>>()?,
             takeover: takeover
                 .map(|script| BotScript::new(script, &names))
                 .transpose()?,
@@ -52,11 +52,11 @@ impl ServerBots {
     }
 }
 
-impl SlotScript {
-    /// The bot of the slot of index `slot`, which plays `script`.
-    pub const fn new(slot: u32, script: OrderScript) -> Self {
+impl SeatScript {
+    /// The bot of the seat of index `seat`, which plays `script`.
+    pub const fn new(seat: u32, script: OrderScript) -> Self {
         Self {
-            slot: PlayerSlot::new(slot),
+            seat: Seat::new(seat),
             script,
         }
     }
@@ -78,10 +78,10 @@ mod tests {
                 format!("[[order]]\ntick = 0\nunits = \"{units}\"\naction.orders = \"stop\"\n");
             OrderScript::parse(&text).unwrap()
         };
-        let bots = |slot: &str, takeover: Option<&str>| {
-            let slots = [SlotScript::new(0, script(slot))];
+        let bots = |seat: &str, takeover: Option<&str>| {
+            let seats = [SeatScript::new(0, script(seat))];
             let takeover = takeover.map(script);
-            ServerBots::new(slots, takeover.as_ref(), &packages).map(|bots| bots.slots.len())
+            ServerBots::new(seats, takeover.as_ref(), &packages).map(|bots| bots.seats.len())
         };
         let unknown = |name: &str| {
             Err(BotScriptError::Unknown(UnknownName::new(

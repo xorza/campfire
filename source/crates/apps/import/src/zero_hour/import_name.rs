@@ -2,7 +2,7 @@ use campfire_common::{DeclaredName, MapName};
 
 use crate::zero_hour::format::ini::object_ini::IniObject;
 
-/// A name of the original, a map's folder or an object's template, as a package names it: its
+/// A name of the original, a map's directory or an object's template, as a package names it: its
 /// ASCII letters lowercase, its digits and `_` kept, each other byte `_`, and `x` before a name
 /// that does not start with a letter. Two names may give one, which the import refuses.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

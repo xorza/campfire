@@ -39,7 +39,7 @@ pub(crate) struct Spot {
 /// The fixed clock a frame is drawn at: how long a tick lasts now, and the share of the next
 /// tick that passed.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct TickClock {
+pub(crate) struct FrameClock {
     pub(crate) timestep: Duration,
     pub(crate) fraction: f32,
 }
@@ -119,7 +119,7 @@ impl Glide {
     /// Where it stands at `now` of app time, on `clock`. A timed glide takes the share of the way
     /// that the time since its start is of a tick, at most all of it; only the difference of two
     /// times becomes an `f32`, so a long session loses no precision.
-    pub(crate) fn at(&self, now: Duration, clock: TickClock) -> Spot {
+    pub(crate) fn at(&self, now: Duration, clock: FrameClock) -> Spot {
         match *self {
             Self::Ticked { before, last } => before.lerp(last, clock.fraction.clamp(0.0, 1.0)),
             Self::Timed { from, to, since } => {
@@ -154,7 +154,7 @@ mod tests {
             start,
         );
         let at = |ms, tick_ms| {
-            let clock = TickClock {
+            let clock = FrameClock {
                 timestep: Duration::from_millis(tick_ms),
                 fraction: 0.9,
             };
@@ -168,7 +168,7 @@ mod tests {
         // A time before its start, as a clock never gives, holds it at its start; a tick of no
         // length puts it at its end.
         assert_eq!(at(0, 50), 0.0);
-        let still = TickClock {
+        let still = FrameClock {
             timestep: Duration::ZERO,
             fraction: 0.0,
         };
@@ -183,7 +183,7 @@ mod tests {
         glide.tick(at_rest(Vec3::X));
         assert_eq!(glide, Glide::ticked(at_rest(Vec3::X)));
         glide.tick(at_rest(Vec3::X * 3.0));
-        let clock = |fraction| TickClock {
+        let clock = |fraction| FrameClock {
             timestep: Duration::from_millis(50),
             fraction,
         };

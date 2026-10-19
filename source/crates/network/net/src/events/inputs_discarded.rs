@@ -1,4 +1,4 @@
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_log::LogEvent;
 use serde::Deserialize;
 use tracing::warn;
@@ -8,7 +8,7 @@ use tracing::warn;
 /// those never apply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct InputsDiscarded {
-    pub slot: PlayerSlot,
+    pub seat: Seat,
     pub count: u64,
 }
 
@@ -18,7 +18,7 @@ impl LogEvent for InputsDiscarded {
 
     fn log(&self) {
         warn!(
-            slot = self.slot.get(),
+            seat = self.seat.get(),
             count = self.count,
             "{}",
             Self::MESSAGE
@@ -35,7 +35,7 @@ mod tests {
     #[test]
     fn the_event_reads_back_what_it_logs() {
         round_trip(&InputsDiscarded {
-            slot: PlayerSlot::new(1),
+            seat: Seat::new(1),
             count: 3,
         });
     }

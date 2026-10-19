@@ -17,9 +17,9 @@ use crate::zero_hour::format::ini::weapon_ini::IniWeapon;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::weapon_drop::{self, WeaponDrop};
 
-/// An object's unit type as the import writes it in `data/units.toml`  (12-zero-hour.md, Units move
-/// by the generic backends with the original's numbers; 12-zero-hour.md, Only walkers and standing
-/// structures have bodies; 12-zero-hour.md, Life is the original's; 12-zero-hour.md, Defeat by the
+/// An object's unit type as the import writes it in `data/units.toml`  (09-zero-hour.md, Units move
+/// by the generic backends with the original's numbers; 09-zero-hour.md, Only walkers and standing
+/// structures have bodies; 09-zero-hour.md, Life is the original's; 09-zero-hour.md, Defeat by the
 /// last building that counts): the speed and the turn rate of its first normal locomotor that
 /// drives on the ground; its body: a circle of its bounding radius, at most `MAX_WALKER`, when it
 /// drives, or, when it is a structure that is not small, a box of twice its radii for a box
@@ -31,7 +31,7 @@ use crate::zero_hour::weapon_drop::{self, WeaponDrop};
 /// `BuildCost` in money as the cost a kill's bounty takes its share of. Every other object has none
 /// of these. What every type shares, a death that despawns and a turret's tolerance and slot kind,
 /// is Zero Hour's rules data, `[defaults]`, which lies under each type's own (03-game-scripting.md,
-/// Defaults under each unit type). A shell's type is a projectile alone (12-zero-hour.md, The
+/// Defaults under each unit type). A shell's type is a projectile alone (09-zero-hour.md, The
 /// import converts shells, splash, scatter, pitch, turrets and slow weapons).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ImportedType {
@@ -75,7 +75,7 @@ pub(crate) const MONEY: &str = "money";
 /// The mode's pool of life, and the stat of its maximum.
 pub(crate) const LIFE: &str = "life";
 
-/// The tag of a type that counts for a multiplayer victory (12-zero-hour.md, Defeat by the last
+/// The tag of a type that counts for a multiplayer victory (09-zero-hour.md, Defeat by the last
 /// building that counts).
 pub(crate) const VICTORY: &str = "counts_for_victory";
 
@@ -86,7 +86,7 @@ pub(crate) const INFANTRY: &str = "infantry";
 
 /// The widest a driving type's circle is, 25 m: the original's largest pathfinding footprint, 2
 /// cells of 10 m on each side of a center cell (`MAX_RADIUS` of `getRadiusAndCenter`), which our
-/// one body for collision and pathfinding takes (12-zero-hour.md, Only walkers and standing
+/// one body for collision and pathfinding takes (09-zero-hour.md, Only walkers and standing
 /// structures have bodies).
 const MAX_WALKER: f32 = 25.0;
 

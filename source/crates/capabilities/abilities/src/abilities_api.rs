@@ -1,7 +1,7 @@
 use campfire_actions::{ActionRange, ActionsColumn, SlotKind};
 use campfire_math::{Num, Vec3};
 use campfire_script::{
-    ApiBuilder, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberSpec, RoleSet, ScriptCut,
+    ApiBuilder, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberDecl, RoleSet, ScriptCut,
     ScriptValue, Status, Unit,
 };
 use campfire_values::{ActionId, Block, TagProperty};
@@ -16,8 +16,8 @@ pub struct AbilitiesApi;
 
 impl AbilitiesApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        let cast = |name, description| MemberSpec::value(name, description).roles(RoleSet::ACTION);
-        let call = |name, signature, description| MemberSpec::call(name, signature, description);
+        let cast = |name, description| MemberDecl::value(name, description).roles(RoleSet::ACTION);
+        let call = |name, signature, description| MemberDecl::call(name, signature, description);
         let cut = call(
             "scale_cooldowns",
             &[&["unit", "kind", "fraction"]],

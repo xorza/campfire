@@ -42,15 +42,15 @@ impl GroupBox {
         self.low[0] <= x && x <= self.high[0] && self.low[1] <= z && z <= self.high[1]
     }
 
-    /// The goal of the unit at `pos` of a group ordered to `goal`, a point within `bounds`: outside
-    /// the box, `goal` plus the unit's offset from the center, taken into the bounds; inside the
-    /// box or on its edge, `goal` itself.
-    pub fn goal_of(self, pos: Vec3, goal: [Num; 2], bounds: Bounds) -> [Num; 2] {
+    /// The goal of the unit at `position` of a group ordered to `goal`, a point within `bounds`:
+    /// outside the box, `goal` plus the unit's offset from the center, taken into the bounds;
+    /// inside the box or on its edge, `goal` itself.
+    pub fn goal_of(self, position: Vec3, goal: [Num; 2], bounds: Bounds) -> [Num; 2] {
         if self.holds(goal) {
             return goal;
         }
         let [cx, cz] = self.center();
-        bounds.clamp_ground([goal[0] + (pos.x - cx), goal[1] + (pos.z - cz)])
+        bounds.clamp_ground([goal[0] + (position.x - cx), goal[1] + (position.z - cz)])
     }
 }
 

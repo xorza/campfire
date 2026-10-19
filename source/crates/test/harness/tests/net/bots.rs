@@ -10,20 +10,20 @@ use campfire_bots::{
     BotBuffers, BotNames, BotScript, BotSink, HeldBotView, Named, OrderScript, OrderUnsent,
 };
 use campfire_capabilities::{Action, Order};
-use campfire_common::{AfterLeave, PlayerSlot, StateHash, Tick};
+use campfire_common::{AfterLeave, Seat, StateHash, Tick};
 use campfire_harness::{
-    End, FixedMatch, FixedSession, HashTrail, InProcessMatch, LinkModel, MatchSetup, MatchUnits,
+    End, FixedMatch, FixedSession, HashTrail, InProcessMatch, InProcessSetup, LinkModel, MatchUnits,
 };
 use campfire_mode::{ModeWorld, PlayersData, SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::internals::TickHashes;
-use campfire_net::{SessionTimes, SlotBot};
+use campfire_net::{SeatBot, SessionTimes};
 use campfire_orders::OrdersAction;
 use campfire_progression::Experience;
-use campfire_protocol::{Controller, InputRules, LeaveReason, ServerInput, SessionLog, SlotPlan};
+use campfire_protocol::{Controller, InputRules, LeaveReason, SeatPlan, ServerInput, SessionLog};
 use campfire_runner::{Replay, Session, SessionWorld};
 use campfire_script::StateValue;
-use campfire_store::internals::Scratch;
+use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
 use campfire_units::{Destination, Owner};
 
@@ -35,11 +35,11 @@ struct Heard {
 }
 
 impl BotSink for Heard {
-    fn send(&mut self, _: PlayerSlot, payload: &[u8]) {
+    fn send(&mut self, _: Seat, payload: &[u8]) {
         self.sent.push(payload.to_vec());
     }
 
-    fn unsent(&mut self, _: PlayerSlot, _: &Action<Named>, cause: OrderUnsent) {
+    fn unsent(&mut self, _: Seat, _: &Action<Named>, cause: OrderUnsent) {
         self.unsent.push(cause);
     }
 }
@@ -68,7 +68,7 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
     let names = BotNames::new(&books);
     let mut bot = BotScript::new(&OrderScript::parse(&text).unwrap(), &names).unwrap();
     let mut view = HeldBotView::new(fixed.game_mut());
-    let slot = PlayerSlot::new(0);
+    let slot = Seat::new(0);
     let mut step = |fixed: &FixedMatch, tick| {
         let mut heard = Heard::default();
         let view = view.get(fixed.game());
@@ -106,13 +106,13 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
     );
 }
 
-/// Where the server's hero of `slot` walks to.
-fn destination(local: &mut InProcessMatch, slot: PlayerSlot) -> Destination {
+/// Where the server's hero of `seat` walks to.
+fn destination(local: &mut InProcessMatch, seat: Seat) -> Destination {
     let world = local.server_mut().world_mut();
     let mut heroes = world.query_filtered::<(&Owner, &Destination), With<Experience>>();
     let (_, destination) = heroes
         .iter(world)
-        .find(|(owner, _)| owner.slot() == slot)
+        .find(|(owner, _)| owner.seat() == seat)
         .unwrap();
     *destination
 }
@@ -126,12 +126,12 @@ fn picked(local: &InProcessMatch) -> StateValue {
 fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifies() {
     // One player in slot 0, the server's bot in slot 1: it picks "runner" in tick 5, and walks to
     // (3, 2) in tick 10.
-    let mut setup = MatchSetup::SOLO;
+    let mut setup = InProcessSetup::SOLO;
     setup.bots = &["[[input]]\ntick = 5\nname = \"pick\"\nvalue = \"runner\"\n\
          [[order]]\ntick = 10\naction.orders.move.to = [3, 2]\n"];
     let mut local = InProcessMatch::new(setup);
     local.start_match();
-    let bot = PlayerSlot::new(1);
+    let bot = Seat::new(1);
     let session = local.server().world().resource::<Session>();
     assert_eq!(session.log().controller(bot), Some(Controller::Bot));
     let mut seen = Vec::new();
@@ -163,7 +163,7 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
     assert!(
         inputs
             .iter()
-            .all(|input| matches!(input, ServerInput::Bot { slot, .. } if *slot == bot))
+            .all(|input| matches!(input, ServerInput::Bot { seat, .. } if *seat == bot))
     );
 
     // The log replays to the server's hashes.
@@ -182,7 +182,7 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
 fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
     // Client 1 leaves after a second of grace; its slot becomes a bot's, which walks to (-3, 2)
     // 2 ticks after.
-    let mut setup = MatchSetup::duo(LinkModel::PERFECT, InProcessMatch::SEED_CHAIN);
+    let mut setup = InProcessSetup::duo(LinkModel::PERFECT, InProcessMatch::SEED_CHAIN);
     setup.rules = PlayersData {
         late_join: false,
         bot_takeover: false,
@@ -196,7 +196,7 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
     let mut local = InProcessMatch::new(setup);
     local.start_match();
     let world = local.server().world();
-    let slot = world.link_slot(local.link(1)).unwrap();
+    let seat = world.link_seat(local.link(1)).unwrap();
     local.cut_link(1);
     let left = |local: &InProcessMatch| {
         local.server_inputs().iter().any(|input| {
@@ -216,16 +216,16 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
         local.step();
     }
     assert!(left(&local));
-    assert_eq!(destination(&mut local, slot), Destination::default());
+    assert_eq!(destination(&mut local, seat), Destination::default());
     for _ in 0..5 {
         local.step();
     }
-    assert_ne!(destination(&mut local, slot), Destination::default());
+    assert_ne!(destination(&mut local, seat), Destination::default());
     assert!(
         local
             .server_inputs()
             .iter()
-            .any(|input| matches!(input, ServerInput::Bot { slot: played, .. } if *played == slot))
+            .any(|input| matches!(input, ServerInput::Bot { seat: played, .. } if *played == seat))
     );
 }
 
@@ -248,13 +248,13 @@ struct Burst {
 /// The match of the bot of `BURST` up to tick `end`, its server stopped and restored from its
 /// journal after tick 10 when `stop`.
 fn burst(stop: bool, end: u64) -> Burst {
-    let scratch = Scratch::new();
-    let mut setup = MatchSetup::SOLO;
+    let test_dir = TestDir::new();
+    let mut setup = InProcessSetup::SOLO;
     setup.bots = &[BURST];
     let mut local = InProcessMatch::new(setup);
-    local.keep_data(scratch.path("data"));
+    local.keep_data(test_dir.path("data"));
     local.start_match();
-    let bot = PlayerSlot::new(1);
+    let bot = Seat::new(1);
     let (mut walks, mut restarted) = (Vec::new(), false);
     while local.next_tick(End::Server) < end {
         let tick = local.next_tick(End::Server);
@@ -316,27 +316,27 @@ fn a_plan_bot_plays_its_script_until_its_slot_changes_hands() {
         OrderScript::parse("[[order]]\ntick = 2\naction.orders.move.to = [1, 0]\n").unwrap();
     let script = BotScript::new(&script, &BotNames::new(&packages.name_books())).unwrap();
     let tick_hz = packages.manifest().tick_hz.default();
-    let plan = [SlotPlan::Player, SlotPlan::Bot];
+    let plan = [SeatPlan::Player, SeatPlan::Bot];
     let mut fixed = FixedSession::planned(packages, tick_hz, InputRules::LAN, plan).start();
-    let slot = PlayerSlot::new(1);
+    let seat = Seat::new(1);
     let planned = |fixed: &FixedMatch| {
-        let slots = vec![SlotBot {
-            slot,
+        let slots = vec![SeatBot {
+            seat,
             script: script.clone(),
         }];
         fixed.game().planned_bots(slots, Tick::new(0))
     };
-    assert_eq!(planned(&fixed), [slot]);
+    assert_eq!(planned(&fixed), [seat]);
     fixed.join(1).unwrap();
     fixed
         .serve(ServerInput::Leave {
-            slot,
+            seat,
             reason: LeaveReason::Asked,
             becomes: AfterLeave::Bot,
         })
         .unwrap();
     assert_eq!(
-        fixed.game().session().log().controller(slot),
+        fixed.game().session().log().controller(seat),
         Some(Controller::Bot)
     );
     assert_eq!(planned(&fixed), []);

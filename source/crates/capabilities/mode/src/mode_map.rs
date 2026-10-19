@@ -132,7 +132,7 @@ impl ModeMap {
                 unit_type: of_type,
                 team: team(&unit.team)?,
                 path,
-                pos: map.placed_at(&unit.pos, unit.height)?,
+                position: map.placed_at(&unit.position, unit.height)?,
                 angle: unit.angle,
             });
         }
@@ -164,7 +164,7 @@ impl ModeMap {
         map: &MapData,
         team: impl Fn(&DeclaredName) -> Result<Team, ModeError>,
     ) -> Result<Vec<MarkerSpec>, ModeError> {
-        let point = |point: &MapPoint| map.pos(point);
+        let point = |point: &MapPoint| map.position(point);
         let mut markers = Vec::with_capacity(map.markers.len());
         for (at, marker) in map.markers.iter().enumerate() {
             if map.markers[..at]
@@ -177,14 +177,14 @@ impl ModeMap {
             let region = marker.region.map(|region| {
                 region
                     .region(map.metric(), map.bounds())
-                    .filter(|_| marker.pos.is_none())
+                    .filter(|_| marker.position.is_none())
                     .ok_or_else(|| ModeError::Region(marker.name.clone()))
             });
             let region = region.transpose()?;
             markers.push(MarkerSpec {
                 name: marker.name.clone(),
                 tags: marker.tags.iter().cloned().collect(),
-                pos: marker.pos.as_ref().map(point).transpose()?,
+                position: marker.position.as_ref().map(point).transpose()?,
                 region,
                 team: marker_team,
                 params: marker.params.clone(),
@@ -201,7 +201,7 @@ impl ModeMap {
             Some(PlacedBody {
                 unit,
                 unit_type: placed.unit_type,
-                pos: placed.pos,
+                position: placed.position,
                 body: body_of(placed.unit_type)?.at(placed.angle),
             })
         });
@@ -218,7 +218,7 @@ impl ModeMap {
         let points = spawns.filter_map(|marker| {
             Some(MarkerPoint {
                 name: marker.name.clone(),
-                pos: marker.pos?,
+                position: marker.position?,
             })
         });
         points.collect()

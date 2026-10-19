@@ -1,4 +1,4 @@
-use campfire_script::{ApiBuilder, ApiOwner, MaybeName, MemberSpec, ScriptHandle, View};
+use campfire_script::{ApiBuilder, ApiHolder, MaybeName, MemberDecl, ScriptHandle, View};
 
 use crate::match_end::MatchResult;
 
@@ -17,7 +17,7 @@ impl ResultHandle {
     /// The `MatchResult` handle's fields.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let field =
-            |name, description| MemberSpec::field(ApiOwner::of::<Self>(), name, description);
+            |name, description| MemberDecl::field(ApiHolder::of::<Self>(), name, description);
         api.ty::<Self>()
             .bind(
                 field("winner", "the team that won, `()` for a draw"),

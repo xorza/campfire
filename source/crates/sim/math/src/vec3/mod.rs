@@ -33,7 +33,7 @@ impl Vec3 {
     }
 
     pub const fn checked_add(self, rhs: Self) -> Option<Self> {
-        Self::from_parts(
+        Self::from_axes(
             self.x.checked_add(rhs.x),
             self.y.checked_add(rhs.y),
             self.z.checked_add(rhs.z),
@@ -41,7 +41,7 @@ impl Vec3 {
     }
 
     pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
-        Self::from_parts(
+        Self::from_axes(
             self.x.checked_sub(rhs.x),
             self.y.checked_sub(rhs.y),
             self.z.checked_sub(rhs.z),
@@ -49,7 +49,7 @@ impl Vec3 {
     }
 
     pub const fn checked_neg(self) -> Option<Self> {
-        Self::from_parts(
+        Self::from_axes(
             self.x.checked_neg(),
             self.y.checked_neg(),
             self.z.checked_neg(),
@@ -57,7 +57,7 @@ impl Vec3 {
     }
 
     pub const fn checked_mul(self, factor: Num) -> Option<Self> {
-        Self::from_parts(
+        Self::from_axes(
             self.x.checked_mul(factor, Rounding::NearestEven),
             self.y.checked_mul(factor, Rounding::NearestEven),
             self.z.checked_mul(factor, Rounding::NearestEven),
@@ -65,7 +65,7 @@ impl Vec3 {
     }
 
     pub fn checked_div(self, divisor: Num) -> Option<Self> {
-        Self::from_parts(
+        Self::from_axes(
             self.x.checked_div(divisor, Rounding::NearestEven),
             self.y.checked_div(divisor, Rounding::NearestEven),
             self.z.checked_div(divisor, Rounding::NearestEven),
@@ -263,7 +263,7 @@ impl Vec3 {
     }
 
     /// A vector when all three components exist.
-    const fn from_parts(x: Option<Num>, y: Option<Num>, z: Option<Num>) -> Option<Self> {
+    const fn from_axes(x: Option<Num>, y: Option<Num>, z: Option<Num>) -> Option<Self> {
         match (x, y, z) {
             (Some(x), Some(y), Some(z)) => Some(Self::new(x, y, z)),
             _ => None,

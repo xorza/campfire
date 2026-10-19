@@ -109,7 +109,7 @@ impl Meter {
 
     /// Whether what it carries is what regen at `hz` ticks a second leaves: less than a bit, and
     /// nothing at either end.
-    pub const fn settled(self, hz: u32) -> bool {
+    pub const fn is_settled(self, hz: u32) -> bool {
         let ends = self.current.to_bits() == 0 || self.current.to_bits() == self.max.to_bits();
         self.carry < hz && !(ends && self.carry != 0)
     }
@@ -213,8 +213,12 @@ mod tests {
             max: Num::int(10),
             carry,
         };
-        assert!(meter(5, 2).settled(3) && meter(0, 0).settled(3) && meter(10, 0).settled(3));
-        assert!(!meter(5, 3).settled(3) && !meter(0, 1).settled(3) && !meter(10, 1).settled(3));
+        assert!(
+            meter(5, 2).is_settled(3) && meter(0, 0).is_settled(3) && meter(10, 0).is_settled(3)
+        );
+        assert!(
+            !meter(5, 3).is_settled(3) && !meter(0, 1).is_settled(3) && !meter(10, 1).is_settled(3)
+        );
 
         for (current, max, reads) in [
             (0, 10, true),

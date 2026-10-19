@@ -1,8 +1,8 @@
 use campfire_actions::ActionData;
 use campfire_codec::StructFields;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_script::{
-    ApiBuilder, ApiOwner, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberSpec, PlayerHandle,
+    ApiBuilder, ApiHolder, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberDecl, PlayerHandle,
     Status, Unit,
 };
 use campfire_values::{Block, TagProperty};
@@ -57,16 +57,16 @@ impl ProductionApi {
             .data::<NodeData>(&[])
             .data::<DropOffData>(&[])
             .bind(
-                MemberSpec::field(
-                    ApiOwner::of::<Unit>(),
+                MemberDecl::field(
+                    ApiHolder::of::<Unit>(),
                     "load",
                     "the amount it carries, 0 with none",
                 ),
                 |unit: &mut Unit| ProductionColumn::load(unit),
             )
             .bind(
-                MemberSpec::field(
-                    ApiOwner::of::<Unit>(),
+                MemberDecl::field(
+                    ApiHolder::of::<Unit>(),
                     "site_progress",
                     "the share of its build's time its site reached, from 0 to 1, `()` when it is \
                      no site",
@@ -74,45 +74,45 @@ impl ProductionApi {
                 |unit: &mut Unit| ProductionColumn::site_progress(unit),
             )
             .bind(
-                MemberSpec::field(
-                    ApiOwner::of::<Unit>(),
+                MemberDecl::field(
+                    ApiHolder::of::<Unit>(),
                     "queue",
                     "the unit types its queue trains, first the one under way, none with no queue",
                 ),
                 |unit: &mut Unit| ProductionColumn::queue(unit),
             )
             .bind(
-                MemberSpec::field(
-                    ApiOwner::of::<Unit>(),
+                MemberDecl::field(
+                    ApiHolder::of::<Unit>(),
                     "node_amount",
                     "the amount it holds as a node, `()` when it is no node",
                 ),
                 |unit: &mut Unit| ProductionColumn::node_amount(unit),
             )
             .bind(
-                MemberSpec::field(
-                    ApiOwner::of::<PlayerHandle>(),
+                MemberDecl::field(
+                    ApiHolder::of::<PlayerHandle>(),
                     "supply_used",
                     "what its living units and queued trains use of its supply",
                 ),
                 |ctx: &Ctx, player: &mut PlayerHandle| {
-                    Self::supply(ctx, player.slot(), SupplyCount::Used)
+                    Self::supply(ctx, player.seat(), SupplyCount::Used)
                 },
             )
             .bind(
-                MemberSpec::field(
-                    ApiOwner::of::<PlayerHandle>(),
+                MemberDecl::field(
+                    ApiHolder::of::<PlayerHandle>(),
                     "supply_cap",
                     "what its living, complete units give of supply, at most the mode's `max`",
                 ),
                 |ctx: &Ctx, player: &mut PlayerHandle| {
-                    Self::supply(ctx, player.slot(), SupplyCount::Cap)
+                    Self::supply(ctx, player.seat(), SupplyCount::Cap)
                 },
             );
     }
 
     /// `player`'s supply as the view read the match: the count `count` names.
-    fn supply(ctx: &Ctx, player: PlayerSlot, count: SupplyCount) -> Checked<i64> {
+    fn supply(ctx: &Ctx, player: Seat, count: SupplyCount) -> Checked<i64> {
         let view = ctx.view();
         let supply = ProductionColumn::supply(view, player)
             .ok_or_else(|| ProductionRefusal::NoSupply.fail())?;

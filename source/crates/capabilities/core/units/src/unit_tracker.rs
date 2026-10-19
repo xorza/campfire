@@ -49,7 +49,7 @@ struct Taken {
 pub struct TrackedUnit<'a> {
     pub entity: Entity,
     pub id: StableId,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub body: Option<&'a Body>,
 }
 
@@ -140,12 +140,12 @@ impl<T: TrackedUnits> Tracking<'_, '_, T> {
     /// Whether the units changed since the last take, as a reader in this run sees them: the
     /// first reader of a run checks every unit's change ticks, and a later one of the same run
     /// finds them as taken. A reader that finds them changed takes them.
-    pub fn stale(&mut self) -> bool {
+    pub fn is_stale(&mut self) -> bool {
         let this_run = self.ticks.this_run();
         if self.tracker.checked == Some(this_run) {
             return false;
         }
-        let stale = self.changed(this_run);
+        let stale = self.is_changed(this_run);
         if !stale {
             self.tracker.checked = Some(this_run);
         }
@@ -157,17 +157,17 @@ impl<T: TrackedUnits> Tracking<'_, '_, T> {
     /// changed since its own last run alone, which hold every change since the take, as each run
     /// of each reader came before the change, or saw it and took the units, or found them as
     /// taken.
-    fn changed(&self, this_run: Tick) -> bool {
+    fn is_changed(&self, this_run: Tick) -> bool {
         let Some(taken) = self.tracker.taken.filter(|_| !self.tracker.marked) else {
             return true;
         };
         // A run's tick is the world's before it, so a change stamped with the take's tick came
         // before the take, and its reader's deferred commands stamp a later one.
         let newer = |tick: Tick| tick.is_newer_than(taken.tick, this_run);
-        let moved = self.changed.iter().any(|(id, pos, body)| {
+        let moved = self.changed.iter().any(|(id, position, body)| {
             body.is_some_and(|body| newer(body.last_changed()))
                 || newer(id.last_changed())
-                || newer(pos.last_changed())
+                || newer(position.last_changed())
         });
         // An archetypal filter counts by the archetypes' lengths, not unit by unit.
         moved || self.units.count() != taken.units
@@ -177,10 +177,10 @@ impl<T: TrackedUnits> Tracking<'_, '_, T> {
     pub fn units(&self) -> impl Iterator<Item = TrackedUnit<'_>> {
         self.units
             .iter()
-            .map(|(entity, id, pos, body)| TrackedUnit {
+            .map(|(entity, id, position, body)| TrackedUnit {
                 entity,
                 id: *id,
-                pos: pos.get(),
+                position: position.get(),
                 body: body.map(Ref::into_inner),
             })
     }

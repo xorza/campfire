@@ -15,7 +15,7 @@ impl TagNames {
     pub fn new(engine: &[EngineTag]) -> Self {
         let named_only = engine
             .iter()
-            .filter(|tag| tag.properties().named_only())
+            .filter(|tag| tag.properties().is_named_only())
             .map(|tag| tag.tag())
             .collect();
         Self {

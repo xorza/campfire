@@ -32,7 +32,7 @@ use campfire_script::{CtxMisuse, ParamProblem, Status, SyncTo};
 use campfire_script::{Filter, internals::Undefined};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{
-    AppliedError, ModifierProblem, ModifiersDataError, PurgeEffectData, StatGraphError,
+    AppliedError, ModifierDataError, ModifierProblem, PurgeEffectData, StatGraphError,
     UnitStartError, Way,
 };
 use campfire_test_packages::{Edit, PackageTree, TestMode};
@@ -528,10 +528,11 @@ fn a_script_names_a_spawn_tag_no_marker_of_the_map_holds() {
 fn an_anonymous_function_and_a_function_pointer_load() {
     // An anonymous function captures nothing, and a pointer passes `ctx` to none.
     for line in [
-        "    let near = |unit| unit.pos;\n",
+        "    let near = |unit| unit.position;\n",
         "    let hook = Fn(\"on_resolve\");\n",
     ] {
-        let at = r#"    for unit in ctx.find(caster, caster.pos, ctx.params.radius, "enemies") {"#;
+        let at =
+            r#"    for unit in ctx.find(caster, caster.position, ctx.params.radius, "enemies") {"#;
         let edit = Edit::Replace(at, &format!("{line}{at}"));
         assert!(load(&edited([(LASH_OUT, edit)])).is_ok(), "{line}");
     }
@@ -541,8 +542,8 @@ fn an_anonymous_function_and_a_function_pointer_load() {
 fn a_mode_script_spawns_its_own_unit_types_and_avatars_by_name() {
     // The mode's tower, and Husk by its package's name, are in the mode's scope; the team is one
     // of the manifest's.
-    let spawns = r#"    ctx.spawn_unit("tower", "north", unit.pos);
-    ctx.spawn_unit("hero-husk", "camps", unit.pos);
+    let spawns = r#"    ctx.spawn_unit("tower", "north", unit.position);
+    ctx.spawn_unit("hero-husk", "camps", unit.position);
     if unit.has_tag("inhibitor") {
 "#;
     let edit = Edit::Replace("    if unit.has_tag(\"inhibitor\") {\n", spawns);
@@ -1729,10 +1730,10 @@ static SCRIPT_FLAWS: &[Flaw] = &[
     flaw(
         LASH_OUT,
         Edit::Replace(
-            r#"    for unit in ctx.find(caster, caster.pos, ctx.params.radius, "enemies") {"#,
+            r#"    for unit in ctx.find(caster, caster.position, ctx.params.radius, "enemies") {"#,
             r#"    let radius = ctx.params.radius;
-    let near = |unit| unit.pos.within(caster.pos, radius);
-    for unit in ctx.find(caster, caster.pos, radius, "enemies") {"#,
+    let near = |unit| unit.position.within(caster.position, radius);
+    for unit in ctx.find(caster, caster.position, radius, "enemies") {"#,
         ),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Compile(error), .. } if error.undefined() == Some(Undefined::Variable("caster"))),
@@ -1762,9 +1763,9 @@ static SCRIPT_FLAWS: &[Flaw] = &[
     ),
     flaw(
         LASH_OUT,
-        Edit::Replace("caster.pos", "caster.position"),
+        Edit::Replace("caster.position", "caster.pos"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownMember(name), .. } if name == "position"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownMember(name), .. } if name == "pos"),
     ),
     flaw(
         LASH_OUT,
@@ -1790,7 +1791,7 @@ static SCRIPT_FLAWS: &[Flaw] = &[
         LASH_OUT,
         Edit::Replace(
             "    for unit in",
-            "    let far = caster.pos.distance_to();\n    for unit in",
+            "    let far = caster.position.distance_to();\n    for unit in",
         ),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Arity { name, args: 0 }, .. } if name == ".distance_to"),
@@ -1913,14 +1914,17 @@ static ACTION_FLAWS: &[Flaw] = &[
             )
         },
     ),
-    flaw(MAP, Edit::Set("units.0.pos", "[0, -69]"), MODE, |problem| {
-        rule(problem, &ModeError::OutOfBounds)
-    }),
+    flaw(
+        MAP,
+        Edit::Set("units.0.position", "[0, -69]"),
+        MODE,
+        |problem| rule(problem, &ModeError::OutOfBounds),
+    ),
     // A meter from the west lane's waypoint 1, at (−36, −36), less than the tower's body and the
     // widest walker's together.
     flaw(
         MAP,
-        Edit::Set("units.2.pos", "[-36, -37]"),
+        Edit::Set("units.2.position", "[-36, -37]"),
         MODE,
         |problem| {
             let path = DeclaredName::new("west").unwrap();
@@ -1928,10 +1932,15 @@ static ACTION_FLAWS: &[Flaw] = &[
         },
     ),
     // A meter from the north spawn, at (0, −60).
-    flaw(MAP, Edit::Set("units.2.pos", "[0, -59]"), MODE, |problem| {
-        let marker = DeclaredName::new("north_spawn").unwrap();
-        rule(problem, &MapProblem::MarkerBlocked { marker })
-    }),
+    flaw(
+        MAP,
+        Edit::Set("units.2.position", "[0, -59]"),
+        MODE,
+        |problem| {
+            let marker = DeclaredName::new("north_spawn").unwrap();
+            rule(problem, &MapProblem::MarkerBlocked { marker })
+        },
+    ),
     flaw(
         UNITS,
         Edit::Set("units.melee_creep.vision.sight_range", r#""-1.0""#),
@@ -2341,7 +2350,7 @@ static STAT_FLAWS: &[Flaw] = &[
             rule_at(
                 problem,
                 &entry("modifiers", "slow"),
-                &ModifiersDataError::EngineTag(name("projectile")),
+                &ModifierDataError::EngineTag(name("projectile")),
             )
         },
     ),
@@ -2506,7 +2515,7 @@ static STAT_FLAWS: &[Flaw] = &[
             rule_at(
                 problem,
                 &entry("modifiers", "fair_wind"),
-                &ModifiersDataError::EngineTag(name("avatar")),
+                &ModifierDataError::EngineTag(name("avatar")),
             )
         },
     ),
@@ -2657,7 +2666,7 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_SCRIPT,
         Edit::Replace(
             "    if unit.has_tag(\"inhibitor\") {\n",
-            "    ctx.spawn_unit(\"grasping_wraps\", \"north\", unit.pos);\n    if unit.has_tag(\"inhibitor\") {\n",
+            "    ctx.spawn_unit(\"grasping_wraps\", \"north\", unit.position);\n    if unit.has_tag(\"inhibitor\") {\n",
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, name, .. } if name == "grasping_wraps"),
@@ -2666,7 +2675,7 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_SCRIPT,
         Edit::Replace(
             "    if unit.has_tag(\"inhibitor\") {\n",
-            "    ctx.spawn_unit(\"hero-husk\", \"west\", unit.pos);\n    if unit.has_tag(\"inhibitor\") {\n",
+            "    ctx.spawn_unit(\"hero-husk\", \"west\", unit.position);\n    if unit.has_tag(\"inhibitor\") {\n",
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::Unknown { of: Team::NAMES, name, .. } if name == "west"),
@@ -3048,13 +3057,13 @@ static MAP_FLAWS: &[Flaw] = &[
     ),
     flaw(
         MAP,
-        Edit::Set("markers.0.pos", "[0, 0, -60]"),
+        Edit::Set("markers.0.position", "[0, 0, -60]"),
         MODE,
         |problem| rule(problem, &ModeError::PointShape),
     ),
     Flaw {
         file: MAP,
-        edit: Edit::Remove("markers.2.pos"),
+        edit: Edit::Remove("markers.2.position"),
         also: &[(
             MAP,
             Edit::Set("markers.2.region", "{ min = [-20, -14], max = [-16, -70] }"),
@@ -3928,7 +3937,7 @@ fn a_mode_holds_kinds_and_resources_to_their_limits_and_a_hero_is_no_mode() {
 }
 
 /// Every ground point of `map` raised to `[x, y, z]`, and the map made spatial: each point of a
-/// `pos` and a `points` list to y = 0, and a region from y = 0 to 10, as a spatial region is a
+/// `position` and a `points` list to y = 0, and a region from y = 0 to 10, as a spatial region is a
 /// box with height; not the bounds, which stay on the ground plane.
 fn raised(map: &str) -> String {
     fn raise(value: &mut TomlNode, height: Option<i64>) {
@@ -3937,7 +3946,7 @@ fn raised(map: &str) -> String {
                 let region = table.contains_key("min") && !table.contains_key("cell");
                 for (key, inner) in table.iter_mut() {
                     let height = match key.as_str() {
-                        "pos" | "points" => Some(0),
+                        "position" | "points" => Some(0),
                         "min" if region => Some(0),
                         "max" if region => Some(10),
                         _ => None,

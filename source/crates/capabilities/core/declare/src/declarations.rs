@@ -8,7 +8,7 @@ use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_script::{
-    ApiBuilder, CallParams, CallPart, HookSpec, PlannedCapability, RowFill, RowReads, Status,
+    ApiBuilder, CallExtension, CallParams, HookDecl, PlannedCapability, RowFill, RowReads, Status,
     ViewColumn,
 };
 use campfire_sim::{Breach, Capability, HostRule, OwnResources, SimComponent, TimedProcess};
@@ -49,7 +49,7 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     /// alone, as a restore checks.
     fn host<C: SimComponent, H: HostRule>(&mut self);
 
-    /// `check`, a rule of `C`, a declared state type, that a module other than its owner knows,
+    /// `check`, a rule of `C`, a declared state type, that a module other than its own knows,
     /// which a restore runs.
     fn check<C: SimComponent>(&mut self, check: fn(&World) -> Result<(), Breach>);
 
@@ -99,7 +99,7 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     fn column<C: ViewColumn + Default, D: RowReads>(&mut self, fill: ColumnFill<D, C>);
 
     /// `P`, a part of every script call.
-    fn call_part<P: CallPart + Default>(&mut self);
+    fn call_extension<P: CallExtension + Default>(&mut self);
 
     /// `P`, a part of every script call that holds the params of its scope's calls.
     fn call_params<P: CallParams + Default>(&mut self);
@@ -119,12 +119,12 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     /// The module's script API, which `register` binds and records.
     fn api(&mut self, register: fn(&mut ApiBuilder<'_>));
 
-    /// The hook `H`, which a system of the module calls, of `status` (08-script-api.md, A hook is
+    /// The hook `H`, which a system of the module calls, of `status` (06-script-api.md, A hook is
     /// its caller's type).
-    fn hook<H: HookSpec>(&mut self, status: Status);
+    fn hook<H: HookDecl>(&mut self, status: Status);
 
     /// The hook `H`, planned with `planned`, a capability the release does not build.
-    fn plan_hook<H: HookSpec>(&mut self, planned: PlannedCapability);
+    fn plan_hook<H: HookDecl>(&mut self, planned: PlannedCapability);
 
     /// `observer`, which runs as each event `E` of `B` reaches it.
     fn observer<E: Event, B: Bundle, M>(&mut self, observer: impl IntoObserverSystem<E, B, M>);

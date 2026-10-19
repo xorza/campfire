@@ -61,11 +61,11 @@ impl NavigationColumn {
             .push(NavigationRow { path, walks, layer });
     }
 
-    /// Whether `body`, a box that would spawn at `pos`, has room there, as `view` read the match:
-    /// within the bounds, clear of the walls of its layer, of the living units of its layer that
-    /// stand, and of `spawning`, the boxes the call already spawns; with no navigation, of the
+    /// Whether `body`, a box that would spawn at `position`, has room there, as `view` read the
+    /// match: within the bounds, clear of the walls of its layer, of the living units of its layer
+    /// that stand, and of `spawning`, the boxes the call already spawns; with no navigation, of the
     /// bounds and `spawning` alone.
-    pub fn room_for(view: &View, pos: Vec3, body: Body, spawning: &[IndexedBody]) -> bool {
+    pub fn room_for(view: &View, position: Vec3, body: Body, spawning: &[IndexedBody]) -> bool {
         let Shape::Box(boxed) = body.shape() else {
             return true;
         };
@@ -73,26 +73,26 @@ impl NavigationColumn {
         let clear_of_spawning = spawning
             .iter()
             .filter(|other| other.layer == layer)
-            .all(|other| !other.overlaps_box(pos, &boxed));
+            .all(|other| !other.overlaps_box(position, &boxed));
         let room = view.column(|column: &Self| {
             let rows = column.rows.now();
-            let mut clear = view.bounds().holds_box(pos, &boxed)
-                && !column.walls.overlaps_box(pos, &boxed, layer);
+            let mut clear = view.bounds().holds_box(position, &boxed)
+                && !column.walls.overlaps_box(position, &boxed, layer);
             view.each_row(|place, row| {
                 let stands = !rows[place].walks && rows[place].layer == layer;
                 if clear && stands && row.alive && row.shape != Shape::POINT {
                     let other = IndexedBody {
                         id: row.id,
-                        pos: row.pos,
+                        position: row.position,
                         shape: row.shape,
                         layer,
                     };
-                    clear = !other.overlaps_box(pos, &boxed);
+                    clear = !other.overlaps_box(position, &boxed);
                 }
             });
             clear
         });
-        let room = room.unwrap_or_else(|| view.bounds().holds_box(pos, &boxed));
+        let room = room.unwrap_or_else(|| view.bounds().holds_box(position, &boxed));
         room && clear_of_spawning
     }
 

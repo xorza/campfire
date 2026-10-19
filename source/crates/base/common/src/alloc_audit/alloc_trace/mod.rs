@@ -161,7 +161,7 @@ impl AllocTrace {
             .expect("common's manifest lies in a group of the workspace's crates directory")
     }
 
-    /// A crate's folder lies under `crates/`, at the depth of its group, and its code under its
+    /// A crate's directory lies under `crates/`, at the depth of its group, and its code under its
     /// `src/` or `tests/`.
     fn kind(relative: &str) -> FrameKind {
         let Some(path) = relative.strip_prefix("crates/") else {

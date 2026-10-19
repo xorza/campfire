@@ -9,17 +9,17 @@ cell = "1.0"
 [[markers]]
 name = "w1"
 tags = ["start"]
-pos = [-10, 0]
+position = [-10, 0]
 params = { name = "Player_1_Start" }
 
 [[markers]]
 name = "w2"
 tags = ["start"]
-pos = [10, 0]
+position = [10, 0]
 params = { name = "Player_2_Start" }
 
 [[markers]]
 name = "w3"
 tags = ["start"]
-pos = [0, 10]
+position = [0, 10]
 params = { name = "Player_3_Start" }

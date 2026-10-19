@@ -92,12 +92,12 @@ struct Flaw {
 const MODE: &str = "moba-3v3";
 
 /// Whether `problem` is `name` of `of` unknown at `at`.
-fn unknown(problem: &LoadProblem, at: &Place, of: NameKind, name: &str) -> bool {
+fn is_unknown(problem: &LoadProblem, at: &Place, of: NameKind, name: &str) -> bool {
     matches!(problem, LoadProblem::Unknown { at: found_at, name: found, of: kind } if found_at == at && *kind == of && found == name)
 }
 
 /// Whether `problem` is `file` failing to read with a message that has `message`.
-fn unread(problem: &LoadProblem, file: &str, message: &str) -> bool {
+fn is_unread(problem: &LoadProblem, file: &str, message: &str) -> bool {
     matches!(problem, LoadProblem::Content(ContentError::Data { path, error }) if path.to_string() == file && error.message().contains(message))
 }
 
@@ -118,7 +118,7 @@ const FLAWS: [Flaw; 23] = [
     Flaw {
         edits: &[(MODE_DATA, Edit::Remove("items.health_potion.name"))],
         package: MODE,
-        refused: |problem| unread(problem, "data/mode.toml", "missing field `name`"),
+        refused: |problem| is_unread(problem, "data/mode.toml", "missing field `name`"),
     },
     Flaw {
         edits: &[(
@@ -127,7 +127,7 @@ const FLAWS: [Flaw; 23] = [
         )],
         package: MODE,
         refused: |problem| {
-            unknown(
+            is_unknown(
                 problem,
                 &item("health_potion"),
                 MessageId::NAMES,
@@ -142,7 +142,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.long_sword.cost", "{ silver = 350 }"),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("long_sword"), ResourceId::NAMES, "silver"),
+        refused: |problem| is_unknown(problem, &item("long_sword"), ResourceId::NAMES, "silver"),
     },
     // An item is built from the mode's items, never from itself.
     Flaw {
@@ -151,7 +151,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.warblade.components", r#"["sword"]"#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("warblade"), ItemId::NAMES, "sword"),
+        refused: |problem| is_unknown(problem, &item("warblade"), ItemId::NAMES, "sword"),
     },
     Flaw {
         edits: &[(
@@ -218,12 +218,12 @@ const FLAWS: [Flaw; 23] = [
     Flaw {
         edits: &[(MODE_DATA, Edit::Set("items.health_potion.stack", "0"))],
         package: MODE,
-        refused: |problem| unread(problem, "data/mode.toml", "nonzero"),
+        refused: |problem| is_unread(problem, "data/mode.toml", "nonzero"),
     },
     Flaw {
         edits: &[(MODE_DATA, Edit::Set("items.health_potion.uses", "0"))],
         package: MODE,
-        refused: |problem| unread(problem, "data/mode.toml", "nonzero"),
+        refused: |problem| is_unread(problem, "data/mode.toml", "nonzero"),
     },
     // An item's modifiers and action are the mode's.
     Flaw {
@@ -232,7 +232,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.warblade.modifiers", r#"["sharp"]"#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("warblade"), ModifierId::NAMES, "sharp"),
+        refused: |problem| is_unknown(problem, &item("warblade"), ModifierId::NAMES, "sharp"),
     },
     Flaw {
         edits: &[(
@@ -240,7 +240,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.health_potion.action", r#""sip""#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("health_potion"), ActionId::NAMES, "sip"),
+        refused: |problem| is_unknown(problem, &item("health_potion"), ActionId::NAMES, "sip"),
     },
     // An inventory fills a slot kind of the mode of one rank, with a slot at least, that no unit
     // type or choice puts other actions in.
@@ -277,7 +277,7 @@ const FLAWS: [Flaw; 23] = [
     Flaw {
         edits: &[(HUSK, Edit::Set("inventory.slots", "0"))],
         package: "hero-husk",
-        refused: |problem| unread(problem, "data/avatar.toml", "nonzero"),
+        refused: |problem| is_unread(problem, "data/avatar.toml", "nonzero"),
     },
     // A shop sells the mode's items, each only for its resource, to the units a filter of the
     // match's tags selects, within a reach that is not negative, giving back a share of 0 to 1.
@@ -287,7 +287,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("units.fountain.shop.items", r#"["health_potion", "sword"]"#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &fountain(), ItemId::NAMES, "sword"),
+        refused: |problem| is_unknown(problem, &fountain(), ItemId::NAMES, "sword"),
     },
     Flaw {
         edits: &[(
@@ -295,7 +295,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("units.fountain.shop.resource", r#""silver""#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &fountain(), ResourceId::NAMES, "silver"),
+        refused: |problem| is_unknown(problem, &fountain(), ResourceId::NAMES, "silver"),
     },
     Flaw {
         edits: &[(
@@ -303,7 +303,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("units.fountain.shop.buyers", r#""allies:shopper""#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &fountain(), Filter::NAMES, "allies:shopper"),
+        refused: |problem| is_unknown(problem, &fountain(), Filter::NAMES, "allies:shopper"),
     },
     Flaw {
         edits: &[
@@ -323,7 +323,7 @@ const FLAWS: [Flaw; 23] = [
         edits: &[(UNITS, Edit::Set("units.fountain.shop.reach", r#""-1.0""#))],
         package: MODE,
         refused: |problem| {
-            unread(
+            is_unread(
                 problem,
                 "data/units.toml",
                 "a shop's reach is a number that is not negative",
@@ -337,7 +337,7 @@ const FLAWS: [Flaw; 23] = [
         )],
         package: MODE,
         refused: |problem| {
-            unread(
+            is_unread(
                 problem,
                 "data/units.toml",
                 "a share is 0, 1, or a decimal from 0 to 1",

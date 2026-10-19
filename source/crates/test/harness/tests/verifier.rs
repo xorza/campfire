@@ -10,9 +10,7 @@ use std::path::Path;
 use campfire_actions::{ActionProgress, ActionSlots};
 use campfire_capabilities::{Match, Order};
 use campfire_common::ErrorReport;
-use campfire_common::{
-    AfterLeave, PackageFingerprint, PlayerSlot, StateHash, Tick, Ticks, Version,
-};
+use campfire_common::{AfterLeave, PackageFingerprint, Seat, StateHash, Tick, Ticks, Version};
 use campfire_harness::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
 use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Vec3};
@@ -21,16 +19,16 @@ use campfire_package::ModePackages;
 use campfire_package_disk::{PackageDir, PackageStore, StoreError};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{
-    Applied, InputRules, JournalFrames, LeaveReason, Outcome, RecordSink, SeedError, ServerInput,
-    ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange, SlotChangeKind,
-    SlotPlan, SnapshotFingerprint, Taken,
+    Applied, InputRules, JournalFrames, LeaveReason, Outcome, RecordSink, SeatChange,
+    SeatChangeKind, SeatPlan, SeedError, ServerInput, ServerSeed, ServerSeeds, SessionLog,
+    SessionResult, SessionTerms, SnapshotFingerprint, Taken,
 };
 use campfire_runner::{
-    Replay, ReplayError, ResultMismatch, ServerInputRefused, Session, SessionSource, SessionWorld,
-    SlotRuleError, SnapshotCheckError, StartError, TermsError, UncheckedSource,
+    Replay, ReplayError, ResultMismatch, SeatRuleError, ServerInputRefusal, Session, SessionSource,
+    SessionWorld, SnapshotCheckError, StartError, TermsError, UncheckedSource,
 };
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, StateRegistry};
-use campfire_store::internals::{PinnedFile, Scratch};
+use campfire_store::internals::{PinnedFile, TestDir};
 use campfire_store::{AppendWriter, PathError, ReadError};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{Destination, GroundPoint, Life};
@@ -114,17 +112,17 @@ fn session() -> FixedSession {
 }
 #[derive(Debug, PartialEq, Eq)]
 struct Hero {
-    pos: Vec3,
+    position: Vec3,
     destination: Destination,
 }
 
-/// Where player `slot`'s hero stands and walks to.
-fn hero(game: &Match, slot: u32) -> Hero {
-    let id = MatchUnits::of(game).hero(slot);
+/// Where player `seat`'s hero stands and walks to.
+fn hero(game: &Match, seat: u32) -> Hero {
+    let id = MatchUnits::of(game).hero(seat);
     let entity = game.entity_of(id).unwrap();
     let hero = game.entity(entity);
     Hero {
-        pos: hero.get::<Position>().unwrap().get(),
+        position: hero.get::<Position>().unwrap().get(),
         destination: *hero.get::<Destination>().unwrap(),
     }
 }
@@ -225,8 +223,8 @@ fn a_matchs_journal_publishes_the_log_its_twin_of_no_journal_holds() {
     // The orders' match, journaled from its start, checkpointed before tick 40 and ended before
     // tick 72, and its twin, which keeps no journal; the journal on disk holds every record once
     // the match drops.
-    let scratch = Scratch::new_in(env!("CARGO_TARGET_TMPDIR"));
-    let path = scratch.path("journal");
+    let test_dir = TestDir::new_in(env!("CARGO_TARGET_TMPDIR"));
+    let path = test_dir.path("journal");
     let mut fixed = session().start();
     let mut twin = session().start();
     fixed
@@ -247,7 +245,7 @@ fn a_matchs_journal_publishes_the_log_its_twin_of_no_journal_holds() {
     let held = fixed.game().session().log();
     assert_eq!(held.next_tick(), twin.game().session().log().next_tick());
     drop(fixed);
-    let file = scratch.read(&path);
+    let file = test_dir.read(&path);
     let mut published = Vec::new();
     let mut walk = |visit: &mut dyn FnMut(&[u8])| {
         for record in JournalFrames::new(&file).unwrap() {
@@ -356,7 +354,7 @@ fn run_and_replay_agree_on_every_tick() {
     let Run { fixed, trail: live } = run(&ORDERS.each_ref(), TICKS);
     let game = fixed.game();
     let arrived = Hero {
-        pos: Vec3::from((-2, 0, 5)),
+        position: Vec3::from((-2, 0, 5)),
         destination: Destination::default(),
     };
     assert_eq!(hero(game, 0), arrived);
@@ -380,10 +378,10 @@ fn run_and_replay_agree_on_every_tick() {
     assert!(live[22..].iter().zip(&without[22..]).all(|(a, b)| a != b));
 }
 
-/// The order that moves player `slot`'s hero to (`x`, `z`).
-fn move_order(fixed: &FixedMatch, slot: u32, x: i64, z: i64) -> Vec<u8> {
+/// The order that moves player `seat`'s hero to (`x`, `z`).
+fn move_order(fixed: &FixedMatch, seat: u32, x: i64, z: i64) -> Vec<u8> {
     Order::payload(&[Order::one(
-        MatchUnits::of(fixed.game()).hero(slot),
+        MatchUnits::of(fixed.game()).hero(seat),
         OrdersAction::Move {
             to: GroundPoint {
                 x: Num::int(x),
@@ -396,7 +394,7 @@ fn move_order(fixed: &FixedMatch, slot: u32, x: i64, z: i64) -> Vec<u8> {
 /// The hero standing at (`x`, `z`), with nowhere to walk.
 fn standing(x: i16, z: i16) -> Hero {
     Hero {
-        pos: Vec3::from((x, 0, z)),
+        position: Vec3::from((x, 0, z)),
         destination: Destination::default(),
     }
 }
@@ -404,7 +402,7 @@ fn standing(x: i16, z: i16) -> Hero {
 /// Player 0's leave of slot 0, the slot becoming `becomes`.
 const fn leave(becomes: AfterLeave) -> ServerInput<'static> {
     ServerInput::Leave {
-        slot: PlayerSlot::new(0),
+        seat: Seat::new(0),
         reason: LeaveReason::Asked,
         becomes,
     }
@@ -421,7 +419,7 @@ fn bot_and_returning_player(fixed: &mut FixedMatch, tick: u64) {
             fixed.send(0, Tick::new(0), &payload);
             let payload = move_order(fixed, 1, 3, 2);
             let order = ServerInput::Bot {
-                slot: PlayerSlot::new(1),
+                seat: Seat::new(1),
                 payload: &payload,
             };
             fixed.serve(order).unwrap();
@@ -432,13 +430,13 @@ fn bot_and_returning_player(fixed: &mut FixedMatch, tick: u64) {
         10 => {
             assert!(matches!(
                 fixed.serve(leave(AfterLeave::Bot)),
-                Err(ServerInputRefused::Rule(SlotRuleError::Leaver {
+                Err(ServerInputRefusal::Rule(SeatRuleError::Leaver {
                     becomes: AfterLeave::Bot
                 }))
             ));
             assert!(matches!(
                 fixed.join(1),
-                Err(ServerInputRefused::Rule(SlotRuleError::BotTakeover))
+                Err(ServerInputRefusal::Rule(SeatRuleError::BotTakeover))
             ));
             assert_eq!(fixed.game().session().log().next_place().index, 0);
             fixed.serve(leave(AfterLeave::Reserve)).unwrap();
@@ -460,7 +458,7 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
         packages(),
         NonZeroU32::new(30).unwrap(),
         InputRules::ROOMY,
-        [SlotPlan::Player, SlotPlan::Bot],
+        [SeatPlan::Player, SeatPlan::Bot],
     );
     let mut fixed = session.start();
     let mut live = HashTrail::default();
@@ -475,19 +473,19 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
         [hero(game, 0), hero(game, 1)],
         [standing(-2, 5), standing(3, 2)]
     );
-    let slot = PlayerSlot::new(0);
+    let seat = Seat::new(0);
     let changes = [
-        SlotChange {
+        SeatChange {
             tick: Tick::new(10),
-            slot,
-            kind: SlotChangeKind::Left {
+            seat,
+            kind: SeatChangeKind::Left {
                 becomes: AfterLeave::Reserve,
             },
         },
-        SlotChange {
+        SeatChange {
             tick: Tick::new(20),
-            slot,
-            kind: SlotChangeKind::Joined { from: Taken::Own },
+            seat,
+            kind: SeatChangeKind::Joined { from: Taken::Own },
         },
     ];
     assert_eq!(game.session().log().changes(), changes);
@@ -516,9 +514,9 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     assert!(
         matches!(
             refused,
-            Some(VerifyError::Start(StartError::SlotRule {
-                change: SlotChange { tick, .. },
-                error: SlotRuleError::Leaver { becomes: AfterLeave::Bot },
+            Some(VerifyError::Start(StartError::SeatRule {
+                change: SeatChange { tick, .. },
+                error: SeatRuleError::Leaver { becomes: AfterLeave::Bot },
             })) if tick == Tick::new(0)
         ),
         "{refused:?}"
@@ -762,15 +760,15 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
 
     // Three slots, the session's player and two open, and the lane's two teams seat one each.
     let mut terms = session.terms().clone();
-    terms.slots.extend([SlotPlan::Open; 2]);
+    terms.seats.extend([SeatPlan::Open; 2]);
     let mut log = SessionLog::new(session.header(terms)).unwrap();
     log.reveal_seed(FixedSession::seed(0));
     let refused = refusal(&log, &store);
     assert!(
         matches!(
             refused,
-            Some(VerifyError::Start(StartError::Terms(TermsError::Slots {
-                slots: 3,
+            Some(VerifyError::Start(StartError::Terms(TermsError::Seats {
+                seats: 3,
                 most: 2
             })))
         ),
@@ -812,22 +810,22 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
 fn each_step_a_log_file_fails_at_is_its_own_case() {
     let mut snapshot = Vec::new();
     let Run { fixed, trail } = checkpointed(&mut snapshot, None, None);
-    let scratch = Scratch::new();
-    scratch.write("match.log", encoded(fixed.game().session().log()));
+    let test_dir = TestDir::new();
+    test_dir.write("match.log", encoded(fixed.game().session().log()));
     let packages = PackageDir::workspace("");
     let verify = |packages: &Path, log: &str, snapshots: Option<&str>| {
-        let snapshots = snapshots.map(|dir| scratch.path(dir));
-        verify_file(packages, &scratch.path(log), snapshots.as_deref())
+        let snapshots = snapshots.map(|dir| test_dir.path(dir));
+        verify_file(packages, &test_dir.path(log), snapshots.as_deref())
     };
     // A directory of packages that is not there; one that holds none of the log's mode.
-    let none = scratch.path("none");
+    let none = test_dir.path("none");
     assert!(matches!(
         verify(&none, "match.log", None),
         Err(VerifyError::Store(_))
     ));
-    scratch.create_dir("empty");
+    test_dir.create_dir("empty");
     assert!(matches!(
-        verify(&scratch.path("empty"), "match.log", None),
+        verify(&test_dir.path("empty"), "match.log", None),
         Err(VerifyError::Packages(_))
     ));
     // A log that is not there, and bytes that are no log.
@@ -838,13 +836,13 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
             ..
         }))
     ));
-    scratch.write("bad.log", "no log");
+    test_dir.write("bad.log", "no log");
     assert!(matches!(
         verify(&packages, "bad.log", None),
         Err(VerifyError::Decode(_))
     ));
     // Its checkpoint's snapshot not there, then other bytes under its name.
-    scratch.create_dir("snapshots");
+    test_dir.create_dir("snapshots");
     assert!(matches!(
         verify(&packages, "match.log", Some("snapshots")),
         Err(VerifyError::ReadSnapshot(PathError {
@@ -853,7 +851,7 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
         }))
     ));
     let named = format!("snapshots/{}", SnapshotFingerprint::of(&snapshot));
-    scratch.write(&named, "other");
+    test_dir.write(&named, "other");
     assert!(matches!(
         verify(&packages, "match.log", Some("snapshots")),
         Err(VerifyError::Snapshot(SnapshotCheckError::Fingerprint))
@@ -861,13 +859,13 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
     // A checkpoint whose state its replay does not reach.
     let forged = StateHash::new([7; 32]);
     let Run { fixed: forged, .. } = checkpointed(&mut Vec::new(), Some(forged), None);
-    scratch.write("forged.log", encoded(forged.game().session().log()));
+    test_dir.write("forged.log", encoded(forged.game().session().log()));
     assert!(matches!(
         verify(&packages, "forged.log", None),
         Err(VerifyError::Replay(ReplayError::Checkpoint { .. }))
     ));
     // With its own snapshot, the file verifies to the match's last state.
-    scratch.write(&named, &snapshot);
+    test_dir.write(&named, &snapshot);
     let hash = verify(&packages, "match.log", Some("snapshots")).unwrap();
     assert_eq!(Some(&hash), trail.totals().last());
 }

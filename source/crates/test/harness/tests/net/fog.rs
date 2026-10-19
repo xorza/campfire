@@ -4,7 +4,7 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
 use campfire_common::Tick;
-use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
+use campfire_harness::{InProcessMatch, InProcessSetup, LinkModel};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{Progress, Route};
 use campfire_net::internals::TickHashes;
@@ -44,7 +44,7 @@ struct Server {
 
 #[test]
 fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
-    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(InProcessSetup::SOLO);
     local.start_match();
     // Without the per-tick hash from here on, as in production: the ticks and the replication run
     // all the same.
@@ -55,7 +55,10 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
     assert!(hashes.is_some());
     let east_tower = Vec3::from((8, 0, -3));
     let (tower, tower_entity) = unit(local.server(), |app, entity| {
-        app.world().get::<Position>(entity).map(|pos| pos.get()) == Some(east_tower)
+        app.world()
+            .get::<Position>(entity)
+            .map(|position| position.get())
+            == Some(east_tower)
     });
     let (_, hero) = unit(local.server(), |app, entity| {
         app.world().entity(entity).contains::<Owner>()
@@ -162,11 +165,14 @@ fn held(local: &mut InProcessMatch, client: usize) -> Vec<StableId> {
 #[test]
 fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_sits() {
     // A solo match: the west hero at (0, −2) sees 6 m, so the east tower at (8, −3) is hidden.
-    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(InProcessSetup::SOLO);
     local.start_match();
     let east_tower = Vec3::from((8, 0, -3));
     let (tower, tower_entity) = unit(local.server(), |app, entity| {
-        app.world().get::<Position>(entity).map(|pos| pos.get()) == Some(east_tower)
+        app.world()
+            .get::<Position>(entity)
+            .map(|position| position.get())
+            == Some(east_tower)
     });
     let hero = local.avatar(0);
     let (west, east) = (Team::new(0), Team::new(1));
@@ -233,7 +239,7 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
         .iter()
         .map(|refused| refused.error)
         .collect();
-    assert_eq!(refused, [JoinError::NoSlot]);
+    assert_eq!(refused, [JoinError::NoSeat]);
     assert_eq!(
         local.log().take::<LinkLost>(),
         [LinkLost {
@@ -279,10 +285,10 @@ fn held_as(local: &InProcessMatch, client: usize, id: StableId) -> Option<Held> 
 #[test]
 fn a_new_owner_reaches_the_clients_and_takes_the_owners_kinds_to_its_own() {
     // A duo, player 0 west and player 1 east. Player 0's hero passes to player 1, and to the east
-    // with it, as a capture does (14-replication-audiences.md, An owner changes by an insert alone;
-    // 14-replication-audiences.md, A unit's owner is a player of its team): a new `Owner` and
+    // with it, as a capture does (10-replication-audiences.md, An owner changes by an insert alone;
+    // 10-replication-audiences.md, A unit's owner is a player of its team): a new `Owner` and
     // `Team` inserted.
-    let mut local = InProcessMatch::new(MatchSetup::duo(
+    let mut local = InProcessMatch::new(InProcessSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));

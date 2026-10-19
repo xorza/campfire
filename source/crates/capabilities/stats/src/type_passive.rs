@@ -43,7 +43,7 @@ impl PerType for TypePassive {
 
 impl TypePassive {
     /// Grants the unit of `entity`, which the mode's spawner spawned, its type's passive, held
-    /// from itself at the first rank, as `GrantPass` grants in its passes: the spawn hook of
+    /// from itself at the first rank, as `GrantPass` grants in its passes: the spawn callback of
     /// stats. A unit that spawns holds nothing from itself yet.
     pub(crate) fn grant(world: &mut World, entity: Entity) {
         let unit = world.entity(entity);

@@ -145,7 +145,7 @@ impl ForcedMoves {
                     deliveries.end_dash(DashEnd {
                         dash: *delivering,
                         target,
-                        pos: place,
+                        position: place,
                         direction,
                     });
                 }

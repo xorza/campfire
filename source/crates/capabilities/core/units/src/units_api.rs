@@ -1,8 +1,8 @@
 use campfire_geometry::Placed;
 use campfire_math::{Num, SinCos, Vec3};
 use campfire_script::{
-    ApiBuilder, ApiOwner, Checked, Ctx, MemberSpec, NumError, Raised, ScriptPosition, ScriptRadius,
-    ScriptValue, Unit, UnitAt,
+    ApiBuilder, ApiHolder, Checked, Ctx, MemberDecl, NumError, Raised, ScriptPosition,
+    ScriptRadius, ScriptValue, Unit, UnitAt,
 };
 
 use crate::avatar::Avatar;
@@ -20,10 +20,10 @@ impl UnitsApi {
     /// `Vector`, and `Unit`'s `is_avatar` and `state`.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let field =
-            |name, description| MemberSpec::field(ApiOwner::of::<Unit>(), name, description);
+            |name, description| MemberDecl::field(ApiHolder::of::<Unit>(), name, description);
         api.bind(
             field("is_avatar", "whether it is an avatar"),
-            |unit: &mut Unit| unit.read(Avatar::tagged),
+            |unit: &mut Unit| unit.read(Avatar::is_tagged),
         )
         .bind(
             field(
@@ -41,22 +41,22 @@ impl UnitsApi {
         UnitStateAccess::register(api);
         api.data::<CollisionData>(&[]).data::<TagData>(&[]);
         let vector = |name, signature, description| {
-            MemberSpec::method(ApiOwner::of::<Vec3>(), name, signature, description)
+            MemberDecl::method(ApiHolder::of::<Vec3>(), name, signature, description)
         };
         let within = vector(
             "within",
-            &[&["pos", "radius"]],
-            "whether `pos` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies",
+            &[&["position", "radius"]],
+            "whether `position` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies",
         );
         let distance = vector(
             "distance_to",
-            &[&["pos"]],
-            "the distance to `pos` in the map's metric",
+            &[&["position"]],
+            "the distance to `position` in the map's metric",
         );
         let direction = vector(
             "direction_to",
-            &[&["pos"]],
-            "the unit vector towards `pos` in the map's metric, `()` for the same point",
+            &[&["position"]],
+            "the unit vector towards `position` in the map's metric, `()` for the same point",
         );
         let rotated = vector(
             "rotated_deg",
@@ -94,17 +94,21 @@ impl UnitsApi {
                         .map_or(ScriptValue::UNIT, ScriptValue::of))
                 },
             );
-        let scaled = MemberSpec::operator(
-            ApiOwner::of::<Vec3>(),
+        let scaled = MemberDecl::operator(
+            ApiHolder::of::<Vec3>(),
             "*",
             "the vector scaled by a number, on either side",
         );
         api.method(
-            MemberSpec::operator(ApiOwner::of::<Vec3>(), "+", "the sum of two vectors"),
+            MemberDecl::operator(ApiHolder::of::<Vec3>(), "+", "the sum of two vectors"),
             |a: Vec3, b: Vec3| Self::exact(a.checked_add(b)),
         )
         .method(
-            MemberSpec::operator(ApiOwner::of::<Vec3>(), "-", "the difference of two vectors"),
+            MemberDecl::operator(
+                ApiHolder::of::<Vec3>(),
+                "-",
+                "the difference of two vectors",
+            ),
             |a: Vec3, b: Vec3| Self::exact(a.checked_sub(b)),
         )
         .method(scaled, |vector: Vec3, factor: Num| {
@@ -114,23 +118,23 @@ impl UnitsApi {
             Self::exact(vector.checked_mul(factor))
         })
         .method(
-            MemberSpec::operator(
-                ApiOwner::of::<Vec3>(),
+            MemberDecl::operator(
+                ApiHolder::of::<Vec3>(),
                 "==",
                 "whether the two are one vector",
             ),
             |a: Vec3, b: Vec3| Ok(a == b),
         )
         .method(
-            MemberSpec::operator(
-                ApiOwner::of::<Vec3>(),
+            MemberDecl::operator(
+                ApiHolder::of::<Vec3>(),
                 "!=",
                 "whether the two are two vectors",
             ),
             |a: Vec3, b: Vec3| Ok(a != b),
         );
         let component =
-            |name, description| MemberSpec::field(ApiOwner::of::<Vec3>(), name, description);
+            |name, description| MemberDecl::field(ApiHolder::of::<Vec3>(), name, description);
         api.bind(
             component("x", "its first component, across the ground"),
             |vector: &mut Vec3| vector.x,

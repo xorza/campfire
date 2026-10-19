@@ -33,13 +33,13 @@ impl<R: OrderRefs> ActionTarget<R> {
 impl ActionTarget {
     /// The point it names in `world`: its point, or where its unit stands; `None` for no
     /// target, or a unit that is gone.
-    pub fn pos(self, world: &World) -> Option<Vec3> {
+    pub fn position(self, world: &World) -> Option<Vec3> {
         match self {
             Self::None => None,
             Self::Point(at) => Some(at),
             Self::Unit(id) => {
                 let entity = world.entity_of(id)?;
-                world.get::<Position>(entity).map(|pos| pos.get())
+                world.get::<Position>(entity).map(|position| position.get())
             }
         }
     }

@@ -32,7 +32,7 @@ impl Default for Pace {
 }
 
 impl Pace {
-    pub fn paused(&self) -> bool {
+    pub fn is_paused(&self) -> bool {
         self.paused.load(Ordering::Relaxed)
     }
 
@@ -68,13 +68,13 @@ mod tests {
     #[test]
     fn a_pace_holds_what_it_was_set_to_and_each_speed_divides_the_tick() {
         let pace = Pace::default();
-        assert_eq!((pace.paused(), pace.speed()), (false, PaceSpeed::Normal));
+        assert_eq!((pace.is_paused(), pace.speed()), (false, PaceSpeed::Normal));
         pace.set_paused(true);
         for speed in PaceSpeed::ALL {
             pace.set_speed(speed);
             assert_eq!(pace.speed(), speed);
         }
-        assert!(pace.paused());
+        assert!(pace.is_paused());
         // 50 ms ticks: 100, 50, 25 and 12.5 ms.
         let tick = Duration::from_millis(50);
         assert_eq!(

@@ -12,7 +12,7 @@ use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
 use crate::files::package_name::PackageName;
 
-/// A problem that fails a package's load, as the load's checks find them (08-script-api.md, Checks
+/// A problem that fails a package's load, as the load's checks find them (06-script-api.md, Checks
 /// at package load).
 #[derive(Debug, Error)]
 pub enum LoadProblem {

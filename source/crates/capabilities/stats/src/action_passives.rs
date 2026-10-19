@@ -68,7 +68,7 @@ impl ActionPassives {
         (mut due, mut visits): (Local<'_, Vec<DueUnit>>, Local<'_, Vec<Entity>>),
     ) {
         let every =
-            actions.is_changed() || book.is_changed() || stats.is_changed() || params.changed();
+            actions.is_changed() || book.is_changed() || stats.is_changed() || params.is_changed();
         let now = clock.start();
         due.clear();
         index.take_due(now, &mut due);

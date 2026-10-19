@@ -68,17 +68,17 @@ impl StaticTracking {
         mut walkers: RoutedWalkers<'_, '_>,
         (mut taken, mut asks): (Local<'_, Vec<IndexedBody>>, ResMut<'_, DueIndex<Route>>),
     ) {
-        if !statics.stale() {
+        if !statics.is_stale() {
             return;
         }
         taken.clear();
         taken.extend(statics.units().map(|unit| {
             let body = unit.body.expect("a static body has its body");
-            IndexedBody::of(unit.id, unit.pos, body)
+            IndexedBody::of(unit.id, unit.position, body)
         }));
         statics.took(taken.len());
         taken.sort_unstable_by_key(|body| body.id);
-        let filled = index.filled();
+        let filled = index.is_filled();
         if !index.update(&taken) {
             return;
         }
@@ -116,7 +116,7 @@ impl StaticTracking {
                 party: path.and_then(|path| path.party(goal)),
             };
             match destination.get() {
-                None if opened && route.read().arrived_short() => {
+                None if opened && route.read().is_arrived_short() => {
                     let goal = route.goal().expect("a route that arrived short has a goal");
                     destination.set_if_neq(Destination::to(Some(goal)));
                     route.ask(ask(goal), &mut progress, dues);
@@ -128,7 +128,7 @@ impl StaticTracking {
                             .read()
                             .legs()
                             .any(|leg| statics.added_blocks(leg, walker));
-                    if blocked || (opened && !route.reached()) {
+                    if blocked || (opened && !route.is_reached()) {
                         route.ask(ask(goal), &mut progress, dues);
                     }
                 }

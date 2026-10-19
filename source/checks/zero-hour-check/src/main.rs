@@ -2,7 +2,7 @@
 //! directory its command line names, in place of the packages an earlier run wrote there once the
 //! new ones are whole, and checks what the import gives against what it expects: what a closed
 //! form of the game's data gives, and what it measured once, which `golden.toml` beside it pins
-//! (12-zero-hour.md, The check's measures are a golden file). It checks the fingerprints of the
+//! (09-zero-hour.md, The check's measures are a golden file). It checks the fingerprints of the
 //! imported package and the rules package, which a run on Linux and a run on macOS give alike;
 //! Tournament Desert's height samples, placed units and their types, client objects and their
 //! looks, each kind's templates logged for review, and markers; its terrain file's ground quads,
@@ -93,7 +93,7 @@ fn main() -> ExitCode {
 /// new ones are whole, and checks Tournament Desert against the golden file, or, in a run that
 /// blesses, writes the file again; the failures it found.
 fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
-    let golden = if Golden::blessing() {
+    let golden = if Golden::is_blessing() {
         None
     } else {
         Some(Golden::read()?)

@@ -19,7 +19,7 @@ use crate::zero_hour::imported_type::{ImportedType, MONEY};
 use crate::zero_hour::unit_types::ProductionSection;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
-/// Zero Hour's trains and builds (12-zero-hour.md, Every command set's trains and builds are
+/// Zero Hour's trains and builds (09-zero-hour.md, Every command set's trains and builds are
 /// imported): each `UNIT_BUILD` and `DOZER_CONSTRUCT` button of the command set of each unit type,
 /// and of each type a converted button makes, once for the whole import; the names of their
 /// actions, as the string table gives their labels; the buttons dropped, each once for each cause,
@@ -97,7 +97,7 @@ enum Making {
 }
 
 /// How near a builder comes to its building's box, 10 m, the pathfinder's cell: the dozer docks in
-/// the free cell beside the building nearest it (12-zero-hour.md, Every command set's trains and
+/// the free cell beside the building nearest it (09-zero-hour.md, Every command set's trains and
 /// builds are imported).
 const BUILD_RANGE: Num = Num::int(10);
 

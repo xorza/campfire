@@ -71,7 +71,7 @@ mod tests {
     use super::*;
     use crate::durable_dir::error::DurableDirCreateError;
     use crate::path_error::PathError;
-    use crate::scratch::Scratch;
+    use crate::test_dir::TestDir;
 
     fn at(millis: u64) -> SystemTime {
         UNIX_EPOCH + Duration::from_millis(millis)
@@ -93,16 +93,16 @@ mod tests {
         );
 
         // Below a directory that goes when the test ends, passed or failed.
-        let scratch = Scratch::new();
-        let root = scratch.path("runs");
+        let test_dir = TestDir::new();
+        let root = test_dir.path("runs");
         let first = RunDir::create(&root, at(1_000)).unwrap();
         let kept = Path::new("runs")
             .join(RunDir::name(at(1_000)))
             .join("server.jsonl");
-        scratch.write(&kept, "kept");
+        test_dir.write(&kept, "kept");
         let second = RunDir::create(&root, at(2_000)).unwrap();
         assert_ne!(first.path(), second.path());
-        assert_eq!(scratch.read_text(&kept), "kept");
+        assert_eq!(test_dir.read_text(&kept), "kept");
         assert!(matches!(
             RunDir::create(&root, at(1_000)),
             Err(RunDirError::Dir(PathError {

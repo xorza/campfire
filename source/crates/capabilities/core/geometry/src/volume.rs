@@ -22,22 +22,22 @@ impl Volume {
 
     /// Its center: its base raised by half its height, to the nearest bit.
     pub fn center(&self) -> Vec3 {
-        let Placed { pos, .. } = self.base;
-        Vec3::new(pos.x, pos.y + self.height / 2, pos.z)
+        let Placed { position, .. } = self.base;
+        Vec3::new(position.x, position.y + self.height / 2, position.z)
     }
 
     /// How the distance in space from `point` to it lies against `reach`, at least 0: a point
     /// inside it is closer than every reach. Within its heights, as the planar reach rule
     /// measures, exactly; above or below them, from its gap on the ground plane, to the nearest
-    /// bit, and the gap in height, their squares exactly (09-determinism-core.md, Exact where it
+    /// bit, and the gap in height, their squares exactly (07-determinism-core.md, Exact where it
     /// fits).
     pub fn nearest(&self, point: Vec3, reach: Num) -> Ordering {
         debug_assert!(reach >= Num::ZERO, "a reach is at least 0");
-        let Placed { pos, shape } = self.base;
+        let Placed { position, shape } = self.base;
         let [low, high, at] =
-            [pos.y, pos.y + self.height, point.y].map(|y| i128::from(y.to_bits()));
+            [position.y, position.y + self.height, point.y].map(|y| i128::from(y.to_bits()));
         let rise = (low - at).max(at - high).max(0);
-        let ground = || pos.ground_offset(point).length_squared_bits();
+        let ground = || position.ground_offset(point).length_squared_bits();
         if rise == 0 {
             let beside = match shape {
                 Shape::Circle(radius) => {
@@ -49,7 +49,7 @@ impl Volume {
                             ground().cmp(&(total * total))
                         })
                 }
-                Shape::Box(body) => body.nearest(pos, point, reach),
+                Shape::Box(body) => body.nearest(position, point, reach),
             };
             // On its top or its bottom a point inside its shape lies on it, not inside it.
             let on_face = at == low || at == high;
@@ -64,7 +64,7 @@ impl Volume {
                 let center = ground().nearest_root().cast_signed();
                 (center - i128::from(radius.get().to_bits())).max(0)
             }
-            Shape::Box(body) => body.gap(pos, point),
+            Shape::Box(body) => body.gap(position, point),
         };
         let square = |bits: i128| bits.unsigned_abs() * bits.unsigned_abs();
         let reach = u128::from(reach.to_bits().unsigned_abs());

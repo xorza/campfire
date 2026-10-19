@@ -1,4 +1,4 @@
-use campfire_script::{ApiBuilder, ApiOwner, MemberSpec, PlannedCapability, ScriptValue};
+use campfire_script::{ApiBuilder, ApiHolder, MemberDecl, PlannedCapability, ScriptValue};
 use campfire_sim::Capability;
 use campfire_units::HitHandle;
 
@@ -15,7 +15,7 @@ impl DeliveriesApi {
     /// The `Hit` handle's fields.
     fn hit(api: &mut ApiBuilder<'_>) {
         let field = |name, description| {
-            MemberSpec::field(ApiOwner::of::<HitHandle>(), name, description)
+            MemberDecl::field(ApiHolder::of::<HitHandle>(), name, description)
                 .capability(Capability::Abilities)
         };
         api.ty::<HitHandle>()
@@ -31,8 +31,8 @@ impl DeliveriesApi {
                 |hit: &mut HitHandle| hit.unit(hit.hit().target),
             )
             .bind(
-                field("pos", "where it hit, or where its delivery ended"),
-                |hit: &mut HitHandle| hit.hit().pos,
+                field("position", "where it hit, or where its delivery ended"),
+                |hit: &mut HitHandle| hit.hit().position,
             )
             .bind(
                 field("distance", "how far its delivery flew"),
@@ -49,8 +49,8 @@ impl DeliveriesApi {
                 },
             )
             .plan(
-                MemberSpec::field(
-                    ApiOwner::of::<HitHandle>(),
+                MemberDecl::field(
+                    ApiHolder::of::<HitHandle>(),
                     "part",
                 "the body part a ray or a sweep struck, `()` with none",
             )

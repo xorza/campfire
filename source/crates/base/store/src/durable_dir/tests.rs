@@ -5,7 +5,7 @@ use crate::dir_entries::DirEntries;
 use crate::durable_file::DurableFile;
 
 #[test]
-fn a_durable_directory_is_made_once_and_its_owners_only() {
+fn a_durable_directory_is_made_once_and_its_users_only() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("sessions");
     DurableDir::create(&path).unwrap();
@@ -13,7 +13,7 @@ fn a_durable_directory_is_made_once_and_its_owners_only() {
     // Made again, it stays as it is.
     DurableDir::create(&path).unwrap();
     assert_eq!(fs::read(path.join("kept")).unwrap(), b"kept");
-    assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
+    assert_eq!(UserOnly::exposure_at(&path).unwrap(), None);
     // A file in its place is no directory; a path with no parent names none.
     assert!(matches!(
         DurableDir::create(&path.join("kept")),
@@ -29,12 +29,12 @@ fn a_durable_directory_is_made_once_and_its_owners_only() {
             ..
         })
     ));
-    // Each missing directory above one is made, its owner's only; one already there stays. A new
+    // Each missing directory above one is made, its user's only; one already there stays. A new
     // directory is made once, and a file holds its name as one does.
     let deep = dir.path().join("a").join("b");
     DurableDir::create_all(&deep).unwrap();
     DurableDir::create_all(&deep).unwrap();
-    assert_eq!(OwnerOnly::exposure_at(&dir.path().join("a")).unwrap(), None);
+    assert_eq!(UserOnly::exposure_at(&dir.path().join("a")).unwrap(), None);
     DurableDir::create_new(&deep.join("run")).unwrap();
     for taken in [deep.join("run"), path.join("kept")] {
         assert!(matches!(

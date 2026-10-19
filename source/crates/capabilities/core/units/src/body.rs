@@ -107,17 +107,17 @@ impl Body {
         }
     }
 
-    /// The volume of a unit with `body` at `pos`, on the map of `map`: its shape from the
+    /// The volume of a unit with `body` at `position`, on the map of `map`: its shape from the
     /// position's point in space up by its height; a unit with no body is a point there.
-    pub fn volume(body: Option<&Self>, pos: Vec3, map: &MapBook) -> Volume {
-        let base = Placed::new(map.point(pos), Self::shape_of(body));
+    pub fn volume(body: Option<&Self>, position: Vec3, map: &MapBook) -> Volume {
+        let base = Placed::new(map.point(position), Self::shape_of(body));
         Volume::new(base, body.map_or(Num::ZERO, |body| body.height))
     }
 
-    /// The center of a unit with `body` at `pos`, on the map of `map`: the position's point in
+    /// The center of a unit with `body` at `position`, on the map of `map`: the position's point in
     /// space raised by half its height, which a shot aims at.
-    pub fn center(body: Option<&Self>, pos: Vec3, map: &MapBook) -> Vec3 {
-        Self::volume(body, pos, map).center()
+    pub fn center(body: Option<&Self>, position: Vec3, map: &MapBook) -> Vec3 {
+        Self::volume(body, position, map).center()
     }
 
     /// The layer of a unit with `body`, or the first for a unit with none.
@@ -203,13 +203,13 @@ pub(crate) mod internals {
             Metric::Planar.reaches(Placed::new(from, Self::shape_of(from_body)), range, bound)
         }
 
-        /// Whether this circle at `pos` overlaps the box `body` at `center`: a body collision
+        /// Whether this circle at `position` overlaps the box `body` at `center`: a body collision
         /// left inside the box.
-        pub fn sinks_into(&self, pos: Vec3, body: &Self, center: Vec3) -> bool {
+        pub fn sinks_into(&self, position: Vec3, body: &Self, center: Vec3) -> bool {
             let (Shape::Circle(radius), Shape::Box(boxed)) = (self.shape(), body.shape()) else {
                 panic!("a circle and a box");
             };
-            boxed.closer(center, pos, radius.get())
+            boxed.closer(center, position, radius.get())
         }
     }
 }
@@ -319,21 +319,27 @@ mod tests {
         };
         let [planar, spatial] = [map(Metric::Planar), map(Metric::Spatial)];
         let tall = Body::new(Num::ONE).unwrap().raised(Num::int(2)).unwrap();
-        let pos = Vec3::new(Num::int(5), Num::HALF, Num::int(5));
-        let at = |y: Num| Vec3::new(pos.x, y, pos.z);
+        let position = Vec3::new(Num::int(5), Num::HALF, Num::int(5));
+        let at = |y: Num| Vec3::new(position.x, y, position.z);
         // On a planar map, 4 + 0.5 + 2 ÷ 2; with no body, its point, 4.5; on a spatial map the
         // position is its point, 0.5 + 1.
-        assert_eq!(Body::center(Some(&tall), pos, &planar), at(Num::HALF * 11));
-        assert_eq!(Body::center(None, pos, &planar), at(Num::HALF * 9));
-        assert_eq!(Body::center(Some(&tall), pos, &spatial), at(Num::HALF * 3));
-        let volume = Body::volume(Some(&tall), pos, &planar);
-        assert_eq!(volume.base.pos, at(Num::HALF * 9));
+        assert_eq!(
+            Body::center(Some(&tall), position, &planar),
+            at(Num::HALF * 11)
+        );
+        assert_eq!(Body::center(None, position, &planar), at(Num::HALF * 9));
+        assert_eq!(
+            Body::center(Some(&tall), position, &spatial),
+            at(Num::HALF * 3)
+        );
+        let volume = Body::volume(Some(&tall), position, &planar);
+        assert_eq!(volume.base.position, at(Num::HALF * 9));
         assert_eq!(volume.height, Num::int(2));
         // A point in space gives its position back; a spatial map's are the same. The ground's
         // one coarse cell is 4 m high, and a spatial map has no ground.
-        assert_eq!(planar.position(at(Num::HALF * 9)), pos);
-        assert_eq!(spatial.position(pos), pos);
-        let ends = [pos, Vec3::new(Num::int(9), Num::ZERO, Num::ONE)];
+        assert_eq!(planar.position(at(Num::HALF * 9)), position);
+        assert_eq!(spatial.position(position), position);
+        let ends = [position, Vec3::new(Num::int(9), Num::ZERO, Num::ONE)];
         assert_eq!(planar.highest_along(ends[0], ends[1]), Some(Num::int(4)));
         assert_eq!(spatial.highest_along(ends[0], ends[1]), None);
 

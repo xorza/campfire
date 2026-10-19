@@ -81,7 +81,7 @@ impl<J: Default + Send + 'static, A: Send + 'static> Exchange<J, A> {
     }
 
     /// Whether a job was sent and its answer not taken.
-    pub const fn pending(&self) -> bool {
+    pub const fn is_pending(&self) -> bool {
         self.pending
     }
 

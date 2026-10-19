@@ -46,7 +46,7 @@ pub enum UnitOrder {
 #[query_data(mutable, derive(Debug))]
 pub(crate) struct OrderedUnit {
     pub(crate) id: &'static StableId,
-    pub(crate) pos: &'static Position,
+    pub(crate) position: &'static Position,
     pub(crate) spawn: Option<&'static SpawnPoint>,
     pub(crate) underway: Option<&'static mut ActionProgress>,
     pub(crate) walker: Option<&'static mut PathWalker>,
@@ -89,7 +89,7 @@ impl UnitOrder {
         } = dues;
         let OrderedUnitItem {
             id: _,
-            pos: &at,
+            position: &at,
             spawn,
             mut underway,
             walker,
@@ -99,8 +99,8 @@ impl UnitOrder {
         } = unit;
         if let Some(underway) = &mut underway {
             underway.cut_channel(dues);
-            if underway.approaching() {
-                underway.stop(dues);
+            if underway.is_approaching() {
+                underway.end(dues);
                 if let Some(destination) = &mut destination {
                     destination.set_if_neq(Destination::to(None));
                 }
@@ -144,7 +144,7 @@ impl UnitOrder {
             ),
             Self::Stop => {
                 if let Some(underway) = &mut underway {
-                    underway.stop(dues);
+                    underway.end(dues);
                 }
                 None
             }
@@ -174,8 +174,8 @@ impl UnitOrder {
     }
 
     /// What the order asks of the capabilities that keep the unit's loops: a build's, its point
-    /// taken into `bounds`, a gather's, aimed at its node from `pos`, a use's, or any other's.
-    fn kind(self, bounds: &Bounds, pos: Vec3) -> OrderKind {
+    /// taken into `bounds`, a gather's, aimed at its node from `position`, a use's, or any other's.
+    fn kind(self, bounds: &Bounds, position: Vec3) -> OrderKind {
         match self {
             Self::Build { slot, target } => {
                 let target = match target {
@@ -196,7 +196,7 @@ impl UnitOrder {
             Self::Gather { slot, target } => OrderKind::Gather {
                 slot,
                 node: target,
-                from: pos,
+                from: position,
             },
             Self::Use { target } => OrderKind::Use { target },
             Self::Move { .. }

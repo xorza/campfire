@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime};
 use quinn_proto::{TokenLog, TokenReuseError};
 
 /// The `NEW_TOKEN` tokens a server took, each until it expires, so each validates one address once
-/// and a party that saw it pass cannot use it again (15-quic-transport.md, Retry, tokens and resets
+/// and a party that saw it pass cannot use it again (11-quic-transport.md, Retry, tokens and resets
 /// after a restart). `quinn-proto` asks it for each token that decrypts, names the client's IP and
 /// has not expired; it holds no token past its expiry, when `quinn-proto` refuses the token by
 /// itself.

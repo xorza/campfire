@@ -8,7 +8,7 @@ use campfire_common::DeclaredName;
 use campfire_declare::{BookError, Listed};
 use campfire_math::Num;
 use campfire_script::{
-    ApiBuilder, CallError, CapabilityRefusal, Ctx, Frame, MemberSpec, Unit, View,
+    ApiBuilder, CallError, CapabilityRefusal, Ctx, Frame, MemberDecl, Unit, View,
 };
 use campfire_sim::Capability;
 use campfire_units::PoolId;
@@ -43,7 +43,7 @@ impl Listed for RestoreEffectData {
     }
 
     fn api(api: &mut ApiBuilder<'_>) {
-        let restore = MemberSpec::call(
+        let restore = MemberDecl::call(
             "restore",
             &[&["unit", "pool", "amount"]],
             "gives `unit` back `amount` of its `pool`, unscaled, when it lives",

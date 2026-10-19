@@ -1,6 +1,6 @@
 # Games
 
-- **A game is a package.** The capabilities it declares, its data and its mode scripts; nothing ties a capability to a genre. The engine grows for the games it imports, each through a module of the `import` app and a rules package ([Zero Hour](../12-zero-hour.md)).
+- **A game is a package.** The capabilities it declares, its data and its mode scripts; nothing ties a capability to a genre. The engine grows for the games it imports, each through a module of the `import` app and a rules package ([Zero Hour](../09-zero-hour.md)).
 
 ## Imported games
 
@@ -23,5 +23,5 @@
 
 - **Unit counts.** A large Zero Hour battle, eight armies at 30 Hz, must fit the tick budget and the bandwidth; the benches measure 1,000 units, and the server sends only what each group sees.
 - **Rhai's speed.** The rules package's cost at a battle's scale is measured before it grows.
-- **Parity.** A difference a player notices shows only where a player meets it, as no test plays the original ([Zero Hour](../12-zero-hour.md)).
+- **Parity.** A difference a player notices shows only where a player meets it, as no test plays the original ([Zero Hour](../09-zero-hour.md)).
 - **No copy in CI.** An imported package exists only on a machine that holds the game.

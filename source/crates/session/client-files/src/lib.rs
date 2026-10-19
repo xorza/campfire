@@ -5,7 +5,7 @@
 //! their terrain and its ground heights, and the objects of each map the client alone draws.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
 mod camera_file;
@@ -14,7 +14,7 @@ mod client_path;
 mod client_units;
 mod error;
 mod hud_file;
-mod input_file;
+mod keys_file;
 mod ktx2_image;
 mod map_conditions;
 mod map_lights;
@@ -31,7 +31,7 @@ pub use crate::client_units::{
 };
 pub use crate::error::{TerrainFileError, TextureLevelsError};
 pub use crate::hud_file::{HudFile, ShownBars};
-pub use crate::input_file::{Chord, ChordLabel, InputFile, Key, Modifiers};
+pub use crate::keys_file::{Chord, ChordLabel, Key, KeysFile, Modifiers};
 pub use crate::ktx2_image::Ktx2Image;
 pub use crate::map_conditions::MapConditions;
 pub use crate::map_lights::{MapLight, MapLights};

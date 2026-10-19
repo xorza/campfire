@@ -1,5 +1,5 @@
 use campfire_script::{
-    ApiBuilder, ApiOwner, MaybeName, MemberSpec, ScriptHandle, ScriptValue, View, plain_script_arg,
+    ApiBuilder, ApiHolder, MaybeName, MemberDecl, ScriptHandle, ScriptValue, View, plain_script_arg,
 };
 use campfire_units::HitHandle;
 use campfire_values::ActionId;
@@ -21,7 +21,7 @@ impl DamageHandle {
     /// The `Damage` handle's fields.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let field =
-            |name, description| MemberSpec::field(ApiOwner::of::<Self>(), name, description);
+            |name, description| MemberDecl::field(ApiHolder::of::<Self>(), name, description);
         api.ty::<Self>()
             .bind(
                 field("source", "the unit that dealt it, `()` when gone or none"),
@@ -41,7 +41,7 @@ impl DamageHandle {
             )
             .bind(
                 field("is_attack", "whether an attack dealt it"),
-                |d: &mut Self| d.damage.cause.attack(),
+                |d: &mut Self| d.damage.cause.is_attack(),
             )
             .bind(
                 field("is_extra", "whether `ctx.attack_hit` dealt it"),
@@ -78,8 +78,8 @@ impl DamageHandle {
                 |d: &mut Self| MaybeName::from(d.damage.action.map(|id| d.view.names().name(id))),
             )
             .method(
-                MemberSpec::method(
-                    ApiOwner::of::<Self>(),
+                MemberDecl::method(
+                    ApiHolder::of::<Self>(),
                     "is_action",
                     &[&["action"]],
                     "whether `action`, an action of the script's package, dealt it",

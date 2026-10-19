@@ -1,4 +1,4 @@
-//! The vocabulary that crates which do not depend on each other share: the player slot, ticks,
+//! The vocabulary that crates which do not depend on each other share: the player seat, ticks,
 //! segment seeds, secret bytes, every 32-byte value by its meaning and the two hashers that make
 //! them, a package's fingerprint, a map's name, the TLS key a server presents, and a TLS
 //! session's channel binding.
@@ -13,7 +13,7 @@
 //! `backtrace`.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
 // The derives name the trait by its crate, as every caller does.
@@ -33,7 +33,7 @@ mod exit_status;
 mod map_name;
 mod named_enum;
 mod package_fingerprint;
-mod player_slot;
+mod seat;
 mod secret;
 mod segment_seed;
 mod state_hash;
@@ -55,7 +55,7 @@ pub use crate::map_name::MapName;
 pub use crate::map_name::error::NotMapName;
 pub use crate::named_enum::NamedEnum;
 pub use crate::package_fingerprint::{PackageFingerprint, PackageFingerprintMeaning};
-pub use crate::player_slot::PlayerSlot;
+pub use crate::seat::Seat;
 pub use crate::secret::Secret;
 pub use crate::segment_seed::SegmentSeed;
 pub use crate::state_hash::{StateHash, StateHashMeaning};

@@ -36,7 +36,7 @@ impl LocalKeys {
     ) {
         let pace = &keyed.0;
         if input.pressed(Act::Pause, &keys) {
-            pace.set_paused(!pace.paused());
+            pace.set_paused(!pace.is_paused());
         }
         let step = i8::from(input.pressed(Act::Faster, &keys))
             - i8::from(input.pressed(Act::Slower, &keys));

@@ -1,7 +1,7 @@
 //! Deterministic state and systems on `bevy_ecs`, with no genre code.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![allow(
     clippy::needless_pass_by_value,
@@ -18,13 +18,13 @@ mod own_resources;
 mod position;
 mod removals;
 mod restoring;
+mod seat_event;
 mod sim_rng;
 mod sim_state;
 mod sim_tick;
 mod sim_update;
 mod sim_world;
 mod sim_world_builder;
-mod slot_event;
 mod stable_id;
 mod state_copy;
 mod state_registry;
@@ -45,21 +45,21 @@ pub use crate::own_resources::OwnResources;
 pub use crate::position::Position;
 pub use crate::removals::{Removals, Removed};
 pub use crate::restoring::Restoring;
+pub use crate::seat_event::{SeatEvent, SeatEventKind};
 pub use crate::sim_rng::{RngOpener, SimRng};
 pub use crate::sim_state::{SimComponent, SimResource};
 pub use crate::sim_tick::SimTick;
 pub use crate::sim_update::{SimEdge, SimSet, SimUpdate};
 pub use crate::sim_world::SimWorld;
-pub use crate::sim_world_builder::{SimParts, SimWorldBuilder};
-pub use crate::slot_event::{SlotEvent, SlotEventKind};
+pub use crate::sim_world_builder::{SimFields, SimWorldBuilder};
 pub use crate::stable_id::StableId;
 pub use crate::stable_id::entity_index::EntityIndex;
 pub use crate::state_copy::StateCopy;
 pub use crate::state_registry::breach::Breach;
-pub use crate::state_registry::builder::StateRegistryBuilder;
 pub use crate::state_registry::error::SnapshotError;
 pub use crate::state_registry::state_delta::StateDelta;
-pub use crate::state_registry::{PartHash, PartHashMeaning, StateRegistry, TypeHash};
+pub use crate::state_registry::state_registry_builder::StateRegistryBuilder;
+pub use crate::state_registry::{StateRegistry, StateTypeHash, StateTypeHashMeaning, TypeHash};
 pub use crate::state_rewritten::StateRewritten;
 pub use crate::tick_clock::TickClock;
 pub use crate::tick_inputs::{PlayerCommand, TickInput, TickInputs};

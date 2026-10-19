@@ -4,8 +4,8 @@ use std::sync::Arc;
 use bevy_ecs::world::World;
 use campfire_navigation::IndexedBody;
 use campfire_script::{
-    CallError, CallParams, CallPart, CallStart, Commit, Frame, ListPlace, ParamScope, ScriptRole,
-    ScriptValue, StateValue,
+    CallError, CallExtension, CallParams, CallStart, Commit, Frame, ListPlace, ParamScope,
+    ScriptRole, ScriptValue, StateValue,
 };
 use campfire_units::{SyncAll, SyncNone};
 use campfire_values::Scalar;
@@ -45,7 +45,7 @@ pub(crate) struct ModeCall {
     committed: usize,
 }
 
-impl CallPart for ModeCall {
+impl CallExtension for ModeCall {
     /// Before the effects, as an effect may read the mode's state and the choices.
     const COMMITS: Commit = Commit::BeforeEffects;
 
@@ -155,14 +155,14 @@ impl ModeCall {
     /// The mode's part of `frame`, which the mode added as it installed.
     pub(crate) fn of(frame: &Frame) -> &Self {
         frame
-            .part()
+            .extension()
             .expect("a match whose mode installed has its part of the frame")
     }
 
     /// The mode's part of `frame`, to change.
     pub(crate) fn of_mut(frame: &mut Frame) -> &mut Self {
         frame
-            .part_mut()
+            .extension_mut()
             .expect("a match whose mode installed has its part of the frame")
     }
 }

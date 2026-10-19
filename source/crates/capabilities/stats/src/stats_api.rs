@@ -1,6 +1,6 @@
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_script::{
-    ApiBuilder, ApiOwner, ApiVersion, Applies, Checked, Ctx, MemberSpec, ScriptValue, Status, Unit,
+    ApiBuilder, ApiHolder, ApiVersion, Applies, Checked, Ctx, MemberDecl, ScriptValue, Status, Unit,
 };
 use campfire_units::{Meter, PoolId, StatId};
 use campfire_values::{ModifierId, Rank, TagProperty};
@@ -21,9 +21,9 @@ impl StatsApi {
     /// carries.
     fn register_unit(api: &mut ApiBuilder<'_>) {
         let field =
-            |name, description| MemberSpec::field(ApiOwner::of::<Unit>(), name, description);
+            |name, description| MemberDecl::field(ApiHolder::of::<Unit>(), name, description);
         let method = |name, signature, description| {
-            MemberSpec::method(ApiOwner::of::<Unit>(), name, signature, description)
+            MemberDecl::method(ApiHolder::of::<Unit>(), name, signature, description)
         };
         api.bind(
             field("level", "its level"),
@@ -99,7 +99,7 @@ impl StatsApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         ModifierHandle::register(api);
         Self::register_unit(api);
-        let call = |name, signature, description| MemberSpec::call(name, signature, description);
+        let call = |name, signature, description| MemberDecl::call(name, signature, description);
         api.call(
             call(
                 "add_player_modifier",
@@ -109,7 +109,7 @@ impl StatsApi {
                  action, so the modifier declares each param it reads",
             )
             .applies(Applies::WithoutAction),
-            |ctx: &mut Ctx, player: PlayerSlot, id: ModifierId| {
+            |ctx: &mut Ctx, player: Seat, id: ModifierId| {
                 Self::add_player_modifier(ctx, player, id)
             },
         )
@@ -120,7 +120,7 @@ impl StatsApi {
                 "takes the modifier `id` of the script's package from `player`, and so from each \
                  unit it owns, if it holds it",
             ),
-            |ctx: &mut Ctx, player: PlayerSlot, id: ModifierId| {
+            |ctx: &mut Ctx, player: Seat, id: ModifierId| {
                 ctx.queue(StatsEffect::RemovePlayer { player, id })
             },
         )
@@ -138,7 +138,7 @@ impl StatsApi {
 
     /// Queues modifier `id` of the call's package for `player`, one of the session's; an error
     /// when `id` reads a param it does not declare.
-    fn add_player_modifier(ctx: &Ctx, player: PlayerSlot, id: ModifierId) -> Checked<()> {
+    fn add_player_modifier(ctx: &Ctx, player: Seat, id: ModifierId) -> Checked<()> {
         StatsColumn::check_way(
             ctx.view(),
             StatsCall::of(&ctx.frame()),

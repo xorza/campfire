@@ -157,7 +157,7 @@ impl ShopPanel {
                 write!(line, "{price}").expect("a String takes any text");
             }
             ui_style::set_text(&mut texts, row.price, &line);
-            let color = if dimmed(service, purchase, amount) {
+            let color = if is_dimmed(service, purchase, amount) {
                 DIMMED
             } else {
                 TEXT
@@ -202,7 +202,7 @@ enum Service {
 
 /// Whether the panel dims an item: the shop refuses the avatar now; or the shop does not sell
 /// it, or the avatar cannot pay its price now, or has no room for it.
-fn dimmed(service: Service, purchase: Option<Purchase>, amount: i64) -> bool {
+fn is_dimmed(service: Service, purchase: Option<Purchase>, amount: i64) -> bool {
     service == Service::Refuses
         || purchase.is_none_or(|purchase| !purchase.room || amount < purchase.price)
 }
@@ -237,12 +237,12 @@ mod tests {
     fn an_item_is_dimmed_out_of_a_shop_too_dear_or_with_no_room() {
         let buys = |price, room| Some(Purchase { price, room });
         // Served, with 300 to spend: an item of 300 with room is bright.
-        assert!(!dimmed(Service::Serves, buys(300, true), 300));
+        assert!(!is_dimmed(Service::Serves, buys(300, true), 300));
         // A living avatar out of the shop's reach; too poor by one; no room; one it does not
         // sell.
-        assert!(dimmed(Service::Refuses, buys(300, true), 300));
-        assert!(dimmed(Service::Serves, buys(301, true), 300));
-        assert!(dimmed(Service::Serves, buys(50, false), 300));
-        assert!(dimmed(Service::Serves, None, 300));
+        assert!(is_dimmed(Service::Refuses, buys(300, true), 300));
+        assert!(is_dimmed(Service::Serves, buys(301, true), 300));
+        assert!(is_dimmed(Service::Serves, buys(50, false), 300));
+        assert!(is_dimmed(Service::Serves, None, 300));
     }
 }

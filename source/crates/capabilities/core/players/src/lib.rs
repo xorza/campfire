@@ -2,7 +2,7 @@
 //! their part of a script call.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
 mod capability_action;
@@ -38,5 +38,5 @@ pub use crate::players_world::PlayersWorld;
 pub use crate::resource_amount::ResourceAmount;
 pub use crate::resource_book::ResourceBook;
 pub use crate::resources_data::ResourcesData;
-pub use crate::seated::{Seating, SlotStart};
+pub use crate::seated::{SeatStart, Seating};
 pub use crate::tick_commands::{TickCommand, TickCommands};

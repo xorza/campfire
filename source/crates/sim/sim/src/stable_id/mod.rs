@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::DeferredWorld;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use serde::{Deserialize, Serialize};
 
 use crate::stable_id::entity_index::EntityIndex;
@@ -37,9 +37,9 @@ impl StableId {
         Self(value)
     }
 
-    /// The named id of player `slot`'s entity, after the match's.
-    pub const fn of_player(slot: PlayerSlot) -> Self {
-        Self(Self::MATCH.0 + 1 + slot.get() as u64)
+    /// The named id of player `seat`'s entity, after the match's.
+    pub const fn of_player(seat: Seat) -> Self {
+        Self(Self::MATCH.0 + 1 + seat.get() as u64)
     }
 
     /// Whether the allocator handed the id out, so it is not named.
@@ -102,9 +102,9 @@ mod tests {
         // Ids are never reused: the next one follows the last allocated.
         let third = world.resource_mut::<IdAllocator>().allocate();
         assert_eq!(third.get(), 2);
-        // The named ids: the match's at 2⁶³, then each player's by slot, none of them allocated;
+        // The named ids: the match's at 2⁶³, then each player's by seat, none of them allocated;
         // they sort after every allocated id.
-        let player = StableId::of_player(PlayerSlot::new(5));
+        let player = StableId::of_player(Seat::new(5));
         assert_eq!(
             [StableId::MATCH.get(), player.get()],
             [1 << 63, (1 << 63) + 6]

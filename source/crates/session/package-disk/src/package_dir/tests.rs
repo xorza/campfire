@@ -3,24 +3,24 @@ use std::sync::Arc;
 
 use campfire_codec::{Toml, TomlTable};
 use campfire_common::{ContentHash, PackageFingerprint};
-use campfire_store::internals::{PinnedFile, Scratch};
+use campfire_store::internals::{PinnedFile, TestDir};
 
 use super::*;
 use crate::package_store::PackageStore;
 use crate::tree_dir::TreeDir;
 
 /// Writes the index of the package at `dir`, under `scratch`, from its files.
-fn pack(scratch: &Scratch, dir: &str) {
-    let index = PackageDir::new(scratch.path(dir)).index_files().unwrap();
-    scratch.write(format!("{dir}/{}", FileIndex::PATH), index.bytes);
+fn pack(test_dir: &TestDir, dir: &str) {
+    let index = PackageDir::new(test_dir.path(dir)).index_files().unwrap();
+    test_dir.write(format!("{dir}/{}", FileIndex::PATH), index.bytes);
 }
 
 #[test]
 fn a_package_is_its_index_and_reads_through_it() {
-    let scratch = Scratch::new();
-    let package = scratch.path("one");
-    scratch.write("one/manifest.toml", "m");
-    scratch.write("one/data/a.toml", "ab");
+    let test_dir = TestDir::new();
+    let package = test_dir.path("one");
+    test_dir.write("one/manifest.toml", "m");
+    test_dir.write("one/data/a.toml", "ab");
     // The tag's line, then a line for each row sorted by path bytes, "data/a.toml" before
     // "manifest.toml": its SHA-256 in hex, its size and its path; the fingerprint is the SHA-256
     // of those bytes.
@@ -38,7 +38,7 @@ fn a_package_is_its_index_and_reads_through_it() {
         dir.files(),
         Err(ContentError::Missing { path }) if path.as_str() == FileIndex::PATH
     ));
-    pack(&scratch, "one");
+    pack(&test_dir, "one");
     assert_eq!(dir.index_files().unwrap().bytes, list);
     let read = dir.files().unwrap();
     assert_eq!(read.fingerprint(), expected);
@@ -70,10 +70,10 @@ fn a_package_is_its_index_and_reads_through_it() {
 
     // A file the index does not list is no part of the package, until the package is packed
     // again; what was read stays as it was read.
-    scratch.write("one/data/b/c.toml", "");
+    test_dir.write("one/data/b/c.toml", "");
     assert_eq!(dir.files().unwrap().files_under("data").count(), 1);
     assert_eq!(dir.files().unwrap().fingerprint(), expected);
-    pack(&scratch, "one");
+    pack(&test_dir, "one");
     let files: Vec<_> = dir
         .files()
         .unwrap()
@@ -82,20 +82,20 @@ fn a_package_is_its_index_and_reads_through_it() {
         .collect();
     assert_eq!(files, ["data/a.toml", "data/b/c.toml"]);
     assert_eq!(read.files_under("data").count(), 1);
-    scratch.remove("one/data/b");
-    pack(&scratch, "one");
+    test_dir.remove("one/data/b");
+    pack(&test_dir, "one");
 
     // A file whose bytes, or whose size, differ from its row fails the read, with its path, and
     // one the index lists that is not there is missing; packed again, it has another
     // fingerprint.
     let data = PackagePath::parse("data/a.toml").unwrap();
     for bytes in ["ac", "abc"] {
-        scratch.write("one/data/a.toml", bytes);
+        test_dir.write("one/data/a.toml", bytes);
         assert!(matches!(dir.files(), Err(ContentError::Changed { path }) if path == data));
     }
     assert_eq!(read.read_text(&data).unwrap(), "ab");
-    scratch.write("one/data/a.toml", "ac");
-    pack(&scratch, "one");
+    test_dir.write("one/data/a.toml", "ac");
+    pack(&test_dir, "one");
     let changed = dir.files().unwrap().fingerprint();
     assert_ne!(changed, expected);
     // A file or a directory whose name on disk differs from its row's only in case fails the
@@ -105,14 +105,14 @@ fn a_package_is_its_index_and_reads_through_it() {
         ("one/data/a.toml", "one/data/A.toml"),
         ("one/data", "one/Data"),
     ] {
-        scratch.rename(from, to);
+        test_dir.rename(from, to);
         assert!(matches!(dir.files(), Err(ContentError::Missing { path }) if path == data));
-        scratch.rename(to, from);
+        test_dir.rename(to, from);
     }
     assert_eq!(dir.files().unwrap().fingerprint(), changed);
-    scratch.rename("one/data", "one/date");
+    test_dir.rename("one/data", "one/date");
     assert!(matches!(dir.files(), Err(ContentError::Missing { path }) if path == data));
-    pack(&scratch, "one");
+    pack(&test_dir, "one");
     assert_ne!(dir.files().unwrap().fingerprint(), changed);
 }
 
@@ -120,19 +120,19 @@ fn a_package_is_its_index_and_reads_through_it() {
 fn a_store_finds_each_package_by_fingerprint() {
     // A store finds each package under a root by fingerprint, and searches no deeper than a
     // manifest. A package that does not read is the store's failure, and costs no other.
-    let scratch = Scratch::new();
-    let root = scratch.root();
-    let dir = PackageDir::new(scratch.path("one"));
-    scratch.write("one/manifest.toml", "m");
-    scratch.write("nested/two/manifest.toml", "n");
-    pack(&scratch, "nested/two");
-    scratch.write("one/inner/manifest.toml", "i");
-    pack(&scratch, "one/inner");
-    pack(&scratch, "one");
-    scratch.write("bad/manifest.toml", "b");
+    let test_dir = TestDir::new();
+    let root = test_dir.root();
+    let dir = PackageDir::new(test_dir.path("one"));
+    test_dir.write("one/manifest.toml", "m");
+    test_dir.write("nested/two/manifest.toml", "n");
+    pack(&test_dir, "nested/two");
+    test_dir.write("one/inner/manifest.toml", "i");
+    pack(&test_dir, "one/inner");
+    pack(&test_dir, "one");
+    test_dir.write("bad/manifest.toml", "b");
     // A manifest is found by its exact name, as a file system that ignores case would not.
-    scratch.write("upper/Manifest.toml", "u");
-    pack(&scratch, "upper");
+    test_dir.write("upper/Manifest.toml", "u");
+    pack(&test_dir, "upper");
     let store = PackageStore::scan(root).unwrap();
     let upper = PackageDir::new(root.join("upper")).files().unwrap();
     assert!(store.get(upper.fingerprint()).is_none());
@@ -163,23 +163,23 @@ fn a_store_finds_each_package_by_fingerprint() {
 
 #[test]
 fn a_package_refuses_what_an_os_would_hold_another_way() {
-    let scratch = Scratch::new();
-    let package = scratch.path("one");
-    scratch.write("one/manifest.toml", "m");
+    let test_dir = TestDir::new();
+    let package = test_dir.path("one");
+    test_dir.write("one/manifest.toml", "m");
     let dir = PackageDir::new(&package);
     // A link is no file of a package, and a name no package path spells, one past ASCII, is no
     // file of one. Of two flaws, the one refused is the first by name, `a€` before `link`,
     // whatever order the OS lists them in.
-    scratch.link("one/manifest.toml", "one/link");
+    test_dir.link("one/manifest.toml", "one/link");
     assert!(
         matches!(dir.index_files(), Err(IndexError::NotAFile(path)) if path == package.join("link"))
     );
     let euro = package.join("a\u{20ac}.toml");
-    scratch.write("one/a\u{20ac}.toml", "");
+    test_dir.write("one/a\u{20ac}.toml", "");
     assert!(matches!(dir.index_files(), Err(IndexError::NotPath(path)) if path == euro));
-    scratch.remove("one/link");
+    test_dir.remove("one/link");
     assert!(matches!(dir.index_files(), Err(IndexError::NotPath(path)) if path == euro));
-    scratch.remove("one/a\u{20ac}.toml");
+    test_dir.remove("one/a\u{20ac}.toml");
     assert!(dir.index_files().is_ok());
 
     // Two paths, or the directories on their way, that differ only in case are one file where
@@ -300,25 +300,25 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
     ));
     // The same files on disk read the same; an asset changed after the load fails only when it
     // is read, and one that goes is missing only then.
-    let scratch = Scratch::new();
+    let test_dir = TestDir::new();
     for (path, bytes) in tree.iter() {
-        scratch.write(path, bytes);
+        test_dir.write(path, bytes);
     }
     // A file a load does not read fails the open too when it is not on disk by its row's exact
     // name, or not there at all: a package is whole.
-    let one = PackageDir::new(scratch.path("one"));
-    scratch.rename("one/textures/x.png", "one/textures/X.png");
+    let one = PackageDir::new(test_dir.path("one"));
+    test_dir.rename("one/textures/x.png", "one/textures/X.png");
     assert!(matches!(one.files(), Err(ContentError::Missing { path }) if path == texture));
-    scratch.rename("one/textures/X.png", "one/textures/x.png");
+    test_dir.rename("one/textures/X.png", "one/textures/x.png");
     let disk = one.files().unwrap();
     assert_eq!(disk.fingerprint(), expected);
     assert_eq!(disk.read_file(&texture).unwrap(), asset);
-    scratch.write("one/textures/x.png", [1]);
+    test_dir.write("one/textures/x.png", [1]);
     assert!(matches!(
         disk.read_file(&texture),
         Err(ContentError::Changed { path }) if path == texture
     ));
-    scratch.remove("one/textures/x.png");
+    test_dir.remove("one/textures/x.png");
     assert!(matches!(
         disk.read_file(&texture),
         Err(ContentError::Missing { path }) if path == texture

@@ -60,7 +60,7 @@ impl SimResource for HeldHits {
     // Each damage of an action the book holds and of a kind the mode declares, as the pass reads
     // them.
     fn check(&self, world: &World) -> bool {
-        self.0.iter().all(|hit| hit.damage.known(world))
+        self.0.iter().all(|hit| hit.damage.is_known(world))
     }
 }
 

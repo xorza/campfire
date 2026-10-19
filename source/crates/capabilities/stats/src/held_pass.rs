@@ -56,7 +56,7 @@ type HeldCarriers<'w, 's> = Query<
 
 /// The sources whose auras a predicting client cannot see: the units whose modifiers it does not
 /// hold, as a mode hides them from it, and those it does not hold at all
-/// (14-replication-audiences.md, A mode's hidden data is not predicted).
+/// (10-replication-audiences.md, A mode's hidden data is not predicted).
 #[derive(SystemParam, Debug)]
 pub(crate) struct UnseenSources<'w, 's> {
     index: Res<'w, EntityIndex>,
@@ -77,7 +77,7 @@ impl HeldPass {
     /// aura, and has no duration. A predicting client keeps a held instance from a source whose
     /// modifiers it does not hold, as a mode that hides them from it, or that it does not hold at
     /// all, as the server sent it: it cannot tell whether that source's aura still reaches, so the
-    /// server's word corrects it once as it comes and once as it goes (14-replication-audiences.md,
+    /// server's word corrects it once as it comes and once as it goes (10-replication-audiences.md,
     /// A mode's hidden data is not predicted).
     #[expect(
         clippy::too_many_arguments,

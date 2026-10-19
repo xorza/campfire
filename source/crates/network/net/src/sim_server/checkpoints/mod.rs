@@ -63,12 +63,12 @@ impl Checkpoints {
     /// last, few unless a snapshot kept the thread.
     pub(crate) fn begin(world: &mut World) -> bool {
         let next = world.session().log().next_tick();
-        let saved = world.save_due();
+        let saved = world.is_save_due();
         let mut checkpoints = world.resource_mut::<Self>();
         let due = saved || checkpoints.plan.first() == Some(&next);
         checkpoints.plan.retain(|&tick| tick > next);
         if !due {
-            if !checkpoints.thread.pending() {
+            if !checkpoints.thread.is_pending() {
                 Self::send(world, None);
             }
             return false;
@@ -88,7 +88,7 @@ impl Checkpoints {
 
     /// Logs the record of the checkpoint the thread finished, when it did; reports its fault
     /// when its snapshot was not written.
-    pub(crate) fn finish(
+    pub(crate) fn end(
         mut checkpoints: ResMut<'_, Self>,
         mut session: ResMut<'_, Session>,
         mut faults: ResMut<'_, Faults>,

@@ -1,6 +1,6 @@
 use campfire_math::Vec3;
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, Ctx, Filter, MemberSpec, ScriptLasting,
+    ApiBuilder, ApiError, ApiHolder, ApiVersion, Checked, Ctx, Filter, MemberDecl, ScriptLasting,
     ScriptPosition, ScriptRadius, Status, Unit,
 };
 use campfire_values::{TagProperty, Team};
@@ -17,38 +17,41 @@ pub struct VisionApi;
 impl VisionApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         Self::register_queries(api);
-        let reveal = MemberSpec::call(
+        let reveal = MemberDecl::call(
             "reveal",
-            &[&["pos", "radius", "ms"], &["pos", "radius", "ms", "team"]],
-            "shows `team`'s vision group, else the acting unit's, the cells within `radius` of `pos` for `ms`, from this tick's Vision stage; no hidden unit",
+            &[
+                &["position", "radius", "ms"],
+                &["position", "radius", "ms", "team"],
+            ],
+            "shows `team`'s vision group, else the acting unit's, the cells within `radius` of `position` for `ms`, from this tick's Vision stage; no hidden unit",
         );
         api.call(
             reveal,
-            |ctx: &mut Ctx, pos: ScriptPosition, radius: ScriptRadius, ms: ScriptLasting| {
+            |ctx: &mut Ctx, position: ScriptPosition, radius: ScriptRadius, ms: ScriptLasting| {
                 let view = ctx.view();
                 let acting = ctx.acting().and_then(|id| view.row(id));
                 let team = acting.ok_or_else(|| ApiError::NoActingUnit.fail())?.team;
-                Self::reveal(ctx, team, pos.get(), radius, ms)
+                Self::reveal(ctx, team, position.get(), radius, ms)
             },
         )
         .call(
             reveal,
             |ctx: &mut Ctx,
-             pos: ScriptPosition,
+             position: ScriptPosition,
              radius: ScriptRadius,
              ms: ScriptLasting,
-             team: Team| { Self::reveal(ctx, team, pos.get(), radius, ms) },
+             team: Team| { Self::reveal(ctx, team, position.get(), radius, ms) },
         )
         .tag_property(TagProperty::Hidden, Status::Runs(ApiVersion::FIRST))
         .tag_property(TagProperty::Detects, Status::Runs(ApiVersion::FIRST))
         .data::<VisionData>(&[]);
     }
 
-    /// Queues a reveal to `team` of the cells within `radius` of `pos`, for `ms`.
+    /// Queues a reveal to `team` of the cells within `radius` of `position`, for `ms`.
     fn reveal(
         ctx: &Ctx,
         team: Team,
-        pos: Vec3,
+        position: Vec3,
         radius: ScriptRadius,
         ms: ScriptLasting,
     ) -> Checked<()> {
@@ -56,7 +59,7 @@ impl VisionApi {
         let ticks = ms.get();
         ctx.queue(VisionEffect {
             team,
-            pos,
+            position,
             radius,
             ticks,
         })
@@ -64,8 +67,8 @@ impl VisionApi {
 
     /// `unit.can_see`, `ctx.find_visible` and `ctx.nearest_visible`.
     fn register_queries(api: &mut ApiBuilder<'_>) {
-        let can_see = MemberSpec::method(
-            ApiOwner::of::<Unit>(),
+        let can_see = MemberDecl::method(
+            ApiHolder::of::<Unit>(),
             "can_see",
             &[&["unit"]],
             "whether its team sees the other unit",
@@ -73,18 +76,22 @@ impl VisionApi {
         api.method(can_see, |unit: Unit, other: Unit| {
             VisionColumn::can_see(&unit, &other)
         });
-        let visible = MemberSpec::call(
+        let visible = MemberDecl::call(
             "find_visible",
-            &[&["of", "pos", "radius", "filter"]],
+            &[&["of", "position", "radius", "filter"]],
             "as `find`, of the units `of`'s team sees",
         );
         api.call(
             visible,
-            |_: &mut Ctx, of: Unit, pos: ScriptPosition, radius: ScriptRadius, filter: Filter| {
-                VisionColumn::find(&of, pos.get(), radius, &filter)
+            |_: &mut Ctx,
+             of: Unit,
+             position: ScriptPosition,
+             radius: ScriptRadius,
+             filter: Filter| {
+                VisionColumn::find(&of, position.get(), radius, &filter)
             },
         );
-        let nearest = MemberSpec::call(
+        let nearest = MemberDecl::call(
             "nearest_visible",
             &[&["of", "radius", "filter"]],
             "the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none",

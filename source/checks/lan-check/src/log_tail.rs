@@ -78,36 +78,36 @@ impl LogTail {
 
 #[cfg(test)]
 mod tests {
-    use campfire_common::PlayerSlot;
+    use campfire_common::Seat;
     use campfire_net::{InputLogged, MatchStarted};
     use campfire_store::AppendWriter;
-    use campfire_store::internals::Scratch;
+    use campfire_store::internals::TestDir;
 
     use super::*;
 
-    fn started(slot: u8) -> String {
+    fn started(seat: u8) -> String {
         format!(
-            r#"{{"level":"INFO","target":"t","fields":{{"message":"the match started","slot":{slot},"start_tick":5}}}}"#
+            r#"{{"level":"INFO","target":"t","fields":{{"message":"the match started","seat":{seat},"start_tick":5}}}}"#
         )
     }
 
     #[test]
     fn a_tail_reads_each_line_once_as_its_file_grows() {
-        let scratch = Scratch::new();
-        let mut tail = LogTail::new(Process::Bot(0), scratch.root());
+        let test_dir = TestDir::new();
+        let mut tail = LogTail::new(Process::Bot(0), test_dir.root());
         // No file yet.
         assert_eq!(tail.read::<MatchStarted>().unwrap(), []);
-        let path = Process::Bot(0).log_path(scratch.root());
+        let path = Process::Bot(0).log_path(test_dir.root());
         let first = format!("{}\n{}", started(1), &started(2)[..20]);
         AppendWriter::create("tail", &path, first.as_bytes())
             .unwrap()
             .close();
         // The line the process did not end waits for its end.
-        let slot = |slot| MatchStarted {
-            slot: PlayerSlot::new(slot),
+        let seat = |seat| MatchStarted {
+            seat: Seat::new(seat),
             start_tick: 5,
         };
-        assert_eq!(tail.read::<MatchStarted>().unwrap(), [slot(1)]);
+        assert_eq!(tail.read::<MatchStarted>().unwrap(), [seat(1)]);
         assert_eq!(tail.read::<MatchStarted>().unwrap(), []);
         let len = u64::try_from(first.len()).unwrap();
         let writer = AppendWriter::reopen("tail", &path, len).unwrap();
@@ -115,7 +115,7 @@ mod tests {
         writer.append(1, |bytes| bytes.extend(more.as_bytes()));
         writer.close();
         // Only the lines after the last read, the one finished among them.
-        assert_eq!(tail.read::<MatchStarted>().unwrap(), [slot(2), slot(3)]);
+        assert_eq!(tail.read::<MatchStarted>().unwrap(), [seat(2), seat(3)]);
         assert!(tail.read::<InputLogged>().unwrap().is_empty());
         assert_eq!(tail.log.lines().len(), 3);
     }

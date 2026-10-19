@@ -57,13 +57,13 @@ impl VisionColumn {
     /// `ctx.find_visible`: `ctx.find`, of the units `of`'s team sees.
     pub(crate) fn find(
         of: &Unit,
-        pos: Vec3,
+        position: Vec3,
         radius: ScriptRadius,
         filter: &Filter,
     ) -> Checked<ScriptList> {
         let team = of.read(|row| row.team)?;
         of.view()
-            .find(of, pos, radius.get(), filter, |columns, row| {
+            .find(of, position, radius.get(), filter, |columns, row| {
                 Self::sees(columns, row, team)
             })
     }

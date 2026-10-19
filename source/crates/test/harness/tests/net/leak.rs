@@ -1,4 +1,4 @@
-//! The leak test (14-replication-audiences.md, A leak test over every type and two settings): a
+//! The leak test (10-replication-audiences.md, A leak test over every type and two settings): a
 //! scripted 3v3 in process, with spectators among its clients, checks after each tick that each
 //! client holds each sent component on exactly the entities its kind's audience admits, and each
 //! entity exactly where its team's, or its spectator's, view holds it: once with the defaults, and
@@ -16,8 +16,8 @@ use bevy_ecs::query::{Allow, Has, With};
 use bevy_ecs::world::World;
 use campfire_bots::OrderScript;
 use campfire_capabilities::Release;
-use campfire_common::PlayerSlot;
-use campfire_harness::{End, InProcessMatch, MatchSetup};
+use campfire_common::Seat;
+use campfire_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net::internals::TickHashes;
 use campfire_net::{JoinState, WatchRequest};
 use campfire_package::ModePackages;
@@ -50,13 +50,9 @@ const STRIKE: u64 = 60;
 #[derive(Debug, Clone, Copy)]
 enum Role {
     /// The player of `slot`, of `team`; `out` while it is out of play in a session whose players
-    /// out of play see the other teams as spectators do (14-replication-audiences.md, A player out
+    /// out of play see the other teams as spectators do (10-replication-audiences.md, A player out
     /// of play sees what its team sees, or what a spectator sees).
-    Player {
-        slot: PlayerSlot,
-        team: Team,
-        out: bool,
-    },
+    Player { seat: Seat, team: Team, out: bool },
     /// A spectator of every unit, or of the views of `teams` together.
     Spectator { teams: Option<TeamSet> },
 }
@@ -64,7 +60,7 @@ enum Role {
 impl Role {
     /// Whether it holds an entity its team, or the teams it watches, see as `seen` says, in a
     /// session of `visibility`: one with no `SeenBy`, or of which no Vision stage spoke, reaches
-    /// every client, as the player and match entities do (14-replication-audiences.md, Four
+    /// every client, as the player and match entities do (10-replication-audiences.md, Four
     /// recipients); a player out of play also sees what the spectators' fog shows, every unit or
     /// every team's view.
     fn sees(self, seen: Option<&SeenBy>, visibility: &Visibility) -> bool {
@@ -85,12 +81,12 @@ impl Role {
     /// Whether it receives `kind` on an entity of `owner` and `team`, in a session of `visibility`:
     /// the owner every kind but the server's, the others as the kind's audience holds them, each an
     /// ally of its own team and of an entity of none, an enemy of another, or a spectator
-    /// (14-replication-audiences.md, Four recipients); a player out of play a spectator of another
+    /// (10-replication-audiences.md, Four recipients); a player out of play a spectator of another
     /// team's entity.
     fn receives(
         self,
         kind: DataKind,
-        owner: Option<PlayerSlot>,
+        owner: Option<Seat>,
         team: Option<Team>,
         visibility: &Visibility,
     ) -> bool {
@@ -98,7 +94,7 @@ impl Role {
             return false;
         }
         let recipient = match self {
-            Self::Player { slot, .. } if Some(slot) == owner => return true,
+            Self::Player { seat, .. } if Some(seat) == owner => return true,
             Self::Player { team: own, out, .. } if team.is_some_and(|team| team != own) => {
                 if out {
                     Recipients::SPECTATORS
@@ -162,7 +158,7 @@ impl StateTypes for Lists {
 #[derive(Debug)]
 struct Shown {
     entity: Entity,
-    owner: Option<PlayerSlot>,
+    owner: Option<Seat>,
     team: Option<Team>,
     seen: Option<SeenBy>,
 }
@@ -240,7 +236,7 @@ impl LeakCheck {
         host: &'static [&'static str],
         spectators: &[Option<TeamSet>],
     ) -> Self {
-        let mut setup = MatchSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
+        let mut setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
         setup.players = PLAYERS;
         setup.visibility = host;
         setup.max_spectators = u32::try_from(spectators.len()).unwrap();
@@ -263,7 +259,7 @@ impl LeakCheck {
         let visibility = local.packages().data().visibility.session(&host).unwrap();
         let mut roles: Vec<Role> = (0..PLAYERS)
             .map(|client| Role::Player {
-                slot: PlayerSlot::new(u32::try_from(client).unwrap()),
+                seat: Seat::new(u32::try_from(client).unwrap()),
                 team: local.team(client),
                 out: false,
             })
@@ -357,8 +353,8 @@ impl LeakCheck {
             .iter(server)
             .map(|(entity, &id, owner, player, team, seen)| {
                 let owner = owner
-                    .map(|owner| owner.slot())
-                    .or_else(|| player.map(|player| player.slot()));
+                    .map(|owner| owner.seat())
+                    .or_else(|| player.map(|player| player.seat()));
                 let shown = Shown {
                     entity,
                     owner,
@@ -416,7 +412,7 @@ impl LeakCheck {
                     let receives =
                         role.receives(listed.kind, shown.owner, shown.team, &self.visibility);
                     let owns =
-                        matches!(role, Role::Player { slot, .. } if Some(slot) == shown.owner);
+                        matches!(role, Role::Player { seat, .. } if Some(seat) == shown.owner);
                     if on_server && !owns {
                         let noted = if receives {
                             &mut self.held_by_other
@@ -446,7 +442,7 @@ impl LeakCheck {
     }
 
     /// Marks each player out of play while its hero is dead or the script holds it out, in a
-    /// session whose players out of play see as spectators (14-replication-audiences.md, A player
+    /// session whose players out of play see as spectators (10-replication-audiences.md, A player
     /// out of play sees what its team sees, or what a spectator sees): the test's own reading of
     /// the server's state, not the server's `OutOfPlay`.
     fn mark_out(&mut self) {
@@ -457,7 +453,7 @@ impl LeakCheck {
                 .resource::<EntityIndex>()
                 .get(self.local.avatar(client));
             let dead = hero.is_some_and(|hero| world.entity(hero).contains::<Dead>());
-            let slot = PlayerSlot::new(u32::try_from(client).unwrap());
+            let slot = Seat::new(u32::try_from(client).unwrap());
             let player = world.player_entity(slot).unwrap();
             let held = world.entity(player).contains::<HeldOut>();
             if let Role::Player { out, .. } = &mut self.roles[client] {
@@ -490,19 +486,19 @@ impl LeakCheck {
     }
 
     /// Whether the server holds the south hero dead.
-    fn south_hero_dead(&self) -> bool {
+    fn is_south_hero_dead(&self) -> bool {
         let world = self.local.server().world();
         let hero = world.resource::<EntityIndex>().get(self.local.avatar(3));
         hero.is_some_and(|hero| world.entity(hero).contains::<Dead>())
     }
 
-    /// Whether `client` holds `PlayerResources` on the entity of player `slot`.
-    fn holds_resources_of(&self, client: usize, slot: u32) -> bool {
+    /// Whether `client` holds `PlayerResources` on the entity of player `seat`.
+    fn holds_resources_of(&self, client: usize, seat: u32) -> bool {
         let world = self.local.client(client).world();
         let player = world.iter_entities().find(|entity| {
             entity
                 .get::<Player>()
-                .is_some_and(|player| player.slot() == PlayerSlot::new(slot))
+                .is_some_and(|player| player.seat() == Seat::new(seat))
         });
         player.is_some_and(|player| player.contains::<PlayerResources>())
     }
@@ -519,7 +515,7 @@ mod scripted_match {
         let mut died = false;
         for _ in 0..MATCH_TICKS {
             defaults.play(1);
-            died |= defaults.south_hero_dead();
+            died |= defaults.is_south_hero_dead();
         }
         defaults.assert_no_leak();
         assert!(died, "the south's hero fell in the defaults' run");
@@ -541,7 +537,7 @@ mod scripted_match {
         let mut died = false;
         for _ in 0..MATCH_TICKS {
             extreme.play(1);
-            died |= extreme.south_hero_dead();
+            died |= extreme.is_south_hero_dead();
         }
         extreme.assert_no_leak();
         assert!(died, "the south's hero fell in the extreme's run");

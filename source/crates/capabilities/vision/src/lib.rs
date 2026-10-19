@@ -1,5 +1,5 @@
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
@@ -100,7 +100,7 @@ impl Module for Vision {
         d.column::<VisionColumn, RowReads>(VisionColumn::fill_row);
         d.api(VisionApi::register);
         d.part::<UnitEntity, Sight>(|at| at.of_type::<Sight>().copied());
-        // What each team sees is the server's (14-replication-audiences.md, Prediction reads only
+        // What each team sees is the server's (10-replication-audiences.md, Prediction reads only
         // what its client holds): a predicting client holds none.
         d.server_part::<UnitEntity, SeenBy>();
     }
@@ -114,7 +114,10 @@ impl Module for Vision {
         if !cx.book::<VisionBook>().is_some_and(VisionBook::has_grid) {
             return;
         }
-        cx.server(VisionSet::Refill, Seeing::refill.run_if(Seeing::unfilled));
+        cx.server(
+            VisionSet::Refill,
+            Seeing::refill.run_if(Seeing::is_unfilled),
+        );
         cx.server(VisionSet::See, Seeing::see);
     }
 }
@@ -182,8 +185,8 @@ pub mod internals {
             sight.map_or_else(|| "blind".to_owned(), |range| format!("seer of {range}"))
         }
 
-        /// Runs `ctx.reveal(at.pos, radius, ms)` as `actor` casts, or as the mode with no actor,
-        /// then applies what it queued; why it failed, when it did.
+        /// Runs `ctx.reveal(at.position, radius, ms)` as `actor` casts, or as the mode with no
+        /// actor, then applies what it queued; why it failed, when it did.
         pub fn reveal(
             world: &mut World,
             actor: Option<StableId>,
@@ -206,7 +209,7 @@ pub mod internals {
             };
             ctx.frame().begin_alone(world, start).unwrap();
             let at = ctx.view().unit(at).unwrap();
-            let source = format!("fn probe(ctx, at) {{ ctx.reveal(at.pos, {radius}, {ms}) }}");
+            let source = format!("fn probe(ctx, at) {{ ctx.reveal(at.position, {radius}, {ms}) }}");
             let returned = {
                 let mut host = world.non_send_mut::<ScriptHost>();
                 let script = host.compile(&source).unwrap();

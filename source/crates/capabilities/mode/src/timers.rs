@@ -25,7 +25,7 @@ pub struct Timers {
 /// name and data, when it is due, and its period if it repeats.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Timer {
-    pub owner: ListPlace,
+    pub script: ListPlace,
     pub name: TimerId,
     pub due: Tick,
     seq: u64,
@@ -39,7 +39,7 @@ pub struct Timer {
 /// `on_timer` receives, the ticks until it is first due, and its period, when it repeats.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimerStart {
-    pub owner: ListPlace,
+    pub script: ListPlace,
     pub name: TimerId,
     pub after: Ticks,
     pub every: Option<Ticks>,
@@ -51,14 +51,14 @@ impl Timers {
     /// Sets the timer `start` gives, `after` ticks from `now`.
     pub fn set(&mut self, now: Tick, start: TimerStart) {
         let TimerStart {
-            owner,
+            script,
             name,
             after,
             every,
             data,
         } = start;
         let timer = Timer {
-            owner,
+            script,
             name,
             due: now.after(after),
             seq: self.next_seq,
@@ -81,11 +81,11 @@ impl Timers {
         self.timers.last().filter(|timer| timer.due <= now)
     }
 
-    /// Ends every timer of `name` the script at `owner` set, the ones a call set before it among
-    /// them.
-    pub fn cancel(&mut self, owner: ListPlace, name: TimerId) {
+    /// Ends every timer of `name` that `script`, a place in the mode's list, set, the ones a call
+    /// set before it among them.
+    pub fn cancel(&mut self, script: ListPlace, name: TimerId) {
         self.timers
-            .retain(|timer| (timer.owner, timer.name) != (owner, name));
+            .retain(|timer| (timer.script, timer.name) != (script, name));
     }
 
     /// Ends the earliest timer, which sets itself again when it repeats.
@@ -117,7 +117,7 @@ impl SimResource for Timers {
             .all(|two| (two[0].due, two[0].seq) > (two[1].due, two[1].seq));
         let each = self.timers.iter().all(|timer| {
             let repeats = timer.every.is_none_or(|every| every >= Ticks::ONE);
-            let named = timer.name.index() < names && timer.owner.index() < scripts;
+            let named = timer.name.index() < names && timer.script.index() < scripts;
             timer.seq < self.next_seq && repeats && named
         });
         ordered && each && self.next_seq <= Tick::LIMIT.get()

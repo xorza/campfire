@@ -1,7 +1,7 @@
 use std::any::TypeId;
 use std::fmt::Write;
 
-use crate::scripts::member_spec::MemberSpec;
+use crate::scripts::member_decl::MemberDecl;
 use crate::scripts::status::Status;
 use campfire_values::NameKind;
 
@@ -11,7 +11,7 @@ use campfire_values::NameKind;
 /// the order bound, as their closures' signatures say.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiMember {
-    pub spec: MemberSpec,
+    pub decl: MemberDecl,
     pub writable: bool,
     pub status: Status,
     pub output: Option<FormOutput>,
@@ -53,7 +53,7 @@ impl ApiMember {
     /// Its arguments that name something or take an engine enum, as the reference lists them
     /// after its forms: `, `id` a modifier`, each by its name in the first form that has it.
     pub(super) fn name_args_text(&self) -> String {
-        let spec = &self.spec;
+        let spec = &self.decl;
         let arg = |at: usize| {
             let form = spec.forms.iter().find(|form| at < form.len());
             form.expect("a form has each argument that names something")[at]

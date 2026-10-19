@@ -14,8 +14,8 @@ use crate::sim_update::SimUpdate;
 use crate::stable_id::entity_index::EntityIndex;
 use crate::stable_id::state_changes::StateChanges;
 use crate::state_registry::StateRegistry;
-use crate::state_registry::builder::StateRegistryBuilder;
 use crate::state_registry::copy_queries::CopyQueries;
+use crate::state_registry::state_registry_builder::StateRegistryBuilder;
 use crate::tick_inputs::TickInputs;
 use crate::tick_rate::TickRate;
 
@@ -41,7 +41,7 @@ struct Unbuilt;
 /// the schedule and the registry together destructures, as the capabilities' match builder
 /// installs the engine's modules and a mode. Test systems and components go in after `build`,
 /// through the world's `Schedules` and `StateRegistry`.
-pub struct SimParts<'a> {
+pub struct SimFields<'a> {
     pub world: &'a mut World,
     pub schedule: &'a mut Schedule,
     pub registry: &'a mut StateRegistryBuilder,
@@ -83,8 +83,8 @@ impl<'w> SimWorldBuilder<'w> {
     }
 
     /// The world, the schedule and the registry at once, for an install that fills all three.
-    pub const fn parts(&mut self) -> SimParts<'_> {
-        SimParts {
+    pub const fn fields(&mut self) -> SimFields<'_> {
+        SimFields {
             world: self.world,
             schedule: &mut self.schedule,
             registry: &mut self.registry,
@@ -134,9 +134,9 @@ impl fmt::Debug for SimWorldBuilder<'_> {
     }
 }
 
-impl fmt::Debug for SimParts<'_> {
+impl fmt::Debug for SimFields<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SimParts")
+        f.debug_struct("SimFields")
             .field("schedule", &self.schedule.label())
             .finish_non_exhaustive()
     }
@@ -155,7 +155,7 @@ pub(crate) mod internals {
     use crate::sim_world_builder::{SimWorldBuilder, Unbuilt};
     use crate::stable_id::state_changes::StateChanges;
     use crate::state_registry::StateRegistry;
-    use crate::state_registry::builder::StateRegistryBuilder;
+    use crate::state_registry::state_registry_builder::StateRegistryBuilder;
 
     /// The build of a test's match left open after its declarations: its tick's schedule, which
     /// holds none of its systems yet, and the end of its build, which installs those its books

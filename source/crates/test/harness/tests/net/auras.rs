@@ -1,12 +1,12 @@
-//! Auras over the network (14-replication-audiences.md, A mode's hidden data is not predicted;
-//! 14-replication-audiences.md, A client derives what it can for every unit it holds): a client
+//! Auras over the network (10-replication-audiences.md, A mode's hidden data is not predicted;
+//! 10-replication-audiences.md, A client derives what it can for every unit it holds): a client
 //! resolves an ally's aura, whose numbers come from its source's stats, as the server does, so it
 //! predicts its unit inside it with no correction; an enemy's aura, whose modifiers a mode hides
 //! from it, comes from the server as a correction, once.
 
 use bevy_ecs::world::EntityRef;
 use campfire_bots::OrderScript;
-use campfire_harness::{End, InProcessMatch, MatchSetup};
+use campfire_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_math::Num;
 use campfire_orders::OrdersAction;
 use campfire_sim::{EntityIndex, StableId};
@@ -67,7 +67,7 @@ fn alike(local: &InProcessMatch, id: StableId) -> bool {
 fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_once() {
     // Cinder's player alone, beside Gale at the north's spawn; Rime of the south 6 m south. The
     // mode keeps every unit's modifiers from the enemies.
-    let mut setup = MatchSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
+    let mut setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
     setup.bots = &PICKS[1..];
     let hidden = "\n[visibility]\nmodifiers = [\"spectators\"]\n";
     let mut local = InProcessMatch::of_mode(setup, short_3v3(&AURAS, hidden));

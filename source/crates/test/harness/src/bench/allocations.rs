@@ -151,7 +151,7 @@ impl CallScene {
             .min()
             .expect("the crowd holds creeps");
         let mut host = world.non_send_mut::<ScriptHost>();
-        let find = r#"fn probe(ctx, of) { ctx.find(of, of.pos, 8, "enemies") }"#;
+        let find = r#"fn probe(ctx, of) { ctx.find(of, of.position, 8, "enemies") }"#;
         Self {
             unit,
             find: host.compile(find).expect("the probe compiles"),

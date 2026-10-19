@@ -1,8 +1,8 @@
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 
-/// The state a worker's owner and its thread share. A caller's code that panics as it holds the
+/// The state a worker's holder and its thread share. A caller's code that panics as it holds the
 /// state, as a piece it writes into a buffer, poisons it: the next lock of the worker or of the
-/// owner then panics, rather than read what the panic left torn, and only the owner's drop reads
+/// holder then panics, rather than read what the panic left torn, and only the holder's drop reads
 /// it still, to close, as a drop while a panic unwinds must not panic again, which would abort.
 #[derive(Debug, Default)]
 pub(crate) struct WorkerLock<S>(Mutex<S>);
@@ -24,7 +24,7 @@ impl<S> WorkerLock<S> {
         wake.wait(held).expect(POISONED)
     }
 
-    /// The state, poisoned or not, for the owner's drop to close.
+    /// The state, poisoned or not, for the holder's drop to close.
     pub(crate) fn lock_to_close(&self) -> MutexGuard<'_, S> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }

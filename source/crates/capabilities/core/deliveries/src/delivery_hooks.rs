@@ -90,7 +90,7 @@ impl DeliveryHooks {
                     .world()
                     .entity_of(by.source)
                     .and_then(|entity| batch.world().get::<Owner>(entity))
-                    .map(|owner| owner.slot());
+                    .map(|owner| owner.seat());
                 let start = CallStart {
                     hit: Some(hit),
                     start: by.start,

@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +9,7 @@ use crate::match_mode::MatchMode;
 use crate::offer::Offer;
 use crate::roster::Roster;
 
-/// What each player chose: for each player slot, a row of each choice's values, in the order
+/// What each player chose: for each seat, a row of each choice's values, in the order
 /// of the mode's choices, `None` where the player has not chosen.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -35,55 +35,55 @@ impl Choices {
                     values.iter().all(Option::is_some) || values.iter().all(Option::is_none);
                 let distinct = (1..values.len())
                     .all(|at| values[at].is_none() || !values[..at].contains(&values[at]));
-                let slot = PlayerSlot::new(u32::try_from(row).expect("a player's row fits u32"));
+                let slot = Seat::new(u32::try_from(row).expect("a player's row fits u32"));
                 let offered = values.iter().flatten().all(|&offer| {
                     roster.holds(choice.offers, offer)
-                        && !(choice.unique && self.taken(specs, slot, choice, offer))
+                        && !(choice.unique && self.is_taken(specs, slot, choice, offer))
                 });
                 whole && distinct && offered
             })
         })
     }
 
-    /// What `slot` chose of `choice` of `specs`: all its values, in order, or `None` before the
+    /// What `seat` chose of `choice` of `specs`: all its values, in order, or `None` before the
     /// player chose.
     pub(crate) fn chosen<'a>(
         &'a self,
         specs: &ChoiceSpecs,
-        slot: PlayerSlot,
+        seat: Seat,
         choice: &ChoiceSpec,
     ) -> Option<impl Iterator<Item = Offer> + 'a> {
-        let values = &self.0[specs.run(slot.index(), choice)];
+        let values = &self.0[specs.run(seat.index(), choice)];
         let chose = values.iter().all(Option::is_some);
         chose.then(|| values.iter().flatten().copied())
     }
 
-    /// Records `values`, as many as `choice` of `specs` takes, as what `slot` chose of it.
+    /// Records `values`, as many as `choice` of `specs` takes, as what `seat` chose of it.
     pub(crate) fn choose(
         &mut self,
         specs: &ChoiceSpecs,
-        slot: PlayerSlot,
+        seat: Seat,
         choice: &ChoiceSpec,
         values: &[Offer],
     ) {
-        let run = specs.run(slot.index(), choice);
+        let run = specs.run(seat.index(), choice);
         debug_assert_eq!(run.len(), values.len(), "a choice's count of values");
         for (held, &value) in self.0[run].iter_mut().zip(values) {
             *held = Some(value);
         }
     }
 
-    /// Whether a player other than `slot` chose `offer` of `choice` of `specs`.
-    pub(crate) fn taken(
+    /// Whether a player other than `seat` chose `offer` of `choice` of `specs`.
+    pub(crate) fn is_taken(
         &self,
         specs: &ChoiceSpecs,
-        slot: PlayerSlot,
+        seat: Seat,
         choice: &ChoiceSpec,
         offer: Offer,
     ) -> bool {
         let rows = self.0.len().checked_div(specs.width()).unwrap_or(0);
         (0..rows)
-            .filter(|&row| row != slot.index())
+            .filter(|&row| row != seat.index())
             .any(|row| self.0[specs.run(row, choice)].contains(&Some(offer)))
     }
 }

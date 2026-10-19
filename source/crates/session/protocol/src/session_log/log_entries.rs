@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use campfire_common::{AfterLeave, PlayerSlot, Tick};
+use campfire_common::{AfterLeave, Seat, Tick};
 
 use crate::delegation::Delegation;
 use crate::player_input::PlayerInput;
@@ -44,7 +44,7 @@ pub(super) struct EntriesAt {
 
 #[derive(Debug)]
 struct LoggedInput {
-    slot: PlayerSlot,
+    seat: Seat,
     stamp: Tick,
     payload: BytesAt,
 }
@@ -71,23 +71,23 @@ pub(super) enum Served {
         input: u32,
     },
     Join {
-        slot: PlayerSlot,
+        seat: Seat,
         delegation: u32,
     },
     Renew {
-        slot: PlayerSlot,
+        seat: Seat,
         delegation: u32,
     },
     Leave {
-        slot: PlayerSlot,
+        seat: Seat,
         reason: LeaveReason,
         becomes: AfterLeave,
     },
     Connected {
-        slot: PlayerSlot,
+        seat: Seat,
     },
     Disconnected {
-        slot: PlayerSlot,
+        seat: Seat,
     },
 }
 
@@ -125,7 +125,7 @@ impl LogEntries {
     }
 
     /// Whether no entry was logged since the last tick was sealed: where a checkpoint may come.
-    pub(super) fn at_boundary(&self) -> bool {
+    pub(super) fn is_at_boundary(&self) -> bool {
         self.since_sealed() == 0
     }
 
@@ -218,7 +218,7 @@ impl LogEntries {
     pub(super) fn input(&self, index: u32) -> PlayerInput<'_> {
         let logged = &self.inputs[at(index)];
         PlayerInput {
-            slot: logged.slot,
+            seat: logged.seat,
             stamp: logged.stamp,
             payload: self.payloads.get(logged.payload),
         }
@@ -234,7 +234,7 @@ impl LogEntries {
         let index = self.inputs_len();
         let payload = self.payloads.push(input.payload);
         self.inputs.push(LoggedInput {
-            slot: input.slot,
+            seat: input.seat,
             stamp: input.stamp,
             payload,
         });
@@ -266,29 +266,29 @@ impl LogEntries {
             Served::Bot { input } => {
                 let input = self.input(input);
                 ServerInput::Bot {
-                    slot: input.slot,
+                    seat: input.seat,
                     payload: input.payload,
                 }
             }
-            Served::Join { slot, delegation } => ServerInput::Join {
-                slot,
+            Served::Join { seat, delegation } => ServerInput::Join {
+                seat,
                 delegation: self.delegation(delegation).clone(),
             },
-            Served::Renew { slot, delegation } => ServerInput::Renew {
-                slot,
+            Served::Renew { seat, delegation } => ServerInput::Renew {
+                seat,
                 delegation: self.delegation(delegation).clone(),
             },
             Served::Leave {
-                slot,
+                seat,
                 reason,
                 becomes,
             } => ServerInput::Leave {
-                slot,
+                seat,
                 reason,
                 becomes,
             },
-            Served::Connected { slot } => ServerInput::Connected { slot },
-            Served::Disconnected { slot } => ServerInput::Disconnected { slot },
+            Served::Connected { seat } => ServerInput::Connected { seat },
+            Served::Disconnected { seat } => ServerInput::Disconnected { seat },
         }
     }
 }

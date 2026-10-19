@@ -49,11 +49,11 @@ pub(crate) mod view_rows;
 /// every call of the phase sees them as they were read. Each part has a cell of its own, so a
 /// name lookup does not borrow the rows.
 #[derive(Clone)]
-pub struct View(Rc<ViewParts>);
+pub struct View(Rc<ViewFields>);
 
-/// The parts of the view.
+/// The fields of the view.
 #[derive(Debug)]
-struct ViewParts {
+struct ViewFields {
     rate: TickRate,
     names: RefCell<ViewNames>,
     /// The revision of the match's `MatchNames` that `names` derive from; none before the first.
@@ -70,7 +70,7 @@ impl View {
     /// The view of a match at `rate`, whose units `read` reads into its rows, with no names
     /// until the load and the mode give them.
     pub fn new(rate: TickRate, read: fn(&mut World)) -> Self {
-        Self(Rc::new(ViewParts {
+        Self(Rc::new(ViewFields {
             rate,
             names: RefCell::default(),
             names_at: Cell::new(None),
@@ -232,20 +232,20 @@ impl View {
         let row = self.row(id).filter(|row| row.targetable)?;
         Some(LivingUnit {
             id,
-            pos: row.pos,
+            position: row.position,
             team: row.team,
             shape: row.shape,
             tags: row.tags.tags,
         })
     }
 
-    /// The living targets whose bodies come within `radius` of `pos` in the map's metric, as an
-    /// area of that radius reaches, that `filter` selects relative to `of`, and `seen` lets by
+    /// The living targets whose bodies come within `radius` of `position` in the map's metric, as
+    /// an area of that radius reaches, that `filter` selects relative to `of`, and `seen` lets by
     /// the view's columns and their rows, by stable id.
     pub fn find(
         &self,
         of: &Unit,
-        pos: Vec3,
+        position: Vec3,
         radius: Num,
         filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,
@@ -255,7 +255,7 @@ impl View {
         let units = rows.units();
         let query = TargetQuery {
             team: units[of.row_index()?].team,
-            from: pos,
+            from: position,
             shape: Shape::POINT,
             radius,
             filter,
@@ -283,7 +283,7 @@ impl View {
         let of = rows.units()[of.row_index()?];
         let query = TargetQuery {
             team: of.team,
-            from: of.pos,
+            from: of.position,
             shape: of.shape,
             radius,
             filter,
@@ -294,7 +294,9 @@ impl View {
             .targets
             .borrow_mut()
             .visit(&rows, query, seen, |entry| {
-                let distance = metric.offset(of.pos, entry.body.pos).length_squared_bits();
+                let distance = metric
+                    .offset(of.position, entry.body.position)
+                    .length_squared_bits();
                 let candidate = (distance, entry.id, entry.key);
                 if nearest.is_none_or(|best| candidate < best) {
                     nearest = Some(candidate);

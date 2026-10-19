@@ -11,7 +11,7 @@ use crate::vision_grid::VisionGrid;
 
 /// How a match tells whether a team sees a unit, for a check of what a player's order may aim at:
 /// by the server's vision, or, on a predicting client, by what the client holds, as the server
-/// sends it each unit its team sees and no other (14-replication-audiences.md, Prediction reads
+/// sends it each unit its team sees and no other (10-replication-audiences.md, Prediction reads
 /// only what its client holds).
 pub trait TeamSight: RoleForm {
     /// What a query reads of a unit to tell.
@@ -21,8 +21,8 @@ pub trait TeamSight: RoleForm {
     /// the caller decides.
     fn sees(seen: QueryItem<'_, '_, Self::Seen>, team: Team) -> Option<bool>;
 
-    /// Whether `team` sees the point `pos` of the ground, as `fog` holds `grid`'s cells.
-    fn sees_point(fog: &Fog, grid: &VisionGrid, pos: Vec3, team: Team) -> bool;
+    /// Whether `team` sees the point `position` of the ground, as `fog` holds `grid`'s cells.
+    fn sees_point(fog: &Fog, grid: &VisionGrid, position: Vec3, team: Team) -> bool;
 }
 
 /// The server's sight: the teams the last Vision stage found see a unit, `SeenBy`.
@@ -37,8 +37,8 @@ impl TeamSight for ByVision {
         Some(teams.contains(team))
     }
 
-    fn sees_point(fog: &Fog, grid: &VisionGrid, pos: Vec3, team: Team) -> bool {
-        fog.sees_point(grid, pos, team)
+    fn sees_point(fog: &Fog, grid: &VisionGrid, position: Vec3, team: Team) -> bool {
+        fog.sees_point(grid, position, team)
     }
 }
 

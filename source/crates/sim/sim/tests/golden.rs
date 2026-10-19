@@ -272,7 +272,7 @@ fn tick_section(hasher: &mut Hasher) {
     }
     let mut world = World::new();
     let mut built = SimWorldBuilder::new(&mut world, SegmentSeed::new(seed), RATE);
-    let registry = built.parts().registry;
+    let registry = built.fields().registry;
     registry.register_component::<Place>();
     registry.register_component::<Life>();
     built.build();
@@ -325,7 +325,7 @@ fn golden_digests() {
         Section {
             name: "state",
             run: state_section,
-            digest: "98cddb17a957fb26c4aa198f80ce961562d7afc21b3c71e7f875dd64e86ae521",
+            digest: "56cf446df28e10c3d2a8dde8c3b90d030471b559580c0798d0b4c2f7746494b7",
         },
         Section {
             name: "tick",

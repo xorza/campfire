@@ -25,7 +25,7 @@ pub(crate) mod slow_sync;
 /// publishes how many records are durable; the next sync waits for the next records, so a burst
 /// of records shares one sync. A crash loses at most the records not yet synced. A failed write
 /// or sync is never retried, as the data a failed sync held may be lost and a retry can succeed
-/// over the loss: the worker stops, and keeps the failure for its owner to take once, through
+/// over the loss: the worker stops, and keeps the failure for its holder to take once, through
 /// the writer's watch or its `close`. A sync slower than `SLOW_SYNC` is kept for the caller to
 /// see. The writer fails, as a failed sync does, when a write and its sync run past `HUNG_SYNC`
 /// as the watch sees it, or when the caller's records the worker has not taken pass
@@ -226,8 +226,8 @@ impl AppendShared {
     }
 
     /// Stops the writer at `error`, with `pending` its records held, unless it stopped at a failure
-    /// before: it keeps no record more, and keeps the failure for its owner. The failure is kept
-    /// before the lock goes, so an owner that sees the writer settled finds it.
+    /// before: it keeps no record more, and keeps the failure for its holder. The failure is kept
+    /// before the lock goes, so a holder that sees the writer settled finds it.
     fn stop(&self, pending: &mut Pending, error: AppendError) {
         if pending.stopped {
             return;

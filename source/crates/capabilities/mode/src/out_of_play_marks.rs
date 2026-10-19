@@ -4,8 +4,8 @@ use bevy_ecs::system::{Commands, Local, Query};
 use campfire_players::{HeldOut, OutOfPlay, Player};
 use campfire_units::{Avatar, Dead, Owner};
 
-/// The mode's marks of who is out of play, on each player's entity (14-replication-audiences.md,
-/// Prediction reads only what its client holds; 14-replication-audiences.md, A player out of play
+/// The mode's marks of who is out of play, on each player's entity (10-replication-audiences.md,
+/// Prediction reads only what its client holds; 10-replication-audiences.md, A player out of play
 /// sees what its team sees, or what a spectator sees).
 #[derive(Debug)]
 pub(crate) struct OutOfPlayMarks;
@@ -29,7 +29,7 @@ impl OutOfPlayMarks {
     ) {
         avatars.clear();
         for (owner, dead) in &units {
-            let at = owner.slot().index();
+            let at = owner.seat().index();
             if avatars.len() <= at {
                 avatars.resize(at + 1, Avatars::default());
             }
@@ -38,7 +38,7 @@ impl OutOfPlayMarks {
         }
         for (entity, player, held_out, marked) in &players {
             let of = avatars
-                .get(player.slot().index())
+                .get(player.seat().index())
                 .copied()
                 .unwrap_or_default();
             let out = held_out || (of.held && !of.living);

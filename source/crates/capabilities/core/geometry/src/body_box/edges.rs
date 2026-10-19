@@ -16,7 +16,7 @@ pub(super) trait Lines {
 }
 
 /// The bounds past which a point's distance from a half edge's line, as the half edge's direction
-/// measures it, to the nearest unit and within 0.51 of the true one (09-determinism-core.md, Exact
+/// measures it, to the nearest unit and within 0.51 of the true one (07-determinism-core.md, Exact
 /// where it fits), lies against a reach with no direction. The point's cross product with the half
 /// edge, `C`, over the half edge's length `|h|`, is the true distance: `|C| ≥ far`, at least
 /// `(reach + 2) |h|`, puts it at least two units past the reach, so its measure too; `|C| < near`,
@@ -85,7 +85,7 @@ pub(crate) struct Row {
 /// What of an edge is nearest a point: a corner, by its index, or a point inside the edge, whose
 /// distance is the edge's line's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Part {
+enum EdgeNear {
     Corner(usize),
     Line,
 }
@@ -186,9 +186,9 @@ impl Edges {
     /// `closer` of a point outside the box.
     pub(super) fn closer_probe(&self, probe: &Probe, lines: &mut impl Lines) -> bool {
         let reach = lines.reach();
-        (0..4).any(|edge| match self.part(probe, edge) {
-            Part::Corner(corner) => self.corner_square(probe, corner) <= reach.square_limit,
-            Part::Line => self.line_order(probe, edge, lines) == Ordering::Less,
+        (0..4).any(|edge| match self.edge_near(probe, edge) {
+            EdgeNear::Corner(corner) => self.corner_square(probe, corner) <= reach.square_limit,
+            EdgeNear::Line => self.line_order(probe, edge, lines) == Ordering::Less,
         })
     }
 
@@ -221,12 +221,12 @@ impl Edges {
         let units = lines.reach().units.cast_unsigned();
         let mut nearest = Ordering::Greater;
         for edge in 0..4 {
-            let order = match self.part(probe, edge) {
-                Part::Corner(corner) => self
+            let order = match self.edge_near(probe, edge) {
+                EdgeNear::Corner(corner) => self
                     .corner_square(probe, corner)
                     .cast_unsigned()
                     .nearest_root_cmp(units),
-                Part::Line => self.line_order(probe, edge, lines),
+                EdgeNear::Line => self.line_order(probe, edge, lines),
             };
             if order == Ordering::Less {
                 return order;
@@ -254,8 +254,8 @@ impl Edges {
         // nearest a corner, one for a point beside an edge.
         let mut best: Option<Nearest> = None;
         for edge in 0..4 {
-            let found = match self.part(probe, edge) {
-                Part::Corner(corner) => Nearest {
+            let found = match self.edge_near(probe, edge) {
+                EdgeNear::Corner(corner) => Nearest {
                     distance: self
                         .corner_square(probe, corner)
                         .cast_unsigned()
@@ -263,7 +263,7 @@ impl Edges {
                         .cast_signed(),
                     feature: Feature::Corner(corner),
                 },
-                Part::Line => Nearest {
+                EdgeNear::Line => Nearest {
                     distance: self.apart(probe, edge, direction(edge % 2)),
                     feature: Feature::Edge(edge),
                 },
@@ -310,15 +310,15 @@ impl Edges {
 
     /// What of `edge` is nearest `probe`'s point: its start when the point lies at or behind it,
     /// its end at or past it, else the inside.
-    const fn part(&self, probe: &Probe, edge: usize) -> Part {
+    const fn edge_near(&self, probe: &Probe, edge: usize) -> EdgeNear {
         let half = edge % 2;
         let along = probe.along(edge).wrapping_add(self.along_from[half]);
         if along <= 0 {
-            Part::Corner(edge)
+            EdgeNear::Corner(edge)
         } else if along >= self.lengths[half] {
-            Part::Corner((edge + 1) % 4)
+            EdgeNear::Corner((edge + 1) % 4)
         } else {
-            Part::Line
+            EdgeNear::Line
         }
     }
 

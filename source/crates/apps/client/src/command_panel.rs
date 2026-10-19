@@ -200,14 +200,14 @@ impl CommandPanel {
         mut commands: Commands<'_, '_>,
         mut line: Local<'_, String>,
     ) {
-        let slot = own.slot();
+        let seat = own.seat();
         next.clear();
         for &unit in selection.get() {
             let Some(Ok((owner, slots, queue, site, _))) = index.get(unit).map(|at| units.get(at))
             else {
                 continue;
             };
-            if slot.is_none() || owner.map(|owner| owner.slot()) != slot {
+            if seat.is_none() || owner.map(|owner| owner.seat()) != seat {
                 continue;
             }
             let held = PanelUnit { slots, queue, site };

@@ -81,7 +81,7 @@ impl PipelineField {
 
     /// Whether `data` gives it: a value, a list or a table that is not empty, or a flag that is
     /// on.
-    fn given(self, data: &ActionData) -> bool {
+    fn is_given(self, data: &ActionData) -> bool {
         match self {
             Self::Script => data.script.is_some(),
             Self::Range => data.range.is_some(),
@@ -111,9 +111,9 @@ impl PipelineField {
         Self::ALL
             .into_iter()
             .find(|field| match field.taken(takes) {
-                Takes::Never => field.given(data),
+                Takes::Never => field.is_given(data),
                 Takes::May => false,
-                Takes::Must => !field.given(data),
+                Takes::Must => !field.is_given(data),
             })
     }
 }

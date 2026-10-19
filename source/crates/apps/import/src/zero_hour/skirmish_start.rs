@@ -8,11 +8,11 @@ use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// The player template a skirmish starts its players as, until a faction choice comes
-/// (12-zero-hour.md, A skirmish starts with the faction's start objects).
+/// (09-zero-hour.md, A skirmish starts with the faction's start objects).
 const FACTION: &str = "FactionAmerica";
 
 /// What a skirmish starts each player with, which the mode's params give its script
-/// (12-zero-hour.md, A skirmish starts with the faction's start objects): its faction's building
+/// (09-zero-hour.md, A skirmish starts with the faction's start objects): its faction's building
 /// and starting units, by their unit types, and how far along `+z` from the building its units
 /// start on a map with no rally, half the building's bounding sphere, as
 /// `placeNetworkBuildingsForPlayer` moves them toward the original's `−y`.

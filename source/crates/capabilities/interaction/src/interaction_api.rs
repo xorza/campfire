@@ -1,4 +1,4 @@
-use campfire_script::{ApiBuilder, ApiOwner, MemberSpec, Unit};
+use campfire_script::{ApiBuilder, ApiHolder, MemberDecl, Unit};
 
 use crate::use_data::UseData;
 use crate::uses_data::UsesData;
@@ -11,13 +11,13 @@ pub struct InteractionApi;
 
 impl InteractionApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        api.plan(MemberSpec::field(
-            ApiOwner::of::<Unit>(),
+        api.plan(MemberDecl::field(
+            ApiHolder::of::<Unit>(),
             "inside",
             "the host it rides or garrisons in, `()` with none",
         ))
-        .plan(MemberSpec::field(
-            ApiOwner::of::<Unit>(),
+        .plan(MemberDecl::field(
+            ApiHolder::of::<Unit>(),
             "passengers",
             "the units inside it, by stable id",
         ))

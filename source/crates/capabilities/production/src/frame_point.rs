@@ -17,13 +17,13 @@ impl FramePoint {
         point.iter().all(within).then_some(Self(point))
     }
 
-    /// The point of a producer at `pos` that faces `angle` degrees, at its height: the frame's
+    /// The point of a producer at `position` that faces `angle` degrees, at its height: the frame's
     /// `x` turned as its box's first half edge turns and its `z` as its second, from `x`
     /// towards `−z`, each coordinate rounded once.
-    pub fn placed(self, pos: Vec3, angle: Num) -> Vec3 {
+    pub fn placed(self, position: Vec3, angle: Num) -> Vec3 {
         let [x, z] = self.0;
         let turned = Vec3::new(x, Num::ZERO, z).rotated_y(SinCos::of_degrees(angle));
-        Vec3::new(pos.x + turned.x, pos.y, pos.z + turned.z)
+        Vec3::new(position.x + turned.x, position.y, position.z + turned.z)
     }
 }
 
@@ -48,11 +48,11 @@ mod tests {
             at: FramePoint,
         }
         let point = |x: i64, z: i64| FramePoint::new([Num::int(x), Num::int(z)]).unwrap();
-        let pos = Vec3::new(Num::int(100), Num::int(5), Num::int(-50));
+        let position = Vec3::new(Num::int(100), Num::int(5), Num::int(-50));
         // The frame's x is the box's first half edge, (cos, −sin), and its z the second,
         // (sin, cos): at 0° (3, 4) is 3 along x and 4 along z; at 90° x goes along −z and z
         // along x, (4, −3); at 180° both turn back, (−3, −4); at 270° (−4, 3).
-        let at = |angle: i64| point(3, 4).placed(pos, Num::int(angle));
+        let at = |angle: i64| point(3, 4).placed(position, Num::int(angle));
         let moved = |x: i64, z: i64| Vec3::new(Num::int(100 + x), Num::int(5), Num::int(-50 + z));
         assert_eq!(at(0), moved(3, 4));
         assert_eq!(at(90), moved(4, -3));

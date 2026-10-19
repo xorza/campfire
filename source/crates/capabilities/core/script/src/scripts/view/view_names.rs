@@ -30,13 +30,13 @@ impl ViewNames {
         }
     }
 
-    /// The names of the ids of type `I` as scripts read them; none before their owner puts them
+    /// The names of the ids of type `I` as scripts read them; none before their module puts them
     /// in.
     pub fn texts<I: NameId + 'static>(&self) -> Option<&ScriptNames<I>> {
         self.texts.get::<ScriptNames<I>>()
     }
 
-    /// The name of `id`, an id of the match: its owner put in the table of its kind before it
+    /// The name of `id`, an id of the match: its module put in the table of its kind before it
     /// made any id of it.
     pub fn name<I: NameId + 'static>(&self, id: I) -> IdName<I> {
         let table = self

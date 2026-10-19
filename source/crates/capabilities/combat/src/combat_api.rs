@@ -2,7 +2,7 @@ use campfire_actions::{ActionData, ActionsColumn};
 use campfire_codec::StructFields;
 use campfire_math::Num;
 use campfire_script::{
-    ApiBuilder, ApiOwner, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberSpec, RoleSet,
+    ApiBuilder, ApiHolder, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberDecl, RoleSet,
     ScriptValue, ScriptWindow, Status, Unit,
 };
 use campfire_values::{Block, TagProperty};
@@ -27,7 +27,7 @@ impl CombatApi {
         DamageHandle::register(api);
         HealHandle::register(api);
         Self::register_unit(api);
-        let call = |name, signature, description| MemberSpec::call(name, signature, description);
+        let call = |name, signature, description| MemberDecl::call(name, signature, description);
         let kill = call(
             "kill",
             &[&["unit"]],
@@ -74,8 +74,8 @@ impl CombatApi {
 
     /// What combat adds to a `Unit` handle.
     fn register_unit(api: &mut ApiBuilder<'_>) {
-        let recent_attackers = MemberSpec::method(
-            ApiOwner::of::<Unit>(),
+        let recent_attackers = MemberDecl::method(
+            ApiHolder::of::<Unit>(),
             "recent_attackers",
             &[&["ms"]],
             "the living units that struck it within the last `ms`, rounded up to whole ticks",
@@ -84,8 +84,8 @@ impl CombatApi {
             CombatColumn::recent_attackers(&unit, ms)
         })
         .bind(
-            MemberSpec::field(
-                ApiOwner::of::<Unit>(),
+            MemberDecl::field(
+                ApiHolder::of::<Unit>(),
                 "attack_target",
                 "the unit its attack aims at, `()` with none",
             ),
@@ -97,7 +97,11 @@ impl CombatApi {
             },
         )
         .bind(
-            MemberSpec::field(ApiOwner::of::<Unit>(), "attack_range", "its attack's range"),
+            MemberDecl::field(
+                ApiHolder::of::<Unit>(),
+                "attack_range",
+                "its attack's range",
+            ),
             |unit: &mut Unit| -> Checked<Num> {
                 ActionsColumn::attack_range(unit.view(), unit.row_index()?)
                     .ok_or_else(|| CombatRefusal::NoAttack.fail().into())

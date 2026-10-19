@@ -9,7 +9,7 @@ pub(crate) const fn of(value: Num) -> i128 {
     2 * value.to_bits() as i128
 }
 
-/// Where `pos` stands on the ground plane, in halves of a bit.
-pub(crate) const fn ground(pos: Vec3) -> Flat {
-    Flat::new(of(pos.x), of(pos.z))
+/// Where `position` stands on the ground plane, in halves of a bit.
+pub(crate) const fn ground(position: Vec3) -> Flat {
+    Flat::new(of(position.x), of(position.z))
 }

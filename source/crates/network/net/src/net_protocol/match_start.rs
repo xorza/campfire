@@ -1,4 +1,4 @@
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_protocol::{Controller, InputHash, SessionLog};
 use campfire_values::Team;
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ pub(crate) struct MatchStart {
     /// The Lightyear tick that is sim tick `first`.
     pub start_tick: u32,
     pub first: Tick,
-    pub slot: PlayerSlot,
+    pub seat: Seat,
     pub team: Team,
     pub chain: SeatChain,
     /// A client of a local server then takes the server's chain as it holds it, whatever its own
@@ -22,7 +22,7 @@ pub(crate) struct MatchStart {
 
 /// The chain a seated player signs: a new one, with no input yet, from `root`, the delegation's id
 /// for a player the header seats and a root of its place for a join; or the one the log holds
-/// for the slot's player, which goes on.
+/// for the seat's player, which goes on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum SeatChain {
     New { root: InputHash },
@@ -39,10 +39,10 @@ pub(crate) struct ChainHead {
 }
 
 impl SeatChain {
-    /// The new chain of `slot`'s player, who has sent no input yet, as `log` holds it.
-    pub(crate) fn new_of(log: &SessionLog, slot: PlayerSlot) -> Self {
-        let Some(Controller::Player { chain, .. }) = log.controller(slot) else {
-            panic!("a player controls the slot seated");
+    /// The new chain of `seat`'s player, who has sent no input yet, as `log` holds it.
+    pub(crate) fn new_of(log: &SessionLog, seat: Seat) -> Self {
+        let Some(Controller::Player { chain, .. }) = log.controller(seat) else {
+            panic!("a player controls the seat seated");
         };
         debug_assert_eq!(chain.next_seq(), 0, "a new chain holds no input");
         Self::New { root: chain.head() }

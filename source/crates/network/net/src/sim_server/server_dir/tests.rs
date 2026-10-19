@@ -1,13 +1,13 @@
 use campfire_protocol::SessionId;
 use campfire_store::SecretFile;
-use campfire_store::internals::Scratch;
+use campfire_store::internals::TestDir;
 
 use super::*;
 
 #[test]
 fn each_path_is_as_stage_6_names_it_and_one_server_holds_the_directory() {
-    let scratch = Scratch::new();
-    let path = scratch.path("data");
+    let test_dir = TestDir::new();
+    let path = test_dir.path("data");
     let data = ServerDir::open(&path).unwrap();
     let id = SessionId::new([0xa7; 32]);
     let hex = "a7".repeat(32);

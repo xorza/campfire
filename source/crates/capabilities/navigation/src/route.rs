@@ -60,7 +60,7 @@ pub struct RouteRef<'a> {
 /// Where a route goes, and its ask while it waits for one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 struct Goal {
-    pos: Vec3,
+    position: Vec3,
     asked: Option<Ask>,
 }
 
@@ -82,7 +82,7 @@ pub struct RouteAsk {
 
 impl Route {
     pub fn goal(&self) -> Option<Vec3> {
-        self.goal.map(|goal| goal.pos)
+        self.goal.map(|goal| goal.position)
     }
 
     pub fn asked(&self) -> Option<Tick> {
@@ -94,7 +94,7 @@ impl Route {
         self.goal?.asked?.party
     }
 
-    pub const fn reached(&self) -> bool {
+    pub const fn is_reached(&self) -> bool {
         self.reached
     }
 
@@ -132,7 +132,7 @@ impl Route {
         let RouteAsk { goal, tick, party } = ask;
         let tick = self.asked().unwrap_or(tick);
         self.goal = Some(Goal {
-            pos: goal,
+            position: goal,
             asked: Some(Ask { tick, party }),
         });
         progress.restart();
@@ -177,7 +177,7 @@ impl Route {
             .expect("a route that reaches its goal");
         *last = goal;
         self.goal = Some(Goal {
-            pos: goal,
+            position: goal,
             asked: None,
         });
     }
@@ -259,7 +259,7 @@ impl<'a> RouteRef<'a> {
 
     /// Whether the walker arrived where its route ends short of its goal: no ask waits, no
     /// waypoint is left, and the last was not the goal. It stays so until it asks again.
-    pub(crate) fn arrived_short(self) -> bool {
+    pub(crate) fn is_arrived_short(self) -> bool {
         self.route.goal.is_some_and(|goal| goal.asked.is_none())
             && !self.route.reached
             && self.ahead().is_empty()
@@ -267,7 +267,7 @@ impl<'a> RouteRef<'a> {
 
     /// The goal it arrived short of, while it stands at that end, as its `ArrivedShort` reports.
     fn short_of(self) -> Option<Vec3> {
-        self.route.goal().filter(|_| self.arrived_short())
+        self.route.goal().filter(|_| self.is_arrived_short())
     }
 }
 
@@ -475,7 +475,7 @@ impl SimComponent for Route {
         let within = |point: Vec3| point.within_bound();
         let goal = |goal: Goal| {
             let party = goal.asked.and_then(|ask| ask.party);
-            within(goal.pos) && party.is_none_or(|party| within(party.goal))
+            within(goal.position) && party.is_none_or(|party| within(party.goal))
         };
         let places = self.goal.is_none_or(goal) && self.waypoints.iter().copied().all(within);
         let served = world.get_resource::<PathingGrid>().is_none_or(|grid| {

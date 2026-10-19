@@ -21,7 +21,7 @@ mod edges;
 /// edges `a` and `b`, each `[x, z]`, rounded once as it was made. Its corners are the position plus
 /// `−a − b`, `a − b`, `a + b` and `−a + b`, counterclockwise, and its edges run from each corner to
 /// the next. Every test reads them in integers, whether two shapes meet exactly and each distance
-/// to the nearest unit (09-determinism-core.md, Exact where it fits), so the box is the same shape
+/// to the nearest unit (07-determinism-core.md, Exact where it fits), so the box is the same shape
 /// to every test on every machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BodyBox {
@@ -140,17 +140,17 @@ impl BodyBox {
         })
     }
 
-    /// Whether `pos` lies closer than `reach` to the box at `center`, exactly: a point at `reach`
-    /// is not closer.
-    pub fn closer(&self, center: Vec3, pos: Vec3, reach: Num) -> bool {
-        self.nearest(center, pos, reach) == Ordering::Less
+    /// Whether `position` lies closer than `reach` to the box at `center`, exactly: a point at
+    /// `reach` is not closer.
+    pub fn closer(&self, center: Vec3, position: Vec3, reach: Num) -> bool {
+        self.nearest(center, position, reach) == Ordering::Less
     }
 
-    /// How the distance from `pos` to the box at `center` lies against `reach`: past it when `pos`
-    /// lies past the box's extent and the reach along an axis, as the distance is at least that
-    /// gap; else as the nearest of the box's features lies against it.
-    pub(crate) fn nearest(&self, center: Vec3, pos: Vec3, reach: Num) -> Ordering {
-        let off = flat(pos) - flat(center);
+    /// How the distance from `position` to the box at `center` lies against `reach`: past it when
+    /// `position` lies past the box's extent and the reach along an axis, as the distance is at
+    /// least that gap; else as the nearest of the box's features lies against it.
+    pub(crate) fn nearest(&self, center: Vec3, position: Vec3, reach: Num) -> Ordering {
+        let off = flat(position) - flat(center);
         let extent = self.extent();
         let reach_bits = reach.to_bits();
         let far = |axis: usize| {
@@ -167,21 +167,21 @@ impl BodyBox {
         edges.against(off, &mut lines)
     }
 
-    /// The distance on the ground plane from `pos` to the box at `center`, in bits, to the nearest
-    /// bit: 0 inside or on its edge.
-    pub(crate) fn gap(&self, center: Vec3, pos: Vec3) -> i128 {
+    /// The distance on the ground plane from `position` to the box at `center`, in bits, to the
+    /// nearest bit: 0 inside or on its edge.
+    pub(crate) fn gap(&self, center: Vec3, position: Vec3) -> i128 {
         let frame = self.frame();
-        let off = flat(pos) - flat(center);
+        let off = flat(position) - flat(center);
         frame
             .nearest_to(off, &mut HalfDirections::new(frame))
             .distance
     }
 
-    /// The point of the box at `center` nearest `pos`, each coordinate rounded to the nearest bit:
-    /// `pos` itself inside.
-    pub fn nearest_point(&self, center: Vec3, pos: Vec3) -> Vec3 {
+    /// The point of the box at `center` nearest `position`, each coordinate rounded to the nearest
+    /// bit: `position` itself inside.
+    pub fn nearest_point(&self, center: Vec3, position: Vec3) -> Vec3 {
         let frame = self.frame();
-        let off = flat(pos) - flat(center);
+        let off = flat(position) - flat(center);
         let corners = frame.corners();
         let point = match frame
             .nearest_to(off, &mut HalfDirections::new(frame))
@@ -198,7 +198,11 @@ impl BodyBox {
             }
         };
         let ground = point + flat(center);
-        Vec3::new(Num::from_bits(ground[0]), pos.y, Num::from_bits(ground[1]))
+        Vec3::new(
+            Num::from_bits(ground[0]),
+            position.y,
+            Num::from_bits(ground[1]),
+        )
     }
 
     /// How the straight path from `from` to `to` comes to the box at `center`, against `reach`: a
@@ -630,9 +634,9 @@ fn cross(a: Flat, b: Flat) -> i128 {
     product(a[0], b[1]).wrapping_sub(product(a[1], b[0]))
 }
 
-/// Where `pos` stands on the ground plane, in a `Num`'s bits.
-const fn flat(pos: Vec3) -> Flat {
-    Flat::ground(pos)
+/// Where `position` stands on the ground plane, in a `Num`'s bits.
+const fn flat(position: Vec3) -> Flat {
+    Flat::ground(position)
 }
 
 /// The number of `bits`, a place on a path within the world's bound.
@@ -642,7 +646,7 @@ fn bits(bits: i128) -> Num {
 
 /// How far a push of a body out of a box goes past touching, in bits: the most a measure of a
 /// distance by a `Direction`, or by a nearest root, lies from the true one, 0.51 of a bit, rounded
-/// up, so the next measure sees the body apart (09-determinism-core.md, A push rounds away from
+/// up, so the next measure sees the body apart (07-determinism-core.md, A push rounds away from
 /// what it leaves).
 const PUSH_SLACK: i128 = 1;
 

@@ -20,7 +20,7 @@ pub enum AbilitiesRefusal {
 }
 
 impl CapabilityRefusal for AbilitiesRefusal {
-    const OWNER: Capability = Capability::Abilities;
+    const CAPABILITY: Capability = Capability::Abilities;
     const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {

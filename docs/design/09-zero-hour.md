@@ -1,0 +1,83 @@
+# Campfire — Zero Hour
+
+Command & Conquer: Generals – Zero Hour, imported from the player's own copy and played on Campfire's sim, so close to the original that no player notices a difference. The facts the import takes from are [Zero Hour research](../research/zero-hour.md).
+
+## Decisions
+
+- **Zero Hour is the first import.** EA released the source of Generals and Zero Hour under GPL v3 in February 2025, so every rule has a written specification, and most of the game is INI data of modules from a fixed library; Zero Hour, not the base game, as the community plays it.
+- **Written from the released source, under MIT/Apache-2.0.** The importer and the rules package read the original's formulas, the order of their operations and its pathfinder closely, but the code is our own; a release that ships it takes a legal check first, and no file of the original or line copied from it enters the repository.
+- **Generic modules are capabilities, Zero Hour's own are Rhai.** A module another game shares becomes a capability or an option of one; one only Zero Hour has, a general's power, its veterancy, is Rhai in the rules package; the pathfinder and the locomotors, which Rhai cannot match and a player feels in every move, become navigation backends, so the core keeps no Zero Hour word.
+- **One reproducible package.** The same install, game version and importer release give the same bytes on every OS, assets included, so a session names the package by fingerprint; nobody distributes it, and each player, server and verifier makes their own.
+- **Parity is read from the source, and no test plays the original.** The tests pin what the port read against cases worked by hand.
+- **The presentation is data.** The client gains generic presentation systems that read data, and the importer maps Zero Hour's draw modules, effects and command sets onto them.
+- **Fixtures in the tests, the install on request.** No copy of the game enters the repository or CI; the tests read small hand-written files in the original's formats, and a check on request imports the install `GENERALSZH_DATA` names, fails with none, and pins the package fingerprints a run on Linux and a run on macOS gave.
+- **The check's measures are a golden file.** What the check measures and no closed form gives, as the fingerprints, the map's counts and the plays' ticks, is `checks/zero-hour-check/golden.toml`, which `CAMPFIRE_BLESS=1 cargo drive run zero-hour` writes again, as the tests' golden records are; what the game's data gives by a closed form, as a train's ticks and the money left, stays in the check's code. The check reads the walls, the start points and the resources from the match it plays. Refused: measured values as constants in the code, which a change of the importer moves by hand, one at a time.
+- **A random outcome is Campfire's.** The sim draws from its own PRF, so a random outcome is not the original's.
+- **The skirmish AI is a server bot.** It reads what its team's clients see and sends signed orders, where the original's AI reads its logic's state, so the port can play differently.
+- **A bot that builds and does not fight.** The Zero Hour check's bot plays an order script, `checks/zero-hour-check/bots/builder.toml`, which a host gives a local server's bot too: its dozers build a base and its buildings train infantry and vehicles, with no attack and no move toward another player; the check pins what it built and how far its units stood from its center, so the script keeps working.
+- **A unit of Zero Hour is a meter.** Every distance keeps the original's number, so no scale rounds a value; the widest body therefore rises to 2,048 m, past Zero Hour's widest object of 1,196 units and its bridges of 1,117.
+- **A rules package beside the imported mode.** The import writes `zero-hour/`, the rules package as the importer ships it, byte for byte, and `game/`, the mode that depends on it by a relative path, so the imported package names no path of the machine that made it.
+- **The multiplayer rule for client objects.** Optimized trees, props and fluff, which the original spawns on the client alone and by a machine's detail settings, are client objects in every session, so the sim never holds them.
+- **Night and snow draw their own models.** A look whose night or snow states draw other models gets variants, and the client draws a map's best match by the original's matching rule (`SparseMatchFinder::findBestInfoSlow`), a general feature any game may name its conditions for.
+- **Thirty frames a second, the original's times.** The importer turns each time into frames by the original's rule and writes the milliseconds Campfire's rule turns into the same count, so no time moves by a frame.
+
+## The importer
+
+- **Files resolve as the original resolves them.** Every archive under the install in case-insensitive order of path, the first that holds a path keeping it, base Generals last.
+- **Axes stay right-handed.** The original's `x` east, `y` north and `z` up are the engine's `x`, `−z` and `y`; an `f32` becomes the `Num` of its exact value.
+- **Names become declared names,** and two that collide fail the import.
+- **Textures stay as the game holds them.** A DDS keeps its DXT blocks and levels in KTX2; a TGA's levels are computed in integers in linear light, so every OS gives the same bytes.
+- **Models become glTF.** Pivots become nodes and `z` up becomes `y` up as a rotation, so triangles keep their front; the import writes the GLB itself, so no encoder's version changes its bytes.
+- **A W3D material becomes the one material.** A material is rough and of no specular, as no shader of the install turns specular on, or unlit where its gradient is off; a second pass or a detail stage becomes a layer with a blend and a depth bias in the material's extras, as glTF cannot say them ([Material extras in a glTF extension](02-engine-core.md#client)). What the material cannot hold, a separate ambient color and the lighting per vertex, is lost ([research](../research/zero-hour.md#models)).
+- **A missing texture draws as the game's `MissingTexture`,** as a player of the original sees it.
+- **Terrain as the game's renderer draws it.** Each cell's tile is its ground quad and its blends overlays, cliffs stretched when `AdjustCliffTextures` says so, written to the generic terrain file ([Client](02-engine-core.md#client)).
+- **The ground the sim reads is the logic's.** Each map's `[ground]` splits every cell on the logic's diagonal and gives the partition's 40-unit cells over the playable area ([Space and map](04-capabilities/00-overview.md#space-and-map)).
+- **Cliffs are walls.** The import grows the cliff cells by one ring, as the original's pathfinder grows them, and merges them row by row into rectangle walls on cells of 10, the original's pathfind cell, so no new map format is needed.
+- **Only walkers and standing structures have bodies,** as the original's pathfinder routes only round a structure that is not mobile, not small and stands on the ground (`Pathfinder::classifyObjectFootprint`); a walker's circle is at most 25 m, the original's widest footprint.
+- **Units move by the generic backends with the original's numbers,** its locomotor's speed and turn rate, until the `navigation::zero_hour` backends come.
+- **A skirmish starts with the faction's start objects,** at the starts of a map the original lists for skirmish, as `WaypointMap::update` counts them.
+- **Every command set's trains and builds are imported,** each with the original's cost, time, queue, exit and requirements, and its name from the install's string table.
+- **The import writes Zero Hour's money as an option.** `start_money` takes the values of `Multiplayer.ini`'s `MultiplayerStartingMoneyChoice`s in their order, its default the one marked `Default`, 10,000, as the original's lobby offers them; choices of no single default, of a value twice or past an option's 256 fail the import.
+- **Eight teams of one.** A skirmish is every player alone against every other, up to eight; a start is placed only for a seat a player or a bot holds, as the original places none for an empty seat.
+- **Life is the original's.** An object of an active or structure body has life of its maximum and start; a site starts at 1 life, as the original's does.
+- **A weapon converts when it hits one target at once.** A weapon of the starting set becomes an attack with its damage, kind, range, period and clip; one the engine cannot hold is dropped and reported by cause.
+- **The import converts shells, splash, scatter, pitch, turrets and slow weapons.** A weapon whose `ProjectileObject` has a `DumbProjectileBehavior` fires that object as a projectile type of the weapon's `WeaponSpeed`, twice its `GeometryMajorRadius` wide, on the behavior's curve, `hits` a filter for each of `STRUCTURES`, `CONTROLLED_STRUCTURES`, `WALLS`, `ALLIES` and `ENEMIES` its `ProjectileCollidesWith` names, each player being a team; the type takes the object's name when every weapon fires it alike, and else `<object>_<weapon>` for each, with the object's look. Its `PrimaryDamageRadius` and `RadiusDamageAffects` become its splash, its scatters its scatter, the tag `infantry`'s for `ScatterRadiusVsInfantry`, its pitches past a turn either way its pitch bound, a `WeaponSpeed` below the default of no shell and no laser its speed, and an AI module's first `Turret` its type's turret, of the original's 0.035 radians; a turret of no slot or no turn rate is none, and a weapon still drops by each cause the engine cannot hold: a missile, a second radius, a radius or scatter of no shell, a radius that spares its own kind or the airborne, or a shell that detonates on what is no unit.
+- **Defeat by the last building that counts.** A player is defeated when its last object of `STRUCTURE` and `MP_COUNT_FOR_VICTORY` dies, and its other units are killed, as `Player::killPlayer` does; the last team standing wins. The rules data gives it as `[victory]` of the tag `counts_for_victory`, `defeat = "kill_all"` ([Victory by the last unit of a tag](04-capabilities/games.md#imported-games)).
+
+## The rules package
+
+- **No file of the game.** `source/packages/zero-hour/` holds the Rhai of the modules only Zero Hour has, the modes' setup and end, and its presentation scripts, which are planned; it ships with the importer.
+- **The fixed rules are its data.** What every install holds the same, the money resource, the stats and life pool, the damage types, the tags, the start markers' tag and the slot kinds, is the rules package's `data/rules.toml`, which the imported mode's data lies over, and so is what every type shares, a death that despawns and a turret's aim tolerance and slot kind, as its `[defaults]` under each type's own (03-game-scripting.md, Defaults under each unit type); the import writes only what the install gives: the armors, weapons, trains, builds, start objects, money choices and each type's own fields. Refused: the fixed rules as Rust templates in the importer, which repeated each name the rules script reads, as OpenRA ships a mod's rules as its YAML.
+
+## Losses
+
+What the import does not hold against the original:
+
+- **Driving.** A unit reaches its speed and stops at once, and turns in place before it drives, where the original accelerates, brakes and turns while it drives.
+- **Paths.** A walker may stand where its center lies its radius from every wall, where the original needs whole cells clear; a fence blocks nothing, where the original routes round its line.
+- **The start.** The command center stands unturned, and a starting unit where collision leaves it.
+- **The widest walkers** collide as circles of 25 m.
+- **Range.** Measured from each body's edge, a box's from its box, where the original measures from bounding circles, which hold a box's corners.
+- **Weapon choice.** A unit attacks with its first weapon whose targeting selects the target, where the original picks the best for each target.
+- **Dropped weapons.** Weapons that fire a missile, damage a second radius, splash or scatter with no shell, spare their own kind or the airborne, detonate on shrubbery or projectiles, or need a pre-attack delay, a minimum range or a random delay are not imported until the engine holds them.
+- **A shell's flight.** A shell starts at its attacker's center, not its barrel's bone (`Weapon::positionProjectileForLaunch`), so its curve may take a point more; its points are exact where the original's forward differences in `f32` gather rounding, so a contact at a body's very edge may fall a tick apart; of two bodies a shell meets in a tick it hits the lower stable id, where the original takes its contact list's order.
+- **A shell's reach.** A splash measures to a body's volume, the original to its bounding sphere, which holds a box's corners; a sphere's volume rises from its ground point, where the original's stands around its position; and every pitch is measured, where the original holds a target within 10 units of height in reach whatever its pitch.
+- **The ground's height.** It is computed from the samples and rounded once, where the original rounds its fractions of a cell in `f32` first, and a point past the grid takes the nearest point's height, where the original takes one clamped sample (`getClipHeight`), in a ring outside the playable area.
+- **A shell's life and its effects.** A shell has no life, so nothing shoots one down, and no muzzle flash, explosion, recoil or sound shows it; no weapon bonus or upgrade changes one.
+- **A turret that does not turn.** A turret of no `TurretTurnRate`, the combat bike's, gives no turret, so its weapon fires at any bearing, where the original holds it to the body's facing.
+- **Auto attack.** A unit attacks only what it is ordered to.
+- **Weapon sets and bonuses.** Only the set of `Conditions = None`; no upgrade or veterancy changes a weapon.
+- **Other bodies.** Objects of an immortal, highlander, undead, hive or inactive body have no life.
+- **Deaths.** A unit that dies goes at once: no death animation, rubble or death object.
+- **Alliances.** Each player is its own team.
+- **Power.** A building's power is not imported, so a player short of power builds at full speed.
+- **The ground under a building** is not flattened as the original flattens it.
+- **A site's look.** A site draws its building whole, not its scaffold.
+- **The panel.** Text buttons, with no images, hotkeys, sell, upgrades or powers.
+- **Dropped buttons.** Buttons of a science prerequisite, of an either-or one, trains of a unit that does not walk, and builds of no box body are not imported.
+- **Terrain light.** The terrain is lit by the map's object lights, which on most shipped maps are its own, and per pixel.
+- **Random outcomes** are Campfire's.
+
+## Open questions
+
+- **Sound.** Which WAV encodings the game holds, and an Ogg Vorbis encoder that gives the same bytes on every OS.

@@ -45,7 +45,7 @@ impl VisionBook {
         let mut areas = Vec::with_capacity(data.brush.len());
         for (brush, data) in data.brush.iter().enumerate() {
             let points = data.points.iter().map(|point| {
-                let at = map.pos(*point)?;
+                let at = map.checked_position(*point)?;
                 Ok([at.x, at.z])
             });
             let points = points.collect::<Result<Vec<[Num; 2]>, VisionDataError>>()?;

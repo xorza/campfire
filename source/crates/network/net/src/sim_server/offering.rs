@@ -42,7 +42,7 @@ const ANSWER_WINDOW: Duration = Duration::from_secs(10);
 
 /// What the server offers each new link, and how it checks the answer: the session's terms, its
 /// grace period and restore window, and a fresh challenge, which the player's session key signs
-/// with the link's channel binding (15-quic-transport.md, The answer binds to the TLS session). The
+/// with the link's channel binding (11-quic-transport.md, The answer binds to the TLS session). The
 /// lobby offers it before the start, and the door after it.
 #[derive(Debug)]
 pub(crate) struct Offering {
@@ -63,7 +63,7 @@ pub(crate) struct Offered {
     pub(crate) first: Duration,
 }
 
-/// A link whose player took a slot, before or after the start.
+/// A link whose player took a seat, before or after the start.
 #[derive(Component, Debug, Clone, Copy)]
 pub(crate) struct Joined;
 
@@ -89,14 +89,14 @@ const LINGER: Duration = Duration::from_secs(5);
 
 impl Dismissing {
     /// Refuses `link` for `error`: its seat, when a newer login of its player took it, or its
-    /// join. The link carries no slot, receives no offer, and ends once its client is told.
+    /// join. The link carries no seat, receives no offer, and ends once its client is told.
     pub(crate) fn refuse(commands: &mut Commands<'_, '_>, link: Entity, error: JoinError) {
         let dismissed = match error {
             JoinError::Superseded => Dismissed::Superseded,
             JoinError::Delegation(_)
             | JoinError::Connect(_)
             | JoinError::Full
-            | JoinError::NoSlot
+            | JoinError::NoSeat
             | JoinError::Refused(_)
             | JoinError::NoSpectatorPlace => Dismissed::JoinRefused,
         };

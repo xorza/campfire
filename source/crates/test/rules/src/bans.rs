@@ -529,7 +529,7 @@ fn no_tick_reads_removals_that_age_with_the_app() {
 }
 
 /// The line of a crate's root that bans floats from the sim, as clippy's `float_arithmetic` is
-/// in no group the workspace turns on (09-determinism-core.md, One step: an `i128`, rounded once).
+/// in no group the workspace turns on (07-determinism-core.md, One step: an `i128`, rounded once).
 const FLOAT_BAN: &str = "#![warn(clippy::float_arithmetic)]";
 
 #[test]

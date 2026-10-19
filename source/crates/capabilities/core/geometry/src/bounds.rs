@@ -42,21 +42,21 @@ impl Bounds {
         self.max
     }
 
-    /// Whether `pos` is within the bounds on the ground plane, edges included, and within the
+    /// Whether `position` is within the bounds on the ground plane, edges included, and within the
     /// world's bound in height, as every place is.
-    pub const fn contains(self, pos: Vec3) -> bool {
-        self.min[0].to_bits() <= pos.x.to_bits()
-            && pos.x.to_bits() <= self.max[0].to_bits()
-            && self.min[1].to_bits() <= pos.z.to_bits()
-            && pos.z.to_bits() <= self.max[1].to_bits()
-            && pos.y.to_bits().unsigned_abs() <= Vec3::BOUND.to_bits().unsigned_abs()
+    pub const fn contains(self, position: Vec3) -> bool {
+        self.min[0].to_bits() <= position.x.to_bits()
+            && position.x.to_bits() <= self.max[0].to_bits()
+            && self.min[1].to_bits() <= position.z.to_bits()
+            && position.z.to_bits() <= self.max[1].to_bits()
+            && position.y.to_bits().unsigned_abs() <= Vec3::BOUND.to_bits().unsigned_abs()
     }
 
-    /// Whether the box `body` at `pos` lies within the bounds on the ground plane, its edges on
-    /// theirs among them.
-    pub fn holds_box(self, pos: Vec3, body: &BodyBox) -> bool {
+    /// Whether the box `body` at `position` lies within the bounds on the ground plane, its edges
+    /// on theirs among them.
+    pub fn holds_box(self, position: Vec3, body: &BodyBox) -> bool {
         let extent = body.extent();
-        let ground = [pos.x, pos.z];
+        let ground = [position.x, position.z];
         (0..2).all(|axis| {
             ground[axis]
                 .checked_sub(extent[axis])
@@ -100,16 +100,16 @@ impl Bounds {
         ]
     }
 
-    /// The point of the bounds nearest `pos` on the ground plane, at its height.
-    pub fn clamp(self, pos: Vec3) -> Vec3 {
-        self.ground_point([pos.x, pos.z], pos)
+    /// The point of the bounds nearest `position` on the ground plane, at its height.
+    pub fn clamp(self, position: Vec3) -> Vec3 {
+        self.ground_point([position.x, position.z], position)
     }
 
-    /// The point of the bounds nearest `[x, z]` on the ground plane, at the height of `pos`: a
+    /// The point of the bounds nearest `[x, z]` on the ground plane, at the height of `position`: a
     /// unit ordered to a point on the ground keeps its height.
-    pub fn ground_point(self, ground: [Num; 2], pos: Vec3) -> Vec3 {
+    pub fn ground_point(self, ground: [Num; 2], position: Vec3) -> Vec3 {
         let [x, z] = self.clamp_ground(ground);
-        Vec3::new(x, pos.y, z)
+        Vec3::new(x, position.y, z)
     }
 }
 
@@ -190,8 +190,8 @@ mod tests {
             (Num::ZERO, Num::int(3) - half + e, false),
             (Num::ZERO, -half - e, false),
         ] {
-            let pos = Vec3::new(x, Num::ZERO, z);
-            assert_eq!(bounds.holds_box(pos, &boxed), held, "{x:?} {z:?}");
+            let position = Vec3::new(x, Num::ZERO, z);
+            assert_eq!(bounds.holds_box(position, &boxed), held, "{x:?} {z:?}");
         }
         for height in [Vec3::BOUND, -Vec3::BOUND] {
             assert!(bounds.contains(Vec3::new(Num::ZERO, height, Num::ZERO)));

@@ -208,7 +208,7 @@ impl OnDeath {
             let fail =
                 |error| BookError::rule(unit.package, BookPlace::UnitType(unit.place()), error);
             let on_death = match (unit.data.section::<CombatData>(), lives) {
-                (Some(_), true) if unit.avatar() => Self::Stay,
+                (Some(_), true) if unit.is_avatar() => Self::Stay,
                 (Some(combat), true) => combat.on_death,
                 (Some(_), false) => return Err(fail(UnitStartError::NoLifePool)),
                 (None, true) => return Err(fail(UnitStartError::NoCombat)),

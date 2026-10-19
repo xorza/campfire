@@ -1,7 +1,7 @@
 use campfire_common::{Tick, Ticks};
 use serde::{Deserialize, Serialize};
 
-/// The last tick a slot's inputs were scheduled to apply in, and how many apply there.
+/// The last tick a seat's inputs were scheduled to apply in, and how many apply there.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Spill {
     pub(crate) tick: Tick,
@@ -10,7 +10,7 @@ pub(crate) struct Spill {
 
 impl Spill {
     /// The tick the next input that may apply from tick `earliest` on would apply in: the
-    /// first, from there and from the last, that fewer than `max` of the slot's inputs fill.
+    /// first, from there and from the last, that fewer than `max` of the seat's inputs fill.
     pub(crate) const fn place(self, earliest: Tick, max: u32) -> Tick {
         if self.count == 0 || earliest.get() > self.tick.get() {
             earliest

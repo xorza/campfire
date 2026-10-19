@@ -2,7 +2,7 @@ use std::fmt;
 use std::ops::BitOr;
 
 /// The clients beside an entity's owner that receive a kind of its state
-/// (14-replication-audiences.md, Four recipients): its team's other players, the other teams'
+/// (10-replication-audiences.md, Four recipients): its team's other players, the other teams'
 /// players, and the links with no slot, each among those that hold the entity. The owner receives
 /// every kind but the server's, so no set names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

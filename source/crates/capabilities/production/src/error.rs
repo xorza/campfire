@@ -50,7 +50,7 @@ pub enum ProductionRefusal {
 }
 
 impl CapabilityRefusal for ProductionRefusal {
-    const OWNER: Capability = Capability::Production;
+    const CAPABILITY: Capability = Capability::Production;
     const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {

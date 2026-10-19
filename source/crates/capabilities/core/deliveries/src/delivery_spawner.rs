@@ -30,7 +30,7 @@ impl fmt::Debug for DeliverySpawner<'_, '_> {
 pub struct NewDelivery {
     pub source: StableId,
     pub unit_type: UnitType,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub id: Option<StableId>,
 }
 
@@ -47,7 +47,7 @@ impl DeliverySpawner<'_, '_> {
         let NewDelivery {
             source,
             unit_type,
-            pos,
+            position,
             id,
         } = delivery;
         let (&team, owner) = self
@@ -57,7 +57,7 @@ impl DeliverySpawner<'_, '_> {
         let id = id.unwrap_or_else(|| self.ids.allocate());
         let core = UnitCore {
             id,
-            pos,
+            position,
             unit_type,
             team,
             owner: owner.copied(),

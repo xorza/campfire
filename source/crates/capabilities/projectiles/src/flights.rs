@@ -98,7 +98,7 @@ impl Flights<'_> {
     /// stops on one, and at the end of its range. One on a curve flies as `curve` says.
     pub(crate) fn fly(&mut self, targets: &Targets<'_, '_>, aloft: Aloft<'_>) -> bool {
         match aloft.projectile.flight() {
-            Flight::Homing { target } => self.homing(targets, aloft, target),
+            Flight::Homing { target } => self.is_homing(targets, aloft, target),
             Flight::Curve {
                 from,
                 aimed,
@@ -131,7 +131,7 @@ impl Flights<'_> {
         }
     }
 
-    fn homing(&mut self, targets: &Targets<'_, '_>, aloft: Aloft<'_>, target: StableId) -> bool {
+    fn is_homing(&mut self, targets: &Targets<'_, '_>, aloft: Aloft<'_>, target: StableId) -> bool {
         let Aloft {
             id,
             team,
@@ -141,13 +141,13 @@ impl Flights<'_> {
             state,
         } = aloft;
         let fired = Fired { projectile, team };
-        let (flown, lost) = (state.flown(), state.lost());
+        let (flown, lost) = (state.flown(), state.is_lost());
         let from = *position;
         let Some(unit) = targets.living(target).filter(|_| !lost) else {
             let hit = Hit {
                 delivery: Some(id),
                 target: Some(target),
-                pos: from.get(),
+                position: from.get(),
                 distance: flown,
                 direction: None,
             };
@@ -155,13 +155,13 @@ impl Flights<'_> {
             return true;
         };
         let metric = targets.metric();
-        let moved = metric.step_toward(from.get(), unit.pos, spec.speed);
+        let moved = metric.step_toward(from.get(), unit.position, spec.speed);
         let offset = metric.offset(from.get(), moved);
         let flown = flown + offset.length();
         if !metric.reaches(
             Placed::new(moved, Shape::Circle(spec.half_width)),
             Num::ZERO,
-            Placed::new(unit.pos, unit.shape),
+            Placed::new(unit.position, unit.shape),
         ) {
             *position = Position::from(moved);
             state.fly_to(flown);
@@ -170,7 +170,7 @@ impl Flights<'_> {
         let hit = Hit {
             delivery: Some(id),
             target: Some(target),
-            pos: moved,
+            position: moved,
             distance: flown,
             direction: offset.normalized(),
         };
@@ -206,10 +206,10 @@ impl Flights<'_> {
         let flown = state.flown();
         let from = *position;
         let step = spec.speed.min(range - flown);
-        let line = |pos, distance| Hit {
+        let line = |position, distance| Hit {
             delivery: Some(id),
             target: aimed,
-            pos,
+            position,
             distance,
             direction: Some(direction),
         };
@@ -243,7 +243,7 @@ impl Flights<'_> {
                     return ControlFlow::Continue(());
                 }
                 if let Some(place) =
-                    metric.meets(from.get(), to, Placed::new(unit.pos, unit.shape), half)
+                    metric.meets(from.get(), to, Placed::new(unit.position, unit.shape), half)
                 {
                     met.push((place, unit.id));
                 }
@@ -257,8 +257,8 @@ impl Flights<'_> {
         for at in 0..self.met.len() {
             let (place, struck) = self.met[at];
             let travelled = place.min(step);
-            let pos = along(flown + travelled).expect("a point of a step within the bound");
-            let hit = line(pos, flown + travelled);
+            let position = along(flown + travelled).expect("a point of a step within the bound");
+            let hit = line(position, flown + travelled);
             self.struck.insert(Struck { by, id: struck });
             self.reach(fired, Reached::Hit(struck), hit);
             if spec.stop_on_hit {
@@ -312,10 +312,10 @@ impl Flights<'_> {
         };
         let shape = spec.curve.expect("a curve's type has a curve");
         let map = targets.map();
-        let hit = |pos, distance, direction| Hit {
+        let hit = |position, distance, direction| Hit {
             delivery: Some(id),
             target: aimed,
-            pos,
+            position,
             distance,
             direction,
         };

@@ -3,7 +3,7 @@
 //! the log frames its journal's records into a sink it is given.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
 mod bytes;
@@ -22,6 +22,9 @@ mod main_key;
 mod nsec;
 mod player_input;
 mod receipt;
+mod seat_change;
+mod seat_plan;
+mod seat_start;
 mod seed_chain;
 mod seed_commitment;
 mod server_input;
@@ -35,9 +38,6 @@ mod session_terms;
 mod signature;
 mod signed;
 mod signer;
-mod slot_change;
-mod slot_plan;
-mod slot_start;
 mod snapshot_fingerprint;
 mod spill;
 mod stamp_count;
@@ -67,6 +67,10 @@ pub use crate::nsec::error::NsecError;
 pub use crate::nsec::{MAX_NSEC_FILE_LEN, decode_nsec, encode_nsec};
 pub use crate::player_input::PlayerInput;
 pub use crate::receipt::{Receipt, SignedReceipt};
+pub use crate::seat_change::{SeatChange, SeatChangeKind, Taken};
+pub use crate::seat_plan::SeatPlan;
+pub use crate::seat_plan::error::NotSeatPlan;
+pub use crate::seat_start::SeatStart;
 pub use crate::seed_chain::SeedChain;
 pub use crate::seed_commitment::{SeedCommitment, SeedCommitmentMeaning};
 pub use crate::server_input::error::ServerInputDecodeError;
@@ -91,10 +95,6 @@ pub use crate::session_terms::SessionTerms;
 pub use crate::signature::Signature;
 pub use crate::signed::{SignatureDomain, Signed};
 pub use crate::signer::Signer;
-pub use crate::slot_change::{SlotChange, SlotChangeKind, Taken};
-pub use crate::slot_plan::SlotPlan;
-pub use crate::slot_plan::error::NotSlotPlan;
-pub use crate::slot_start::SlotStart;
 pub use crate::snapshot_fingerprint::{SnapshotFingerprint, SnapshotFingerprintMeaning};
 pub use crate::verifier::Verifier;
 

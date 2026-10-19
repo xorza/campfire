@@ -10,14 +10,14 @@ use campfire_common::ErrorReport;
 use campfire_common::ExitStatus;
 use campfire_mode::OptionValue;
 use campfire_net::{
-    ClientDir, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Os, Pace, ServerPin,
-    SlotBotFile,
+    ClientDir, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Os, Pace, SeatBotFile,
+    ServerPin,
 };
 use campfire_package::ModePackages;
 use campfire_quic::{LinkTimes, QuicEndpoint};
 use tracing::error;
 
-use crate::args::{Args, Server};
+use crate::command_line::{Args, Server};
 
 /// The server the client plays on, once it is open, with the client's data directory: a remote
 /// one, by its pin and its address, or a local one, running, its data in the directory. Dropped, a
@@ -41,7 +41,7 @@ pub(crate) enum Connection {
 struct LocalStart<'a> {
     data: &'a ClientDir,
     packages: &'a Arc<ModePackages>,
-    bots: &'a [SlotBotFile],
+    bots: &'a [SeatBotFile],
     options: &'a [OptionValue],
     pace: &'a Arc<Pace>,
 }
@@ -164,7 +164,7 @@ impl Connection {
         } = start;
         let slots = bots
             .iter()
-            .map(SlotBotFile::read)
+            .map(SeatBotFile::read)
             .collect::<Result<_, _>>()
             .map_err(|error| {
                 error!(error = %ErrorReport::of(&error), "a server bot's orders file does not read");

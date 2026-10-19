@@ -92,7 +92,7 @@ impl DataKind {
         !matches!(self, Self::Server)
     }
 
-    /// Who beside the owner receives this kind unless the mode says (14-replication-audiences.md,
+    /// Who beside the owner receives this kind unless the mode says (10-replication-audiences.md,
     /// Each kind has a default audience, and a mode may set it): every client that holds the entity
     /// for public state, the owner alone for its own; no one at all for the server's, which
     /// `is_sent` tells. Vision decides who holds a unit.
@@ -122,7 +122,7 @@ impl DataKind {
     }
 
     /// The recipients a mode, or its host, may add to this kind's audience or take from it
-    /// (14-replication-audiences.md, Each kind has a default audience, and a mode may set it); the
+    /// (10-replication-audiences.md, Each kind has a default audience, and a mode may set it); the
     /// others keep their place in `audience`. None for a kind vision alone decides, the owner's
     /// prediction, and the server's.
     pub const fn settable(self) -> Recipients {

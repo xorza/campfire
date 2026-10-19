@@ -6,8 +6,8 @@ use campfire_script::MatchNames;
 use crate::role::Role;
 
 /// Package data a module reads, which its builder makes from the packages before the match is
-/// built, and which the build puts in as its owner declares it, before its owner installs. The
-/// module that declares it is its owner, which the install knows.
+/// built, and which the build puts in as the module that declares it says, before that module
+/// installs, as the install knows the module.
 pub trait Book: Resource + Sized {
     /// Whether only a match that runs scripts reads it, so a client holds none.
     const SCRIPTS_ONLY: bool;
@@ -16,9 +16,9 @@ pub trait Book: Resource + Sized {
     /// read; a call part or a view column takes its book from the match as it begins.
     fn share(&self, names: &mut MatchNames);
 
-    /// Whether a match of `role`, which installs its owner, holds it: one that runs scripts, when
+    /// Whether a match of `role`, which installs its module, holds it: one that runs scripts, when
     /// only scripts read it.
-    fn held(role: &Role) -> bool {
+    fn is_held(role: &Role) -> bool {
         role.scripts() || !Self::SCRIPTS_ONLY
     }
 
@@ -49,7 +49,7 @@ pub(crate) mod internals {
         fn load_into(self, world: &mut World) {
             assert!(
                 world.contains_resource::<Self>(),
-                "{} is declared by its owner",
+                "{} is declared by its module",
                 type_name::<Self>()
             );
             let built = world.get_resource::<Schedules>();

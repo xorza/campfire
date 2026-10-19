@@ -31,7 +31,7 @@ const ANNOUNCEMENTS: usize = 0;
 const DATAGRAM: usize = 1500;
 
 /// A server's port, which its router forwards from outside, on a thread of its own
-/// (15-quic-transport.md, A server maps its own port): it maps the port by PCP or NAT-PMP at the
+/// (11-quic-transport.md, A server maps its own port): it maps the port by PCP or NAT-PMP at the
 /// default gateway, else by UPnP, renews the mapping, maps it anew when a renewal fails, and tries
 /// again while no router maps it, in 30 minutes, when a PCP refusal's lifetime ends, or at once
 /// when a router at an address not heard before announces itself, logging each change. Dropped, it

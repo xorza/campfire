@@ -2,12 +2,12 @@ use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::world::World;
 use campfire_actions::Actions;
 use campfire_capabilities::{Match, Order};
-use campfire_common::{DeclaredName, PlayerSlot};
+use campfire_common::{DeclaredName, Seat};
 use campfire_math::Vec3;
 use campfire_mode::Mode;
 use campfire_package::ModePackages;
 use campfire_runner::MatchBuild;
-use campfire_runner::internals::ArenaSpec;
+use campfire_runner::internals::ArenaSetup;
 use campfire_script::{ScriptFailure, ScriptFailures};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimWorld, StableId, TickRate};
@@ -59,7 +59,7 @@ impl Arena {
 
     /// The arena's match at `rate`, for `players` players, its map's vision `vision`.
     fn start_with(&self, rate: TickRate, players: u32, vision: VisionBook) -> Match {
-        let mut game = MatchBuild::arena(ArenaSpec {
+        let mut game = MatchBuild::arena(ArenaSetup {
             packages: &self.packages,
             rate,
             players,
@@ -69,17 +69,17 @@ impl Arena {
         game
     }
 
-    /// A unit of the mode's type `unit_type` and `team` at `pos`, with `parts`, spawned as the
+    /// A unit of the mode's type `unit_type` and `team` at `position`, with `parts`, spawned as the
     /// mode spawns one: with the parts its type's books give and its passive.
     pub fn spawn(
         &self,
         game: &mut World,
         unit_type: &str,
-        pos: Vec3,
+        position: Vec3,
         team: Team,
         parts: impl Bundle<Effect: NoBundleEffect>,
     ) -> StableId {
-        Mode::spawn_typed(game, unit_type, pos, team, parts)
+        Mode::spawn_typed(game, unit_type, position, team, parts)
     }
 
     /// The action `name` of the arena's package `package`.
@@ -114,10 +114,10 @@ impl Arena {
         game.insert_non_send(kept);
     }
 
-    /// Runs a tick of `game`, the arena's match, in which player `slot` orders each of `orders`.
-    pub fn tick(&self, game: &mut World, slot: u32, orders: &[Order]) {
+    /// Runs a tick of `game`, the arena's match, in which player `seat` orders each of `orders`.
+    pub fn tick(&self, game: &mut World, seat: u32, orders: &[Order]) {
         let payload = Order::payload(orders);
-        game.push_input(PlayerSlot::new(slot), &payload);
+        game.push_input(Seat::new(seat), &payload);
         self.step(game);
     }
 

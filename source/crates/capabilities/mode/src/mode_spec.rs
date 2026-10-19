@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use campfire_actions::ActionSlots;
-use campfire_common::{DeclaredName, PlayerSlot};
+use campfire_common::{DeclaredName, Seat};
 use campfire_declare::ByType;
 use campfire_script::Teams;
 use campfire_units::{BodyForm, ScriptBook};
@@ -67,9 +67,9 @@ pub struct SpecLoad<'a> {
 }
 
 impl ModeSpec {
-    /// The team of player `slot`; `None` for a slot the session does not have.
-    pub fn team_of(&self, slot: PlayerSlot) -> Option<Team> {
-        self.teams.of(slot)
+    /// The team of player `seat`; `None` for a seat the session does not have.
+    pub fn team_of(&self, seat: Seat) -> Option<Team> {
+        self.teams.of(seat)
     }
 
     /// The book of `setup`, for players the teams seat, with what `load` gives.
@@ -88,7 +88,7 @@ impl ModeSpec {
             placed,
             relations,
         } = start;
-        let seats = setup.teams.iter().map(|team| team.slots);
+        let seats = setup.teams.iter().map(|team| team.seats);
         let teams = Teams::new(teams, seats, setup.players)
             .expect("the session checked its players against the teams' slots");
         let mut spawned = ByType::default();

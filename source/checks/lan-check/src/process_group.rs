@@ -96,7 +96,7 @@ impl ProcessGroup {
 
     /// Stops each process that still runs, and waits for it; how many it stopped. A process it
     /// cannot stop does not keep it from the others: the error is the first such process's.
-    pub(crate) fn end(&mut self) -> Result<usize, CheckError> {
+    pub(crate) fn stop_all(&mut self) -> Result<usize, CheckError> {
         let mut stopped = 0;
         let mut failed = None;
         for (&process, child) in &mut self.running {
@@ -129,7 +129,7 @@ impl ProcessGroup {
 /// caller to tell; the run's own error, if any, is the one it reports.
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
-        if let Err(error) = self.end() {
+        if let Err(error) = self.stop_all() {
             error!(error = %ErrorReport::of(&error), "a process of the run could not be stopped");
         }
     }
@@ -189,16 +189,16 @@ mod tests {
         group.start(Process::Local, done);
         assert_eq!(group.try_wait(Process::Server).unwrap(), None);
         // One still runs: the group stops it, and waits for it; a second end stops none.
-        assert_eq!(group.end().unwrap(), 1);
+        assert_eq!(group.stop_all().unwrap(), 1);
         assert!(group.try_wait(Process::Server).unwrap().is_some());
-        assert_eq!(group.end().unwrap(), 0);
+        assert_eq!(group.stop_all().unwrap(), 0);
         // A replacement kills the process it replaces, so an end stops only the new one.
         let mut group = ProcessGroup::default();
         group.start(Process::Server, sleeper(true));
         group
             .replace(Process::Server, Process::ServerAgain, || Ok(sleeper(true)))
             .unwrap();
-        assert_eq!(group.end().unwrap(), 1);
+        assert_eq!(group.stop_all().unwrap(), 1);
         // How each ended, by its role: the one replaced stopped, the one that ran on overran.
         let mut group = ProcessGroup::default();
         group.start(Process::Server, sleeper(true));

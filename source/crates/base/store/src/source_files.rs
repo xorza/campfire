@@ -274,7 +274,7 @@ impl SourceFiles {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scratch::Scratch;
+    use crate::test_dir::TestDir;
 
     fn file(path: &str, text: &str) -> SourceFile {
         SourceFile {
@@ -286,13 +286,13 @@ mod tests {
 
     #[test]
     fn the_sources_are_each_rust_file_by_its_path_a_target_left_out() {
-        let scratch = Scratch::new();
-        scratch.write("src/b.rs", "b");
-        scratch.write("src/a/c.rs", "c");
-        scratch.write("src/notes.md", "");
-        scratch.write("target/built.rs", "");
+        let test_dir = TestDir::new();
+        test_dir.write("src/b.rs", "b");
+        test_dir.write("src/a/c.rs", "c");
+        test_dir.write("src/notes.md", "");
+        test_dir.write("target/built.rs", "");
         assert_eq!(
-            SourceFiles::under(scratch.root()),
+            SourceFiles::under(test_dir.root()),
             [file("src/a/c.rs", "c"), file("src/b.rs", "b")]
         );
         for path in ["src/tests.rs", "src/bench.rs", "src/a/tests/mod.rs"] {
@@ -364,27 +364,27 @@ mod tests {
         // file, by `internals`, and `fake` by `test`; `a.rs` gates `b`, its own child, and
         // `harness/mod.rs` its `checks` by `test`, which wins over the outer `internals`; `kept`
         // and `a` stay production code.
-        let scratch = Scratch::new();
+        let test_dir = TestDir::new();
         let gate = "#[cfg(feature = \"internals\")]";
         let test = "#[cfg(test)]";
-        scratch.write(
+        test_dir.write(
             "src/lib.rs",
             format!(
-                "mod a;\n{gate}\nmod harness;\n{gate}\npub(crate) mod scratch;\nmod kept;\n{test}\nmod fake;\n"
+                "mod a;\n{gate}\nmod harness;\n{gate}\npub(crate) mod test_dir;\nmod kept;\n{test}\nmod fake;\n"
             ),
         );
-        scratch.write(
+        test_dir.write(
             "src/harness/mod.rs",
             format!("mod arena;\n{test}\nmod checks;\n"),
         );
-        scratch.write("src/harness/arena.rs", "");
-        scratch.write("src/harness/checks.rs", "");
-        scratch.write("src/scratch.rs", "");
-        scratch.write("src/kept.rs", "");
-        scratch.write("src/fake.rs", "");
-        scratch.write("src/a.rs", format!("{gate}\nmod b;\n"));
-        scratch.write("src/a/b.rs", "");
-        let gates: Vec<(String, Option<Gate>)> = SourceFiles::under(scratch.root())
+        test_dir.write("src/harness/arena.rs", "");
+        test_dir.write("src/harness/checks.rs", "");
+        test_dir.write("src/test_dir.rs", "");
+        test_dir.write("src/kept.rs", "");
+        test_dir.write("src/fake.rs", "");
+        test_dir.write("src/a.rs", format!("{gate}\nmod b;\n"));
+        test_dir.write("src/a/b.rs", "");
+        let gates: Vec<(String, Option<Gate>)> = SourceFiles::under(test_dir.root())
             .into_iter()
             .map(|file| (file.path, file.gate))
             .collect();
@@ -398,7 +398,7 @@ mod tests {
             ("src/harness/mod.rs", internals),
             ("src/kept.rs", None),
             ("src/lib.rs", None),
-            ("src/scratch.rs", internals),
+            ("src/test_dir.rs", internals),
         ]
         .map(|(path, gate)| (path.to_owned(), gate));
         assert_eq!(gates, expected);

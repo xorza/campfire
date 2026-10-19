@@ -6,7 +6,7 @@ use crate::worker::worker_lock::WorkerLock;
 /// A worker that writes the newest value it is given: a value not yet written is replaced by a
 /// newer one, so a slow disk skips values and never queues them, and no caller waits for it. A
 /// failed write stops nothing, as each write is whole and the next value replaces the one that
-/// failed: the newest failure is kept for the owner to take once, through `take_failure` or
+/// failed: the newest failure is kept for the holder to take once, through `take_failure` or
 /// `close`, in place of one not taken yet, as a newer value replaces an older one. Closing or
 /// dropping the writer writes the value it holds, then ends the worker.
 #[derive(Debug)]
@@ -27,7 +27,7 @@ struct LatestShared<T, E> {
 struct Slot<T, E> {
     /// The newest value the worker has not taken yet.
     newest: Option<T>,
-    /// The newest failure the owner has not taken yet.
+    /// The newest failure the holder has not taken yet.
     failure: Option<E>,
     closing: bool,
 }
@@ -78,7 +78,7 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
 
     /// Closes the writer, as a drop does, once the worker wrote the value it held; the newest
     /// failure no `take_failure` took, if one.
-    pub fn close(self) -> Option<E> {
+    pub fn stop(self) -> Option<E> {
         let shared = Arc::clone(&self.shared);
         drop(self);
         shared.slot.lock().failure.take()

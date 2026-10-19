@@ -3,7 +3,7 @@ use std::slice;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, SlotKind, SlotsMut, SlotsMutItem, TimedSlots};
 use campfire_combat::Respawn;
-use campfire_common::{PlayerSlot, Ticks};
+use campfire_common::{Seat, Ticks};
 use campfire_declare::ByType;
 use campfire_math::Num;
 use campfire_players::{HeldOut, PlayersWorld};
@@ -23,9 +23,9 @@ use crate::timers::{TimerStart, Timers};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ModeEffect {
     Timer(TimerStart),
-    /// The end of every timer of the name that the script at `owner` set.
+    /// The end of every timer of the name that `script`, a place in the mode's list, set.
     CancelTimer {
-        owner: ListPlace,
+        script: ListPlace,
         name: TimerId,
     },
     End(MatchResult),
@@ -56,12 +56,12 @@ pub(crate) enum ModeEffect {
     },
     /// Holds `slot` out of play while `out`.
     SetOut {
-        slot: PlayerSlot,
+        seat: Seat,
         out: bool,
     },
     /// Sets `slot`'s bounty share, 0 or more, of a mode of a `[bounty]`.
     SetBountyShare {
-        slot: PlayerSlot,
+        seat: Seat,
         share: Num,
     },
     /// A save, at the end of the tick.
@@ -107,8 +107,8 @@ impl Effect for ModeEffect {
         let now = frame.now();
         match self {
             Self::Timer(start) => world.resource_mut::<Timers>().set(now, start),
-            Self::CancelTimer { owner, name } => {
-                world.resource_mut::<Timers>().cancel(owner, name);
+            Self::CancelTimer { script, name } => {
+                world.resource_mut::<Timers>().cancel(script, name);
             }
             Self::End(result) => {
                 let tick = world.resource::<SimTick>().start();
@@ -157,8 +157,8 @@ impl Effect for ModeEffect {
             Self::SetRelation { a, b, relation } => {
                 world.relations_mut().set_keeping_vision(a, b, relation);
             }
-            Self::SetOut { slot, out } => {
-                let player = world.player_entity(slot);
+            Self::SetOut { seat, out } => {
+                let player = world.player_entity(seat);
                 let mut player = world.entity_mut(player.expect("every slot has its entity"));
                 if out {
                     player.insert(HeldOut);
@@ -166,9 +166,9 @@ impl Effect for ModeEffect {
                     player.remove::<HeldOut>();
                 }
             }
-            Self::SetBountyShare { slot, share } => {
+            Self::SetBountyShare { seat, share } => {
                 let player = world
-                    .player_entity(slot)
+                    .player_entity(seat)
                     .expect("every slot has its entity");
                 world.entity_mut(player).insert(BountyShare(share));
             }

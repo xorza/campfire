@@ -1,7 +1,7 @@
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_script::{Ctx, HookSpec, ScriptRole, ScriptsWorld};
+use campfire_script::{Ctx, HookDecl, ScriptRole, ScriptsWorld};
 use campfire_sim::{DueUnit, Removals, SimTick, StableId};
 use campfire_units::{Dead, Due, TagBook, TagEffect};
 use campfire_values::{ModifierId, TagSet, UnitTags};
@@ -44,7 +44,7 @@ type Carriers<'w, 's> = Query<
 #[derive(Debug)]
 pub(crate) struct OnInterval;
 
-impl HookSpec for OnInterval {
+impl HookDecl for OnInterval {
     const NAME: &'static str = "on_interval";
     const ROLE: ScriptRole = ScriptRole::Modifier;
     const PARAMS: &'static [&'static str] = &["ctx", "m"];

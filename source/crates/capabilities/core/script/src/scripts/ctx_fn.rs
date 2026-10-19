@@ -7,7 +7,7 @@ use rhai::{Dynamic, Engine, NativeCallContext};
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::Checked;
-use crate::scripts::member_spec::{ArgKinds, MemberSpec};
+use crate::scripts::member_decl::{ArgKinds, MemberDecl};
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_arg::ScriptArg;
 use crate::scripts::script_output::ScriptOutput;
@@ -167,12 +167,12 @@ const fn numbers(flags: &[bool]) -> usize {
 /// arguments a spec records.
 fn args_of(names: &[Option<NameKind>], enums: &[Option<EngineEnum>]) -> ArgKinds {
     assert!(
-        names.len() <= MemberSpec::ARGS,
+        names.len() <= MemberDecl::ARGS,
         "a form takes at most the arguments a spec records"
     );
     let mut args = ArgKinds {
-        names: [None; MemberSpec::ARGS],
-        enums: [None; MemberSpec::ARGS],
+        names: [None; MemberDecl::ARGS],
+        enums: [None; MemberDecl::ARGS],
     };
     for (at, (&name, &taken)) in names.iter().zip(enums).enumerate() {
         args.names[at] = name;

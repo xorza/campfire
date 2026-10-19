@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_script::MatchNames;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnInsert};
@@ -10,22 +10,22 @@ use serde::{Deserialize, Serialize};
 
 use crate::unit_entity::UnitEntity;
 
-/// The player who controls a unit, by slot: the control relation (04-capabilities/00-overview.md,
+/// The player who controls a unit, by seat: the control relation (04-capabilities/00-overview.md,
 /// Control is a relation to units), which `orders` and, later, `character` read. A player may
 /// control many units, each of the player's team. Immutable, so a change of owner is a new one
-/// inserted, which every data filter follows (14-replication-audiences.md, An owner changes by an
-/// insert alone; 14-replication-audiences.md, A unit's owner is a player of its team).
+/// inserted, which every data filter follows (10-replication-audiences.md, An owner changes by an
+/// insert alone; 10-replication-audiences.md, A unit's owner is a player of its team).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 #[serde(transparent)]
-pub struct Owner(PlayerSlot);
+pub struct Owner(Seat);
 
 impl Owner {
-    pub const fn new(slot: PlayerSlot) -> Self {
-        Self(slot)
+    pub const fn new(seat: Seat) -> Self {
+        Self(seat)
     }
 
-    pub const fn slot(self) -> PlayerSlot {
+    pub const fn seat(self) -> Seat {
         self.0
     }
 }

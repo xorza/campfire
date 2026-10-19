@@ -49,22 +49,22 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     let mut log = two_ticks();
     // Player 0 has sent nothing; player 1's chain holds x and y, stamped 1 and 2, one input
     // of stamp 2 so far, and y is due in tick 2, its last spill.
-    let mut chain = InputChain::new(PlayerSlot::new(1), root(1));
+    let mut chain = InputChain::new(Seat::new(1), root(1));
     chain.extend(Tick::new(1), b"x");
     chain.extend(Tick::new(2), b"y");
-    let player = |slot, chain| Control::Player {
-        delegation: Box::new(delegation(slot)),
+    let player = |seat, chain| Control::Player {
+        delegation: Box::new(delegation(seat)),
         chain,
     };
     let expected = LogCarry {
-        slots: vec![
-            CarriedSlot {
-                control: player(0, InputChain::new(PlayerSlot::new(0), root(0))),
+        seats: vec![
+            CarriedSeat {
+                control: player(0, InputChain::new(Seat::new(0), root(0))),
                 leaver: None,
                 stamps: StampCount::default(),
                 spill: Spill::default(),
             },
-            CarriedSlot {
+            CarriedSeat {
                 control: player(1, chain),
                 leaver: None,
                 stamps: StampCount {
@@ -80,7 +80,7 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
         ],
         pending: vec![CarriedInput {
             tick: Tick::new(2),
-            slot: PlayerSlot::new(1),
+            seat: Seat::new(1),
             stamp: Tick::new(2),
             payload: b"y".to_vec(),
         }],
@@ -338,7 +338,7 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     let saved = encoded(&twin);
     let sealed: Vec<_> = log
         .seal_tick(Some(&mut journal))
-        .map(|input| (input.slot.get(), input.payload.to_vec()))
+        .map(|input| (input.seat.get(), input.payload.to_vec()))
         .collect();
     assert_eq!(sealed, [(1, b"y".to_vec())]);
     assert_eq!(seal(&mut twin), [(1, b"y".to_vec())]);
@@ -384,15 +384,15 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     z[0].submit_to(&mut log, &mut applied, Some(&mut journal))
         .unwrap();
     z[0].submit(&mut twin, &mut applied).unwrap();
-    let slot = PlayerSlot::new(0);
+    let seat = Seat::new(0);
     journal.advance_durable(written);
-    assert_eq!(journal.durable_head(slot), None);
+    assert_eq!(journal.durable_head(seat), None);
     journal.advance_durable(written + 1);
-    let Some(Controller::Player { chain, .. }) = log.controller(slot) else {
-        panic!("player 0 controls slot 0");
+    let Some(Controller::Player { chain, .. }) = log.controller(seat) else {
+        panic!("player 0 controls seat 0");
     };
     assert_eq!(
-        journal.durable_head(slot).map(|head| (head.seq, head.head)),
+        journal.durable_head(seat).map(|head| (head.seq, head.head)),
         Some((chain.next_seq() - 1, chain.head()))
     );
     // The journal publishes the log loaded and gone on, z once after the load: its twin's file.

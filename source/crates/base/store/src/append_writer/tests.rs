@@ -66,7 +66,7 @@ fn a_writer_whose_file_fails_reports_the_failure_once_and_keeps_nothing_after() 
         let writer = AppendWriter::start("failing", FailingFile { append, sync });
         let watch = writer.watch();
         writer.append(1, |out| out.extend_from_slice(b"lost"));
-        while !watch.settled() {
+        while !watch.is_settled() {
             thread::yield_now();
         }
         // Stopped, it takes no record more. The failure is taken once, through the watch after
@@ -91,7 +91,7 @@ fn a_writer_whose_file_fails_reports_the_failure_once_and_keeps_nothing_after() 
         assert_eq!(step, (append, sync, message.to_owned()));
         assert!(watch.take_failure().is_none());
         assert_eq!(watch.durable(), 0);
-        assert!(watch.settled());
+        assert!(watch.is_settled());
     }
 }
 
@@ -108,15 +108,15 @@ fn a_writer_is_settled_once_its_records_are_synced_and_a_slow_sync_is_seen() {
     };
     let writer = AppendWriter::start_bounded("gated", GatedFile { gate, entered }, bounds);
     let watch = writer.watch();
-    assert!(watch.settled());
+    assert!(watch.is_settled());
     writer.append(1, |out| out.extend_from_slice(b"held"));
-    assert!(!watch.settled());
+    assert!(!watch.is_settled());
     in_sync.recv().unwrap();
     sync.send(()).unwrap();
     while watch.durable() < 1 {
         thread::yield_now();
     }
-    assert!(watch.settled());
+    assert!(watch.is_settled());
     assert_eq!(watch.take_slow_sync(), None);
 
     // Held 300 ms from when the sync began, after the writer's clock started: slow, by at least
@@ -168,7 +168,7 @@ fn a_writer_fails_once_its_sync_hangs_or_its_records_wait_past_the_bound() {
             _ => panic!("{hung}: {failure:?}"),
         }
         // Stopped, it takes no record more, and the sync that returns late fails it no more.
-        assert!(watch.settled());
+        assert!(watch.is_settled());
         writer.append(1, |_| unreachable!("a stopped writer takes no record"));
         release.send(()).unwrap();
         assert!(writer.close().is_none());
@@ -181,21 +181,21 @@ fn a_writer_dropped_in_a_panic_returns_while_its_sync_does_not() {
     // The worker's sync waits for a word that comes only once the test saw the drop return.
     let (release, gate) = mpsc::channel();
     let (returned, dropped) = mpsc::channel();
-    let owner = thread::spawn(move || {
+    let holder = thread::spawn(move || {
         let _returned = SendOnDrop(returned);
         let (entered, in_sync) = mpsc::channel();
         let writer = AppendWriter::start("held", GatedFile { gate, entered });
         writer.append(1, |out| out.extend_from_slice(b"held"));
         in_sync.recv().unwrap();
         // A record that panics as it is written poisons the lock the drop takes.
-        writer.append(1, |_| panic!("the owner panics"));
+        writer.append(1, |_| panic!("the holder panics"));
     });
     dropped
         .recv_timeout(Duration::from_secs(10))
         .expect("the drop returns");
-    // The owner's panic is its own, and no other passed on, which would have aborted.
-    let payload = owner.join().unwrap_err();
-    assert_eq!(payload.downcast_ref::<&str>(), Some(&"the owner panics"));
+    // The holder's panic is its own, and no other passed on, which would have aborted.
+    let payload = holder.join().unwrap_err();
+    assert_eq!(payload.downcast_ref::<&str>(), Some(&"the holder panics"));
     drop(release);
 }
 

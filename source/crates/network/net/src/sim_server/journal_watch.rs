@@ -48,7 +48,7 @@ impl JournalWatch {
     }
 
     /// Hands the journal's sink the records the session's log took this frame, as one append,
-    /// so its writer wakes once for each frame (10-sessions.md, A record is encoded once).
+    /// so its writer wakes once for each frame (08-sessions.md, A record is encoded once).
     pub(crate) fn flush(mut session: ResMut<'_, Session>) {
         if let Some(journal) = session.journal_mut() {
             journal.flush();

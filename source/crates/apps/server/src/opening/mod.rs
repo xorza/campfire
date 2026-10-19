@@ -75,11 +75,11 @@ impl Opening {
             (SessionOpening::New(Box::new(lobby)), visibility)
         };
         let terms = session.terms();
-        let slots = u32::try_from(terms.slots.len()).expect("a session's slots fit u32");
-        let seats = slots
+        let seats = u32::try_from(terms.seats.len()).expect("a session's seats fit u32");
+        let seats = seats
             .checked_add(visibility.max_spectators())
             .expect("a session's seats fit u32");
-        let seats = NonZeroU32::new(seats).expect("the rules admit a session of a slot at least");
+        let seats = NonZeroU32::new(seats).expect("the rules admit a session of a seat at least");
         Ok(Self { session, seats })
     }
 
@@ -93,8 +93,8 @@ impl Opening {
         self.session.server()
     }
 
-    /// The seats of the session it starts: its slots and the most spectators it admits, which no
-    /// address of honest players passes in live connections (15-quic-transport.md, Limits for each
+    /// The seats of the session it starts: its seats and the most spectators it admits, which no
+    /// address of honest players passes in live connections (11-quic-transport.md, Limits for each
     /// address, from the session's seats).
     pub(crate) const fn seats(&self) -> NonZeroU32 {
         self.seats
@@ -128,7 +128,7 @@ impl Opening {
 
     /// An error when the host `asked` picks of the mode's options of `rules`, and they are not
     /// `journal`'s, the picks a waiting session's terms hold, which it restores with, as its map
-    /// is checked (10-sessions.md, A pick is given by its value).
+    /// is checked (08-sessions.md, A pick is given by its value).
     fn picks(
         rules: SessionRules<'_>,
         journal: &[u8],

@@ -13,8 +13,11 @@ impl GroundPoint {
         Self { x, z }
     }
 
-    /// The point of the ground plane under `pos`.
-    pub const fn under(pos: Vec3) -> Self {
-        Self { x: pos.x, z: pos.z }
+    /// The point of the ground plane under `position`.
+    pub const fn under(position: Vec3) -> Self {
+        Self {
+            x: position.x,
+            z: position.z,
+        }
     }
 }

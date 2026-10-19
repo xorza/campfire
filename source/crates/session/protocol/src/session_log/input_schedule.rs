@@ -1,7 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 
 use crate::input_rules::InputRules;
 use crate::session_log::applied::Applied;
@@ -9,7 +9,7 @@ use crate::session_log::log_entries::{Entry, LogEntries, Served};
 use crate::spill::Spill;
 
 /// When each logged input applies, by the session's input rules: the inputs still to apply,
-/// earliest first, those the tick last sealed applies, and where each slot's inputs spill to
+/// earliest first, those the tick last sealed applies, and where each seat's inputs spill to
 /// past a tick's max inputs. A replay drives it from the log's entries again, as they were
 /// logged.
 #[derive(Debug)]
@@ -19,29 +19,29 @@ pub(super) struct InputSchedule {
     pending: BinaryHeap<Reverse<Due>>,
     /// Indices of the inputs applied in the tick last sealed.
     due: Vec<u32>,
-    /// Each slot's spill, by slot. A spill counts its controller's inputs alone: a change of
-    /// controller starts it afresh, so in a bot's slot it counts the bot's.
+    /// Each seat's spill, by seat. A spill counts its controller's inputs alone: a change of
+    /// controller starts it afresh, so in a bot's seat it counts the bot's.
     spills: Vec<Spill>,
 }
 
-/// Orders the inputs of one tick by slot, then by when they were logged, which for one player is
+/// Orders the inputs of one tick by seat, then by when they were logged, which for one player is
 /// their chain's order, whatever order the players' inputs arrived in, so the host cannot choose
 /// who acts first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct Due {
     pub(super) tick: Tick,
-    pub(super) slot: PlayerSlot,
+    pub(super) seat: Seat,
     pub(super) index: u32,
 }
 
 impl InputSchedule {
-    /// The schedule of a session of `slots` slots and of `rules`, which holds no input.
-    pub(super) fn new(slots: usize, rules: InputRules) -> Self {
+    /// The schedule of a session of `seats` seats and of `rules`, which holds no input.
+    pub(super) fn new(seats: usize, rules: InputRules) -> Self {
         Self {
             rules,
             pending: BinaryHeap::new(),
             due: Vec::new(),
-            spills: vec![Spill::default(); slots],
+            spills: vec![Spill::default(); seats],
         }
     }
 
@@ -63,7 +63,7 @@ impl InputSchedule {
     }
 
     /// Queues the input `index` of `entries`, logged before `next`, for the tick it applies in,
-    /// and says when that is: what `applied` says, or later, past the ticks its slot's inputs
+    /// and says when that is: what `applied` says, or later, past the ticks its seat's inputs
     /// before it fill.
     pub(super) fn schedule(&mut self, entries: &LogEntries, index: u32, next: Tick) -> Applied {
         let input = entries.input(index);
@@ -71,27 +71,27 @@ impl InputSchedule {
         let Applied::At(earliest) = outcome else {
             return outcome;
         };
-        let slot = input.slot;
-        let tick = self.spills[slot.index()].take(earliest, self.rules.max_per_tick);
-        self.pending.push(Reverse(Due { tick, slot, index }));
+        let seat = input.seat;
+        let tick = self.spills[seat.index()].take(earliest, self.rules.max_per_tick);
+        self.pending.push(Reverse(Due { tick, seat, index }));
         Applied::At(tick)
     }
 
-    /// The tick a next input of `slot` that may apply from `next` on would apply in.
-    pub(super) fn place(&self, slot: PlayerSlot, next: Tick) -> Tick {
-        self.spills[slot.index()].place(next, self.rules.max_per_tick)
+    /// The tick a next input of `seat` that may apply from `next` on would apply in.
+    pub(super) fn place(&self, seat: Seat, next: Tick) -> Tick {
+        self.spills[seat.index()].place(next, self.rules.max_per_tick)
     }
 
-    /// The spill of `slot`.
-    pub(super) fn spill(&self, slot: PlayerSlot) -> Spill {
-        self.spills[slot.index()]
+    /// The spill of `seat`.
+    pub(super) fn spill(&self, seat: Seat) -> Spill {
+        self.spills[seat.index()]
     }
 
-    /// Drops the inputs of `slot` still to apply, and starts its spill afresh: its controller
+    /// Drops the inputs of `seat` still to apply, and starts its spill afresh: its controller
     /// changes.
-    pub(super) fn forget(&mut self, slot: PlayerSlot) {
-        self.pending.retain(|Reverse(due)| due.slot != slot);
-        self.spills[slot.index()] = Spill::default();
+    pub(super) fn forget(&mut self, seat: Seat) {
+        self.pending.retain(|Reverse(due)| due.seat != seat);
+        self.spills[seat.index()] = Spill::default();
     }
 
     /// Takes the inputs that apply in `tick`, which the schedule then gives as `due`.
@@ -105,13 +105,13 @@ impl InputSchedule {
         }
     }
 
-    /// The inputs the tick last sealed applies, by slot, then in the order logged.
+    /// The inputs the tick last sealed applies, by seat, then in the order logged.
     pub(super) fn due(&self) -> &[u32] {
         &self.due
     }
 
-    /// The schedule of `rules` at a boundary a checkpoint's carry records: each slot's spill, by
-    /// slot, and the inputs still to apply there.
+    /// The schedule of `rules` at a boundary a checkpoint's carry records: each seat's spill, by
+    /// seat, and the inputs still to apply there.
     pub(super) fn restored(
         rules: InputRules,
         spills: Vec<Spill>,
@@ -130,7 +130,7 @@ impl InputSchedule {
         self.pending.iter().map(|Reverse(due)| due.index).min()
     }
 
-    /// The inputs still to apply, earliest first, then by slot and in the order logged.
+    /// The inputs still to apply, earliest first, then by seat and in the order logged.
     pub(super) fn pending(&self) -> Vec<&Due> {
         let mut due: Vec<&Due> = self.pending.iter().map(|Reverse(due)| due).collect();
         due.sort_unstable();
@@ -150,7 +150,7 @@ impl InputSchedule {
                 Served::Bot { input } => {
                     self.schedule(entries, input, next);
                 }
-                Served::Join { slot, .. } | Served::Leave { slot, .. } => self.forget(slot),
+                Served::Join { seat, .. } | Served::Leave { seat, .. } => self.forget(seat),
                 Served::Renew { .. } | Served::Connected { .. } | Served::Disconnected { .. } => {}
             },
         }

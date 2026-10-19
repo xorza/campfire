@@ -181,19 +181,19 @@ impl fmt::Debug for HeldReader {
 pub(crate) mod internals {
     use campfire_package::PackageReader;
     use campfire_package_disk::{PackageDir, PackageWriter};
-    use campfire_store::internals::Scratch;
+    use campfire_store::internals::TestDir;
     use campfire_values::PackagePath;
 
     /// The package `dir` of `scratch`, written with `files`, as its client reads it.
-    pub(crate) fn package(scratch: &Scratch, dir: &str, files: &[(&str, &[u8])]) -> PackageReader {
-        let mut writer = PackageWriter::create(&scratch.path(dir)).unwrap();
+    pub(crate) fn package(test_dir: &TestDir, dir: &str, files: &[(&str, &[u8])]) -> PackageReader {
+        let mut writer = PackageWriter::create(&test_dir.path(dir)).unwrap();
         for (path, bytes) in files {
             writer
                 .write(PackagePath::parse(path).unwrap(), bytes)
                 .unwrap();
         }
         writer.finish().unwrap();
-        PackageDir::new(scratch.path(dir))
+        PackageDir::new(test_dir.path(dir))
             .files()
             .unwrap()
             .reader()

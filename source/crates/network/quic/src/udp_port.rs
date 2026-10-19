@@ -14,7 +14,7 @@ const WAKE: usize = 1;
 
 /// An endpoint's UDP socket, read and written in batches through `quinn-udp`, and the poller its
 /// thread waits on: for the socket to be readable, for a deadline, or for the app's wake
-/// (15-quic-transport.md, A thread for each endpoint, and no IO in the frame). The socket is
+/// (11-quic-transport.md, A thread for each endpoint, and no IO in the frame). The socket is
 /// non-blocking, as `quinn-udp` makes it.
 #[derive(Debug)]
 pub(crate) struct UdpPort {

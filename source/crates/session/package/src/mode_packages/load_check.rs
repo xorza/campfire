@@ -8,7 +8,7 @@ use campfire_declare::{
 };
 use campfire_mode::{ChoiceId, TimerId};
 use campfire_script::{
-    ApiOwner, ApiVersion, CtxMisuse, DataTable, EnumRecord, EnumString, Filter, Hook, MemberKind,
+    ApiHolder, ApiVersion, CtxMisuse, DataTable, EnumRecord, EnumString, Filter, Hook, MemberKind,
     MemberUse, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status, UnknownName,
 };
 use campfire_sim::{Capability, TickRate};
@@ -25,7 +25,7 @@ use crate::mode_packages::ModePackages;
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
 
-/// The checks at package load (08-script-api.md, Checks at package load), over a mode and every
+/// The checks at package load (06-script-api.md, Checks at package load), over a mode and every
 /// package it depends on: each section is of a capability the mode declares, the modules' rules
 /// of their data hold, every script is named by data and defines only hooks of its roles, every
 /// name a script uses is one the mode has, and every message data names is one its package's own
@@ -33,7 +33,7 @@ use crate::package_view::{PackageView, ViewKind};
 #[derive(Debug)]
 pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
-    /// The names the mode's packages declare, each kind as its owner builds it.
+    /// The names the mode's packages declare, each kind as its module builds it.
     names: &'a LoadNames,
     /// The script API of the release, which every name a script uses must be of.
     api: &'a ScriptApi,
@@ -155,8 +155,8 @@ impl<'a> LoadCheck<'a> {
             };
             if at != packages.list.mode().index() {
                 let own = script.facts.ctx_names.iter().find(|used| {
-                    let member = self.api.member(ApiOwner::CTX, &used.name);
-                    member.is_some_and(|member| member.spec.own_script)
+                    let member = self.api.member(ApiHolder::CTX, &used.name);
+                    member.is_some_and(|member| member.decl.own_script)
                 });
                 if let Some(used) = own {
                     return Err(fail(ScriptProblem::OwnScriptOnly(used.name.clone())));
@@ -287,27 +287,30 @@ impl<'a> LoadCheck<'a> {
                 let Some(hook) = self.hook(function, roles, api).map_err(fail)? else {
                     continue;
                 };
-                let owner = self.api.hook(hook).and_then(|status| status.capability);
-                if let Some(capability) = owner {
+                let capability = self.api.hook(hook).and_then(|status| status.capability);
+                if let Some(capability) = capability {
                     self.require(capability, &at)?;
                 }
             }
             for used in &facts.ctx_names {
-                let member = self.api.member(ApiOwner::CTX, &used.name).filter(|member| {
-                    member.spec.kind == used.kind
-                        && roles.iter().any(|&role| member.spec.roles.contains(role))
-                });
+                let member = self
+                    .api
+                    .member(ApiHolder::CTX, &used.name)
+                    .filter(|member| {
+                        member.decl.kind == used.kind
+                            && roles.iter().any(|&role| member.decl.roles.contains(role))
+                    });
                 let Some(member) = member else {
                     return Err(fail(ScriptProblem::UnknownCtx(used.name.clone())));
                 };
                 standing(&used.name, member.status, api).map_err(fail)?;
-                if !member.spec.has_form_of(used.args) {
+                if !member.decl.has_form_of(used.args) {
                     return Err(fail(ScriptProblem::Arity {
                         name: format!("ctx.{}", used.name),
                         args: used.args,
                     }));
                 }
-                if let Some(capability) = member.spec.capability {
+                if let Some(capability) = member.decl.capability {
                     self.require(capability, &at)?;
                 }
             }
@@ -346,7 +349,7 @@ impl<'a> LoadCheck<'a> {
                 return Err(fail(ScriptProblem::NameSwitch(member.clone())));
             }
             for compared in &facts.compared {
-                if compared.kind.scoped() {
+                if compared.kind.is_scoped() {
                     return Err(fail(ScriptProblem::ScopedCompare(compared.member.clone())));
                 }
                 let named = ScriptName {
@@ -451,13 +454,13 @@ impl<'a> LoadCheck<'a> {
         let mut problem = ScriptProblem::UnknownMember(name.to_owned());
         let mut undeclared = None;
         let named = self.api.members().iter().filter(|member| {
-            member.spec.owner != ApiOwner::CTX
-                && member.spec.name == name
-                && member.spec.kind == kind
+            member.decl.holder != ApiHolder::CTX
+                && member.decl.name == name
+                && member.decl.kind == kind
         });
         let mut handles = named
             .clone()
-            .filter(|member| member.spec.has_form_of(args))
+            .filter(|member| member.decl.has_form_of(args))
             .peekable();
         if handles.peek().is_none() && named.clone().next().is_some() {
             return Err(ScriptProblem::Arity {
@@ -470,7 +473,7 @@ impl<'a> LoadCheck<'a> {
                 problem = refused;
                 continue;
             }
-            match member.spec.capability {
+            match member.decl.capability {
                 Some(capability) if !self.packages.manifest.capabilities.contains(capability) => {
                     undeclared.get_or_insert(capability);
                 }
@@ -590,8 +593,8 @@ impl<'a> LoadCheck<'a> {
     ) -> Option<(&'static str, Capability)> {
         let declared = &packages.manifest.capabilities;
         keys.into_iter().find_map(|key| {
-            let owner = readers.owner(table, key);
-            let capability = owner.filter(|&capability| !declared.runs(Some(capability)))?;
+            let capability = readers.capability(table, key);
+            let capability = capability.filter(|&capability| !declared.runs(Some(capability)))?;
             Some((key, capability))
         })
     }

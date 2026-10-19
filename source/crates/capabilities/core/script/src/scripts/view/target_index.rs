@@ -47,7 +47,7 @@ impl TargetIndex {
         self.bodies.rebuild(targets.map(|(at, row)| Indexed {
             id: row.id,
             key: at,
-            body: Placed::new(row.pos, row.shape),
+            body: Placed::new(row.position, row.shape),
         }));
         self.indexed = true;
     }
@@ -99,7 +99,7 @@ impl TargetIndex {
         let reach = shape.bound().checked_add(radius).unwrap_or(Num::MAX);
         let metric = rows.metric();
         let from = Placed::new(from, shape);
-        bodies.visit_near(from.pos, reach, |entry| {
+        bodies.visit_near(from.position, reach, |entry| {
             let row = &rows.units()[entry.key];
             let relation = rows.relations().between(team, row.team);
             if metric.reaches(from, radius, entry.body)

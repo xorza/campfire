@@ -15,7 +15,7 @@ use crate::zero_hour::model_import::model_textures::ModelTextures;
 use crate::zero_hour::model_import::w3d_material::{
     self, KeyMaterial, MaterialKey, Source, Surface,
 };
-use crate::zero_hour::model_parts::{ModelParts, Part, PivotName};
+use crate::zero_hour::model_nodes::{LookSubObject, ModelNodes, PivotName};
 
 /// A model as it is built: its glTF, its materials by their keys, and the textures no archive
 /// holds.
@@ -46,7 +46,7 @@ impl ModelBuilder {
         sub_objects: &[&SubObject],
         meshes: &[Option<&W3dMesh>],
         textures: &ModelTextures,
-    ) -> Result<ModelParts, ModelError> {
+    ) -> Result<ModelNodes, ModelError> {
         if sub_objects
             .iter()
             .any(|sub| sub.pivot >= hierarchy.pivots.len())
@@ -69,7 +69,7 @@ impl ModelBuilder {
                 None => self.glb.document.scenes[0].nodes.push(at),
             }
         }
-        let mut parts = ModelParts {
+        let mut nodes = ModelNodes {
             sub_objects: Vec::new(),
             pivots: hierarchy
                 .pivots
@@ -82,7 +82,7 @@ impl ModelBuilder {
         };
         for (sub, mesh) in sub_objects.iter().zip(meshes) {
             let Some(mesh) = mesh else {
-                parts.sub_objects.push(Part {
+                nodes.sub_objects.push(LookSubObject {
                     name: sub.name.clone(),
                     pivot: sub.pivot,
                     drawn: false,
@@ -102,11 +102,11 @@ impl ModelBuilder {
             } else {
                 self.glb.document.nodes[sub.pivot].children.push(node);
             }
-            parts.sub_objects.push(Part {
+            nodes.sub_objects.push(LookSubObject {
                 name: sub.name.clone(),
                 pivot: sub.pivot,
                 drawn: true,
-                hidden: mesh.hidden(),
+                hidden: mesh.is_hidden(),
             });
         }
         // A default look hides nodes by name, so each names one node.
@@ -120,7 +120,7 @@ impl ModelBuilder {
         {
             return Err(ModelError::NodeName(twice.name.clone()));
         }
-        Ok(parts)
+        Ok(nodes)
     }
 
     /// A mesh alone: one node of it, at the scene's root.
@@ -128,7 +128,7 @@ impl ModelBuilder {
         &mut self,
         mesh: &W3dMesh,
         textures: &ModelTextures,
-    ) -> Result<ModelParts, ModelError> {
+    ) -> Result<ModelNodes, ModelError> {
         if mesh.bones.is_some() {
             return Err(ModelError::SkinAlone);
         }
@@ -139,12 +139,12 @@ impl ModelBuilder {
             ..Node::default()
         });
         self.glb.document.scenes[0].nodes.push(0);
-        Ok(ModelParts {
-            sub_objects: vec![Part {
+        Ok(ModelNodes {
+            sub_objects: vec![LookSubObject {
                 name: mesh.name.clone(),
                 pivot: 0,
                 drawn: true,
-                hidden: mesh.hidden(),
+                hidden: mesh.is_hidden(),
             }],
             pivots: Vec::new(),
         })
@@ -153,7 +153,7 @@ impl ModelBuilder {
     /// A glTF mesh of `mesh`: its vertices on glTF's axes, a skin's placed by each one's bone of
     /// `poses`; for each pass, one primitive for each texture, shader and vertex material its
     /// triangles draw, and for its detail stage one for each texture and shader that mixes it in,
-    /// each a layer over what is drawn before it, all of the same vertices (12-zero-hour.md, A W3D
+    /// each a layer over what is drawn before it, all of the same vertices (09-zero-hour.md, A W3D
     /// material becomes the one material).
     pub(super) fn mesh(
         &mut self,
@@ -196,7 +196,7 @@ impl ModelBuilder {
         for pass in &mesh.passes {
             let stage = pass.stage.as_ref();
             let lit =
-                (0..mesh.triangles.len()).any(|at| !mesh.shader(pass.shaders.get(at)).unlit());
+                (0..mesh.triangles.len()).any(|at| !mesh.shader(pass.shaders.get(at)).is_unlit());
             if pass.colors.is_some() && lit && !Self::colors_are_diffuse(mesh, pass) {
                 return Err(ModelError::VertexColors);
             }
@@ -226,12 +226,12 @@ impl ModelBuilder {
                         shader,
                         material: *mesh.material(material),
                     },
-                    two_sided: mesh.two_sided(),
+                    two_sided: mesh.is_two_sided(),
                     depth_bias,
                 };
                 let material = self.material(key)?;
                 let indices = self.glb.indices(&indices);
-                let color = color.filter(|_| !shader.unlit());
+                let color = color.filter(|_| !shader.is_unlit());
                 primitives.push(Primitive {
                     attributes: attributes(texcoord, color),
                     indices,
@@ -265,7 +265,7 @@ impl ModelBuilder {
                     team: Self::team_paint(mesh, false, texture, &surface),
                     surface,
                     source: Source::Detail { blend },
-                    two_sided: mesh.two_sided(),
+                    two_sided: mesh.is_two_sided(),
                     depth_bias,
                 };
                 let material = self.material(key)?;

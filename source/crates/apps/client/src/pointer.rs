@@ -10,7 +10,7 @@ use bevy::picking::pointer::PointerId;
 use bevy::transform::components::{GlobalTransform, Transform};
 use bevy::ui::Node;
 use bevy::window::{PrimaryWindow, Window};
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_sim::{StableId, Unpredicted};
 use campfire_units::{Dead, Owner};
 use campfire_values::Team;
@@ -55,13 +55,13 @@ type LivingUnits<'w, 's> = Query<
 pub(crate) struct Pointed {
     pub(crate) id: StableId,
     pub(crate) team: Team,
-    pub(crate) owner: Option<PlayerSlot>,
+    pub(crate) owner: Option<Seat>,
 }
 
 impl Pointer<'_, '_> {
     /// Whether the cursor is over a node of the UI, the shop panel or the inventory bar, which
     /// takes its clicks from the match.
-    pub(crate) fn over_ui(&self) -> bool {
+    pub(crate) fn is_over_ui(&self) -> bool {
         let hits = self.hovers.get(&PointerId::Mouse);
         hits.is_some_and(|hits| hits.keys().any(|&hit| self.nodes.contains(hit)))
     }
@@ -93,8 +93,8 @@ impl Pointer<'_, '_> {
 
     /// The living unit of the player's own under the cursor.
     pub(crate) fn own_unit_under(&self) -> Option<StableId> {
-        let slot = self.own.slot();
-        let unit = self.nearest(|unit| unit.owned_by(slot))?;
+        let seat = self.own.seat();
+        let unit = self.nearest(|unit| unit.owned_by(seat))?;
         Some(unit.id)
     }
 
@@ -111,7 +111,7 @@ impl Pointer<'_, '_> {
         let shown = self
             .drawn()
             .map(|(unit, at, _)| (unit, camera.world_to_viewport(place, at).ok()));
-        out.extend(shown_within(rect, self.own.slot(), shown));
+        out.extend(shown_within(rect, self.own.seat(), shown));
     }
 
     /// Of the living units, the one under the cursor that `keep` keeps, as `nearest_hit` picks.
@@ -128,7 +128,7 @@ impl Pointer<'_, '_> {
             let unit = Pointed {
                 id,
                 team,
-                owner: owner.map(|owner| owner.slot()),
+                owner: owner.map(|owner| owner.seat()),
             };
             Some((unit, transform.translation, *shape))
         })
@@ -136,24 +136,24 @@ impl Pointer<'_, '_> {
 }
 
 impl Pointed {
-    /// Whether the player of `slot` controls it; a client of no slot, a spectator's, controls no
+    /// Whether the player of `seat` controls it; a client of no slot, a spectator's, controls no
     /// unit.
-    fn owned_by(self, slot: Option<PlayerSlot>) -> bool {
-        slot.is_some() && self.owner == slot
+    fn owned_by(self, seat: Option<Seat>) -> bool {
+        seat.is_some() && self.owner == seat
     }
 }
 
 /// Of `units`, each with the point of the window its ground point shows at, if it shows, the
-/// stable ids of those the player of `slot` controls whose point lies within `rect`, edges
+/// stable ids of those the player of `seat` controls whose point lies within `rect`, edges
 /// included.
 fn shown_within(
     rect: Rect,
-    slot: Option<PlayerSlot>,
+    seat: Option<Seat>,
     units: impl Iterator<Item = (Pointed, Option<Vec2>)>,
 ) -> impl Iterator<Item = StableId> {
     units
         .filter(move |&(unit, shown)| {
-            unit.owned_by(slot) && shown.is_some_and(|shown| rect.contains(shown))
+            unit.owned_by(seat) && shown.is_some_and(|shown| rect.contains(shown))
         })
         .map(|(unit, _)| unit.id)
 }
@@ -296,8 +296,8 @@ mod tests {
     #[test]
     fn a_drag_selects_the_players_own_units_shown_within_its_rectangle() {
         let mut ids = IdAllocator::default();
-        let (own, other) = (PlayerSlot::new(0), PlayerSlot::new(1));
-        let mut unit = |owner: Option<PlayerSlot>| Pointed {
+        let (own, other) = (Seat::new(0), Seat::new(1));
+        let mut unit = |owner: Option<Seat>| Pointed {
             id: ids.allocate(),
             team: Team::new(0),
             owner,

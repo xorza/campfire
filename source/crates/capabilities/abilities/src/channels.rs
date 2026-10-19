@@ -8,7 +8,7 @@ use campfire_actions::{
 };
 use campfire_common::{Tick, Ticks};
 use campfire_script::{
-    CallStart, Ctx, Hook, HookSpec, ScriptBatch, ScriptRole, ScriptValue, ScriptsWorld, Unit,
+    CallStart, Ctx, Hook, HookDecl, ScriptBatch, ScriptRole, ScriptValue, ScriptsWorld, Unit,
 };
 use campfire_sim::{DueUnit, Keyed, Ordered, SimTick, StableId};
 use campfire_stats::{Held, HeldModifiers};
@@ -34,14 +34,14 @@ pub(crate) struct OnChannelTick;
 #[derive(Debug)]
 pub(crate) struct OnInterrupt;
 
-impl HookSpec for OnChannelTick {
+impl HookDecl for OnChannelTick {
     const NAME: &'static str = "on_channel_tick";
     const ROLE: ScriptRole = ScriptRole::Action;
     const PARAMS: &'static [&'static str] = &["ctx", "caster", "target"];
     type Args = (Ctx, Unit, ScriptValue);
 }
 
-impl HookSpec for OnInterrupt {
+impl HookDecl for OnInterrupt {
     const NAME: &'static str = "on_interrupt";
     const ROLE: ScriptRole = ScriptRole::Action;
     const PARAMS: &'static [&'static str] = &["ctx", "caster", "target"];
@@ -80,7 +80,7 @@ impl Channels {
         held.retain(|unit| {
             let runs = units
                 .get(unit.entity)
-                .is_ok_and(ActionProgress::channel_due);
+                .is_ok_and(ActionProgress::is_channel_due);
             if !runs {
                 indexes.forget_channel(unit.id);
             }
@@ -157,7 +157,7 @@ impl Channels {
     /// Runs the hook `H` of the channel `call` of `caster`, the unit of `entity`, of its action at
     /// its rank, as the action started, with the unit and the target, when the action's script
     /// defines it; a failed call applies nothing, and is recorded.
-    fn channel_call<H: HookSpec<Args = (Ctx, Unit, ScriptValue)>>(
+    fn channel_call<H: HookDecl<Args = (Ctx, Unit, ScriptValue)>>(
         batch: &mut ScriptBatch<'_>,
         now: Tick,
         caster: StableId,
@@ -172,7 +172,7 @@ impl Channels {
             rank,
         } = call;
         let world = batch.world();
-        let owner = world.get::<Owner>(entity).map(|owner| owner.slot());
+        let owner = world.get::<Owner>(entity).map(|owner| owner.seat());
         let book = world.resource::<ActionBook>();
         let action = book.get(id).expect("a channel's action is in the book");
         let (Some(script), Some(handle)) = (action.hook(hook), ctx.view().unit(caster)) else {
@@ -220,7 +220,7 @@ impl Channels {
                 indexes.forget_channel(id);
                 continue;
             };
-            if !progress.channel_due() {
+            if !progress.is_channel_due() {
                 indexes.forget_channel(id);
                 continue;
             }
@@ -232,7 +232,7 @@ impl Channels {
                 progress.cut_channel(dues);
             }
             progress.step_channel(now, tick, dues);
-            if !progress.channel_due() {
+            if !progress.is_channel_due() {
                 indexes.forget_channel(id);
             }
             held.0.extend(Self::channel_hold(&book, &progress, id));

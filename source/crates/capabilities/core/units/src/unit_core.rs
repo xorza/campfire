@@ -22,7 +22,7 @@ use crate::unit_states::UnitStates;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitCore {
     pub id: StableId,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub unit_type: UnitType,
     pub team: Team,
     pub owner: Option<Owner>,
@@ -48,7 +48,7 @@ impl UnitCore {
             .take(self.id, &mut states);
         let Self {
             id,
-            pos,
+            position,
             unit_type,
             team,
             owner,
@@ -67,7 +67,7 @@ impl UnitCore {
             writer.push(kind);
             writer.push_bundle(parts);
             writer.push(id);
-            writer.push(Position::from(pos));
+            writer.push(Position::from(position));
             writer.push(unit_type);
             writer.push(team);
             if let Some(owner) = owner {
@@ -78,7 +78,7 @@ impl UnitCore {
                 writer.push(Avatar);
             }
             let core = Some(SpawnCore {
-                pos,
+                position,
                 unit_type,
                 angle,
             });

@@ -13,7 +13,7 @@ pub struct Marker(Rc<MarkerInfo>);
 #[derive(Debug)]
 pub struct MarkerInfo {
     pub name: ScriptText,
-    pub pos: Option<Vec3>,
+    pub position: Option<Vec3>,
     pub team: Option<Team>,
     pub(crate) params: ScriptMap,
 }

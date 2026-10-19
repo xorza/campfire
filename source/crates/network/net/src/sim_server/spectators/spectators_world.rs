@@ -9,12 +9,12 @@ use crate::sim_server::spectators::Spectators;
 use crate::sim_server::viewer::Viewer;
 
 /// What the spectators module gives a world, for its own crate.
-pub(crate) trait SpectatorsWorldCrate {
+pub(crate) trait SpectatorsWorld {
     /// Tells each spectator's client the match's tick, as the match starts.
     fn start_spectators(&mut self);
 }
 
-impl SpectatorsWorldCrate for World {
+impl SpectatorsWorld for World {
     fn start_spectators(&mut self) {
         let mut viewers = self.query::<(Entity, &Viewer)>();
         let spectators: Vec<Entity> = viewers

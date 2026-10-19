@@ -39,7 +39,7 @@ use crate::view::file_material::{FileBlend, FileMaterial};
 use crate::view::float_num::FloatNum;
 use crate::view::ground_heights::GroundHeights;
 use crate::view::match_colors::{MatchColors, Paint};
-use crate::view::unit_looks::{LookModel, ModelParts, UnitLooks};
+use crate::view::unit_looks::{LookModel, LookNodes, UnitLooks};
 
 /// Draws units and the map's client objects with their packages' models: loads each unit type's
 /// models, each primitive in the file material of its glTF material and its extras, once for each
@@ -96,7 +96,7 @@ impl UnitModels {
         commands.insert_resource(UnitLooks::of(&origins, &data, &assets));
     }
 
-    /// Places each of the map's client objects (12-zero-hour.md, The multiplayer rule for client
+    /// Places each of the map's client objects (09-zero-hour.md, The multiplayer rule for client
     /// objects): a root on the ground at its point, at its height above the heightmap, turned by
     /// its angle as a placed unit is, and its look's models over it, each at its scale; a look the
     /// mode's package lacks is logged, and its object not drawn.
@@ -139,7 +139,7 @@ impl UnitModels {
     /// Where `object` stands: its ground point, its height above the ground `heights` gives
     /// there, 0 on a map with none, and turned by its angle about the vertical.
     fn placed(object: &ClientObject, heights: Option<&GroundHeights>) -> Transform {
-        let [x, z] = object.pos.map(FloatNum::float);
+        let [x, z] = object.position.map(FloatNum::float);
         let beneath = heights.map_or(0.0, |heights| heights.at(x, z));
         let y = beneath + object.height.float();
         let turn = Quat::from_rotation_y(object.angle.float().to_radians());
@@ -216,7 +216,7 @@ impl UnitModels {
     /// paint.
     fn dress(
         ready: On<'_, '_, WorldInstanceReady>,
-        models: Query<'_, '_, (&ModelParts, &Paint)>,
+        models: Query<'_, '_, (&LookNodes, &Paint)>,
         (children, names, meshes): (
             Query<'_, '_, &Children>,
             Query<'_, '_, &Name>,
@@ -226,7 +226,7 @@ impl UnitModels {
         colors: Res<'_, MatchColors>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Ok((parts, &paint)) = models.get(ready.entity) else {
+        let Ok((look_nodes, &paint)) = models.get(ready.entity) else {
             return;
         };
         let tag = colors.tag(paint);
@@ -239,7 +239,7 @@ impl UnitModels {
             entity: node,
             name: names.get(node).ok().map(Name::as_str),
         });
-        let Dressing { hidden, turret } = Dressing::of(parts, spawned);
+        let Dressing { hidden, turret } = Dressing::of(look_nodes, spawned);
         for node in hidden {
             commands.entity(node).insert(Visibility::Hidden);
         }
@@ -356,18 +356,18 @@ impl TurretNode {
 }
 
 impl Dressing {
-    /// The dressing of a model of `parts`, whose scene spawned `nodes`: each node of a name it
+    /// The dressing of a model of `look_nodes`, whose scene spawned `nodes`: each node of a name it
     /// hides, and the first node of its turret's name.
-    fn of<'a>(parts: &ModelParts, nodes: impl Iterator<Item = Node<'a>>) -> Self {
+    fn of<'a>(look_nodes: &LookNodes, nodes: impl Iterator<Item = Node<'a>>) -> Self {
         let mut dressing = Self::default();
         for node in nodes {
             if node
                 .name
-                .is_some_and(|name| parts.hide.iter().any(|hidden| hidden == name))
+                .is_some_and(|name| look_nodes.hide.iter().any(|hidden| hidden == name))
             {
                 dressing.hidden.push(node.entity);
             }
-            let turret = parts.turret.as_deref();
+            let turret = look_nodes.turret.as_deref();
             if dressing.turret.is_none() && node.name.is_some_and(|name| Some(name) == turret) {
                 dressing.turret = Some(node.entity);
             }
@@ -567,7 +567,7 @@ mod tests {
         // the package lacks.
         let object = |look: &str, x: i64, z: i64, height: i64, angle: i64| ClientObject {
             look: name(look),
-            pos: [Num::int(x), Num::int(z)],
+            position: [Num::int(x), Num::int(z)],
             height: Num::int(height),
             angle: Num::int(angle),
         };
@@ -587,7 +587,7 @@ mod tests {
         app.update();
         let world = app.world_mut();
         let mut roots = world.query_filtered::<(&Transform, &Children), With<StillObject>>();
-        let mut placed: Vec<(Transform, Vec<(Transform, ModelParts)>)> = roots
+        let mut placed: Vec<(Transform, Vec<(Transform, LookNodes)>)> = roots
             .iter(world)
             .map(|(transform, children)| {
                 let models = children
@@ -597,7 +597,7 @@ mod tests {
                         assert!(model.get::<WorldAssetRoot>().is_some());
                         (
                             *model.get::<Transform>().unwrap(),
-                            model.get::<ModelParts>().unwrap().clone(),
+                            model.get::<LookNodes>().unwrap().clone(),
                         )
                     })
                     .collect();
@@ -607,14 +607,14 @@ mod tests {
         placed.sort_by(|a, b| a.0.translation.x.total_cmp(&b.0.translation.x));
         // The bush at the ground's 4 m, unturned; the oak at 4 + 1 = 5 m, turned a quarter about
         // y; each model at its own scale, with the nodes its look hides; the ghost is none.
-        let parts = |hide: &[&str]| ModelParts {
+        let look_nodes = |hide: &[&str]| LookNodes {
             hide: hide.iter().map(|&node| node.to_owned()).collect(),
             turret: None,
         };
         let scaled = |scale: f32| Transform::from_scale(Vec3::splat(scale));
         assert_eq!(placed.len(), 2);
         assert_eq!(placed[0].0, Transform::from_xyz(0.0, 4.0, 0.0));
-        assert_eq!(placed[0].1, [(scaled(1.0), parts(&[]))]);
+        assert_eq!(placed[0].1, [(scaled(1.0), look_nodes(&[]))]);
         let oak = placed[1].0;
         assert_eq!(oak.translation, Vec3::new(3.0, 5.0, -2.0));
         assert!(
@@ -624,8 +624,8 @@ mod tests {
         assert_eq!(
             placed[1].1,
             [
-                (scaled(1.5), parts(&[])),
-                (scaled(1.0), parts(&["leaves.stump"]))
+                (scaled(1.5), look_nodes(&[])),
+                (scaled(1.0), look_nodes(&["leaves.stump"]))
             ]
         );
     }
@@ -635,7 +635,7 @@ mod tests {
         let mut world = World::new();
         let [turret, flash, hull, other] = [(); 4].map(|()| world.spawn_empty().id());
         // It hides the flash and a decal, and turns the turret.
-        let parts = ModelParts {
+        let look_nodes = LookNodes {
             hide: ["tank.decal".to_owned(), "tank.flash".to_owned()].into(),
             turret: Some("tank.turret".into()),
         };
@@ -647,16 +647,16 @@ mod tests {
             node(other, None),
         ];
         assert_eq!(
-            Dressing::of(&parts, nodes.into_iter()),
+            Dressing::of(&look_nodes, nodes.into_iter()),
             Dressing {
                 hidden: vec![flash],
                 turret: Some(turret),
             }
         );
         // A look of no turret turns none.
-        let still = ModelParts {
+        let still = LookNodes {
             turret: None,
-            ..parts
+            ..look_nodes
         };
         assert_eq!(Dressing::of(&still, nodes.into_iter()).turret, None);
     }

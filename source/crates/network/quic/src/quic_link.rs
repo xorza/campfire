@@ -10,7 +10,7 @@ use crate::peer::PeerKey;
 use crate::shared_endpoint::SharedEndpoint;
 
 /// The connection a link's entity carries: a `LinkOf` of a server, or a client's entity
-/// (15-quic-transport.md, A link's entity is its peer, not its address). Its removal or replacement
+/// (11-quic-transport.md, A link's entity is its peer, not its address). Its removal or replacement
 /// closes the connection, whatever removes it: an `Unlink`, the server's end, which despawns every
 /// `LinkOf` at once, or a despawn. It holds its endpoint weakly: the endpoint alone owns the
 /// socket, which its drop closes with every connection.

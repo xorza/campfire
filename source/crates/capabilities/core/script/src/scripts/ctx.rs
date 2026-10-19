@@ -6,7 +6,7 @@ use campfire_sim::StableId;
 use rhai::{Dynamic, NativeCallContext};
 
 use crate::script_host::ScriptHost;
-use crate::scripts::api_owner::{ApiOwner, ScriptHandle};
+use crate::scripts::api_holder::{ApiHolder, ScriptHandle};
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
 use crate::scripts::frame::effects::{Effect, EffectKind};
@@ -19,11 +19,11 @@ use crate::scripts::view::View;
 /// through it, its frame saying whose call it is. Effects apply only after the call returns
 /// successfully, in the order queued, so a failed call changes nothing.
 #[derive(Debug, Clone)]
-pub struct Ctx(Rc<CtxParts>);
+pub struct Ctx(Rc<CtxShared>);
 
 /// What every copy of a match's `ctx` shares.
 #[derive(Debug)]
-struct CtxParts {
+struct CtxShared {
     frame: RefCell<Frame>,
     view: View,
 }
@@ -36,7 +36,7 @@ pub struct Params(pub(crate) Ctx);
 
 impl Ctx {
     pub fn new(view: View) -> Self {
-        Self(Rc::new(CtxParts {
+        Self(Rc::new(CtxShared {
             frame: RefCell::default(),
             view,
         }))
@@ -63,7 +63,7 @@ impl Ctx {
     }
 
     /// The frame to change the match through, as `frame`; a pure hook's call fails, and so does
-    /// an AI's, which reads, orders and draws (08-script-api.md, An AI reads and orders).
+    /// an AI's, which reads, orders and draws (06-script-api.md, An AI reads and orders).
     pub fn write(&self) -> Checked<RefMut<'_, Frame>> {
         let frame = self.drawing()?;
         if frame.role() == Some(ScriptRole::Ai) {
@@ -75,7 +75,7 @@ impl Ctx {
     /// The frame to draw from, or to give an order through, as `frame`; a pure hook's call fails.
     pub(crate) fn drawing(&self) -> Checked<RefMut<'_, Frame>> {
         let frame = self.frame();
-        if frame.pure() {
+        if frame.is_pure() {
             return Err(ApiError::PureCall.fail().into());
         }
         Ok(frame)
@@ -124,10 +124,10 @@ impl Params {
     }
 }
 
-/// The owner of the calls and values of `ctx`.
+/// The holder of the calls and values of `ctx`.
 impl ScriptHandle for Ctx {
-    const NAME: &'static str = ApiOwner::CTX.name();
-    const TITLE: &'static str = ApiOwner::CTX.title();
+    const NAME: &'static str = ApiHolder::CTX.name();
+    const TITLE: &'static str = ApiHolder::CTX.title();
 }
 
 impl ScriptHandle for Params {

@@ -8,7 +8,7 @@ use campfire_units::EntityKinds;
 use serde::{Deserialize, Serialize};
 
 /// The entity of the match, of the named id `StableId::MATCH`, which holds the match's state that
-/// clients receive (14-replication-audiences.md, The match and each player are entities).
+/// clients receive (10-replication-audiences.md, The match and each player are entities).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable, on_add = EntityKinds::one)]
 pub struct MatchEntity;
@@ -27,7 +27,8 @@ impl SimComponent for MatchEntity {
     // An id not the match's would hide the match's state from where it is looked for; and an
     // entity is of one kind.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        world.get::<StableId>(entity) == Some(&StableId::MATCH) && EntityKinds::alone(world, entity)
+        world.get::<StableId>(entity) == Some(&StableId::MATCH)
+            && EntityKinds::is_alone(world, entity)
     }
 }
 

@@ -29,12 +29,12 @@ impl WallBook {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
-    /// Whether the inside of `body`, a box on `layer` at `pos`, shares a point with a wall of its
-    /// layer.
-    pub fn overlaps_box(&self, pos: Vec3, body: &BodyBox, layer: Layer) -> bool {
+    /// Whether the inside of `body`, a box on `layer` at `position`, shares a point with a wall of
+    /// its layer.
+    pub fn overlaps_box(&self, position: Vec3, body: &BodyBox, layer: Layer) -> bool {
         self.0
             .iter()
-            .any(|wall| wall.layer == layer && body.overlaps_polygon(pos, &wall.area))
+            .any(|wall| wall.layer == layer && body.overlaps_polygon(position, &wall.area))
     }
 }
 

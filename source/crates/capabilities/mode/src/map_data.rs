@@ -57,14 +57,14 @@ impl<'de> DeserializeSeed<'de> for MapSeed<'_> {
 }
 
 /// A unit that stands on the map from the start, of a team; turned by `angle` degrees if it has
-/// a box body; `height` meters above the ground beneath `pos`; on a path if it guards one, and
+/// a box body; `height` meters above the ground beneath `position`; on a path if it guards one, and
 /// walking it from the end `from` names if it walks one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlacedUnitData {
     pub unit_type: DeclaredName,
     pub team: DeclaredName,
-    pub pos: MapPoint,
+    pub position: MapPoint,
     #[serde(default, skip_serializing_if = "is_default")]
     pub angle: Num,
     #[serde(default, skip_serializing_if = "is_default")]
@@ -83,7 +83,7 @@ pub struct MarkerData {
     pub name: DeclaredName,
     pub tags: Vec<DeclaredName>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pos: Option<MapPoint>,
+    pub position: Option<MapPoint>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<RegionData>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -137,7 +137,7 @@ impl MapData {
 
     /// The place of `point`; an error unless it fits the map's metric and lies within its
     /// bounds.
-    pub(crate) fn pos(&self, point: &MapPoint) -> Result<Vec3, ModeError> {
+    pub(crate) fn position(&self, point: &MapPoint) -> Result<Vec3, ModeError> {
         point
             .place(self.metric(), self.bounds())
             .map_err(|error| match error {
@@ -151,12 +151,12 @@ impl MapData {
     /// error for a height on a spatial map, whose points hold their own, and for one past the
     /// world's bound.
     pub fn placed_at(&self, point: &MapPoint, height: Num) -> Result<Vec3, ModeError> {
-        let pos = self.pos(point)?;
+        let position = self.position(point)?;
         match self.metric() {
-            _ if height == Num::ZERO => Ok(pos),
+            _ if height == Num::ZERO => Ok(position),
             Metric::Spatial => Err(ModeError::SpatialHeight),
             Metric::Planar => {
-                let placed = Vec3::new(pos.x, height, pos.z);
+                let placed = Vec3::new(position.x, height, position.z);
                 Position::from(placed)
                     .within_bound()
                     .then_some(placed)
@@ -193,7 +193,7 @@ pub(crate) mod internals {
             Self {
                 name: name(marker),
                 tags: tags.iter().map(|&tag| name(tag)).collect(),
-                pos: Some(point),
+                position: Some(point),
                 region: None,
                 team: None,
                 params: BTreeMap::new(),
@@ -207,7 +207,7 @@ pub(crate) mod internals {
             Self {
                 unit_type: name(unit_type),
                 team: name(team),
-                pos: point,
+                position: point,
                 angle: Num::ZERO,
                 height: Num::ZERO,
                 path: None,
@@ -285,8 +285,8 @@ mod tests {
                 { name = "beat", points = [[1, 0, 1]], walk = "back_and_forth" },
             ]
             units = [
-                { unit_type = "creep", team = "red", pos = [1, 2, 3], angle = "22.5", height = 4, path = "lane", from = "end" },
-                { unit_type = "tower", team = "blue", pos = [-1, 0, -1] },
+                { unit_type = "creep", team = "red", position = [1, 2, 3], angle = "22.5", height = 4, path = "lane", from = "end" },
+                { unit_type = "tower", team = "blue", position = [-1, 0, -1] },
             ]
             markers = [{ name = "camp", tags = ["spawn"], region = { min = [0, 0, 0], max = [2, 2, 2] }, team = "red", params = { count = 3, kind = "wolf" } }]
         "#;
@@ -349,12 +349,12 @@ mod tests {
         let unit = PlacedUnitData::new("creep", "red", MapPoint::ground(1, 2));
         assert_eq!(
             Toml::write(&unit),
-            "unit_type = \"creep\"\nteam = \"red\"\npos = [\"1\", \"2\"]\n"
+            "unit_type = \"creep\"\nteam = \"red\"\nposition = [\"1\", \"2\"]\n"
         );
         let marker = MarkerData::tagged("w1", &["waypoint"], MapPoint::ground(0, 0));
         assert_eq!(
             Toml::write(&marker),
-            "name = \"w1\"\ntags = [\"waypoint\"]\npos = [\"0\", \"0\"]\n"
+            "name = \"w1\"\ntags = [\"waypoint\"]\nposition = [\"0\", \"0\"]\n"
         );
     }
 
@@ -366,20 +366,20 @@ mod tests {
             [[units]]
             unit_type = "rock"
             team = "neutral"
-            pos = [1, 2]
+            position = [1, 2]
             angle = "22.5"
             height = "-4.5"
             [[units]]
             unit_type = "rock"
             team = "neutral"
-            pos = [3, 2]
+            position = [3, 2]
             "#,
         )
         .unwrap();
-        let rock = |pos, angle, height| PlacedUnitData {
+        let rock = |position, angle, height| PlacedUnitData {
             angle,
             height,
-            ..PlacedUnitData::new("rock", "neutral", pos)
+            ..PlacedUnitData::new("rock", "neutral", position)
         };
         assert_eq!(
             map.units,

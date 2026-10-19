@@ -31,15 +31,15 @@ impl Shape {
         }
     }
 
-    /// The point of the shape at `pos` nearest `to` on the ground plane, at `pos`'s height: `to`
-    /// itself inside; a box's nearest point, each coordinate rounded to the nearest bit; a
-    /// circle's, a step of its radius from its center toward `to`, as a walker steps.
-    pub fn nearest_point(&self, pos: Vec3, to: Vec3) -> Vec3 {
-        let ground = Vec3::new(to.x, pos.y, to.z);
+    /// The point of the shape at `position` nearest `to` on the ground plane, at `position`'s
+    /// height: `to` itself inside; a box's nearest point, each coordinate rounded to the nearest
+    /// bit; a circle's, a step of its radius from its center toward `to`, as a walker steps.
+    pub fn nearest_point(&self, position: Vec3, to: Vec3) -> Vec3 {
+        let ground = Vec3::new(to.x, position.y, to.z);
         match self {
-            Self::Box(body) => body.nearest_point(pos, ground),
-            Self::Circle(radius) if pos.within_ground(ground, radius.get()) => ground,
-            Self::Circle(radius) => pos.step_toward(ground, radius.get()),
+            Self::Box(body) => body.nearest_point(position, ground),
+            Self::Circle(radius) if position.within_ground(ground, radius.get()) => ground,
+            Self::Circle(radius) => position.step_toward(ground, radius.get()),
         }
     }
 }

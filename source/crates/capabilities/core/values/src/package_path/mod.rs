@@ -15,7 +15,7 @@ impl PackagePath {
     /// `text` as a path in a package; `None` when it does not hold to the grammar.
     pub fn parse(text: &str) -> Option<Self> {
         text.split('/')
-            .all(Self::portable)
+            .all(Self::is_portable)
             .then(|| Self(text.to_owned()))
     }
 
@@ -24,7 +24,7 @@ impl PackagePath {
     /// in a dot or a space, which Windows drops, so neither `.` nor `..`; holding no character
     /// Windows refuses, of `REFUSED`; and no device name Windows reserves, with any extension and
     /// in any case.
-    fn portable(name: &str) -> bool {
+    fn is_portable(name: &str) -> bool {
         const REFUSED: [char; 8] = ['\\', ':', '*', '?', '"', '<', '>', '|'];
         const RESERVED: [&str; 24] = [
             "CON", "PRN", "AUX", "NUL", "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6",

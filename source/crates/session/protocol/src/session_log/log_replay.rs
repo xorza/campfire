@@ -3,16 +3,16 @@ use std::ops::Range;
 use campfire_common::Tick;
 
 use crate::player_input::PlayerInput;
+use crate::seat_change::SeatChange;
 use crate::session_log::SessionLog;
 use crate::session_log::input_schedule::InputSchedule;
-use crate::slot_change::SlotChange;
 
 /// A replay of a log's sealed ticks, from tick 0: the next tick it seals, a schedule of its own
-/// that the log's entries drive again, as they were logged, and the changes of a slot's
+/// that the log's entries drive again, as they were logged, and the changes of a seat's
 /// controller in the tick it sealed last. Its session owns it beside the log, which it reads at
 /// each tick and never holds, and drops it once it reaches the log's next tick, where the log's
 /// own schedule goes on live, so the log holds no replay of its own
-/// (10-sessions.md, The replay is a cursor the session owns).
+/// (08-sessions.md, The replay is a cursor the session owns).
 #[derive(Debug)]
 pub struct LogReplay {
     next: Tick,
@@ -36,7 +36,7 @@ impl LogReplay {
                     .expect("the log's base is a segment of it");
                 let boundary = start.boundary.as_ref().expect("a base has its boundary");
                 let record = start.checkpoint.as_ref().expect("a base has its record");
-                let spills = record.record.carry.slots.iter().map(|slot| slot.spill);
+                let spills = record.record.carry.seats.iter().map(|seat| seat.spill);
                 let pending = boundary.pending.iter().copied();
                 (
                     start.tick,
@@ -57,13 +57,13 @@ impl LogReplay {
     }
 
     /// Whether it reached `log`'s next tick, from where the log runs live.
-    pub fn done(&self, log: &SessionLog) -> bool {
+    pub fn is_done(&self, log: &SessionLog) -> bool {
         self.next == log.next_tick()
     }
 
     /// Seals its next tick, one `log` sealed, as the log sealed it when it took the tick's
-    /// entries: the inputs it applied, by slot, then in the order logged, which no check needs
-    /// again; `sealed_changes` then gives the changes of a slot's controller in it.
+    /// entries: the inputs it applied, by seat, then in the order logged, which no check needs
+    /// again; `sealed_changes` then gives the changes of a seat's controller in it.
     pub fn seal_tick<'l>(
         &mut self,
         log: &'l SessionLog,
@@ -84,8 +84,8 @@ impl LogReplay {
         }
     }
 
-    /// The changes of a slot's controller that apply in the tick it sealed last.
-    pub fn sealed_changes<'l>(&self, log: &'l SessionLog) -> &'l [SlotChange] {
+    /// The changes of a seat's controller that apply in the tick it sealed last.
+    pub fn sealed_changes<'l>(&self, log: &'l SessionLog) -> &'l [SeatChange] {
         &log.changes[self.sealed_changes.clone()]
     }
 
@@ -93,7 +93,7 @@ impl LogReplay {
     /// the inputs applied in it.
     fn seal(&mut self, log: &SessionLog) {
         debug_assert!(
-            !self.done(log),
+            !self.is_done(log),
             "a replay seals only the ticks the log sealed"
         );
         let tick = self.next;

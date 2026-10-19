@@ -7,7 +7,7 @@ language = "en"
 kind = "mode"
 capabilities = []
 tick_hz = { min = 30, max = 30, default = 30 }
-teams = [{ name = "player", slots = 1 }, { name = "neutral", slots = 0 }]
+teams = [{ name = "player", seats = 1 }, { name = "neutral", seats = 0 }]
 max_move_speed = "1.0"
 script_limits = { per_call = 1000, player = 1000, think = 1000, mode = 1000 }
 

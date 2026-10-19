@@ -24,7 +24,7 @@ impl<P: Plan> ScriptedMode<P> {
     /// A match at tick 0, after what the plan sends at the start.
     pub fn start(&self) -> FixedMatch {
         let mut fixed = self.session.start();
-        P::start(&mut fixed, &self.session.terms().slots);
+        P::start(&mut fixed, &self.session.terms().seats);
         fixed
     }
 

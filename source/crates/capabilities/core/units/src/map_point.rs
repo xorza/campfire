@@ -15,7 +15,7 @@ pub enum MapPoint {
 
 impl MapPoint {
     /// The place of the point, a ground point at height 0; `None` beyond the world's bound.
-    pub fn pos(self) -> Option<Vec3> {
+    pub fn position(self) -> Option<Vec3> {
         let [x, y, z] = match self {
             Self::Ground([x, z]) => [x, Num::ZERO, z],
             Self::Space(point) => point,
@@ -27,9 +27,9 @@ impl MapPoint {
     /// Its place on a map of `metric` and `bounds`; an error unless it fits the metric and lies
     /// within the bounds.
     pub fn place(self, metric: Metric, bounds: Bounds) -> Result<Vec3, MapPointError> {
-        match self.pos() {
+        match self.position() {
             _ if !self.fits(metric) => Err(MapPointError::Shape),
-            Some(pos) if bounds.contains(pos) => Ok(pos),
+            Some(position) if bounds.contains(position) => Ok(position),
             _ => Err(MapPointError::OutOfBounds),
         }
     }
@@ -67,13 +67,13 @@ mod tests {
         // A ground point stands at height 0; a meter past 2²⁰ m is past the world's bound, on any
         // axis.
         let beyond = (1 << 20) + 1;
-        for (point, pos) in [
+        for (point, position) in [
             (MapPoint::Ground([int(1), int(2)]), at(1, 0, 2)),
             (MapPoint::Space([int(1), int(3), int(2)]), at(1, 3, 2)),
             (MapPoint::Space([int(1), int(beyond), int(2)]), None),
             (MapPoint::Ground([int(beyond), int(2)]), None),
         ] {
-            assert_eq!(point.pos(), pos, "{point:?}");
+            assert_eq!(point.position(), position, "{point:?}");
         }
     }
 }

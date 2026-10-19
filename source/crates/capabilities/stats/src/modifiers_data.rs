@@ -7,7 +7,7 @@ use campfire_units::DeclaredTags;
 use campfire_values::{EngineTag, ModifierId, Named};
 use serde::Deserialize;
 
-use crate::error::ModifiersDataError;
+use crate::error::ModifierDataError;
 use crate::modifier_data::ModifierData;
 
 /// A package's `[modifiers]`: its modifiers, by id.
@@ -73,7 +73,7 @@ impl ModifiersData {
                 let mut tags = modifier.tags.iter();
                 if let Some(tag) = tags.find(|tag| EngineTag::named(engine, tag.as_str()).is_some())
                 {
-                    let problem = ModifiersDataError::EngineTag(tag.clone());
+                    let problem = ModifierDataError::EngineTag(tag.clone());
                     return Err(BookError::rule(package, at(), problem));
                 }
                 let aura = modifier.aura.as_ref().map(|aura| &aura.modifier);

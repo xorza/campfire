@@ -96,15 +96,15 @@ pub enum ApiError {
 #[derive(Debug, Clone, Copy, Error)]
 #[error("{message}")]
 pub struct Refusal {
-    owner: Capability,
+    capability: Capability,
     code: u8,
     message: &'static str,
 }
 
 impl Refusal {
-    pub(crate) const fn new(owner: Capability, code: u8, message: &'static str) -> Self {
+    pub(crate) const fn new(capability: Capability, code: u8, message: &'static str) -> Self {
         Self {
-            owner,
+            capability,
             code,
             message,
         }
@@ -113,7 +113,7 @@ impl Refusal {
 
 impl PartialEq for Refusal {
     fn eq(&self, other: &Self) -> bool {
-        (self.owner, self.code) == (other.owner, other.code)
+        (self.capability, self.code) == (other.capability, other.code)
     }
 }
 

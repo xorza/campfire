@@ -1,5 +1,5 @@
 use campfire_script::{
-    ApiBuilder, ApiOwner, MaybeName, MemberSpec, ScriptHandle, View, plain_script_arg,
+    ApiBuilder, ApiHolder, MaybeName, MemberDecl, ScriptHandle, View, plain_script_arg,
 };
 use campfire_values::ActionId;
 
@@ -20,7 +20,7 @@ impl HealHandle {
     /// The `Heal` handle's fields.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let field =
-            |name, description| MemberSpec::field(ApiOwner::of::<Self>(), name, description);
+            |name, description| MemberDecl::field(ApiHolder::of::<Self>(), name, description);
         api.ty::<Self>()
             .bind(
                 field("source", "the unit that gave it, `()` when gone or none"),
@@ -42,8 +42,8 @@ impl HealHandle {
                 |h: &mut Self| MaybeName::from(h.heal.action.map(|id| h.view.names().name(id))),
             )
             .method(
-                MemberSpec::method(
-                    ApiOwner::of::<Self>(),
+                MemberDecl::method(
+                    ApiHolder::of::<Self>(),
                     "is_action",
                     &[&["action"]],
                     "whether `action`, an action of the script's package, gave it",

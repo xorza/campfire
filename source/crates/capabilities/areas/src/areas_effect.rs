@@ -15,7 +15,7 @@ pub(crate) struct AreasEffect {
     pub id: Option<StableId>,
     pub(crate) by: Delivering,
     pub(crate) unit_type: UnitType,
-    pub pos: Vec3,
+    pub position: Vec3,
 }
 
 impl Effect for AreasEffect {
@@ -24,7 +24,7 @@ impl Effect for AreasEffect {
     /// Applies the effect: an area that lands this tick, at the point of the map's bounds nearest
     /// where it says.
     fn apply(self, world: &mut World, _: &mut Frame) {
-        let pos = world.resource::<MapBook>().bounds.clamp(self.pos);
-        Areas::push(world, self.by, self.unit_type, pos, None, self.id);
+        let position = world.resource::<MapBook>().bounds.clamp(self.position);
+        Areas::push(world, self.by, self.unit_type, position, None, self.id);
     }
 }

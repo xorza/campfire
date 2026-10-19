@@ -68,7 +68,7 @@ impl Routing {
             }
             let walker = Walker::walking(body);
             match destination.get() {
-                None if route.read().arrived_short() => {}
+                None if route.read().is_arrived_short() => {}
                 None => {
                     if route.goal().is_some() {
                         route.clear();
@@ -82,7 +82,7 @@ impl Routing {
                         [_] => Some(at.get()),
                         [] => None,
                     };
-                    let straight = from.filter(|_| route.reached() && route.asked().is_none());
+                    let straight = from.filter(|_| route.is_reached() && route.asked().is_none());
                     let blocks = |from| {
                         grid.as_ref().is_some_and(|grid| {
                             let walkable = Walkable::of(grid.clearance(walker), &statics);
@@ -143,7 +143,7 @@ impl Routing {
                 member: Member {
                     id,
                     entity,
-                    pos: at.get(),
+                    position: at.get(),
                     walker: Walker::walking(body),
                     goal: route.goal().expect("a unit that asked a route has a goal"),
                 },
@@ -160,7 +160,7 @@ impl Routing {
         asks.plan(search, &mut |member, waypoints, reached| {
             let units = units.get_mut(member.entity);
             let (.., mut route, _) = units.expect("a unit read this tick");
-            route.answer(member.pos, waypoints, reached);
+            route.answer(member.position, waypoints, reached);
             index.forget(member.id);
         });
     }

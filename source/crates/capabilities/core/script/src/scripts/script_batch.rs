@@ -6,7 +6,7 @@ use crate::script_host::{ScriptHost, ScriptId};
 use crate::scripts::call_start::{CallStart, Purity, Spent};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
-use crate::scripts::hook::{Hook, HookSpec};
+use crate::scripts::hook::{Hook, HookDecl};
 use crate::scripts::script_args::ScriptArgs;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
@@ -67,7 +67,7 @@ impl ScriptBatch<'_> {
 
     /// Calls the hook `H` of `script` with `args` in the running call, which writes, from the
     /// budget of its pool.
-    pub fn call<H: HookSpec>(
+    pub fn call<H: HookDecl>(
         &mut self,
         script: ScriptId,
         args: H::Args,
@@ -80,13 +80,13 @@ impl ScriptBatch<'_> {
 
     /// Calls the hook `H` of `script` with `args` in the running call, which is pure, from no
     /// pool: only the limit per call bounds it.
-    pub fn call_pure<H: HookSpec>(
+    pub fn call_pure<H: HookDecl>(
         &mut self,
         script: ScriptId,
         args: H::Args,
     ) -> Result<ScriptValue, CallError> {
         debug_assert!(
-            self.ctx.frame().pure(),
+            self.ctx.frame().is_pure(),
             "only a pure call draws from no pool"
         );
         call_in::<H>(self.host, &mut Budget::new(u64::MAX), script, args)
@@ -114,7 +114,7 @@ pub enum Answered<T> {
 }
 
 /// Calls the hook `H` of `script` with `args` on `host`, drawing from `budget`.
-fn call_in<H: HookSpec>(
+fn call_in<H: HookDecl>(
     host: &mut ScriptHost,
     budget: &mut Budget,
     script: ScriptId,

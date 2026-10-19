@@ -7,8 +7,8 @@ use crate::close_code::CloseCode;
 /// word, not only a close code, as an in-process link carries none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Dismissed {
-    /// A newer login of its player took the slot; tried again, the two logins would take the
-    /// slot in turn.
+    /// A newer login of its player took the seat; tried again, the two logins would take the
+    /// seat in turn.
     Superseded,
     /// The server refused its join, which the server's log names; a join again would meet the
     /// same refusal.

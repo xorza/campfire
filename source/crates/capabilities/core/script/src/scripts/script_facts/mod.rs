@@ -6,16 +6,16 @@ use rhai::{AST, ASTNode, Expr, FnCallExpr, ScriptFnMetadata, Stmt};
 
 use crate::script_host::ScriptHost;
 use crate::script_host::error::ScriptError;
-use crate::scripts::api_owner::ApiOwner;
+use crate::scripts::api_holder::ApiHolder;
 use crate::scripts::applies::Applies;
 use crate::scripts::error::CtxMisuse;
+use crate::scripts::member_decl::MemberDecl;
 use crate::scripts::member_kind::MemberKind;
-use crate::scripts::member_spec::MemberSpec;
 use crate::scripts::script_api::ScriptApi;
 use campfire_values::NameKind;
 
 /// The variable every script API call goes through, by the script API's convention
-/// (08-script-api.md, `ctx` stays visible).
+/// (06-script-api.md, `ctx` stays visible).
 const CTX: &str = "ctx";
 /// The function Rhai calls for `a in b`, `contains(b, a)`.
 const CONTAINS: &str = "contains";
@@ -275,9 +275,9 @@ impl ScriptFacts {
             kind: MemberKind::Call,
             args: args.len(),
         });
-        let member = api.member(ApiOwner::CTX, name);
+        let member = api.member(ApiHolder::CTX, name);
         let spec = member
-            .map(|member| &member.spec)
+            .map(|member| &member.decl)
             .filter(|spec| spec.kind == MemberKind::Call);
         self.read_args(spec, args);
     }
@@ -338,12 +338,12 @@ impl ScriptFacts {
     /// The literals of `args`, the arguments past its receiver of a call of the member `spec`,
     /// that its arguments mark: a name, a modifier's with how the call applies it, and a string
     /// an engine enum's argument is given.
-    fn read_args(&mut self, spec: Option<&MemberSpec>, args: &[Expr]) {
+    fn read_args(&mut self, spec: Option<&MemberDecl>, args: &[Expr]) {
         let Some(spec) = spec else {
             return;
         };
         let kinds = spec.args();
-        for (at, arg) in args.iter().enumerate().take(MemberSpec::ARGS) {
+        for (at, arg) in args.iter().enumerate().take(MemberDecl::ARGS) {
             let Some(literal) = string(arg) else {
                 continue;
             };
@@ -513,7 +513,7 @@ fn returned(ast: &AST, expr: &Expr, api: &ScriptApi) -> Option<Returned> {
         _ => return None,
     };
     let kind = if on_ctx {
-        api.member(ApiOwner::CTX, name)?.output?.names?
+        api.member(ApiHolder::CTX, name)?.output?.names?
     } else {
         api.returned(name, kind)?
     };

@@ -39,12 +39,12 @@ use lightyear::prelude::Linked;
 use lightyear::prelude::server::{RawServer, Start};
 use tracing::{error, info};
 
-use crate::args::{Args, CommandLine};
+use crate::command_line::{Args, CommandLine};
 use crate::error::StartError;
 use crate::opening::error::OpeningError;
 use crate::opening::{Opening, OpeningSetup, RestoreWindow};
 
-mod args;
+mod command_line;
 mod error;
 mod opening;
 
@@ -109,7 +109,7 @@ fn run() -> Result<ExitCode, StartError> {
     let journal = waiting.as_ref().map(|session| &session.terms().map);
     let map = Opening::map(journal, map).map_err(no_session)?;
     let packages = PackageDir::new(&mode).mode_packages(map.as_ref())?;
-    let bots = ServerBots::new(scripts.slots, scripts.takeover.as_ref(), &packages)?;
+    let bots = ServerBots::new(scripts.seats, scripts.takeover.as_ref(), &packages)?;
     let capabilities = packages.manifest().capabilities;
     let setup = OpeningSetup {
         data: &data,
@@ -134,7 +134,7 @@ fn run() -> Result<ExitCode, StartError> {
     app.world_mut().trigger(Start { entity: server });
     let exit = session.in_scope(|| app.run());
     // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP
-    // request's 10 s, which no client waits for (15-quic-transport.md, A server maps its own port).
+    // request's 10 s, which no client waits for (11-quic-transport.md, A server maps its own port).
     drop(app);
     drop(port_map);
     Ok(exit_code(exit))
@@ -178,7 +178,7 @@ fn open(
 /// The server's app: its plugins at the rate of the session of `opening`, that session, a
 /// `listening` event logged once its transport listens, and the end once every player left, or at
 /// a signal `stop` caught, with its code, the session left in its journal for the next start to
-/// restore (10-sessions.md, A stop is an exit, not a crash).
+/// restore (08-sessions.md, A stop is an exit, not a crash).
 fn server_app(
     opening: Opening,
     data: ServerDir,
@@ -207,7 +207,7 @@ fn server_app(
     app.add_systems(
         Update,
         (exit_when_due, move |world: &mut World| {
-            if stop.received() {
+            if stop.is_received() {
                 world.write_message(AppExit::from_code(ExitStatus::Interrupted.code()));
             }
         })
@@ -226,7 +226,7 @@ fn announce(opening: &Opening, mode: &Path, address: SocketAddr, tls_key: TlsKey
         info!(
             session = %terms.session_id(),
             %address,
-            players = terms.slots.len(),
+            players = terms.seats.len(),
             mode = %mode.display(),
             "opened a session"
         );

@@ -38,7 +38,7 @@ impl StopSignals {
     }
 
     /// Whether a stop's signal arrived.
-    pub fn received(&self) -> bool {
+    pub fn is_received(&self) -> bool {
         self.received.load(Ordering::SeqCst)
     }
 }
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn a_process_catches_the_stops_signals_once() {
         let caught = StopSignals::catch().unwrap();
-        assert!(!caught.received());
+        assert!(!caught.is_received());
         let again = panic::catch_unwind(StopSignals::catch).unwrap_err();
         let said = again.downcast_ref::<&str>().unwrap();
         assert_eq!(*said, "a process catches the stop's signals once");

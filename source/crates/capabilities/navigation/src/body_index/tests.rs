@@ -5,7 +5,7 @@ use super::*;
 fn body(id: StableId, x: i64, z: i64, radius: Num) -> IndexedBody {
     IndexedBody {
         id,
-        pos: Vec3::new(Num::int(x), Num::ZERO, Num::int(z)),
+        position: Vec3::new(Num::int(x), Num::ZERO, Num::int(z)),
         shape: Shape::Circle(Radius::new(radius).unwrap()),
         layer: Layer::FIRST,
     }
@@ -191,7 +191,7 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
         let expected: Vec<StableId> = bodies
             .iter()
             .filter(|body| {
-                let (at, bound) = (body.pos, body.shape.bound());
+                let (at, bound) = (body.position, body.shape.bound());
                 let cell = index.levels.cell(index.levels.level(bound));
                 let rows = Buckets::covering(cell, Num::int(z), reach);
                 let columns = Buckets::covering(cell, Num::int(x), reach);
@@ -221,7 +221,7 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
         };
         let reached = bodies
             .iter()
-            .any(|body| segment.comes_closer(body.pos, walker.radius + body.shape.bound()));
+            .any(|body| segment.comes_closer(body.position, walker.radius + body.shape.bound()));
         assert_eq!(index.blocks(segment, walker), reached, "({x}, {z})");
     }
 }
@@ -265,7 +265,7 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_closer_reach() {
         let at = Vec3::new(along(), Num::ZERO, along());
         scattered.push(IndexedBody {
             id: ids.allocate(),
-            pos: at,
+            position: at,
             shape: Shape::Circle(
                 Radius::new(Num::from_bits(next(3).cast_signed() * quarter)).unwrap(),
             ),
@@ -294,7 +294,7 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_closer_reach() {
         };
         let reached = bodies
             .iter()
-            .any(|body| segment.comes_closer(body.pos, walker.radius + body.shape.bound()));
+            .any(|body| segment.comes_closer(body.position, walker.radius + body.shape.bound()));
         assert_eq!(index.blocks(segment, walker), reached, "{from:?} {to:?}");
     }
 }
@@ -353,7 +353,7 @@ fn a_route_is_blocked_only_by_a_body_of_its_layer_the_last_update_put_in() {
     let mut ids = IdAllocator::default();
     let mut post = |x, z, layer| IndexedBody {
         id: ids.allocate(),
-        pos: Vec3::from((x, 0, z)),
+        position: Vec3::from((x, 0, z)),
         shape: Shape::Circle(Radius::new(Num::ONE).unwrap()),
         layer,
     };
@@ -373,9 +373,9 @@ fn a_route_is_blocked_only_by_a_body_of_its_layer_the_last_update_put_in() {
     ];
     let blocked = |index: &BodyIndex| legs.iter().any(|&leg| index.added_blocks(leg, walker));
     let mut index = BodyIndex::new(Num::ONE);
-    assert!(!index.filled());
+    assert!(!index.is_filled());
     index.update(&[far, touching, above]);
-    assert!(index.filled());
+    assert!(index.is_filled());
     assert!(!blocked(&index));
     // The near post put in blocks; once the next update puts nothing in, it stands and no longer
     // counts as put in, though `blocks` still finds it.

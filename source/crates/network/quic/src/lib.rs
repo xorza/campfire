@@ -1,4 +1,4 @@
-//! QUIC alone under Lightyear's `Link` (15-quic-transport.md): an endpoint driven by a thread of
+//! QUIC alone under Lightyear's `Link` (11-quic-transport.md): an endpoint driven by a thread of
 //! its own, whose connections carry each Lightyear packet as one DATAGRAM frame, a server that
 //! presents a raw Ed25519 key, and a client that takes the key it pinned and no other. It knows no
 //! game: `net` installs it.
@@ -47,13 +47,13 @@ pub use crate::quic_endpoint::{QuicEndpoint, ServerSocket};
 pub use crate::quic_plugin::QuicPlugin;
 
 /// The length of every connection id Campfire's endpoints give, which `LINK_MIN_MTU` counts
-/// (15-quic-transport.md, A link's minimum MTU is QUIC's datagram).
+/// (11-quic-transport.md, A link's minimum MTU is QUIC's datagram).
 const CID_LEN: usize = 8;
 
 /// The minimum MTU of every Campfire link, which both its ends' fragments take: the largest
 /// DATAGRAM frame on QUIC's minimum path of 1,200 bytes, less a short header of one byte, the
 /// connection id and a packet number of at most 4 bytes, an AEAD tag of 16, and the frame's type
-/// and largest length varint (15-quic-transport.md, A link's minimum MTU is QUIC's datagram).
+/// and largest length varint (11-quic-transport.md, A link's minimum MTU is QUIC's datagram).
 pub const LINK_MIN_MTU: usize = 1200 - (1 + CID_LEN + 4 + 16) - (1 + 8);
 
 #[cfg(feature = "internals")]

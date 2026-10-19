@@ -42,7 +42,7 @@ impl Aiming {
             let aim = progress
                 .attack_target()
                 .and_then(|target| targets.living(target))
-                .and_then(|target| TurretAngle::toward(facing, position.get(), target.pos));
+                .and_then(|target| TurretAngle::toward(facing, position.get(), target.position));
             let turned = match aim {
                 Some(aim) => angle.turned(aim, turret.turn),
                 None => angle.turned(TurretAngle::REST, turret.rest),

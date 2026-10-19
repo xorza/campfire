@@ -20,10 +20,10 @@ use crate::tick_rate::TickRate;
 use campfire_common::SegmentSeed;
 
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize)]
-struct Health(Num);
+struct Life(Num);
 
-impl SimComponent for Health {
-    const NAME: &'static str = "test.health";
+impl SimComponent for Life {
+    const NAME: &'static str = "test.life";
     type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
@@ -38,9 +38,9 @@ impl SimComponent for Position {
     const NAME: &'static str = "test.position";
     type Host = OnAny;
 
-    /// The tests' rule, which reads another type: a unit that stands somewhere has health.
+    /// The tests' rule, which reads another type: a unit that stands somewhere has life.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        world.get::<Health>(entity).is_some()
+        world.get::<Life>(entity).is_some()
     }
 }
 
@@ -63,7 +63,7 @@ fn registry() -> StateRegistry {
 fn types() -> StateRegistryBuilder {
     let mut types = StateRegistry::builder();
     types.register_component::<Position>();
-    types.register_component::<Health>();
+    types.register_component::<Life>();
     types
 }
 
@@ -71,8 +71,8 @@ fn allocate(world: &mut World) -> StableId {
     world.resource_mut::<IdAllocator>().allocate()
 }
 
-fn health(value: i64) -> Health {
-    Health(Num::from_int(value).unwrap())
+fn life(value: i64) -> Life {
+    Life(Num::from_int(value).unwrap())
 }
 
 fn position(x: i64) -> Position {
@@ -99,8 +99,8 @@ fn plain_world() -> World {
     let mut world = new_world();
     let first = allocate(&mut world);
     let second = allocate(&mut world);
-    world.spawn((first, health(10), position(1)));
-    world.spawn((second, health(20)));
+    world.spawn((first, life(10), position(1)));
+    world.spawn((second, life(20)));
     world
 }
 
@@ -111,8 +111,8 @@ fn shuffled_world() -> World {
     world.spawn(Replicated);
     let first = allocate(&mut world);
     let second = allocate(&mut world);
-    world.spawn(second).insert(health(20));
-    world.spawn(first).insert(position(1)).insert(health(10));
+    world.spawn(second).insert(life(20));
+    world.spawn(first).insert(position(1)).insert(life(10));
     world
 }
 
@@ -121,14 +121,14 @@ fn varied_world() -> World {
     let mut world = plain_world();
     world.insert_resource(SimTick::new(Tick::new(7)));
     let gone = allocate(&mut world);
-    let gone = world.spawn((gone, health(5))).id();
+    let gone = world.spawn((gone, life(5))).id();
     world.despawn(gone);
     let bare = allocate(&mut world);
     world.spawn((bare, Replicated));
     let extreme = allocate(&mut world);
     world.spawn((
         extreme,
-        Health(Num::MIN),
+        Life(Num::MIN),
         Position(Vec3::new(Num::MAX, Num::MIN, Num::EPSILON)),
     ));
     world
@@ -176,7 +176,7 @@ fn types_hash_in_name_order() {
             "sim.id_allocator",
             "sim.position",
             "sim.tick",
-            "test.health",
+            "test.life",
             "test.position"
         ]
     );
@@ -197,8 +197,8 @@ fn one_changed_field_changes_only_its_type() {
     let mut world = shuffled_world();
     let before = by_type(&world);
     let entity = world.resource::<EntityIndex>().iter().next().unwrap().1;
-    world.get_mut::<Health>(entity).unwrap().0 += Num::EPSILON;
-    assert_eq!(changed_types(&before, &by_type(&world)), ["test.health"]);
+    world.get_mut::<Life>(entity).unwrap().0 += Num::EPSILON;
+    assert_eq!(changed_types(&before, &by_type(&world)), ["test.life"]);
 }
 
 #[test]
@@ -309,7 +309,7 @@ fn corruption_never_panics_and_what_restores_snapshots_to_the_same_bytes() {
     }
 }
 
-/// The error of a position on an entity with no health, of the first id.
+/// The error of a position on an entity with no life, of the first id.
 const UNHEALTHY: SnapshotError = SnapshotError::Invalid {
     ty: "test.position",
     id: Some(StableId::new(0)),
@@ -320,7 +320,7 @@ fn flawed_snapshots_are_refused() {
     let names = [
         "sim.entities",
         "sim.id_allocator",
-        "test.health",
+        "test.life",
         "test.position",
     ];
     // Sim positions and the tick play no part in these flaws: every case has none and tick 0.
@@ -354,7 +354,7 @@ fn flawed_snapshots_are_refused() {
             with([
                 encoded(&[0_u64]),
                 allocator(2),
-                encoded(&[(1_u64, health(1))]),
+                encoded(&[(1_u64, life(1))]),
                 Vec::new(),
             ]),
             SnapshotError::UnknownEntity,
@@ -429,13 +429,13 @@ fn flawed_snapshots_are_refused() {
     }
 }
 
-/// The kind of entity in the host tests: one with health.
+/// The kind of entity in the host tests: one with life.
 #[derive(Debug)]
 struct Healthy;
 
 impl HostRule for Healthy {
     fn holds(world: &World, entity: Entity) -> bool {
-        world.get::<Health>(entity).is_some()
+        world.get::<Life>(entity).is_some()
     }
 
     fn kinds(kinds: &mut Vec<TypeId>) -> bool {
@@ -470,7 +470,7 @@ impl SimComponent for Mark {
 
 #[test]
 fn a_value_off_its_kind_or_without_a_part_its_holder_needs_fails_its_restore() {
-    // Armor sits on an entity with health alone, its own `Host`; a mark too, as `host` says of a
+    // Armor sits on an entity with life alone, its own `Host`; a mark too, as `host` says of a
     // type whose own host is any; and armor needs a position beside it.
     let mut hosts = types();
     hosts.register_component::<Armor>();
@@ -497,7 +497,7 @@ fn a_value_off_its_kind_or_without_a_part_its_holder_needs_fails_its_restore() {
     let id = StableId::new(0);
     assert_eq!(
         restores(|world, id| {
-            world.spawn((id, health(1), position(0), Armor, Mark));
+            world.spawn((id, life(1), position(0), Armor, Mark));
         }),
         None
     );
@@ -512,7 +512,7 @@ fn a_value_off_its_kind_or_without_a_part_its_holder_needs_fails_its_restore() {
     );
     assert_eq!(
         restores(|world, id| {
-            world.spawn((id, health(1), Armor));
+            world.spawn((id, life(1), Armor));
         }),
         Some(SnapshotError::Lacks {
             holder: Armor::NAME,
@@ -535,7 +535,7 @@ fn a_value_off_its_kind_or_without_a_part_its_holder_needs_fails_its_restore() {
         let mut world = new_world();
         world.init_resource::<SimTick>();
         let id = allocate(&mut world);
-        world.spawn((id, health(1), position(0), Armor));
+        world.spawn((id, life(1), position(0), Armor));
         let mut bytes = Vec::new();
         ruled.snapshot(&world, &mut bytes);
         ruled.restore(&bytes, &mut World::new()).err()
@@ -620,7 +620,7 @@ fn assert_hashed_as_encoded<T: Serialize>(value: &T) {
     Binary::encode_to(value, &mut sink);
     assert_eq!(
         sink.finish(),
-        PartHash::new(*blake3::hash(&Binary::encode(value)).as_bytes())
+        StateTypeHash::new(*blake3::hash(&Binary::encode(value)).as_bytes())
     );
 }
 
@@ -635,10 +635,10 @@ fn a_hash_sink_takes_a_values_encoding_as_its_bytes() {
 }
 
 #[test]
-#[should_panic(expected = "state type \"test.health\" registered twice")]
+#[should_panic(expected = "state type \"test.life\" registered twice")]
 fn duplicate_names_are_refused() {
     let mut registry = types();
-    registry.register_component::<Health>();
+    registry.register_component::<Life>();
 }
 
 #[test]
@@ -656,7 +656,7 @@ fn a_type_registered_once_its_world_tracks_its_changes_is_refused() {
     .build();
     world.track(&mut StateDelta::default());
     SimWorldBuilder::reopen(&mut world)
-        .parts()
+        .fields()
         .registry
         .register_component::<Clock>();
 }
@@ -759,18 +759,18 @@ fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
 
     // One value changed: that value alone.
     let changed = following.step(|world| {
-        world.get_mut::<Health>(entity(world, first)).unwrap().0 = Num::from_int(11).unwrap();
+        world.get_mut::<Life>(entity(world, first)).unwrap().0 = Num::from_int(11).unwrap();
     });
-    let health_11 = ("test.health", encoded(&[(first, Some(health(11)))]));
+    let health_11 = ("test.life", encoded(&[(first, Some(life(11)))]));
     assert_eq!(changed, (vec![], vec![], vec![absent.clone(), health_11]));
 
     // A new entity: its id, the allocator, and each of its values.
     let third = StableId::new(2);
     let spawned = following.step(|world| {
         let id = allocate(world);
-        world.spawn((id, health(30)));
+        world.spawn((id, life(30)));
     });
-    let health_30 = ("test.health", encoded(&[(third, Some(health(30)))]));
+    let health_30 = ("test.life", encoded(&[(third, Some(life(30)))]));
     assert_eq!(
         spawned,
         (
@@ -795,13 +795,13 @@ fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
     // the allocator, and the value put back.
     let back = following.step(|world| {
         let id = allocate(world);
-        let gone = world.spawn((id, health(40))).id();
+        let gone = world.spawn((id, life(40))).id();
         world.despawn(gone);
         let third = entity(world, third);
-        world.entity_mut(third).remove::<Health>();
-        world.entity_mut(third).insert(health(31));
+        world.entity_mut(third).remove::<Life>();
+        world.entity_mut(third).insert(life(31));
     });
-    let health_31 = ("test.health", encoded(&[(third, Some(health(31)))]));
+    let health_31 = ("test.life", encoded(&[(third, Some(life(31)))]));
     assert_eq!(
         back,
         (
@@ -817,7 +817,7 @@ fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
         let id = allocate(world);
         world.entity_mut(entity(world, third)).insert(id);
     });
-    let moved = ("test.health", encoded(&[(fifth, Some(health(31)))]));
+    let moved = ("test.life", encoded(&[(fifth, Some(life(31)))]));
     assert_eq!(
         renamed,
         (
@@ -832,9 +832,9 @@ fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
     let hidden = following.step(|world| {
         let fifth = entity(world, fifth);
         world.entity_mut(fifth).insert(Unpredicted);
-        world.get_mut::<Health>(fifth).unwrap().0 = Num::from_int(32).unwrap();
+        world.get_mut::<Life>(fifth).unwrap().0 = Num::from_int(32).unwrap();
     });
-    let health_32 = ("test.health", encoded(&[(fifth, Some(health(32)))]));
+    let health_32 = ("test.life", encoded(&[(fifth, Some(life(32)))]));
     assert_eq!(hidden, (vec![], vec![], vec![absent.clone(), health_32]));
     // A lookup by id finds it, one that honors the filters does not; a plain entity both find,
     // and a despawned one neither.
@@ -874,7 +874,7 @@ fn a_copy_takes_every_value_after_a_tick_check_finds_the_last_copy_too_old() {
         (vec![], vec![], vec![absent.clone()])
     );
 
-    // The check finds the last copy one tick older than the maximum age. The first's health
+    // The check finds the last copy one tick older than the maximum age. The first's life
     // changed after it, but as long ago as that age, to which the check clamps the change's tick,
     // so it reads as no newer than the copy; the second's changed a tick ago. The next copy takes
     // every value, as a first does: the allocator and the first's position, which did not
@@ -883,22 +883,22 @@ fn a_copy_takes_every_value_after_a_tick_check_finds_the_last_copy_too_old() {
     let ago = |ticks: u32| ChangeTick::new(present.get().wrapping_sub(ticks));
     let max_age = ChangeTick::MAX.get();
     let world = &mut following.world;
-    let mut long_ago = world.get_mut::<Health>(entity(world, first)).unwrap();
-    *long_ago = health(11);
+    let mut long_ago = world.get_mut::<Life>(entity(world, first)).unwrap();
+    *long_ago = life(11);
     long_ago.set_last_changed(ago(max_age));
-    *world.get_mut::<Health>(entity(world, second)).unwrap() = health(21);
+    *world.get_mut::<Life>(entity(world, second)).unwrap() = life(21);
     let mut recorded = world.resource_mut::<StateChanges>();
     recorded.set_since(ago(max_age + 1));
     recorded.check_ticks(present);
     let (_, _, sections) = following.step(|_| {});
     let allocator = encoded(&[Some(following.world.resource::<IdAllocator>())]);
-    let healths = encoded(&[(first, Some(health(11))), (second, Some(health(21)))]);
+    let healths = encoded(&[(first, Some(life(11))), (second, Some(life(21)))]);
     assert_eq!(
         sections,
         [
             ("sim.id_allocator", allocator),
             absent,
-            ("test.health", healths),
+            ("test.life", healths),
             ("test.position", encoded(&[(first, Some(position(1)))])),
         ]
     );

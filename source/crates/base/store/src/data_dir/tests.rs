@@ -5,19 +5,19 @@ use tempfile::TempDir;
 use super::*;
 
 #[test]
-fn a_data_directory_is_made_its_owners_only_and_holds_one_holder() {
+fn a_data_directory_is_made_its_users_only_and_holds_one_holder() {
     let scratch = TempDir::new().unwrap();
     let path = scratch.path().join("nested").join("data");
     let first = DataDir::open(&path).unwrap();
     assert_eq!(first.path(), path);
-    // Each directory it made and its lock are their owner's only.
+    // Each directory it made and its lock are their user's only.
     for made in [
         scratch.path().join("nested"),
         path.clone(),
         path.join("lock"),
     ] {
         assert_eq!(
-            OwnerOnly::exposure_at(&made).unwrap(),
+            UserOnly::exposure_at(&made).unwrap(),
             None,
             "{}",
             made.display()
@@ -42,8 +42,8 @@ fn a_data_directory_is_made_its_owners_only_and_holds_one_holder() {
     // A directory others may open is refused, with who they are, before its lock is made.
     let exposed = scratch.path().join("exposed");
     fs::create_dir(&exposed).unwrap();
-    OwnerOnly::expose(&exposed);
-    let exposure = OwnerOnly::exposure_at(&exposed).unwrap().unwrap();
+    UserOnly::expose(&exposed);
+    let exposure = UserOnly::exposure_at(&exposed).unwrap().unwrap();
     assert!(matches!(
         DataDir::open(&exposed),
         Err(DataDirError::Exposed { exposure: refused, .. }) if refused == exposure

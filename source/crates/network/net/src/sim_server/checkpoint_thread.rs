@@ -77,8 +77,8 @@ impl CheckpointThread {
     }
 
     /// Whether a delta was sent and has not come back.
-    pub(crate) const fn pending(&self) -> bool {
-        self.exchange.pending()
+    pub(crate) const fn is_pending(&self) -> bool {
+        self.exchange.is_pending()
     }
 
     /// Sends the state changed since the last delta, which `write` writes into a delta, the
@@ -89,7 +89,7 @@ impl CheckpointThread {
         begun: Option<CheckpointBegun>,
         write: impl FnOnce(&mut StateDelta),
     ) {
-        if !self.exchange.pending() {
+        if !self.exchange.is_pending() {
             debug_assert!(
                 self.queued.is_empty(),
                 "a queued delta waits for one on the thread"
@@ -161,7 +161,7 @@ mod tests {
     use campfire_common::Tick;
     use campfire_protocol::LogCarry;
     use campfire_sim::{IdAllocator, Position};
-    use campfire_store::internals::Scratch;
+    use campfire_store::internals::TestDir;
 
     use super::*;
 
@@ -176,8 +176,8 @@ mod tests {
         world.init_resource::<IdAllocator>();
         let mut base = StateDelta::default();
         registry.track(&mut world, &mut base);
-        let scratch = Scratch::new();
-        let snapshots = SnapshotDir(scratch.path("snapshots"));
+        let test_dir = TestDir::new();
+        let snapshots = SnapshotDir(test_dir.path("snapshots"));
         let mut thread = CheckpointThread::start(registry.clone(), base, snapshots);
         for x in 1..=2 {
             let id = world.resource_mut::<IdAllocator>().allocate();
@@ -206,6 +206,6 @@ mod tests {
         };
         assert_eq!(taken.state_hash, registry.hash(&world));
         assert_eq!(taken.tick, Tick::new(3));
-        assert!(thread.queued.is_empty() && !thread.pending());
+        assert!(thread.queued.is_empty() && !thread.is_pending());
     }
 }

@@ -111,7 +111,7 @@ impl SlotTime {
 /// measure reach.
 #[derive(Debug, Clone, Copy)]
 pub struct StartFrom<'a, 'w, 's> {
-    pub pos: Vec3,
+    pub position: Vec3,
     pub body: Option<&'a Body>,
     pub targets: &'a Targets<'w, 's>,
 }
@@ -168,8 +168,8 @@ impl SlotTimes {
     ) -> Option<StartChecked<'b>> {
         let mut checked = self.checked_action(check)?;
         let reached = from.is_none_or(|from| {
-            checked.clamp(from.pos, Body::shape_of(from.body), from.targets);
-            checked.in_range(from.pos, from.body, from.targets)
+            checked.clamp(from.position, Body::shape_of(from.body), from.targets);
+            checked.in_range(from.position, from.body, from.targets)
         });
         Some(StartChecked { checked, reached })
     }

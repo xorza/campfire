@@ -33,7 +33,7 @@ impl SimComponent for BodyUnit {
         world
             .get::<StableId>(entity)
             .is_some_and(|id| id.is_allocated())
-            && EntityKinds::alone(world, entity)
+            && EntityKinds::is_alone(world, entity)
     }
 }
 

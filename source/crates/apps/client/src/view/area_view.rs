@@ -89,7 +89,7 @@ impl AreaView {
         mut commands: Commands<'_, '_>,
     ) {
         let heights = data.lifts();
-        for (area, &pos, &unit_type, received) in &areas {
+        for (area, &position, &unit_type, received) in &areas {
             let radius = reach
                 .radius(unit_type)
                 .expect("an area's type has its reach")
@@ -102,7 +102,7 @@ impl AreaView {
                         .with_scale(Vec3::new(radius, 1.0, radius)),
                 ))
                 .id();
-            let at = ground(pos, heights);
+            let at = ground(position, heights);
             commands
                 .spawn((
                     DrawingOf(area),

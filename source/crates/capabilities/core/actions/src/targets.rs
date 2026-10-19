@@ -62,14 +62,16 @@ impl Targets<'_, '_> {
     /// Whether `range` from the body `from` reaches `target`: within range in the map's metric,
     /// exactly, from the edge of the one body to the edge of the other.
     pub fn reaches(&self, from: Placed, range: Num, target: &LivingUnit) -> bool {
-        let target = Placed::new(target.pos, target.shape);
+        let target = Placed::new(target.position, target.shape);
         self.map.metric.reaches(from, range, target)
     }
 
-    /// Whether `range` from the body `from` reaches the point `pos`, from the edge of the body,
-    /// exactly.
-    pub(crate) fn reaches_point(&self, from: Placed, range: Num, pos: Vec3) -> bool {
-        self.map.metric.reaches(from, range, Placed::point(pos))
+    /// Whether `range` from the body `from` reaches the point `position`, from the edge of the
+    /// body, exactly.
+    pub(crate) fn reaches_point(&self, from: Placed, range: Num, position: Vec3) -> bool {
+        self.map
+            .metric
+            .reaches(from, range, Placed::point(position))
     }
 
     /// The point `step` from `from` toward `to` in the map's metric, or `to` when it is nearer.
@@ -126,8 +128,8 @@ impl Targets<'_, '_> {
     /// The volume of the unit of `entity`, of any unit it holds, whatever its life: what a caller
     /// found by `target_at` or `living_at`.
     pub fn volume_at(&self, entity: Entity) -> Option<Volume> {
-        let (_, pos, _, _, body, _) = self.units.get(entity).ok()?;
-        Some(Body::volume(body, pos.get(), &self.map))
+        let (_, position, _, _, body, _) = self.units.get(entity).ok()?;
+        Some(Body::volume(body, position.get(), &self.map))
     }
 
     /// The map the units stand on.
@@ -136,10 +138,10 @@ impl Targets<'_, '_> {
     }
 
     /// The unit of `row`.
-    fn body((&id, &pos, &team, _, body, tags): TargetRow<'_>) -> LivingUnit {
+    fn body((&id, &position, &team, _, body, tags): TargetRow<'_>) -> LivingUnit {
         LivingUnit {
             id,
-            pos: pos.get(),
+            position: position.get(),
             team,
             shape: Body::shape_of(body),
             tags: tags.map_or_else(TagSet::default, |tags| tags.tags),

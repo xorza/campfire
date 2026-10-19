@@ -8,6 +8,8 @@ why network depends on script
 what is deny_unknown_fields
 audit Rc<Rc<> and Arc<>
 audit any usage
+seats->slots
+why own shaders
 
 bevy math?
  rotation: [f32; 4],

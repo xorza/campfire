@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::mem;
 
 use bevy_ecs::entity::Entity;
-use campfire_script::{CallStart, Ctx, Hook, HookSpec, ScriptBatch, View};
+use campfire_script::{CallStart, Ctx, Hook, HookDecl, ScriptBatch, View};
 use campfire_sim::{SimTick, SimWorld, StableId};
 use campfire_units::{Owner, TagEffect};
 use campfire_values::ModifierId;
@@ -26,7 +26,7 @@ pub struct ModifierHooks {
 
 /// A hook of the modifiers a unit holds, which their runner calls with `ctx`, the modifier's
 /// handle, and what its event gives, as another capability reports the event.
-pub trait ModifierHook: HookSpec {
+pub trait ModifierHook: HookDecl {
     /// What its event gives after `ctx` and `m`, the same for each modifier that hears it.
     type Event: Clone;
 
@@ -147,7 +147,7 @@ impl ModifierHooks {
         let (action, rank, package) = (instance.action, instance.rank, entry.package);
         let payer = heard.source.and_then(|source| {
             let entity = world.entity_of(source)?;
-            Some(world.get::<Owner>(entity)?.slot())
+            Some(world.get::<Owner>(entity)?.seat())
         });
         let now = world.resource::<SimTick>().start();
         let start = CallStart {

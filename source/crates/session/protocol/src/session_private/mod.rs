@@ -9,7 +9,7 @@ const PRIVATE_TAG: &[u8] = b"campfire/session-private/v3";
 /// What a server keeps of a session that no one else sees, written once before its first offer:
 /// the seed chain, whose root reveals every segment's seed. The session's terms are its
 /// journal's header alone, so a restart has one record of them
-/// (10-sessions.md, The terms are the journal's).
+/// (08-sessions.md, The terms are the journal's).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionPrivate {
     pub seed_chain: SeedChain,

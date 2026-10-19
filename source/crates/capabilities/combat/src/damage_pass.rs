@@ -11,7 +11,7 @@ use campfire_actions::{
 use campfire_common::Tick;
 use campfire_declare::ByType;
 use campfire_math::{Num, Rounding};
-use campfire_script::{CallStart, Ctx, Hook, HookSpec, ScriptBatch, ScriptRole, ScriptsWorld};
+use campfire_script::{CallStart, Ctx, Hook, HookDecl, ScriptBatch, ScriptRole, ScriptsWorld};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 use campfire_stats::{
     CarriedMut, ModifierBook, ModifierClocks, ModifierEvents, ModifierHooks, StatsWorld, UnitStats,
@@ -101,14 +101,14 @@ pub struct CalcDamage;
 #[derive(Debug)]
 pub struct CalcHeal;
 
-impl HookSpec for CalcDamage {
+impl HookDecl for CalcDamage {
     const NAME: &'static str = "calc_damage";
     const ROLE: ScriptRole = ScriptRole::Mode;
     const PARAMS: &'static [&'static str] = &["ctx", "d"];
     type Args = (Ctx, DamageHandle);
 }
 
-impl HookSpec for CalcHeal {
+impl HookDecl for CalcHeal {
     const NAME: &'static str = "calc_heal";
     const ROLE: ScriptRole = ScriptRole::Mode;
     const PARAMS: &'static [&'static str] = &["ctx", "h"];
@@ -325,7 +325,7 @@ impl DamagePass {
         if landed == Landed::Nothing {
             return;
         }
-        if damage.cause.attack() {
+        if damage.cause.is_attack() {
             CombatEvent::AttackHit(damage).reach(events, batch);
         }
         CombatEvent::DamageTaken(damage).reach(events, batch);
@@ -379,7 +379,7 @@ impl DamagePass {
             .expect("a unit whose channel runs");
         }
         let clocks = world.get::<ModifierClocks>(entity);
-        if clocks.is_some_and(ModifierClocks::shielded) {
+        if clocks.is_some_and(ModifierClocks::is_shielded) {
             let takes_effect = TagEffect::of(world, entity);
             let absorbed = world.resource_scope(|world, book: Mut<'_, ModifierBook>| {
                 CarriedMut::with(world, entity, |carried| {
@@ -434,7 +434,7 @@ impl DamagePass {
             let fallen = Fallen {
                 id: damage.target,
                 team: world.get::<Team>(entity).copied(),
-                owner: world.get::<Owner>(entity).map(|owner| owner.slot()),
+                owner: world.get::<Owner>(entity).map(|owner| owner.seat()),
                 avatar: world.entity(entity).contains::<Avatar>(),
             };
             let mut deaths = world.resource_mut::<Deaths>();
@@ -444,7 +444,7 @@ impl DamagePass {
             source.and_then(|id| Self::living(world, id).map(|entity| (id, entity)))
         {
             let bindings = *world.resource::<CombatBook>();
-            let stat = if damage.cause.attack() {
+            let stat = if damage.cause.is_attack() {
                 bindings.leech_attack
             } else {
                 bindings.leech_other

@@ -27,7 +27,7 @@ pub enum ModeDataError {
     LoadoutRanks,
 }
 
-/// Why the picks a session's terms carry are none of the mode's options (10-sessions.md, The
+/// Why the picks a session's terms carry are none of the mode's options (08-sessions.md, The
 /// host picks, and the terms record the pick). Terms come from a server or a published log, so
 /// each is an expected failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -161,7 +161,7 @@ pub enum ModeRefusal {
 }
 
 impl CapabilityRefusal for ModeRefusal {
-    const OWNER: Capability = Capability::Mode;
+    const CAPABILITY: Capability = Capability::Mode;
     const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {

@@ -8,7 +8,7 @@ use campfire_common::DeclaredName;
 use campfire_declare::{BookError, Listed};
 use campfire_math::Num;
 use campfire_script::{
-    ApiBuilder, CallError, CapabilityRefusal, Ctx, Frame, MemberSpec, Unit, View,
+    ApiBuilder, CallError, CapabilityRefusal, Ctx, Frame, MemberDecl, Unit, View,
 };
 use campfire_sim::Capability;
 use campfire_values::Number;
@@ -40,7 +40,7 @@ impl Listed for HealEffectData {
     }
 
     fn api(api: &mut ApiBuilder<'_>) {
-        let heal = MemberSpec::call(
+        let heal = MemberDecl::call(
             "heal",
             &[&["unit", "amount"]],
             "heals `unit`'s life pool, times one plus its `heal_scale` stat",

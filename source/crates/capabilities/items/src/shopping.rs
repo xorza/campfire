@@ -60,7 +60,7 @@ type Visitors<'w, 's> = Query<
 #[derive(Debug, Clone, Copy)]
 struct Visitor<'a> {
     team: Team,
-    pos: Vec3,
+    position: Vec3,
     body: Option<&'a Body>,
     tags: TagSet,
     dead: bool,
@@ -94,7 +94,7 @@ impl Shopping<'_, '_> {
         let buyer = visitor.buyer(self.relations.get().between(team, visitor.team));
         spec.serves(buyer, |reach| {
             let from = Placed::new(at.get(), Body::shape_of(body));
-            let to = Placed::new(visitor.pos, Body::shape_of(visitor.body));
+            let to = Placed::new(visitor.position, Body::shape_of(visitor.body));
             self.map.metric.reaches(from, reach, to)
         })
         .then_some(spec)
@@ -113,8 +113,8 @@ impl Shopping<'_, '_> {
                 let spec = self.shops.get(unit_type)?;
                 let buyer = visitor.buyer(relations.between(team, visitor.team));
                 spec.selects(buyer).then(|| {
-                    let nearest = Body::shape_of(body).nearest_point(at.get(), visitor.pos);
-                    let away = self.map.metric.offset(nearest, visitor.pos);
+                    let nearest = Body::shape_of(body).nearest_point(at.get(), visitor.position);
+                    let away = self.map.metric.offset(nearest, visitor.position);
                     (away.length_squared_bits(), id)
                 })
             });
@@ -123,11 +123,11 @@ impl Shopping<'_, '_> {
 
     /// The unit `unit` as a shop meets it.
     fn visitor(&self, unit: StableId) -> Option<Visitor<'_>> {
-        let (&team, &pos, body, tags, dead) = self.visitors.get(self.index.get(unit)?).ok()?;
+        let (&team, &position, body, tags, dead) = self.visitors.get(self.index.get(unit)?).ok()?;
         let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
         Some(Visitor {
             team,
-            pos: pos.get(),
+            position: position.get(),
             body,
             tags: Dead::tagged(tags, dead),
             dead,

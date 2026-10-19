@@ -35,19 +35,19 @@ struct TypeLook {
     placement_angle: Num,
 }
 
-/// A model a look is drawn with: its glTF's first scene, its parts, and the factor it is drawn
+/// A model a look is drawn with: its glTF's first scene, its nodes, and the factor it is drawn
 /// at.
 #[derive(Debug, Clone)]
 pub(crate) struct LookModel {
     pub(crate) scene: Handle<WorldAsset>,
-    pub(crate) parts: ModelParts,
+    pub(crate) nodes: LookNodes,
     pub(crate) scale: f32,
 }
 
 /// What a drawn model needs once its scene is spawned: the names of the nodes its look hides, and
 /// the name of the node its look turns by its unit's turret angle, if it has one.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ModelParts {
+pub(crate) struct LookNodes {
     pub(crate) hide: Arc<[String]>,
     pub(crate) turret: Option<Arc<str>>,
 }
@@ -94,11 +94,11 @@ impl UnitLooks {
 }
 
 impl LookModel {
-    /// What a drawing's child of this model holds: its scene, its parts, its scale and `paint`.
+    /// What a drawing's child of this model holds: its scene, its nodes, its scale and `paint`.
     pub(crate) fn bundle(&self, paint: Paint) -> impl Bundle {
         (
             WorldAssetRoot(self.scene.clone()),
-            self.parts.clone(),
+            self.nodes.clone(),
             Transform::from_scale(Vec3::splat(self.scale)),
             paint,
         )
@@ -120,7 +120,7 @@ impl LookModel {
                         GltfAssetLabel::Scene(0)
                             .from_asset(PackageSource::asset_path(package, &model.model)),
                     ),
-                parts: ModelParts {
+                nodes: LookNodes {
                     hide: model.hide.as_slice().into(),
                     turret: look.turret.as_deref().map(Arc::from),
                 },
@@ -199,13 +199,13 @@ mod tests {
         .into_iter()
         .collect();
         let looks = UnitLooks::of(&origins, &data, app.world().resource::<AssetServer>());
-        let paths = |unit_type: UnitType| -> Option<Vec<(String, ModelParts)>> {
+        let paths = |unit_type: UnitType| -> Option<Vec<(String, LookNodes)>> {
             let models = looks.look(unit_type)?;
             let path = |model: &LookModel| model.scene.path().unwrap().to_string();
             Some(
                 models
                     .iter()
-                    .map(|model| (path(model), model.parts.clone()))
+                    .map(|model| (path(model), model.nodes.clone()))
                     .collect(),
             )
         };
@@ -215,7 +215,7 @@ mod tests {
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
-        let parts = |hide: &[&str]| ModelParts {
+        let look_nodes = |hide: &[&str]| LookNodes {
             hide: hide.iter().map(|&name| name.to_owned()).collect(),
             turret: None,
         };
@@ -224,11 +224,11 @@ mod tests {
             [
                 (
                     "package://0/client/models/tank.glb#Scene0".to_owned(),
-                    parts(&["tank.flash"])
+                    look_nodes(&["tank.flash"])
                 ),
                 (
                     "package://0/client/models/tread.glb#Scene0".to_owned(),
-                    parts(&[])
+                    look_nodes(&[])
                 ),
             ]
         );
@@ -236,7 +236,7 @@ mod tests {
             paths(types[1]).unwrap(),
             [(
                 "package://1/client/models/other.glb#Scene0".to_owned(),
-                parts(&[])
+                look_nodes(&[])
             )]
         );
         assert_eq!(paths(types[2]), None);

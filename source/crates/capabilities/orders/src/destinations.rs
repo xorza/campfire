@@ -47,7 +47,7 @@ impl Destinations {
                 indexes.forget_attacker(id);
                 continue;
             };
-            if progress.attacking().is_some() || progress.approaching() {
+            if progress.attacking().is_some() || progress.is_approaching() {
                 continue;
             }
             let aimed = targets.enemy(team, target).and_then(|unit| {
@@ -67,7 +67,7 @@ impl Destinations {
                         &unit,
                     ) =>
                 {
-                    Destination::walk_to(&mut destination, arrived, Some(unit.pos));
+                    Destination::walk_to(&mut destination, arrived, Some(unit.position));
                 }
                 Some(_) => Destination::walk_to(&mut destination, arrived, None),
             }

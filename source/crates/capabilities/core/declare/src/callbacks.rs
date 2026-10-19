@@ -12,7 +12,7 @@ pub trait Callbacks: Resource + Component<Mutability = Mutable> + Default {
     type Callback: Copy + Send + Sync + 'static;
 
     /// The capability whose module declares the callback of `key`; none for the core's.
-    fn owner(key: Self::Key) -> Option<Capability>;
+    fn capability(key: Self::Key) -> Option<Capability>;
 
     /// Registers `callback` under `key`, which has none yet.
     fn register(&mut self, key: Self::Key, callback: Self::Callback);

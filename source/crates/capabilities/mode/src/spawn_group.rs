@@ -28,7 +28,7 @@ impl SpawnGroup {
         let Some(first) = self.units.first() else {
             return;
         };
-        let pos = world
+        let position = world
             .resource::<NavigationBook>()
             .paths
             .waypoint(self.path, 0, self.from)
@@ -40,7 +40,7 @@ impl SpawnGroup {
                 unit_type,
                 team: self.team,
                 owner: None,
-                pos,
+                position,
                 angle: Num::ZERO,
             };
             Spawner::spawn(world, at, walker);

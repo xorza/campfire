@@ -15,7 +15,7 @@ use campfire_actions::{
 use campfire_areas::Area;
 use campfire_capabilities::{Match, Order, PackageContent};
 use campfire_combat::Combat;
-use campfire_common::{DeclaredName, PlayerSlot};
+use campfire_common::{DeclaredName, Seat};
 use campfire_deliveries::DashDelivering;
 use campfire_harness::Arena;
 use campfire_math::{Num, Vec3};
@@ -202,16 +202,16 @@ fn spawn_with(
     spawn_at(arena, game, (x, 0, 0), team, kit, parts)
 }
 
-/// A unit as `spawn_with` gives, at `pos`.
+/// A unit as `spawn_with` gives, at `position`.
 fn spawn_at(
     arena: &Arena,
     game: &mut Match,
-    pos: impl Into<Vec3>,
+    position: impl Into<Vec3>,
     team: Team,
     kit: Kit,
     parts: impl Bundle<Effect: NoBundleEffect>,
 ) -> StableId {
-    arena.spawn(game, kit.unit_type(), pos.into(), team, parts)
+    arena.spawn(game, kit.unit_type(), position.into(), team, parts)
 }
 
 /// A unit of 500 health and no other pool, as `spawn_with` gives.
@@ -258,7 +258,7 @@ fn caster(
         SlotKind::new(0),
         Rank::new(rank),
     )]));
-    let player = Owner::new(PlayerSlot::new(0));
+    let player = Owner::new(Seat::new(0));
     spawn_with(arena, game, 0, Team::new(0), kit, (player, slots, parts))
 }
 
@@ -374,7 +374,7 @@ fn lash_out_from_its_package_hits_exactly() {
 fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself() {
     let arena = arena();
     let mut game = arena.start(RATE, 1);
-    let player = Owner::new(PlayerSlot::new(0));
+    let player = Owner::new(Seat::new(0));
     let blade = spawn_with(&arena, &mut game, 0, Team::new(0), Kit::Blade, player);
     let dummy = spawn(&arena, &mut game, 1, Team::new(1), ());
     let twin_cut = arena.modifier(&game, "hero-kensho", "twin_cut");
@@ -412,7 +412,7 @@ fn arm_with(game: &mut Match, id: StableId, action: ActionId) {
 }
 
 /// Whether `id` has the toggle of its slot 0 on.
-fn toggled(game: &Match, id: StableId) -> bool {
+fn is_toggled(game: &Match, id: StableId) -> bool {
     let entity = game.entity_of(id).unwrap();
     let times = game.get::<SlotTimes>(entity).unwrap();
     times.slot(0).unwrap().toggle.is_some()
@@ -424,7 +424,7 @@ fn rimes_chill_arrows_pays_mana_each_attack_and_turns_off_when_it_cannot() {
     let mut game = arena.start(RATE, 1);
     let chill = arena.action(&game, "hero-rime", "chill_arrows");
     let hold = arena.modifier(&game, "hero-rime", "chill_arrows");
-    let player = Owner::new(PlayerSlot::new(0));
+    let player = Owner::new(Seat::new(0));
     // Rime with 20 mana, a weapon of 10 every 12 ticks; an enemy beside her.
     let rime = spawn_with(&arena, &mut game, 0, Team::new(0), Kit::Archer, player);
     let enemy = spawn(&arena, &mut game, 1, Team::new(1), ());
@@ -434,7 +434,7 @@ fn rimes_chill_arrows_pays_mana_each_attack_and_turns_off_when_it_cannot() {
     // Tick 0: on, at no cost but its toggle's, and its hold from that tick's Resolve.
     arena.tick(&mut game, 0, &[cast(rime, ActionTarget::None)]);
     assert_eq!(
-        (toggled(&game, rime), holds(&game), mana(&game)),
+        (is_toggled(&game, rime), holds(&game), mana(&game)),
         (true, true, 20)
     );
     // Each attack pays 8 as it goes off, in ticks 1 and 13: 4 are left. The third, in tick 25,
@@ -443,20 +443,20 @@ fn rimes_chill_arrows_pays_mana_each_attack_and_turns_off_when_it_cannot() {
     for _ in 2..=13 {
         arena.step(&mut game);
     }
-    assert_eq!((toggled(&game, rime), mana(&game)), (true, 4));
+    assert_eq!((is_toggled(&game, rime), mana(&game)), (true, 4));
     for _ in 14..=25 {
         arena.step(&mut game);
     }
     assert_eq!(
-        (toggled(&game, rime), holds(&game), mana(&game)),
+        (is_toggled(&game, rime), holds(&game), mana(&game)),
         (false, false, 4)
     );
     assert_eq!(health(&arena, &game, enemy), 470);
     // On again, then a second cast turns it off as it starts, at no cost.
     arena.tick(&mut game, 0, &[cast(rime, ActionTarget::None)]);
-    assert!(toggled(&game, rime));
+    assert!(is_toggled(&game, rime));
     arena.tick(&mut game, 0, &[cast(rime, ActionTarget::None)]);
-    assert_eq!((toggled(&game, rime), mana(&game)), (false, 4));
+    assert_eq!((is_toggled(&game, rime), mana(&game)), (false, 4));
     assert!(
         arena.failures(&game).is_empty(),
         "{:?}",
@@ -469,7 +469,7 @@ fn rimes_chill_arrows_pays_for_no_attack_that_does_not_strike() {
     let arena = arena();
     let mut game = arena.start(RATE, 1);
     let chill = arena.action(&game, "hero-rime", "chill_arrows");
-    let player = Owner::new(PlayerSlot::new(0));
+    let player = Owner::new(Seat::new(0));
     // Rime with 20 mana and a weapon of a 3-tick windup that costs 12; an enemy beside her.
     let rime = spawn_with(
         &arena,
@@ -493,7 +493,7 @@ fn rimes_chill_arrows_pays_for_no_attack_that_does_not_strike() {
     for _ in 2..=4 {
         arena.step(&mut game);
     }
-    assert_eq!((toggled(&game, rime), mana(&game)), (true, 10));
+    assert_eq!((is_toggled(&game, rime), mana(&game)), (true, 10));
     assert_eq!(health(&arena, &game, enemy), 500);
 }
 
@@ -516,7 +516,7 @@ fn husks_dread_pays_mana_each_second_burns_enemies_near_and_ends_at_death() {
         if [30, 60, 90].contains(&tick) {
             seen.push((
                 tick,
-                toggled(&game, husk),
+                is_toggled(&game, husk),
                 mana(&game),
                 pool(&arena, &game, enemy, "health"),
             ));
@@ -536,11 +536,11 @@ fn husks_dread_pays_mana_each_second_burns_enemies_near_and_ends_at_death() {
     );
     // On again, it ends as Husk dies.
     arena.tick(&mut game, 0, &[cast(husk, ActionTarget::None)]);
-    assert!(toggled(&game, husk));
+    assert!(is_toggled(&game, husk));
     Combat::queue_damage(&mut game, None, husk, Num::int(1000), "true");
     arena.step(&mut game);
     arena.step(&mut game);
-    assert!(!toggled(&game, husk));
+    assert!(!is_toggled(&game, husk));
     assert!(
         arena.failures(&game).is_empty(),
         "{:?}",
@@ -598,7 +598,7 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let mut game = arena.start(RATE, 1);
     let action = arena.action(&game, "hero-veil", "dusk_mark");
     let dusk_mark = arena.modifier(&game, "hero-veil", "dusk_mark");
-    let player = Owner::new(PlayerSlot::new(0));
+    let player = Owner::new(Seat::new(0));
     let veil = spawn_with(
         &arena,
         &mut game,

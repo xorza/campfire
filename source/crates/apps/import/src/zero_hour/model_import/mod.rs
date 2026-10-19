@@ -9,19 +9,19 @@ use crate::zero_hour::format::w3d::w3d_mesh::W3dMesh;
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_import::model_builder::ModelBuilder;
 use crate::zero_hour::model_import::model_textures::ModelTextures;
-use crate::zero_hour::model_parts::ModelParts;
+use crate::zero_hour::model_nodes::ModelNodes;
 
 mod model_builder;
 mod model_textures;
 mod w3d_material;
 
-/// A model the objects name, converted: its glTF, the parts its default look reads, the textures
+/// A model the objects name, converted: its glTF, the nodes its default look reads, the textures
 /// its meshes name that no archive holds, which it draws as the game's `MissingTexture`, and its
 /// HLOD's aggregates, which it does not draw.
 #[derive(Debug)]
 pub(crate) struct ModelImport {
     pub(crate) glb: GlbBuilder,
-    pub(crate) parts: ModelParts,
+    pub(crate) nodes: ModelNodes,
     pub(crate) missing_textures: BTreeSet<String>,
     pub(crate) aggregates: Vec<String>,
 }
@@ -117,7 +117,7 @@ impl ModelImport {
         textures: &ModelTextures,
     ) -> Result<Self, ModelError> {
         let mut builder = ModelBuilder::new(name);
-        let (parts, aggregates) = match object {
+        let (nodes, aggregates) = match object {
             RenderObject::Hlod {
                 hlod,
                 hierarchy,
@@ -125,10 +125,10 @@ impl ModelImport {
             } => {
                 let (sub_objects, meshes): (Vec<_>, Vec<_>) =
                     RenderObject::drawn(hlod, file).unzip();
-                let parts = builder.hlod(hierarchy, &sub_objects, &meshes, textures)?;
+                let nodes = builder.hlod(hierarchy, &sub_objects, &meshes, textures)?;
                 let aggregates = hlod.aggregates.iter();
                 (
-                    parts,
+                    nodes,
                     aggregates.map(|aggregate| aggregate.name.clone()).collect(),
                 )
             }
@@ -136,7 +136,7 @@ impl ModelImport {
         };
         Ok(Self {
             glb: builder.glb,
-            parts,
+            nodes,
             missing_textures: builder.missing_textures,
             aggregates,
         })

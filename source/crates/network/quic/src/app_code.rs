@@ -2,7 +2,7 @@ use quinn_proto::VarInt;
 use serde::{Deserialize, Serialize};
 
 /// Why an end closed a link, which QUIC carries as the application's error code
-/// (15-quic-transport.md, A link's end is a type). The codes below `AppCode::FIRST` are `quic`'s
+/// (11-quic-transport.md, A link's end is a type). The codes below `AppCode::FIRST` are `quic`'s
 /// own; an app names its own from there up, and reads a peer's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

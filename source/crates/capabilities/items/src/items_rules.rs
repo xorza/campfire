@@ -80,23 +80,23 @@ impl Items {
         };
         let actions = mode.content.get::<ActionsData>().map(|actions| &actions.0);
         let unit_passives = mode.units.iter().filter_map(|(name, unit)| {
-            let owner = BookPlace::UnitType(TypePlace::Declared(name.clone()));
-            Some((owner, &unit.section::<PassiveData>()?.0))
+            let holder = BookPlace::UnitType(TypePlace::Declared(name.clone()));
+            Some((holder, &unit.section::<PassiveData>()?.0))
         });
         let action_passives = actions.into_iter().flatten().filter_map(|(name, action)| {
-            let owner = BookPlace::Entry {
+            let holder = BookPlace::Entry {
                 table: ActionsData::KEY,
                 name: name.clone(),
             };
-            Some((owner, action.passive_modifier.as_ref()?))
+            Some((holder, action.passive_modifier.as_ref()?))
         });
-        for (owner, modifier) in unit_passives.chain(action_passives) {
+        for (holder, modifier) in unit_passives.chain(action_passives) {
             let held = items
                 .iter()
                 .find(|(_, item)| item.modifiers.contains(modifier));
             if let Some((item, _)) = held {
                 let modifier = modifier.clone();
-                return fail(item, ItemsDataError::SharedPassive { modifier, owner });
+                return fail(item, ItemsDataError::SharedPassive { modifier, holder });
             }
         }
         for (name, item) in items {

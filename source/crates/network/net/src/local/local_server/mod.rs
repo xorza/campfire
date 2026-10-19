@@ -10,7 +10,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
 use campfire_common::ErrorReport;
-use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
+use campfire_common::{ChannelBinding, Seat, TlsKey};
 use campfire_mode::OptionValue;
 use campfire_package::ModePackages;
 use campfire_quic::{LinkBinding, QuicEndpoint};
@@ -35,7 +35,7 @@ use crate::sim_client::server_pin::ServerPin;
 use crate::sim_server::ServerFrameSystems;
 use crate::sim_server::lobby::{Lobby, LobbyOpening};
 use crate::sim_server::pending_restore::{PendingRestore, UncheckedRestore};
-use crate::sim_server::server_bots::{ServerBots, SlotScript};
+use crate::sim_server::server_bots::{SeatScript, ServerBots};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{Publisher, SessionDir};
@@ -48,7 +48,7 @@ pub(crate) mod error;
 const TLS_KEY: TlsKey = TlsKey::new([0; 32]);
 
 /// A session's server on a thread of a singleplayer client's process, linked to the client by
-/// in-process channels: the client's player in slot 0, in each other slot the server's bot its
+/// in-process channels: the client's player in seat 0, in each other seat the server's bot its
 /// setup names, or none, open for a late join. Its data directory holds what a dedicated
 /// server's does; a session an earlier start left ends aborted, its log published, and each start
 /// opens a new one. It runs until it drops: it then ends the session, as the mode ended the
@@ -94,8 +94,8 @@ pub struct LocalServerSetup {
     pub packages: Arc<ModePackages>,
     /// Its data directory, which it holds locked while it runs.
     pub data: PathBuf,
-    /// The bots it plays, none in slot 0.
-    pub bots: Vec<SlotScript>,
+    /// The bots it plays, none in seat 0.
+    pub bots: Vec<SeatScript>,
     /// The values the player picks of the mode's options, the others their defaults.
     pub options: Vec<OptionValue>,
     pub pace: Arc<Pace>,
@@ -108,7 +108,7 @@ struct Stop(Arc<AtomicBool>);
 
 impl LocalServer {
     /// In-process channels have no TLS session: both ends of a local link take this binding
-    /// (15-quic-transport.md, The answer binds to the TLS session).
+    /// (11-quic-transport.md, The answer binds to the TLS session).
     const BINDING: ChannelBinding = ChannelBinding::new([0; 32]);
 
     /// Opens the local server's data directory and session, and starts its thread. An error when
@@ -139,10 +139,10 @@ impl LocalServer {
             os,
         };
         let bots = ServerBots::new(bots, None, &packages).map_err(LocalServerError::Bots)?;
-        let slots = u32::try_from(packages.manifest().slots()).expect("slots fit u32");
-        let open = (1..slots)
-            .map(PlayerSlot::new)
-            .filter(|&slot| bots.slots.iter().all(|bot| bot.slot != slot))
+        let seats = u32::try_from(packages.manifest().seats()).expect("seats fit u32");
+        let open = (1..seats)
+            .map(Seat::new)
+            .filter(|&seat| bots.seats.iter().all(|bot| bot.seat != seat))
             .collect();
         let tick_hz = packages.manifest().tick_hz.default();
         let opening = LobbyOpening {
@@ -221,7 +221,7 @@ impl LocalServer {
     /// Ends once the session went back to a save, for its thread to start a new app; else exits
     /// as `SimServerWorld::exit_due` says, the client asking the server to stop.
     fn watch(world: &mut World) {
-        if world.reload_wanted() {
+        if world.is_reload_wanted() {
             world.resource::<Restart>().0.store(true, Ordering::Relaxed);
             world.write_message(AppExit::Success);
             return;

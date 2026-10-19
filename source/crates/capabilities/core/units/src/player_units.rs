@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, With, Without};
 use bevy_ecs::system::{Query, SystemParam, SystemState};
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_sim::{StableId, Unpredicted};
 use campfire_values::UnitType;
 
@@ -47,20 +47,20 @@ pub struct Commanded {
 }
 
 impl PlayerUnits<'_, '_> {
-    /// The avatar of `slot`; the lowest stable id should it own several, none before it spawns
+    /// The avatar of `seat`; the lowest stable id should it own several, none before it spawns
     /// or in a mode with no avatars.
-    pub fn avatar(&self, slot: PlayerSlot) -> Option<Commanded> {
-        Commanded::avatar_among(self.avatars.iter(), slot)
+    pub fn avatar(&self, seat: Seat) -> Option<Commanded> {
+        Commanded::avatar_among(self.avatars.iter(), seat)
     }
 
-    /// Puts into `out`, cleared first, the living units `slot` owns of `unit_type`, by stable id,
+    /// Puts into `out`, cleared first, the living units `seat` owns of `unit_type`, by stable id,
     /// rising.
-    pub fn typed(&self, slot: PlayerSlot, unit_type: UnitType, out: &mut Vec<StableId>) {
+    pub fn typed(&self, seat: Seat, unit_type: UnitType, out: &mut Vec<StableId>) {
         out.clear();
         out.extend(
             self.living
                 .iter()
-                .filter(|&(_, owner, &typed)| owner.slot() == slot && typed == unit_type)
+                .filter(|&(_, owner, &typed)| owner.seat() == seat && typed == unit_type)
                 .map(|(&id, ..)| id),
         );
         out.sort_unstable();
@@ -68,13 +68,13 @@ impl PlayerUnits<'_, '_> {
 }
 
 impl Commanded {
-    /// The avatar of `slot` among `avatars`: the lowest stable id should it own several.
+    /// The avatar of `seat` among `avatars`: the lowest stable id should it own several.
     pub(crate) fn avatar_among<'a>(
         avatars: impl Iterator<Item = (Entity, &'a StableId, &'a Owner)>,
-        slot: PlayerSlot,
+        seat: Seat,
     ) -> Option<Self> {
         avatars
-            .filter(|&(_, _, owner)| owner.slot() == slot)
+            .filter(|&(_, _, owner)| owner.seat() == seat)
             .map(|(entity, &id, _)| Self { entity, id })
             .min_by_key(|unit| unit.id)
     }

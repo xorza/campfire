@@ -12,7 +12,7 @@ const SPKI_PREFIX: [u8; 12] = [
 const SPKI_LEN: usize = SPKI_PREFIX.len() + 32;
 
 /// A TLS key as TLS carries it with no certificate ([RFC 7250]): its `SubjectPublicKeyInfo`, which
-/// a server presents and a client's verifier takes (15-quic-transport.md, A raw key derived from
+/// a server presents and a client's verifier takes (11-quic-transport.md, A raw key derived from
 /// the server's key).
 ///
 /// [RFC 7250]: https://www.rfc-editor.org/rfc/rfc7250
@@ -46,7 +46,8 @@ mod tests {
 
     #[test]
     fn a_keys_spki_is_rfc_8410s() {
-        // RFC 8410 §10.1's public key, `MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=`.
+        // RFC 8410 §10.1's public key,
+        // `MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=`.
         let key = [
             0x19, 0xbf, 0x44, 0x09, 0x69, 0x84, 0xcd, 0xfe, 0x85, 0x41, 0xba, 0xc1, 0x67, 0xdc,
             0x3b, 0x96, 0xc8, 0x50, 0x86, 0xaa, 0x30, 0xb6, 0xb6, 0xcb, 0x0c, 0x5c, 0x38, 0xad,

@@ -20,7 +20,7 @@ mod tests {
     use crate::client_objects::ClientObjects;
     use crate::client_units::ClientUnits;
     use crate::hud_file::HudFile;
-    use crate::input_file::InputFile;
+    use crate::keys_file::KeysFile;
     use crate::map_conditions::MapConditions;
     use crate::map_lights::MapLights;
     use crate::team_colors::TeamColors;
@@ -37,7 +37,7 @@ mod tests {
             TerrainFile::path(&map),
             ClientUnits::path(),
             CameraFile::path(),
-            InputFile::path(),
+            KeysFile::path(),
             HudFile::path(),
             TeamColors::path(),
         ];
@@ -50,7 +50,7 @@ mod tests {
                 "client/maps/tournament_desert/terrain.bin",
                 "client/units.toml",
                 "client/camera.toml",
-                "client/input.toml",
+                "client/keys.toml",
                 "client/hud.toml",
                 "client/team_colors.toml",
             ]

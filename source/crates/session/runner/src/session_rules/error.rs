@@ -24,9 +24,9 @@ pub enum TermsError {
     /// The tick rate the terms fix is outside the mode's range.
     #[error("{0} ticks a second is outside the mode's range")]
     TickRate(NonZeroU32),
-    /// The terms plan `slots` slots, none or more than the `most` the mode's teams have.
-    #[error("{slots} slots, and the mode's teams have {most}")]
-    Slots { slots: u64, most: u64 },
+    /// The terms plan `seats` seats, none or more than the `most` the mode's teams have.
+    #[error("{seats} seats, and the mode's teams have {most}")]
+    Seats { seats: u64, most: u64 },
     /// The visibility the terms carry does not read.
     #[error("the visibility")]
     Visibility(#[source] VisibilityDecodeError),

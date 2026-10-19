@@ -7,7 +7,7 @@ use bevy_ecs::lifecycle::{HookContext, Insert, Remove};
 use bevy_ecs::observer::On;
 use bevy_ecs::system::{Commands, Query, Res, SystemParam};
 use bevy_ecs::world::{DeferredWorld, World};
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_players::{OutOfPlay, Player, PlayersWorld};
 use campfire_state_types::Recipients;
 use campfire_values::{Team, TeamSet};
@@ -18,19 +18,19 @@ use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::team_rooms::TeamRooms;
 
-/// How a client link views the match, which every data filter reads (14-replication-audiences.md,
-/// Four recipients; 14-replication-audiences.md, The host admits spectators, and their fog is a
-/// setting; 14-replication-audiences.md, A player out of play sees what its team sees, or what a
-/// spectator sees): as the player of a slot of a team, or as a spectator. It stands in its rooms by
+/// How a client link views the match, which every data filter reads (10-replication-audiences.md,
+/// Four recipients; 10-replication-audiences.md, The host admits spectators, and their fog is a
+/// setting; 10-replication-audiences.md, A player out of play sees what its team sees, or what a
+/// spectator sees): as the player of a seat of a team, or as a spectator. It stands in its rooms by
 /// it, and in none without one. Immutable, as replicon's filters require: a change inserts a new
 /// one.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[component(immutable, on_insert = Viewer::enter_rooms, on_remove = Viewer::leave_rooms)]
 pub(crate) enum Viewer {
-    /// The player of `slot`, of `team`; `out` while it is out of play in a session whose players
+    /// The player of `seat`, of `team`; `out` while it is out of play in a session whose players
     /// out of play see the other teams as a spectator does.
     Player {
-        slot: PlayerSlot,
+        seat: Seat,
         team: Team,
         out: bool,
     },
@@ -38,7 +38,7 @@ pub(crate) enum Viewer {
 }
 
 /// What a spectator watches: every unit, through any fog, or the views of the teams it chose
-/// together (14-replication-audiences.md, The host admits spectators, and their fog is a setting).
+/// together (10-replication-audiences.md, The host admits spectators, and their fog is a setting).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Watching {
     Everything,
@@ -76,9 +76,9 @@ impl PlayerViews<'_, '_> {
             return;
         };
         let visibility = self.visibility.as_deref().map(|visibility| &visibility.0);
-        for (link, &seat) in &self.links {
-            if seat.slot() == player.slot() {
-                let viewer = Viewer::player(seat, status, visibility);
+        for (link, &player_link) in &self.links {
+            if player_link.seat() == player.seat() {
+                let viewer = Viewer::player(player_link, status, visibility);
                 self.commands.entity(link).insert(viewer);
             }
         }
@@ -96,7 +96,7 @@ impl Viewer {
         let sees_as_spectator =
             visibility.is_some_and(|visibility| visibility.out() == OutView::Spectators);
         Self::Player {
-            slot: link.slot(),
+            seat: link.seat(),
             team: link.team(),
             out: status == PlayStatus::Out && sees_as_spectator,
         }
@@ -104,7 +104,7 @@ impl Viewer {
 
     /// The view of the player of `link` in `world`, as its entity stands.
     pub(crate) fn of_player(world: &World, link: PlayerLink) -> Self {
-        let entity = world.player_entity(link.slot());
+        let entity = world.player_entity(link.seat());
         let out = entity.is_some_and(|entity| world.entity(entity).contains::<OutOfPlay>());
         let status = if out {
             PlayStatus::Out
@@ -118,9 +118,9 @@ impl Viewer {
     /// The recipient it is of an entity `owner` owns, of `team`: none for the owner, who receives
     /// every sent kind; an ally of its own team, or of an entity of no team, as the match's;
     /// an enemy of another, or a spectator of it while out of play; a spectator.
-    pub(crate) fn recipient(self, owner: Option<PlayerSlot>, team: Option<Team>) -> Recipients {
+    pub(crate) fn recipient(self, owner: Option<Seat>, team: Option<Team>) -> Recipients {
         match self {
-            Self::Player { slot, .. } if Some(slot) == owner => Recipients::NONE,
+            Self::Player { seat, .. } if Some(seat) == owner => Recipients::NONE,
             Self::Player { team: own, out, .. } => match team {
                 Some(team) if team != own && out => Recipients::SPECTATORS,
                 Some(team) if team != own => Recipients::ENEMIES,
@@ -150,7 +150,7 @@ impl Viewer {
     }
 
     /// Views each player's link again as its player goes out of play and comes back, which changes
-    /// its rooms and what each data filter gives it (14-replication-audiences.md, A player out of
+    /// its rooms and what each data filter gives it (10-replication-audiences.md, A player out of
     /// play sees what its team sees, or what a spectator sees): what it held of the other teams'
     /// entities leaves it as a unit that leaves vision does.
     pub(crate) fn follow_out_of_play(app: &mut App) {
@@ -204,24 +204,24 @@ mod tests {
 
     #[test]
     fn a_viewer_is_the_owner_an_ally_an_enemy_or_a_spectator() {
-        let (slot, team) = (PlayerSlot::new, Team::new);
-        let seat = PlayerLink::new(slot(1), team(0));
-        let player = Viewer::player(seat, PlayStatus::Playing, None);
-        // Of a unit of slot 1's: none, as the owner; of slot 2's of its team, an ally; of the
+        let (seat, team) = (Seat::new, Team::new);
+        let link = PlayerLink::new(seat(1), team(0));
+        let player = Viewer::player(link, PlayStatus::Playing, None);
+        // Of a unit of seat 1's: none, as the owner; of seat 2's of its team, an ally; of the
         // other team's, an enemy; of the match's, of no team or owner, an ally.
         assert_eq!(
-            player.recipient(Some(slot(1)), Some(team(0))),
+            player.recipient(Some(seat(1)), Some(team(0))),
             Recipients::NONE
         );
         assert_eq!(
-            player.recipient(Some(slot(2)), Some(team(0))),
+            player.recipient(Some(seat(2)), Some(team(0))),
             Recipients::ALLIES
         );
         assert_eq!(player.recipient(None, Some(team(1))), Recipients::ENEMIES);
         assert_eq!(player.recipient(None, None), Recipients::ALLIES);
         let spectator = Viewer::Spectator(Watching::Teams(TeamSet::ALL));
         for (owner, of) in [
-            (Some(slot(1)), Some(team(0))),
+            (Some(seat(1)), Some(team(0))),
             (None, Some(team(1))),
             (None, None),
         ] {
@@ -239,14 +239,14 @@ mod tests {
             ModeVisibility::default().session(&host).unwrap()
         };
         let (spectators, own_team) = (session("spectators"), session("team"));
-        let out = Viewer::player(seat, PlayStatus::Out, Some(&spectators));
+        let out = Viewer::player(link, PlayStatus::Out, Some(&spectators));
         assert_eq!(out.recipient(None, Some(team(1))), Recipients::SPECTATORS);
         assert_eq!(
-            out.recipient(Some(slot(1)), Some(team(0))),
+            out.recipient(Some(seat(1)), Some(team(0))),
             Recipients::NONE
         );
         assert_eq!(
-            out.recipient(Some(slot(2)), Some(team(0))),
+            out.recipient(Some(seat(2)), Some(team(0))),
             Recipients::ALLIES
         );
         for (status, visibility) in [
@@ -254,7 +254,7 @@ mod tests {
             (PlayStatus::Out, None),
             (PlayStatus::Playing, Some(&spectators)),
         ] {
-            let viewer = Viewer::player(seat, status, visibility);
+            let viewer = Viewer::player(link, status, visibility);
             assert_eq!(viewer, player, "{status:?} {visibility:?}");
         }
     }

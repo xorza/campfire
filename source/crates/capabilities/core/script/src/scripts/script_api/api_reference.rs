@@ -2,7 +2,7 @@ use std::fmt::{self, Write};
 
 use campfire_sim::Capability;
 
-use crate::scripts::api_owner::ApiOwner;
+use crate::scripts::api_holder::ApiHolder;
 use crate::scripts::data_table::DataTable;
 use crate::scripts::member_kind::MemberKind;
 use crate::scripts::planned_capability::PlannedCapability;
@@ -13,7 +13,7 @@ use crate::scripts::script_role::ScriptRole;
 /// The opening of the generated reference.
 const REFERENCE_HEAD: &str = "# Campfire — Script API reference
 
-Generated from the script API's registry ([One source](08-script-api.md#one-source)); do not edit it. A test fails when it differs from what the registry writes; run that test with `CAMPFIRE_BLESS=1` to write it again. A name that runs is bound by the code that runs it; a planned one is one the design gives that the release does not run yet. The rules of the API are in [Script API](08-script-api.md).
+Generated from the script API's registry ([One source](06-script-api.md#one-source)); do not edit it. A test fails when it differs from what the registry writes; run that test with `CAMPFIRE_BLESS=1` to write it again. A name that runs is bound by the code that runs it; a planned one is one the design gives that the release does not run yet. The rules of the API are in [Script API](06-script-api.md).
 ";
 
 /// The script API's reference in Markdown, as its registry writes it: every name, hook, state
@@ -38,29 +38,29 @@ impl ApiReference<'_> {
                 names.join(", ")
             }
         };
-        let capability = ApiReference::owner;
-        let mut owners: Vec<_> = self
+        let capability = ApiReference::capability_name;
+        let mut holders: Vec<_> = self
             .0
             .members
             .iter()
-            .map(|member| member.spec.owner)
+            .map(|member| member.decl.holder)
             .collect();
-        owners.dedup();
-        for owner in owners {
+        holders.dedup();
+        for holder in holders {
             let members = self
                 .0
                 .members
                 .iter()
-                .filter(|member| member.spec.owner == owner);
-            let ctx = owner == ApiOwner::CTX;
-            write!(out, "\n## {}\n\n", owner.title())?;
+                .filter(|member| member.decl.holder == holder);
+            let ctx = holder == ApiHolder::CTX;
+            write!(out, "\n## {}\n\n", holder.title())?;
             out.push_str(if ctx {
                 "| Name | Form | Roles | Capability | Status | What it is |\n| --- | --- | --- | --- | --- | --- |\n"
             } else {
                 "| Name | Form | Capability | Status | What it is |\n| --- | --- | --- | --- | --- |\n"
             });
             for member in members {
-                let spec = &member.spec;
+                let spec = &member.decl;
                 let mut form = match (spec.kind, member.writable) {
                     (MemberKind::Field | MemberKind::Value, true) => "written and read".to_owned(),
                     (MemberKind::Field | MemberKind::Value, false) => "read".to_owned(),
@@ -153,7 +153,7 @@ impl ApiReference<'_> {
                     out,
                     "| `{}` | {} | {} |",
                     field.name,
-                    ApiReference::owner(field.capability, None),
+                    ApiReference::capability_name(field.capability, None),
                     field.status
                 )?;
             }
@@ -163,7 +163,7 @@ impl ApiReference<'_> {
 
     /// The name of `planned`, a capability the release does not build, else of `capability`,
     /// or `core` for none.
-    const fn owner(
+    const fn capability_name(
         capability: Option<Capability>,
         planned: Option<PlannedCapability>,
     ) -> &'static str {

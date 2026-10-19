@@ -1,5 +1,5 @@
 fn on_think(ctx, unit) {
-    let away = unit.pos.distance_to(unit.spawn_pos);
+    let away = unit.position.distance_to(unit.spawn_pos);
     if away > unit.params.leash_range {
         ctx.order_reset();
         return;

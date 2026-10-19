@@ -44,19 +44,19 @@ impl TestKey {
         Signer::new(key, Entropy::Fixed(0))
     }
 
-    /// The keys of every player by slot, each main key sorting after every lower slot's, as a
+    /// The keys of every player by seat, each main key sorting after every lower seat's, as a
     /// server orders the joins of one frame by main key. The main keys take the odd bytes below
     /// `2 × PLAYERS`, and each session key the byte after its main key's.
     pub fn players() -> [PlayerKeys; Self::PLAYERS as usize] {
         let mut players: [PlayerKeys; Self::PLAYERS as usize] =
-            array::from_fn(|slot| Self::pair(u8::try_from(2 * slot + 1).unwrap()));
+            array::from_fn(|seat| Self::pair(u8::try_from(2 * seat + 1).unwrap()));
         players.sort_by_key(|keys| keys.main.x_only_public_key().0.serialize());
         players
     }
 
-    /// The keys of the player of `slot`, as `players` gives them.
-    pub fn player(slot: u32) -> PlayerKeys {
-        Self::players()[usize::try_from(slot).unwrap()]
+    /// The keys of the player of `seat`, as `players` gives them.
+    pub fn player(seat: u32) -> PlayerKeys {
+        Self::players()[usize::try_from(seat).unwrap()]
     }
 
     /// The keys of the `n`th spectator, past every player's, the server's among them.
@@ -82,7 +82,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn players_sort_by_slot_and_no_two_identities_share_a_key() {
+    fn players_sort_by_seat_and_no_two_identities_share_a_key() {
         // The odd bytes 1 to 15 sort by their keys as 15, 1, 13, 3, 11, 9, 5, 7.
         let players = TestKey::players();
         assert_eq!(players[3].main, TestKey::player(3).main);

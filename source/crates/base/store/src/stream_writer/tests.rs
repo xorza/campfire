@@ -5,7 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use super::*;
-use crate::scratch::Scratch;
+use crate::test_dir::TestDir;
 
 /// A file that holds what is written to it, each write after the test's word, and fails each
 /// write of a piece that starts with `!`.
@@ -152,17 +152,17 @@ fn a_writer_dropped_as_a_panic_unwinds_closes_over_a_piece_that_panicked() {
 }
 
 #[test]
-fn a_created_stream_is_its_owners_only_and_empties_a_file_there() {
-    let scratch = Scratch::new();
-    let fresh = scratch.path("fresh");
+fn a_created_stream_is_its_users_only_and_empties_a_file_there() {
+    let test_dir = TestDir::new();
+    let fresh = test_dir.path("fresh");
     drop(StreamWriter::create("stream", &fresh, 16).unwrap());
-    assert_eq!(OwnerOnly::exposure_at(&fresh).unwrap(), None);
-    assert_eq!(scratch.read_text(Path::new("fresh")), "");
+    assert_eq!(UserOnly::exposure_at(&fresh).unwrap(), None);
+    assert_eq!(test_dir.read_text(Path::new("fresh")), "");
     // A file there is emptied before the stream's first piece.
     let kept = Path::new("kept");
-    scratch.write(kept, "old text");
-    let writer = StreamWriter::create("stream", &scratch.path("kept"), 16).unwrap();
+    test_dir.write(kept, "old text");
+    let writer = StreamWriter::create("stream", &test_dir.path("kept"), 16).unwrap();
     writer.sender().put(|out| out.extend_from_slice(b"new"));
     assert!(writer.close().is_none());
-    assert_eq!(scratch.read_text(kept), "new");
+    assert_eq!(test_dir.read_text(kept), "new");
 }

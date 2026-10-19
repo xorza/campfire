@@ -1,5 +1,5 @@
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
@@ -180,7 +180,7 @@ impl Projectiles {
             Self::push(world, by, unit_type, launch, None, [curve]);
             return;
         }
-        let Some(at) = target.pos(world) else {
+        let Some(at) = target.position(world) else {
             return;
         };
         let offset = world.resource::<MapBook>().metric.offset(from, at);
@@ -207,9 +207,9 @@ impl Projectiles {
     /// gone.
     fn center(world: &World, id: StableId) -> Option<Vec3> {
         let entity = world.entity_of(id)?;
-        let pos = world.get::<Position>(entity)?.get();
+        let position = world.get::<Position>(entity)?.get();
         let body = world.get::<Body>(entity);
-        Some(Body::center(body, pos, world.resource::<MapBook>()))
+        Some(Body::center(body, position, world.resource::<MapBook>()))
     }
 
     /// The range of a line projectile of `spec`: its type's, or else `range`, its action's at

@@ -6,7 +6,7 @@ use campfire_math::Num;
 use campfire_navigation::WallData;
 use campfire_units::MapPoint;
 
-/// A map's cliffs as the pathfinder blocks them (12-zero-hour.md, Cliffs are walls): each cliff
+/// A map's cliffs as the pathfinder blocks them (09-zero-hour.md, Cliffs are walls): each cliff
 /// cell of the game's, and each cell of the eight round one, as `Pathfinder::classifyMap` grows
 /// them, merged row by row into rectangles of whole cells, each a run of one row's cells and the
 /// same run of the rows after it.

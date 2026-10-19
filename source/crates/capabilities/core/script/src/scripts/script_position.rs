@@ -1,7 +1,7 @@
 use campfire_math::Vec3;
 use campfire_values::EngineEnum;
 
-use crate::scripts::api_owner::ScriptHandle;
+use crate::scripts::api_holder::ScriptHandle;
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_arg::ScriptArg;

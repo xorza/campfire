@@ -3,7 +3,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::{
-    Ctx, Hook, HookSpec, ModeAnswer, ModeEvents, PendingCalls, ScriptRole, ScriptText, Unit,
+    Ctx, Hook, HookDecl, ModeAnswer, ModeEvents, PendingCalls, ScriptRole, ScriptText, Unit,
 };
 use campfire_sim::{SimResource, StableId};
 use campfire_stats::Level;
@@ -85,7 +85,7 @@ impl SimResource for LevelUps {
 #[derive(Debug)]
 pub struct OnLevelUp;
 
-impl HookSpec for OnLevelUp {
+impl HookDecl for OnLevelUp {
     const NAME: &'static str = "on_level_up";
     const ROLE: ScriptRole = ScriptRole::Mode;
     const PARAMS: &'static [&'static str] = &["ctx", "unit", "track", "level"];

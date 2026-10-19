@@ -24,7 +24,7 @@ pub struct ModeManifest<C = CapabilitySet> {
     /// The capabilities its matches use; the release installs only these.
     pub capabilities: C,
     pub tick_hz: TickRange,
-    /// The playing teams, in order; their slots in that order make the player slots.
+    /// The playing teams, in order; their seats in that order make the player seats.
     pub teams: Vec<TeamManifest>,
     /// The most any unit walks.
     pub max_move_speed: Speed,
@@ -50,9 +50,9 @@ impl ModeManifest<Vec<Capability>> {
 }
 
 impl ModeManifest {
-    /// How many player slots its teams have together.
-    pub fn slots(&self) -> u64 {
-        self.teams.iter().map(|team| u64::from(team.slots)).sum()
+    /// How many player seats its teams have together.
+    pub fn seats(&self) -> u64 {
+        self.teams.iter().map(|team| u64::from(team.seats)).sum()
     }
 }
 

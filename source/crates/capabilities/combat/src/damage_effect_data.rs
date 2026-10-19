@@ -8,7 +8,7 @@ use campfire_common::DeclaredName;
 use campfire_declare::{BookError, Listed};
 use campfire_math::Num;
 use campfire_script::{
-    ApiBuilder, CallError, CapabilityRefusal, Checked, Ctx, Frame, MemberSpec, Unit, View,
+    ApiBuilder, CallError, CapabilityRefusal, Checked, Ctx, Frame, MemberDecl, Unit, View,
 };
 use campfire_sim::{Capability, StableId};
 use campfire_values::{DamageKind, Number};
@@ -42,7 +42,7 @@ impl Listed for DamageEffectData {
     }
 
     fn api(api: &mut ApiBuilder<'_>) {
-        let damage = MemberSpec::call(
+        let damage = MemberDecl::call(
             "damage",
             &[
                 &["unit", "kind", "amount"],

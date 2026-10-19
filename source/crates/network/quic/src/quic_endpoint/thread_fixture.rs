@@ -33,7 +33,7 @@ const CLIENT: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)
 
 /// A server's endpoint and a client's, connected in memory with a clock of their own and seeded
 /// random numbers, so each run sends the same packets at the same times: what an allocation audit
-/// of the server's thread measures, its work under the mutex for one read (15-quic-transport.md, A
+/// of the server's thread measures, its work under the mutex for one read (11-quic-transport.md, A
 /// thread for each endpoint, and no IO in the frame). No frame takes the news or datagrams of
 /// either.
 #[derive(Debug)]

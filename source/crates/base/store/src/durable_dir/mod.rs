@@ -6,12 +6,12 @@ use std::path::Path;
 use crate::durable_dir::error::{DurableDirCreateError, DurableDirError};
 use crate::path_error::PathError;
 use crate::platform::durable_name::DurableName;
-use crate::platform::owner_only::OwnerOnly;
+use crate::platform::user_only::UserOnly;
 
 pub(crate) mod error;
 
 /// A directory made or removed durably: its parent is synced after, so the change of its name
-/// survives a crash. Each directory it makes is its owner's only.
+/// survives a crash. Each directory it makes is its user's only.
 #[derive(Debug)]
 pub struct DurableDir;
 
@@ -27,7 +27,7 @@ impl DurableDir {
 
     fn create_case(path: &Path) -> Result<(), DurableDirError> {
         let parent = path.parent().ok_or(DurableDirError::NoParent)?;
-        match OwnerOnly::create_dir(path) {
+        match UserOnly::create_dir(path) {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists && path.is_dir() => {}
             Err(error) => return Err(DurableDirError::Create(error)),
@@ -53,7 +53,7 @@ impl DurableDir {
     pub fn create_new(path: &Path) -> Result<(), PathError<DurableDirCreateError>> {
         let create = || {
             let parent = path.parent().ok_or(DurableDirError::NoParent)?;
-            match OwnerOnly::create_dir(path) {
+            match UserOnly::create_dir(path) {
                 Ok(()) => {}
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                     return Err(DurableDirCreateError::Exists);

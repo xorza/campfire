@@ -35,7 +35,7 @@ impl LookWriter<'_, '_, '_> {
     /// one whose models the package lacks, which the client shows as the engine's shape; and the
     /// look of each
     /// object that maps place as client objects, as the client's tree or prop buffer draws it
-    /// (12-zero-hour.md, The multiplayer rule for client objects): a tree's models of its tree draw
+    /// (09-zero-hour.md, The multiplayer rule for client objects): a tree's models of its tree draw
     /// modules, a prop's of its first draw module, when the `W3DModelDraw` family's, each created
     /// by its name, so only the meshes hidden by their own flag are hidden.
     pub(crate) fn units(
@@ -95,9 +95,9 @@ impl LookWriter<'_, '_, '_> {
             let (Some(model), Some(bone)) = (&draw.model, &draw.turret) else {
                 continue;
             };
-            if let WrittenModel::Parts { parts, .. } =
+            if let WrittenModel::Nodes { nodes, .. } =
                 self.models.model(&model.to_ascii_lowercase())?
-                && let Some(pivot) = parts.pivot_name(bone)
+                && let Some(pivot) = nodes.pivot_name(bone)
             {
                 return Ok(Some(pivot.to_owned()));
             }
@@ -160,8 +160,8 @@ impl LookWriter<'_, '_, '_> {
             };
             let name = model.to_ascii_lowercase();
             match self.models.model(&name)? {
-                WrittenModel::Parts { parts, bounds } => {
-                    let hide = parts.hidden(look);
+                WrittenModel::Nodes { nodes, bounds } => {
+                    let hide = nodes.hidden(look);
                     let top = bounds
                         .top(&hide)
                         .and_then(|top| ModelTop::new(top * scale.get()));

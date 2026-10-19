@@ -1,4 +1,4 @@
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_geometry::Shape;
 use campfire_math::Vec3;
 use campfire_sim::StableId;
@@ -8,7 +8,7 @@ use campfire_values::{Team, UnitTags, UnitType};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitRow {
     pub id: StableId,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub team: Team,
     /// Its body's shape, a point for a unit with no body.
     pub shape: Shape,
@@ -16,7 +16,7 @@ pub struct UnitRow {
     pub spawn: Option<Vec3>,
     pub unit_type: UnitType,
     /// The player who controls it.
-    pub owner: Option<PlayerSlot>,
+    pub owner: Option<Seat>,
     /// Whether it lives by `stats`' living test: it is not dead, and its life, if it has one, is
     /// above 0; `combat` fills it, and the next.
     pub alive: bool,

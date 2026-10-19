@@ -30,7 +30,7 @@ fn bracket_end(text: &str, at: usize, open: char, close: char) -> usize {
 }
 
 /// The type an `impl` line of `line` gives methods to, none for a trait's impl.
-fn impl_owner(line: &str) -> Option<&str> {
+fn impl_self_type(line: &str) -> Option<&str> {
     let mut rest = line.trim_start().strip_prefix("impl")?;
     if rest.starts_with('<') {
         rest = &rest[bracket_end(rest, 0, '<', '>')..];
@@ -97,7 +97,7 @@ fn world_first(text: &str) -> Vec<WorldFirst> {
         let owner = lines[..line].iter().rev().find_map(|above| {
             let code = above.trim_start();
             let at_impl = indent >= 4 && above.len() - code.len() == indent - 4;
-            (at_impl && code.starts_with("impl")).then(|| impl_owner(above))
+            (at_impl && code.starts_with("impl")).then(|| impl_self_type(above))
         });
         let name = match owner {
             Some(None) => continue,

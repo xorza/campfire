@@ -33,7 +33,7 @@ pub struct WalkCheck<'a> {
 pub struct PlacedBody {
     pub unit: usize,
     pub unit_type: UnitType,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub body: Body,
 }
 
@@ -41,7 +41,7 @@ pub struct PlacedBody {
 #[derive(Debug, Clone)]
 pub struct MarkerPoint {
     pub name: DeclaredName,
-    pub pos: Vec3,
+    pub position: Vec3,
 }
 
 impl WalkCheck<'_> {
@@ -61,13 +61,13 @@ impl WalkCheck<'_> {
         let structures: Vec<IndexedBody> = self
             .placed
             .iter()
-            .map(|placed| IndexedBody::of(ids.allocate(), placed.pos, &placed.body))
+            .map(|placed| IndexedBody::of(ids.allocate(), placed.position, &placed.body))
             .collect();
         for (placed, body) in self.placed.iter().zip(&structures) {
             let Shape::Box(boxed) = body.shape else {
                 continue;
             };
-            if !bounds.holds_box(body.pos, &boxed) {
+            if !bounds.holds_box(body.position, &boxed) {
                 return Err(MapProblem::BoxOutside {
                     unit: placed.unit,
                     unit_type: name_of(placed.unit_type),
@@ -89,12 +89,12 @@ impl WalkCheck<'_> {
         for &walker in &widest {
             let clearance = grid.clearance(walker);
             let walkable = Walkable::of(clearance, &statics);
-            let stands = |pos: Vec3| !walkable.blocks(Segment::new(pos, pos));
-            if let Some(spawn) = self.spawns.iter().find(|spawn| !stands(spawn.pos)) {
+            let stands = |position: Vec3| !walkable.blocks(Segment::new(position, position));
+            if let Some(spawn) = self.spawns.iter().find(|spawn| !stands(spawn.position)) {
                 let marker = spawn.name.clone();
                 return Err(MapProblem::MarkerBlocked { marker });
             }
-            let reach = |pos: Vec3| clearance.regions().reach(cells.nearest_cell(pos));
+            let reach = |position: Vec3| clearance.regions().reach(cells.nearest_cell(position));
             for (path, name) in paths.names().iter() {
                 let points = paths.points(path);
                 if let Some(waypoint) = points.iter().position(|&point| !stands(point)) {

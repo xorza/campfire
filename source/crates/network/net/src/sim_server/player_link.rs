@@ -1,5 +1,5 @@
 use bevy_ecs::component::Component;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_values::Team;
 
 /// Which player a client link carries the inputs of, their team, and whether the log refused one
@@ -8,27 +8,27 @@ use campfire_values::Team;
 #[derive(Component, Debug, Clone, Copy)]
 #[component(immutable)]
 pub(crate) struct PlayerLink {
-    slot: PlayerSlot,
+    seat: Seat,
     team: Team,
     refused: bool,
 }
 
 impl PlayerLink {
-    pub(crate) const fn new(slot: PlayerSlot, team: Team) -> Self {
+    pub(crate) const fn new(seat: Seat, team: Team) -> Self {
         Self {
-            slot,
+            seat,
             team,
             refused: false,
         }
     }
 
-    pub(crate) const fn slot(self) -> PlayerSlot {
-        self.slot
+    pub(crate) const fn seat(self) -> Seat {
+        self.seat
     }
 
     /// Whether the log refused one of its messages: a broken chain or signature, or a limit
     /// passed. A client that follows the rules sends none, so the first one ends the link.
-    pub(crate) const fn refused(self) -> bool {
+    pub(crate) const fn is_refused(self) -> bool {
         self.refused
     }
 

@@ -20,7 +20,7 @@ pub(crate) struct SightCache<K> {
 /// A sight's key: where from, and how far.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Sighting {
-    pub pos: Vec3,
+    pub position: Vec3,
     pub(crate) range: Num,
 }
 
@@ -103,9 +103,9 @@ mod tests {
         let grid = Grid::new(Num::ONE, bounds).unwrap();
         let at = |x: Num| Vec3::new(x, Num::ZERO, Num::int(2));
         let (here, there) = (at(Num::ONE), at(Num::ONE + Num::ONE / 3));
-        let spans = |pos: Vec3, range: Num| {
+        let spans = |position: Vec3, range: Num| {
             let mut runs = Vec::new();
-            grid.spans_within(pos, range, |run| runs.push(run));
+            grid.spans_within(position, range, |run| runs.push(run));
             runs
         };
         let mut cache = SightCache::default();
@@ -125,15 +125,15 @@ mod tests {
         ];
         for (tick, sights) in ticks.into_iter().enumerate() {
             cache.begin_tick();
-            for &(slot, pos, range, fresh) in sights {
+            for &(slot, position, range, fresh) in sights {
                 let mut asked = false;
                 let runs = cache
-                    .runs(slot, Sighting { pos, range }, |run| {
+                    .runs(slot, Sighting { position, range }, |run| {
                         asked = true;
-                        grid.spans_within(pos, range, run);
+                        grid.spans_within(position, range, run);
                     })
                     .to_vec();
-                assert_eq!(runs, spans(pos, range), "tick {tick}, slot {slot}");
+                assert_eq!(runs, spans(position, range), "tick {tick}, slot {slot}");
                 assert_eq!(asked, fresh, "tick {tick}, slot {slot}");
             }
         }
@@ -142,7 +142,7 @@ mod tests {
         cache.begin_tick();
         let mut asked = false;
         let key = Sighting {
-            pos: there,
+            position: there,
             range: five,
         };
         cache.runs(0, key, |run| {

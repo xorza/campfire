@@ -83,7 +83,7 @@ impl ModifierClocks {
     }
 
     /// Whether an instance has a shield left to absorb damage.
-    pub fn shielded(&self) -> bool {
+    pub fn is_shielded(&self) -> bool {
         let left = |clock: &Clock| clock.shield.is_some_and(|shield| shield > Num::ZERO);
         self.clocks.iter().any(left)
     }

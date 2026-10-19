@@ -13,7 +13,7 @@ use zeroize::Zeroizing;
 use crate::derived_secret::DerivedSecret;
 use crate::spki::Spki;
 
-/// The ALPN of every Campfire connection, which RFC 9001 requires (15-quic-transport.md, TLS 1.3,
+/// The ALPN of every Campfire connection, which RFC 9001 requires (11-quic-transport.md, TLS 1.3,
 /// ALPN `campfire`, no client key, no resumption).
 pub(crate) const ALPN: &[u8] = b"campfire";
 
@@ -26,7 +26,7 @@ const PKCS8_PREFIX: [u8; 16] = [
 const PKCS8_LEN: usize = PKCS8_PREFIX.len() + 32;
 
 /// The server's TLS identity: an Ed25519 key with no certificate, whose seed derives from the
-/// server's own key (15-quic-transport.md, A raw key derived from the server's key).
+/// server's own key (11-quic-transport.md, A raw key derived from the server's key).
 #[derive(Debug)]
 pub(crate) struct ServerKey {
     signing: Arc<dyn SigningKey>,
@@ -98,8 +98,9 @@ mod tests {
 
     #[test]
     fn a_seeds_encodings_are_rfc_8410s() {
-        // RFC 8410 §10.3's private key, `MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC`,
-        // whose public key is §10.1's.
+        // RFC 8410 §10.3's private key,
+        // `MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC`, whose public key is
+        // §10.1's.
         let seed = Zeroizing::new([
             0xd4, 0xee, 0x72, 0xdb, 0xf9, 0x13, 0x58, 0x4a, 0xd5, 0xb6, 0xd8, 0xf1, 0xf7, 0x69,
             0xf8, 0xad, 0x3a, 0xfe, 0x7c, 0x28, 0xcb, 0xf1, 0xd4, 0xfb, 0xe0, 0x97, 0xa8, 0x8f,

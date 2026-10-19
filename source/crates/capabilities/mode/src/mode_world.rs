@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_script::StateValue;
 use campfire_units::{SyncAll, SyncNone, UnitsWorld};
 use campfire_values::Team;
@@ -22,9 +22,9 @@ pub trait ModeWorld {
     /// mode call reads it.
     fn mode_state(&self) -> Vec<StateValue>;
 
-    /// The team of player `slot` in the match; `None` before the mode installs, or for
-    /// a slot the session does not have.
-    fn team_of(&self, slot: PlayerSlot) -> Option<Team>;
+    /// The team of player `seat` in the match; `None` before the mode installs, or for
+    /// a seat the session does not have.
+    fn team_of(&self, seat: Seat) -> Option<Team>;
 }
 
 impl ModeWorld for World {
@@ -48,8 +48,8 @@ impl ModeWorld for World {
         state
     }
 
-    fn team_of(&self, slot: PlayerSlot) -> Option<Team> {
-        self.get_resource::<MatchMode>()?.team_of(slot)
+    fn team_of(&self, seat: Seat) -> Option<Team> {
+        self.get_resource::<MatchMode>()?.team_of(seat)
     }
 }
 

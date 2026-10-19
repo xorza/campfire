@@ -11,7 +11,7 @@ fn the_event_reads_back_what_it_logs() {
         tick: Some(Tick::new(7)),
         unit,
         team: Some(Team::new(1)),
-        owner: Some(PlayerSlot::new(0)),
+        owner: Some(Seat::new(0)),
         killer: Some(killer),
         avatar: true,
     };
@@ -39,7 +39,7 @@ fn a_death_logs_its_unit_as_it_fell_and_its_killer() {
     let fallen = Fallen {
         id,
         team: Some(Team::new(1)),
-        owner: Some(PlayerSlot::new(0)),
+        owner: Some(Seat::new(0)),
         avatar: true,
     };
     let death = DeathView {
@@ -53,7 +53,7 @@ fn a_death_logs_its_unit_as_it_fell_and_its_killer() {
             tick: Some(Tick::new(7)),
             unit: id,
             team: Some(Team::new(1)),
-            owner: Some(PlayerSlot::new(0)),
+            owner: Some(Seat::new(0)),
             killer: Some(killer),
             avatar: true,
         }

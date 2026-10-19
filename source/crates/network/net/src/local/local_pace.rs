@@ -46,7 +46,7 @@ impl Plugin for LocalPace {
 impl Paced {
     fn apply(world: &mut World) {
         let paced = world.resource::<Self>();
-        let (paused, speed) = (paced.pace.paused(), paced.pace.speed());
+        let (paused, speed) = (paced.pace.is_paused(), paced.pace.speed());
         let (was_paused, was_speed, tick) = (paced.paused, paced.speed, paced.tick);
         if paused != was_paused {
             let mut time = world.resource_mut::<Time<Virtual>>();

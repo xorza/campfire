@@ -269,7 +269,7 @@ impl CameraRig {
     }
 
     /// Whether a pan or an orbit is under way.
-    pub(crate) const fn dragging(&self) -> bool {
+    pub(crate) const fn is_dragging(&self) -> bool {
         self.drag.is_some()
     }
 

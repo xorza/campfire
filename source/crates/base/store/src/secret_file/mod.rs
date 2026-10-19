@@ -9,9 +9,9 @@ use crate::durable_file::error::{DurableCreateError, DurableError};
 use crate::input_file::InputFile;
 use crate::input_file::error::ReadError;
 use crate::path_error::PathError;
-use crate::platform::owner_only::OwnerOnly;
+use crate::platform::user_only::UserOnly;
 
-/// A secret's file, which only its owner may open, as a key's: made from its path where the path
+/// A secret's file, which only its user may open, as a key's: made from its path where the path
 /// enters, it reads and writes the file and gives no path back, so no other read of a secret
 /// compiles. A read refuses a file others may open, as OpenSSH refuses a key with loose
 /// permissions.
@@ -34,22 +34,22 @@ impl SecretFile {
             .map_err(PathError::at(&self.path))
     }
 
-    /// Makes the file with `bytes`, durably and its owner's only, and never replaces one: a file
+    /// Makes the file with `bytes`, durably and its user's only, and never replaces one: a file
     /// that holds its name is left as it is, `Exists`, so of two processes that make one secret
     /// at once, one makes it and the other reads it.
     pub fn create_new(&self, bytes: &[u8]) -> Result<(), PathError<DurableCreateError>> {
         DurableFile::create_new(&self.path, bytes)
     }
 
-    /// Replaces the file, or makes it, with `bytes`, durably and its owner's only: a secret its
-    /// owner renews, under its data directory's lock.
+    /// Replaces the file, or makes it, with `bytes`, durably and its user's only: a secret its
+    /// user renews, under its data directory's lock.
     pub fn replace(&self, bytes: &[u8]) -> Result<(), PathError<DurableError>> {
         DurableFile::write(&self.path, bytes)
     }
 
     fn read_checked(&self, max_len: usize) -> Result<Zeroizing<Vec<u8>>, ReadError> {
         let opened = InputFile::open(&self.path)?;
-        if let Some(exposure) = OwnerOnly::exposure(&opened.file).map_err(ReadError::Read)? {
+        if let Some(exposure) = UserOnly::exposure(&opened.file).map_err(ReadError::Read)? {
             return Err(ReadError::Exposed(exposure));
         }
         let too_large = || ReadError::TooLarge { max: max_len };
@@ -86,13 +86,13 @@ impl fmt::Display for SecretFile {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::platform::owner_only::OwnerOnly;
+    use crate::platform::user_only::UserOnly;
     use crate::secret_file::SecretFile;
 
     impl SecretFile {
-        /// Lets other users read the file: a test's secret file that is not its owner's only.
+        /// Lets other users read the file: a test's secret file that is not its user's only.
         pub fn expose(&self) {
-            OwnerOnly::expose(&self.path);
+            UserOnly::expose(&self.path);
         }
     }
 }

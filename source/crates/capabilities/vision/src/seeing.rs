@@ -73,14 +73,14 @@ impl Seeing {
                 reveals.run(now, |reveal| Self::reveal(fog, grid, reveal));
             }
         });
-        for (entity, &pos, &team, body, tags, mut seen) in &mut units {
-            let hidden = tags.is_some_and(|tags| tags.properties.hidden());
+        for (entity, &position, &team, body, tags, mut seen) in &mut units {
+            let hidden = tags.is_some_and(|tags| tags.properties.is_hidden());
             let boxed = match Body::shape_of(body) {
                 Shape::Box(body) => Some(body),
                 Shape::Circle(_) => None,
             };
             let slot = entity.index_u32() as usize;
-            let teams = fog.seen_by(grid, slot, pos.get(), boxed, team, hidden);
+            let teams = fog.seen_by(grid, slot, position.get(), boxed, team, hidden);
             seen.set_if_neq(SeenBy::new(teams));
         }
     }
@@ -109,8 +109,8 @@ impl Seeing {
     }
 
     /// Whether the fog holds no Vision stage's sight, as a new or a restored match's does.
-    pub(super) fn unfilled(fog: Res<'_, Fog>) -> bool {
-        !fog.filled()
+    pub(super) fn is_unfilled(fog: Res<'_, Fog>) -> bool {
+        !fog.is_filled()
     }
 
     /// Fills `fog` with what `seers` see on `grid`, its groups built again from `relations`
@@ -123,19 +123,19 @@ impl Seeing {
         seers: &Seers<'_, '_>,
         reveals: impl FnOnce(&mut Fog),
     ) {
-        if changed || !fog.filled() {
+        if changed || !fog.is_filled() {
             fog.rebuild(grid, relations);
         }
         fog.begin_tick();
-        for (entity, &pos, &team, sight, tags) in seers {
+        for (entity, &position, &team, sight, tags) in seers {
             let detects = tags.is_some_and(|tags| tags.properties.detects());
             let slot = entity.index_u32() as usize;
-            fog.sight(grid, slot, pos.get(), team, sight.range(), detects);
+            fog.sight(grid, slot, position.get(), team, sight.range(), detects);
         }
         reveals(fog);
     }
 
     fn reveal(fog: &mut Fog, grid: &VisionGrid, reveal: &Reveal) {
-        fog.reveal(grid, reveal.pos, reveal.team, reveal.radius);
+        fog.reveal(grid, reveal.position, reveal.team, reveal.radius);
     }
 }

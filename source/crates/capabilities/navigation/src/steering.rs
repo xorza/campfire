@@ -41,7 +41,7 @@ pub(crate) struct Steering {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Steered {
     pub id: StableId,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub(crate) step: Num,
     pub(crate) walker: Walker,
     pub(crate) stuck: bool,
@@ -90,7 +90,7 @@ impl Steering {
                 self.moving.push(Indexed {
                     id: body.id,
                     key: body.layer,
-                    body: Placed::new(body.pos, body.shape),
+                    body: Placed::new(body.position, body.shape),
                 });
             } else {
                 self.still.push(body);
@@ -135,7 +135,7 @@ impl Steering {
     ) -> Option<Detour> {
         let Steered {
             id,
-            pos: at,
+            position: at,
             step,
             walker,
             stuck,
@@ -148,17 +148,17 @@ impl Steering {
         let window_cells = i64::try_from(Self::WINDOW).expect("a small window");
         let reach = grid.cell() * window_cells;
         let look = at.step_toward(ahead[0], reach);
-        if (!stuck && !standing.blocks(Segment::new(at, look), walker)) || planner.spent() {
+        if (!stuck && !standing.blocks(Segment::new(at, look), walker)) || planner.is_spent() {
             return None;
         }
         let clearance = grid.clearance(walker);
         let cells = clearance.grid();
         let window = Window::around(cells, cells.nearest_cell(at), Self::WINDOW);
-        let inside = |pos: &Vec3| {
-            let cell = cells.nearest_cell(*pos);
+        let inside = |position: &Vec3| {
+            let cell = cells.nearest_cell(*position);
             window.contains(cell % cells.columns(), cell / cells.columns())
         };
-        let within = ahead.iter().take_while(|pos| inside(pos)).count();
+        let within = ahead.iter().take_while(|position| inside(position)).count();
         let (goal, skipped) = match within {
             0 => (look, 0),
             _ => (ahead[within - 1], within),
@@ -181,7 +181,7 @@ impl Steering {
             let gatherers = &self.gatherers;
             self.walking.visit_near(at, walker.radius + step, |other| {
                 let reach = walker.radius + other.body.shape.bound();
-                let touching = other.body.pos.within_ground(at, reach + step);
+                let touching = other.body.position.within_ground(at, reach + step);
                 let passes = gathering && gatherers.binary_search(&other.id).is_ok();
                 if other.id == id || !touching || other.key != walker.layer || passes {
                     return ControlFlow::Continue(());
@@ -189,7 +189,7 @@ impl Steering {
                 let shift = left * (reach / 2);
                 self.blockers.push(IndexedBody {
                     id: other.id,
-                    pos: other.body.pos + shift,
+                    position: other.body.position + shift,
                     shape: other.body.shape,
                     layer: other.key,
                 });
@@ -262,7 +262,7 @@ mod tests {
         let (id, blocker) = (ids.allocate(), ids.allocate());
         let standing = IndexedBody {
             id: blocker,
-            pos: eighths(43, 0),
+            position: eighths(43, 0),
             shape: Shape::Circle(Radius::new(quarter).unwrap()),
             layer: Layer::FIRST,
         };
@@ -277,7 +277,7 @@ mod tests {
         let route = PlannedRoute::new(goal, eighths(7, 0), &[goal]);
         let steered = Steered {
             id,
-            pos: eighths(7, 0),
+            position: eighths(7, 0),
             step: quarter,
             walker,
             stuck: false,
@@ -306,7 +306,7 @@ mod tests {
         let (id, blocker) = (ids.allocate(), ids.allocate());
         let standing = IndexedBody {
             id: blocker,
-            pos: eighths(8, 0),
+            position: eighths(8, 0),
             shape: Shape::Circle(Radius::new(quarter).unwrap()),
             layer: Layer::FIRST,
         };
@@ -323,7 +323,7 @@ mod tests {
             steering.read(&statics, [gathering_still]);
             let steered = Steered {
                 id,
-                pos: eighths(0, 0),
+                position: eighths(0, 0),
                 step: quarter,
                 walker,
                 stuck: false,

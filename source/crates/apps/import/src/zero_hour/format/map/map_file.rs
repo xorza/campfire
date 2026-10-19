@@ -9,7 +9,7 @@ use crate::zero_hour::format::map::error::{Chunk, MapReadError, Packing};
 use crate::zero_hour::format::map::map_dict::{self, DictValue};
 use crate::zero_hour::format::map::map_object::MapObject;
 use crate::zero_hour::format::map::terrain::{
-    BlendShape, BlendTile, CliffUv, TerrainCell, TerrainParts, TextureClass,
+    BlendShape, BlendTile, CliffUv, TerrainCell, TerrainFields, TextureClass,
 };
 use crate::zero_hour::format::ref_pack;
 
@@ -20,7 +20,7 @@ use crate::zero_hour::format::ref_pack;
 pub(crate) struct MapFile {
     pub(crate) heights: MapHeights,
     /// Its cells in the file's order, one for each sample of the heights.
-    pub(crate) terrain: TerrainParts,
+    pub(crate) terrain: TerrainFields,
     pub(crate) objects: Vec<MapObject>,
     /// The three lights its objects are drawn in at its time of day (`GlobalLighting`), on the
     /// game's axes, a light the file does not give as the game starts it, dark and straight down.
@@ -221,7 +221,7 @@ impl MapFile {
     /// game makes from the heights, and which version 7 stored rows of `(width + 1) / 8` bytes
     /// of; the texture classes, the edge classes, the blended tiles and the cliff UVs, each list
     /// past an unused entry 0 that an index of 0 names.
-    fn terrain(chunk: RawChunk<'_>, heights: &MapHeights) -> Result<TerrainParts, MapReadError> {
+    fn terrain(chunk: RawChunk<'_>, heights: &MapHeights) -> Result<TerrainFields, MapReadError> {
         chunk.check_version(Chunk::BlendTileData, 6..=8)?;
         let version = chunk.version;
         let mut body = chunk.body;
@@ -283,7 +283,7 @@ impl MapFile {
                 })
             })
             .collect::<Result<_, MapReadError>>()?;
-        Ok(TerrainParts {
+        Ok(TerrainFields {
             cells,
             tiles: tile_count,
             classes,
@@ -485,7 +485,7 @@ impl MapFile {
             object.check_version(Chunk::Object, 3..=3)?;
             let read = MapObject::read(&mut object.body, names)?;
             object.body.ended(Chunk::Object)?;
-            if read.kept() {
+            if read.is_kept() {
                 objects.push(read);
             }
         }
@@ -834,7 +834,7 @@ mod tests {
                 b"rock",
             ]
         );
-        assert_eq!(read.objects[0].pos, [30.0, 5.0, 0.0]);
+        assert_eq!(read.objects[0].position, [30.0, 5.0, 0.0]);
         assert_eq!(read.objects[0].angle, PI / 2.0);
         assert_eq!(
             read.objects[2].waypoint,
@@ -844,7 +844,7 @@ mod tests {
             })
         );
         assert_eq!(read.objects[0].waypoint, None);
-        assert!(read.objects[3].road_or_bridge());
+        assert!(read.objects[3].is_road_or_bridge());
         // The lights of its time of day, the afternoon, the second: terrain lights 0 to 2 and
         // object lights 3 to 5 of time 2.
         let light = |at: u8| {

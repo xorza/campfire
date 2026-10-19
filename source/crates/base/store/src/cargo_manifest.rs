@@ -26,7 +26,7 @@ const KNOWN: [&str; 8] = [
 pub struct CargoManifest;
 
 impl CargoManifest {
-    /// The text of the manifest in the folder `dir`.
+    /// The text of the manifest in the directory `dir`.
     pub fn read(dir: &Path) -> String {
         InputFile::read_text(&dir.join("Cargo.toml"), MAX_LEN)
             .unwrap_or_else(|error| panic!("{error:?}"))

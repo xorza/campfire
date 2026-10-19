@@ -105,7 +105,7 @@ impl WeaponNames<'_> {
             DeliveryShape::Projectile { flight, .. } => Some(flight),
             DeliveryShape::Area => None,
         });
-        if delivery.is_some() && !flight.is_some_and(ProjectileFlight::at_unit) {
+        if delivery.is_some() && !flight.is_some_and(ProjectileFlight::is_at_unit) {
             Err(CombatDataError::Delivery)
         } else if data.splash.is_some() && flight.is_none() {
             Err(CombatDataError::Splash)

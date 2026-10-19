@@ -68,7 +68,10 @@ impl NavigationBook {
 
     /// The book of a map of `sections`, as `map` places its points; an error as `build` gives.
     pub fn of(map: &MapBook, sections: &Sections) -> Result<Self, NavigationDataError> {
-        let pos = |point: &MapPoint| map.pos(*point).map_err(NavigationDataError::Point);
+        let position = |point: &MapPoint| {
+            map.checked_position(*point)
+                .map_err(NavigationDataError::Point)
+        };
         let mut names = Names::default();
         let paths = sections.get::<MapPathsData>().into_iter();
         let mut points = Vec::new();
@@ -79,7 +82,7 @@ impl NavigationBook {
             if path.points.is_empty() {
                 return Err(NavigationDataError::EmptyPath(path.name.clone()));
             }
-            let path_points = path.points.iter().map(pos);
+            let path_points = path.points.iter().map(position);
             points.push(PathOf {
                 points: path_points.collect::<Result<Vec<Vec3>, _>>()?,
                 walk: path.walk,
@@ -114,7 +117,10 @@ impl Navigation {
         sections: &Sections,
         layers: Option<&Names<Layer>>,
     ) -> Result<WallBook, NavigationDataError> {
-        let pos = |point: &MapPoint| map.pos(*point).map_err(NavigationDataError::Point);
+        let position = |point: &MapPoint| {
+            map.checked_position(*point)
+                .map_err(NavigationDataError::Point)
+        };
         let data = sections
             .get::<MapNavigationData>()
             .into_iter()
@@ -129,7 +135,7 @@ impl Navigation {
                 None => Layer::FIRST,
             };
             let plane = data.points.iter().map(|point| {
-                let at = pos(point)?;
+                let at = position(point)?;
                 Ok([at.x, at.z])
             });
             let plane = plane.collect::<Result<Vec<[Num; 2]>, NavigationDataError>>()?;

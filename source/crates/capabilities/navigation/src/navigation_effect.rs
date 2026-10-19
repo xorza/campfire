@@ -106,13 +106,13 @@ impl NavigationEffect {
         Ok(())
     }
 
-    /// Puts the unit of `entity` at `pos`, at once: it ends its forced move and walks its route
-    /// again from there, as a teleport and a box that spawns over it put a unit.
-    pub(super) fn put(world: &mut World, entity: Entity, pos: Vec3, now: Tick) {
+    /// Puts the unit of `entity` at `position`, at once: it ends its forced move and walks its
+    /// route again from there, as a teleport and a box that spawns over it put a unit.
+    pub(super) fn put(world: &mut World, entity: Entity, position: Vec3, now: Tick) {
         let id = *world.get::<StableId>(entity).expect("a unit has an id");
         RouteDues::with(world, id, entity, |world, dues| {
             let mut moved = world.entity_mut(entity);
-            *moved.get_mut::<Position>().expect("a unit has a place") = Position::from(pos);
+            *moved.get_mut::<Position>().expect("a unit has a place") = Position::from(position);
             moved.remove::<(ForcedMove, DashDelivering)>();
             if let Ok((destination, mut route, mut progress)) =
                 moved.get_components_mut::<(&Destination, RouteMut, &mut Progress)>()
@@ -156,9 +156,9 @@ impl Effect for NavigationEffect {
                 ticks,
                 ..
             } => {
-                let pos = *world.get::<Position>(entity).expect("a unit has a place");
+                let position = *world.get::<Position>(entity).expect("a unit has a place");
                 ForcedMove::KnockBack {
-                    to: knock_back_end(pos.get(), from, distance),
+                    to: knock_back_end(position.get(), from, distance),
                     left: ticks.get(),
                 }
             }
@@ -174,18 +174,19 @@ impl Effect for NavigationEffect {
     }
 }
 
-/// Where a knock back `distance` away from `from` takes a unit at `pos`: straight away on the
+/// Where a knock back `distance` away from `from` takes a unit at `position`: straight away on the
 /// ground plane, each component of the direction rounded once, along x from `from` itself, as
 /// collision parts two on one spot.
-fn knock_back_end(pos: Vec3, from: Vec3, distance: Num) -> Vec3 {
-    let away =
-        from.ground_offset(pos)
-            .normalized()
-            .unwrap_or(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO));
+fn knock_back_end(position: Vec3, from: Vec3, distance: Num) -> Vec3 {
+    let away = from
+        .ground_offset(position)
+        .normalized()
+        .unwrap_or(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO));
     let offset = away
         .checked_mul(distance)
         .expect("a distance within the bound scales a unit vector");
-    pos.checked_add(offset)
+    position
+        .checked_add(offset)
         .expect("a place and a distance within the bound add")
 }
 
@@ -194,18 +195,21 @@ fn knock_back_end(pos: Vec3, from: Vec3, distance: Num) -> Vec3 {
 /// in, at `to`'s height; on a grid with no such cell, it stays. It ends its forced move and walks
 /// its route again from there, and every delivery that homes on it loses it.
 fn teleport(world: &mut World, entity: Entity, id: StableId, to: Vec3, now: Tick) {
-    let mut pos = world.resource::<MapBook>().bounds.clamp(to);
+    let mut position = world.resource::<MapBook>().bounds.clamp(to);
     let clearance = world.get_resource::<PathingGrid>().and_then(|grid| {
         let walker = Walker::of(world.get::<Body>(entity))?;
         grid.serving(walker)
     });
     if let Some(clearance) = clearance {
         let walkable = Walkable::of(clearance, world.resource::<BodyIndex>());
-        let Some(open) = world.resource::<RoutePlanner>().stand_at(walkable, pos) else {
+        let Some(open) = world
+            .resource::<RoutePlanner>()
+            .stand_at(walkable, position)
+        else {
             return;
         };
-        pos = open;
+        position = open;
     }
-    NavigationEffect::put(world, entity, pos, now);
+    NavigationEffect::put(world, entity, position, now);
     world.trigger(Teleported { id });
 }

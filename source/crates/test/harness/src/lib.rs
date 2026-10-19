@@ -3,7 +3,7 @@
 //! a server and its clients over modeled links.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
 mod archetype_watch;
@@ -27,7 +27,7 @@ pub use crate::fixed_session::FixedSession;
 pub use crate::fixed_session::fixed_match::FixedMatch;
 pub use crate::hash_trail::{Difference, HashTrail};
 pub use crate::in_process_match::link_model::LinkModel;
-pub use crate::in_process_match::{End, InProcessMatch, LinkLayout, MatchSetup};
+pub use crate::in_process_match::{End, InProcessMatch, InProcessSetup, LinkLayout};
 pub use crate::match_record::MatchRecord;
 pub use crate::match_units::MatchUnits;
 pub use crate::moba_3v3::Moba3v3;

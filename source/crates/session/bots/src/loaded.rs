@@ -6,7 +6,7 @@ use campfire_units::{GroundPoint, OrderRefs};
 use campfire_values::{ActionId, ItemId};
 
 /// The references of a bot's order once its start resolved the script's names: a unit by the
-/// filter whose nearest unit the order takes as it is due, a slot by its action's name, a place
+/// filter whose nearest unit the order takes as it is due, a slot by its action's name, a location
 /// by its point, an item type by its id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Loaded;

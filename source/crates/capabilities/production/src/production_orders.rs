@@ -49,7 +49,10 @@ impl ProductionOrders {
             OrderKind::Gather { slot, node, from } => {
                 let gather = GatherOrder {
                     slot,
-                    node: NodeAt { node, pos: from },
+                    node: NodeAt {
+                        node,
+                        position: from,
+                    },
                     step: GatherStep::Ordered,
                 };
                 (None, Some(gather))
@@ -90,13 +93,13 @@ impl ProductionOrders {
         let now = tick.start();
         cancelled.clear();
         // A predicting client refunds nothing, as a player's resources are the server's
-        // (14-replication-audiences.md, Prediction reads only what its client holds): its cancel
+        // (10-replication-audiences.md, Prediction reads only what its client holds): its cancel
         // stands as the server's refund will.
-        let mut refunds = |amounts: &[ResourceAmount], slot| {
+        let mut refunds = |amounts: &[ResourceAmount], seat| {
             S::PREDICTS
                 || amounts.is_empty()
                 || resources
-                    .of_slot_mut(slot)
+                    .of_seat_mut(seat)
                     .expect("an order that paid resources runs in a match with them")
                     .refund(amounts)
         };
@@ -117,7 +120,7 @@ impl ProductionOrders {
                         let Some(paid) = queue.paid(place) else {
                             continue;
                         };
-                        if refunds(paid, order.slot) {
+                        if refunds(paid, order.seat) {
                             queue.remove(place, now, &mut queues.of(unit, entity));
                         }
                     }
@@ -133,7 +136,7 @@ impl ProductionOrders {
                             amount: spec.refund.of(paid.amount),
                         }));
                         // A site's despawn is the server's, as a client despawns no unit.
-                        if refunds(&refund, order.slot) && !S::PREDICTS {
+                        if refunds(&refund, order.seat) && !S::PREDICTS {
                             commands.entity(entity).despawn();
                             cancelled.push(entity);
                         }

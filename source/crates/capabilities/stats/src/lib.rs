@@ -2,7 +2,7 @@
 //! declares for them, and each unit's stats derived from its type and level.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
@@ -25,7 +25,7 @@ use campfire_players::Player;
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
 use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, Due, ModifierNames, Owner, PoolId, PoolNames, SpawnHooks,
+    BodyUnit, Dead, DeclaredTags, Due, ModifierNames, Owner, PoolId, PoolNames, SpawnCallbacks,
     StatNames, UnitGrid, UnitSteps, UnitsSet,
 };
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
@@ -117,7 +117,7 @@ pub use crate::applier::Applier;
 pub use crate::applier_param::ApplierParam;
 pub use crate::carried_mut::CarriedMut;
 pub use crate::error::{
-    AppliedError, EdgeError, ModifierError, ModifierProblem, ModifiersDataError, SpecError,
+    AppliedError, EdgeError, ModifierDataError, ModifierError, ModifierProblem, SpecError,
     StatGraphError, StatsRefusal, UnitStartError, Way,
 };
 pub use crate::grant_pass::GrantPass;
@@ -131,7 +131,7 @@ pub use crate::level::Level;
 pub use crate::life_pool::LifePool;
 pub use crate::lifetime::{Ends, Hold, Lifetime};
 pub use crate::live_carriers::LiveCarriers;
-pub use crate::live_param::{LiveParam, ParamOwner};
+pub use crate::live_param::{LiveParam, ParamOrigin};
 pub use crate::mode_pools_data::ModePoolsData;
 pub use crate::mode_stats_data::ModeStatsData;
 pub use crate::modifier_appliers::ModifierAppliers;
@@ -329,7 +329,7 @@ impl Module for Stats {
         d.hook::<OnInterval>(Status::Runs(ApiVersion::FIRST));
         d.book::<ByType<Pools>>(TypePools::pools);
         d.book::<ByType<TypePassive>>(TypePassive::book);
-        d.callback::<SpawnHooks>(Capability::Stats, TypePassive::grant);
+        d.callback::<SpawnCallbacks>(Capability::Stats, TypePassive::grant);
         d.part::<BodyUnit, Level>(|_| Some(Level::default()));
         d.observer(Level::raise);
         d.part::<BodyUnit, Modifiers>(|_| Some(Modifiers::default()));

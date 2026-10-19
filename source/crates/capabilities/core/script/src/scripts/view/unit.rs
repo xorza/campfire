@@ -1,7 +1,7 @@
 use campfire_sim::StableId;
 use campfire_values::UnitType;
 
-use crate::scripts::api_owner::ScriptHandle;
+use crate::scripts::api_holder::ScriptHandle;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::view::View;
 use crate::scripts::view::unit_row::UnitRow;

@@ -21,24 +21,24 @@ points = [[-16, 0], [0, 0], [16, 0]]
 name = "west_spawn"
 tags = ["spawn"]
 team = "west"
-pos = [0, -2]
+position = [0, -2]
 params = { from = "start" }
 
 [[markers]]
 name = "east_spawn"
 tags = ["spawn"]
 team = "east"
-pos = [0, 2]
+position = [0, 2]
 params = { from = "end" }
 
 [[units]]
 unit_type = "tower"
 team = "west"
 path = "lane"
-pos = [-8, -3]
+position = [-8, -3]
 
 [[units]]
 unit_type = "tower"
 team = "east"
 path = "lane"
-pos = [8, -3]
+position = [8, -3]

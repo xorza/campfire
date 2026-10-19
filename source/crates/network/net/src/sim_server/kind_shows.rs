@@ -165,16 +165,16 @@ impl KindShows<'_> {
         }
     }
 
-    /// The link seated in the slot of `owner`, if one is.
+    /// The link seated in the seat of `owner`, if one is.
     fn link_of(links: &Query<'_, '_, (Entity, &PlayerLink)>, owner: Owner) -> Option<Entity> {
         links
             .iter()
-            .find(|(_, link)| link.slot() == owner.slot())
+            .find(|(_, link)| link.seat() == owner.seat())
             .map(|(link, _)| link)
     }
 
     /// Makes the link seated as `added` says the client that predicts each replicated entity of
-    /// `K` its slot owns, as a player takes their seat again.
+    /// `K` its seat owns, as a player takes their seat again.
     fn predict_seated<K: EntityKind>(
         added: On<'_, '_, Add, PlayerLink>,
         links: Query<'_, '_, &PlayerLink>,
@@ -182,9 +182,9 @@ impl KindShows<'_> {
         mut commands: Commands<'_, '_>,
     ) {
         let link = added.entity;
-        let slot = links.get(link).expect("an added link").slot();
+        let seat = links.get(link).expect("an added link").seat();
         for (entity, owner) in &owned {
-            if owner.slot() == slot {
+            if owner.seat() == seat {
                 commands
                     .entity(entity)
                     .insert(PredictionTarget::manual(vec![link]));

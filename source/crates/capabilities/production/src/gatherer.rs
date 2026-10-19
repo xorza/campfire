@@ -38,7 +38,7 @@ pub struct GatherOrder {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeAt {
     pub node: StableId,
-    pub pos: Vec3,
+    pub position: Vec3,
 }
 
 /// Where a worker is in its loop.
@@ -135,7 +135,7 @@ impl SimComponent for Gatherer {
         let order = self
             .order
             .is_none_or(|order| order.step == GatherStep::Ordered || self.last == Some(order.node));
-        let node = |node: NodeAt| node.pos.within_bound();
+        let node = |node: NodeAt| node.position.within_bound();
         let places = self.last.is_none_or(node) && self.order.is_none_or(|order| node(order.node));
         load && order && places
     }
@@ -171,7 +171,7 @@ pub(crate) mod internals {
 
         /// A gatherer of `order`, `load` and `last` as given, whether they keep the rules `set`
         /// keeps or not, as a restore may read one.
-        pub const fn of_parts(
+        pub const fn of_fields(
             order: Option<GatherOrder>,
             load: Option<Load>,
             last: Option<NodeAt>,

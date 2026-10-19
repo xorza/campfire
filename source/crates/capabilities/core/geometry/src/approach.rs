@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use campfire_math::{Direction, FloorRoot, Num, RoundedRoot, Vec3};
 
 /// How near a straight path comes to a body: its nearest distance against a reach, and the place
-/// along the path of its nearest point, both to the nearest bit (09-determinism-core.md, Exact
+/// along the path of its nearest point, both to the nearest bit (07-determinism-core.md, Exact
 /// where it fits).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Approach {
@@ -78,7 +78,7 @@ impl Approach {
     }
 
     /// How the distance of `off` from the line of `path`, as the path's direction measures it, to
-    /// the nearest unit and within 1.4 of the true one (09-determinism-core.md, Exact where it
+    /// the nearest unit and within 1.4 of the true one (07-determinism-core.md, Exact where it
     /// fits), lies against `reach`. The true distance is `|C| / |path|`, with `C` the exact cross
     /// product of `off` and `path`, and `|C|` lies from its largest axis to the sum of its axes,
     /// one and the same on a planar map: the largest axis at least `(reach + 3) ⌈|path|⌉` puts the

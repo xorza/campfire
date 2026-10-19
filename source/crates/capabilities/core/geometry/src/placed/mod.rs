@@ -11,18 +11,18 @@ pub(crate) mod bench;
 /// A body where it stands: its unit's position, and its shape around it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Placed {
-    pub pos: Vec3,
+    pub position: Vec3,
     pub shape: Shape,
 }
 
 impl Placed {
-    pub const fn new(pos: Vec3, shape: Shape) -> Self {
-        Self { pos, shape }
+    pub const fn new(position: Vec3, shape: Shape) -> Self {
+        Self { position, shape }
     }
 
-    /// A point at `pos`, as a unit with no body is.
-    pub const fn point(pos: Vec3) -> Self {
-        Self::new(pos, Shape::POINT)
+    /// A point at `position`, as a unit with no body is.
+    pub const fn point(position: Vec3) -> Self {
+        Self::new(position, Shape::POINT)
     }
 
     /// Whether the straight path from `from` to `to` on the ground plane comes closer than
@@ -30,11 +30,11 @@ impl Placed {
     /// `reach` to a box, which a path into its open inside is at any reach, 0 too, as a circle's
     /// center is. Touching at `reach` is not closer.
     pub fn comes_closer(self, from: Vec3, to: Vec3, reach: Num) -> bool {
-        let Self { pos, shape } = self;
+        let Self { position, shape } = self;
         // A path whose span along an axis lies at least `reach` beyond the shape's comes no
         // closer: most shapes a search of buckets finds lie so, and take no exact test. A reach
         // past every number saturates, and no span lies beyond it.
-        let (center, ends) = (pos, [from, to]);
+        let (center, ends) = (position, [from, to]);
         let extent = shape.extent();
         let reach_bits = reach.to_bits();
         let clear = |center: Num, ends: [Num; 2], extent: Num| {
@@ -58,10 +58,10 @@ impl Placed {
         match shape {
             Shape::Circle(radius) => {
                 let path = from.ground_offset(to);
-                let off = from.ground_offset(pos);
+                let off = from.ground_offset(position);
                 Approach::nearest_of_circle(path, off, reach, radius.get()) == Ordering::Less
             }
-            Shape::Box(body) => body.comes_closer(pos, from, to, reach),
+            Shape::Box(body) => body.comes_closer(position, from, to, reach),
         }
     }
 }

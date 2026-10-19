@@ -7,9 +7,9 @@ use campfire_values::{NameTable, Param, Rank, Ranked, Scalar, Stat};
 
 use crate::param_source::ParamSource;
 
-/// The params of the abilities or the modifiers of a match, one run of names for each owner, as
-/// a match reads them: a scaling param's stats as places among the stats, its ratios in one
-/// buffer.
+/// The params of the abilities or the modifiers of a match, one run of names for each ability or
+/// modifier, as a match reads them: a scaling param's stats as places among the stats, its ratios
+/// in one buffer.
 #[derive(Debug, Clone, Default)]
 pub struct ParamTable {
     params: NameTable<ParamValue>,
@@ -130,7 +130,7 @@ impl ParamTable {
     /// (level − 1) + Σ ratio × stat + Σ bonus ratio × (stat − the type's value)`: each stat stopped
     /// at the range of a number, each product of a ratio rounded to nearest, the sum exact, and at
     /// the end of the range of numbers when past it, so products past the range still cancel
-    /// (09-determinism-core.md, A compound value is a chain of rounded steps); with no source,
+    /// (07-determinism-core.md, A compound value is a chain of rounded steps); with no source,
     /// level 1 and stats of 0. Each param holds `rank`, as the load or the call checked.
     pub fn value(
         &self,

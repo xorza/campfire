@@ -12,21 +12,21 @@ use bevy::reflect::TypePath;
 use bevy::render::render_resource::TextureFormat;
 use bevy::tasks::{block_on, poll_once};
 use campfire_store::InputFile;
-use campfire_store::internals::Scratch;
+use campfire_store::internals::TestDir;
 
 use super::*;
 use crate::view::package_source::internals::package;
 
 #[test]
 fn a_path_reads_its_packages_file_checked_against_its_index() {
-    let scratch = Scratch::new();
+    let test_dir = TestDir::new();
     let mode = package(
-        &scratch,
+        &test_dir,
         "mode",
         &[("client/models/tank.glb", b"glTF tank")],
     );
     let other = package(
-        &scratch,
+        &test_dir,
         "other",
         &[("client/models/tank.glb", b"glTF other")],
     );
@@ -55,7 +55,7 @@ fn a_path_reads_its_packages_file_checked_against_its_index() {
         );
     }
     // A file whose bytes are not its row's does not read.
-    scratch.write("mode/client/models/tank.glb", b"glTF tamk");
+    test_dir.write("mode/client/models/tank.glb", b"glTF tamk");
     assert!(matches!(
         read("0/client/models/tank.glb"),
         Err(AssetReaderError::Io(_))
@@ -108,7 +108,7 @@ fn bevys_ktx2_loader_reads_the_imports_textures_with_their_levels() {
 }
 
 /// Five models and a texture, of one package.
-fn models(scratch: &Scratch) -> PackageSource {
+fn models(test_dir: &TestDir) -> PackageSource {
     let files: Vec<(String, &[u8])> = ["a", "b", "c", "d", "e"]
         .iter()
         .map(|name| (format!("client/models/{name}.glb"), &b"glTF"[..]))
@@ -118,13 +118,13 @@ fn models(scratch: &Scratch) -> PackageSource {
         .iter()
         .map(|(path, bytes)| (path.as_str(), *bytes))
         .collect();
-    PackageSource::new(vec![package(scratch, "mode", &files)])
+    PackageSource::new(vec![package(test_dir, "mode", &files)])
 }
 
 #[test]
 fn at_most_four_models_read_at_once_and_a_texture_waits_for_none() {
-    let scratch = Scratch::new();
-    let source = models(&scratch);
+    let test_dir = TestDir::new();
+    let source = models(&test_dir);
     let paths: Vec<PathBuf> = ["a", "b", "c", "d", "e"]
         .iter()
         .map(|name| PathBuf::from(format!("0/client/models/{name}.glb")))
@@ -181,8 +181,8 @@ impl AssetLoader for GatedLoader {
 
 #[test]
 fn bevy_keeps_a_models_reader_and_its_permit_for_the_whole_load() {
-    let scratch = Scratch::new();
-    let source = models(&scratch);
+    let test_dir = TestDir::new();
+    let source = models(&test_dir);
     let permits = Arc::clone(&source.models);
     let started = Arc::new(AtomicUsize::new(0));
     let gate = Arc::new(Semaphore::new(0));

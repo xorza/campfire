@@ -1,5 +1,5 @@
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
@@ -145,7 +145,7 @@ impl Orders {
 pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::{ActionProgress, InProgress, SlotTimes};
-    use campfire_common::{PlayerSlot, Tick};
+    use campfire_common::{Seat, Tick};
     use campfire_declare::ByType;
     use campfire_script::{ScriptFailures, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
@@ -197,7 +197,7 @@ pub mod internals {
         }
 
         /// Runs a tick, and checks that no script call failed in it.
-        pub fn think(world: &mut World, inputs: &[(PlayerSlot, &[u8])]) {
+        pub fn think(world: &mut World, inputs: &[(Seat, &[u8])]) {
             world.step_with(inputs);
             let failures = world.resource::<ScriptFailures>().calls();
             assert_eq!(failures, []);

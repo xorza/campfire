@@ -263,7 +263,7 @@ pub(crate) mod internals {
             .filter(|collider| !collider.movable)
             .map(|collider| IndexedBody {
                 id: collider.id,
-                pos: collider.point,
+                position: collider.point,
                 shape: collider.shape,
                 layer: collider.layer,
             })

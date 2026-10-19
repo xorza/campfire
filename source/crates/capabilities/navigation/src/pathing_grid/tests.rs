@@ -77,7 +77,7 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     // eight too, but not the corners (1.5, 1.5) at √4.5 ≈ 2.12 m.
     let tower = IndexedBody {
         id: ids.allocate(),
-        pos: at(Num::ZERO, Num::ZERO),
+        position: at(Num::ZERO, Num::ZERO),
         shape: Shape::Circle(Radius::new(Num::ONE).unwrap()),
         layer: Layer::FIRST,
     };
@@ -93,13 +93,13 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     // exactly 1 m off, on the edge, and open.
     let post = IndexedBody {
         id: ids.allocate(),
-        pos: at(Num::int(2), -(Num::int(1) + Num::HALF)),
+        position: at(Num::int(2), -(Num::int(1) + Num::HALF)),
         shape: Shape::Circle(Radius::new(Num::HALF).unwrap()),
         layer: Layer::FIRST,
     };
     let corner = IndexedBody {
         id: ids.allocate(),
-        pos: at(-(Num::int(2) + Num::HALF), Num::int(2) + Num::HALF),
+        position: at(-(Num::int(2) + Num::HALF), Num::int(2) + Num::HALF),
         shape: Shape::Circle(Radius::new(Num::HALF).unwrap()),
         layer: Layer::FIRST,
     };
@@ -137,7 +137,7 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
 
     // The post moves a meter along z, to (2, −0.5).
     let moved = IndexedBody {
-        pos: at(Num::int(2), -Num::HALF),
+        position: at(Num::int(2), -Num::HALF),
         ..post
     };
     follow(&mut grid, &mut index, &[tower, moved, corner]);
@@ -189,7 +189,7 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
     let mut index = BodyIndex::new(Num::ONE);
     let tower = IndexedBody {
         id: IdAllocator::default().allocate(),
-        pos: Vec3::ZERO,
+        position: Vec3::ZERO,
         shape: Shape::Circle(Radius::new(Num::ONE).unwrap()),
         layer: Layer::FIRST,
     };
@@ -269,7 +269,7 @@ fn the_walls_test_visits_and_finds_what_a_walk_cell_by_cell_does() {
             });
         let mut work = 0;
         assert_eq!(
-            clearance.walled(segment, &mut work),
+            clearance.is_walled(segment, &mut work),
             expected,
             "{segment:?}"
         );

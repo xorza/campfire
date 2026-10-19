@@ -54,7 +54,7 @@ fn walled(rows: &[&str]) -> Walled {
                 let center = |index: usize| i64::try_from(4 * index + 2).unwrap();
                 posts.push(IndexedBody {
                     id: ids.allocate(),
-                    pos: quarters(center(column), center(row)),
+                    position: quarters(center(column), center(row)),
                     shape: Shape::Circle(Radius::new(quarter).unwrap()),
                     layer: Layer::FIRST,
                 });
@@ -294,7 +294,7 @@ fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
         [(0, 0, 1), (6, 14, 4), (17, 9, 10), (30, 26, 3), (40, 30, 6)].map(|(x, z, radius)| {
             IndexedBody {
                 id: ids.allocate(),
-                pos: quarters(x, z),
+                position: quarters(x, z),
                 shape: Shape::Circle(
                     Radius::new(Num::from_bits(radius << (Num::FRAC_BITS - 2))).unwrap(),
                 ),
@@ -314,7 +314,7 @@ fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
         planner.mark_blockers(walkable);
         let mut spanned = vec![false; window.cells()];
         for body in &blockers {
-            cells.spans_closer(body.pos, radius + body.shape.bound(), |run| {
+            cells.spans_closer(body.position, radius + body.shape.bound(), |run| {
                 for cell in run {
                     let (x, z) = (cell % columns, cell / columns);
                     if window.contains(x, z) {

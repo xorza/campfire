@@ -13,11 +13,11 @@ use crate::marker_tag::MarkerTag;
 /// `ctx.map`: the map's paths, by name, and its markers, in the map's order, with the tags they
 /// hold. A clone shares them, as each `ctx.map` read gives one.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct GameMap(Rc<MapParts>);
+pub(crate) struct GameMap(Rc<MapFields>);
 
-/// The parts of a `GameMap`.
+/// The fields of a `GameMap`.
 #[derive(Debug, Default)]
-struct MapParts {
+struct MapFields {
     paths: ScriptList,
     markers: Box<[Marker]>,
     /// The tags its markers hold.
@@ -66,12 +66,12 @@ impl GameMap {
                 .map(|(name, param)| (name.as_str(), param.to_value()));
             Marker::new(MarkerInfo {
                 name: marker.name.as_str().into(),
-                pos: marker.pos,
+                position: marker.position,
                 team: marker.team,
                 params: params.collect(),
             })
         });
-        Self(Rc::new(MapParts {
+        Self(Rc::new(MapFields {
             paths: paths.map(ScriptValue::of).collect(),
             markers: markers.collect(),
             tags: Arc::new(tags),
@@ -100,8 +100,8 @@ impl GameMap {
 
     /// The places of the markers with tag `tag`, in the map's order.
     fn held(&self, tag: MarkerTag) -> &[u32] {
-        let parts = &*self.0;
-        &parts.by_tag[parts.starts[tag.index()] as usize..parts.starts[tag.index() + 1] as usize]
+        let fields = &*self.0;
+        &fields.by_tag[fields.starts[tag.index()] as usize..fields.starts[tag.index() + 1] as usize]
     }
 }
 
@@ -129,7 +129,7 @@ pub(crate) mod internals {
                 let param = info.params.get(of.param)?.into_text()?;
                 (param.as_str() == of.value).then_some(info)
             })?;
-            named.pos
+            named.position
         }
     }
 }
@@ -150,7 +150,7 @@ mod tests {
         let marker = |at: &str, tags: &[&str]| MarkerSpec {
             name: name(at),
             tags: tags.iter().map(|tag| name(tag)).collect(),
-            pos: None,
+            position: None,
             region: None,
             team: None,
             params: BTreeMap::new(),

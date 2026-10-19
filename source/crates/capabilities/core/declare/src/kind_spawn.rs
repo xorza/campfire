@@ -25,7 +25,7 @@ pub struct KindSpawn<'w, H> {
 /// degrees it faces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpawnCore {
-    pub pos: Vec3,
+    pub position: Vec3,
     pub unit_type: UnitType,
     pub angle: Num,
 }
@@ -62,9 +62,9 @@ impl<'w, H> KindSpawn<'w, H> {
 
     /// The unit's place, of its core; none for a restored unit that lacks it, which the core's
     /// check refuses.
-    pub fn pos(&self) -> Option<Vec3> {
+    pub fn position(&self) -> Option<Vec3> {
         match self.core {
-            Some(core) => Some(core.pos),
+            Some(core) => Some(core.position),
             None => self
                 .world
                 .get::<Position>(self.entity)

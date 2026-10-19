@@ -24,7 +24,7 @@ impl Callbacks for Weighers {
     type Key = ();
     type Callback = Weigh;
 
-    fn owner((): ()) -> Option<Capability> {
+    fn capability((): ()) -> Option<Capability> {
         Some(Capability::Mode)
     }
 

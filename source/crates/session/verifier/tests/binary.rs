@@ -9,7 +9,7 @@ use campfire_package_disk::PackageDir;
 use campfire_protocol::{SessionLog, SnapshotFingerprint};
 use campfire_sim::StateRegistry;
 use campfire_store::InputFile;
-use campfire_store::internals::Scratch;
+use campfire_store::internals::TestDir;
 use campfire_verifier::{Verified, verify_file};
 
 /// The pinned file `name` of the fixtures, at most `max` bytes.
@@ -23,10 +23,10 @@ fn the_binary_logs_the_last_state_hash() {
     let log = fixture("headless.campfire-log", SessionLog::MAX_FILE_LEN);
     let mut snapshot = fixture("headless.snapshot", StateRegistry::MAX_SNAPSHOT_LEN);
     // A directory of this run's own, which goes when the test ends, passed or failed.
-    let scratch = Scratch::new_in(env!("CARGO_TARGET_TMPDIR"));
-    let dir = scratch.root().to_str().unwrap();
+    let test_dir = TestDir::new_in(env!("CARGO_TARGET_TMPDIR"));
+    let dir = test_dir.root().to_str().unwrap();
     let path = format!("{dir}/headless.log");
-    scratch.write(&path, &log);
+    test_dir.write(&path, &log);
     // Logged without color, as standard error is not a terminal here, at `info`, and to no file,
     // whatever the environment says.
     let verifier = |args: &[&str]| {
@@ -45,9 +45,9 @@ fn the_binary_logs_the_last_state_hash() {
     let success = format!("{} file={path} hash={hash}\n", Verified::MESSAGE);
     // With no snapshot, and with the checkpoint's snapshot named by its fingerprint.
     let snapshots = format!("{dir}/snapshots");
-    scratch.create_dir(&snapshots);
+    test_dir.create_dir(&snapshots);
     let named = format!("{snapshots}/{}", SnapshotFingerprint::of(&snapshot));
-    scratch.write(&named, &snapshot);
+    test_dir.write(&named, &snapshot);
     for args in [&[packages, &path][..], &[packages, &path, &snapshots]] {
         let output = verifier(args);
         assert!(output.status.success(), "{output:?}");
@@ -57,7 +57,7 @@ fn the_binary_logs_the_last_state_hash() {
     }
     // A snapshot of other bytes under the checkpoint's name.
     *snapshot.last_mut().unwrap() ^= 1;
-    scratch.write(&named, &snapshot);
+    test_dir.write(&named, &snapshot);
     let output = verifier(&[packages, &path, &snapshots]);
     assert_eq!(output.status.code(), Some(1));
     let logged = String::from_utf8(output.stderr).unwrap();
@@ -68,7 +68,7 @@ fn the_binary_logs_the_last_state_hash() {
     assert!(logged.ends_with(&refused), "{logged}");
 
     let corrupt = format!("{dir}/headless-truncated.log");
-    scratch.write(&corrupt, &log[..log.len() - 1]);
+    test_dir.write(&corrupt, &log[..log.len() - 1]);
     let output = verifier(&[packages, &corrupt]);
     assert_eq!(output.status.code(), Some(1));
     let logged = String::from_utf8(output.stderr).unwrap();

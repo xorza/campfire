@@ -22,24 +22,24 @@ use crate::stable_id::StableId;
 use crate::stable_id::entity_index::EntityIndex;
 use crate::stable_id::state_changes::{Removal, StateChanges};
 use crate::state_registry::breach::Breach;
-use crate::state_registry::builder::StateRegistryBuilder;
 use crate::state_registry::copy_queries::CopyQueries;
 use crate::state_registry::decoded_state::DecodedState;
 use crate::state_registry::error::SnapshotError;
 use crate::state_registry::hash_sink::HashSink;
 use crate::state_registry::state_delta::StateDelta;
+use crate::state_registry::state_registry_builder::StateRegistryBuilder;
 use crate::state_rewritten::StateRewritten;
 use crate::unpredicted::Unpredicted;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod breach;
-pub(crate) mod builder;
 pub(crate) mod copy_queries;
 mod decoded_state;
 pub(crate) mod error;
 mod hash_sink;
 pub(crate) mod state_delta;
+pub(crate) mod state_registry_builder;
 
 /// Starts the combined hash, so no other BLAKE3 use can produce the same state hash.
 const HASH_DOMAIN: HashDomain<StateHash> = HashDomain::new("campfire/state/v1");
@@ -208,19 +208,19 @@ type Holders<C> =
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypeHash {
     pub name: &'static str,
-    pub hash: PartHash,
+    pub hash: StateTypeHash,
 }
 
 /// The BLAKE3 of one state type's encoding, a part the state hash folds after the type's name
 /// under the state's domain, which a part needs no domain of its own for.
-pub type PartHash = Value32<PartHashMeaning>;
+pub type StateTypeHash = Value32<StateTypeHashMeaning>;
 
-/// The meaning of a `PartHash`.
+/// The meaning of a `StateTypeHash`.
 #[derive(Debug)]
-pub enum PartHashMeaning {}
+pub enum StateTypeHashMeaning {}
 
-impl Meaning for PartHashMeaning {
-    const NAME: &'static str = "PartHash";
+impl Meaning for StateTypeHashMeaning {
+    const NAME: &'static str = "StateTypeHash";
 }
 
 /// One type's part of a snapshot, and the bytes after it.
@@ -248,7 +248,7 @@ impl StateRegistry {
     /// changes their format, a type's layout included, as Minecraft's `DataVersion` is: a snapshot
     /// of another is refused, naming both, and the converter from the version before, which saves
     /// plan (02-engine-core.md, One-way converters), comes with the first release that raises it.
-    pub const DATA_VERSION: u32 = 40;
+    pub const DATA_VERSION: u32 = 41;
 
     /// The builder of a registry with the sim's own state: the entity list, the id allocator,
     /// the tick and positions.
@@ -388,7 +388,7 @@ impl StateRegistry {
         if let Some(last_id) = last_id
             && !world
                 .get_resource::<IdAllocator>()
-                .is_some_and(|allocator| allocator.issued(last_id))
+                .is_some_and(|allocator| allocator.is_issued(last_id))
         {
             return Err(SnapshotError::AllocatorBehind);
         }
@@ -527,7 +527,7 @@ impl Default for StateRegistry {
 }
 
 /// Adds the hash of the type `name` to a state hash's `total`.
-fn fold(total: &mut DomainHasher<StateHash>, name: &str, hash: &PartHash) {
+fn fold(total: &mut DomainHasher<StateHash>, name: &str, hash: &StateTypeHash) {
     total
         .update(&name_len(name).to_le_bytes())
         .update(name.as_bytes())
@@ -599,7 +599,7 @@ fn decode_entities(mut body: &[u8]) -> Result<Vec<StableId>, SnapshotError> {
 }
 
 fn encode_component<C: SimComponent>(world: &World, sink: &mut dyn Sink) {
-    if !held::<C>(world) {
+    if !is_held::<C>(world) {
         return;
     }
     let index = world.resource::<EntityIndex>().iter();
@@ -609,7 +609,7 @@ fn encode_component<C: SimComponent>(world: &World, sink: &mut dyn Sink) {
 
 /// Whether an archetype of `world` holds `C`: one that none does has an empty section, with no
 /// walk of the entities.
-fn held<C: SimComponent>(world: &World) -> bool {
+fn is_held<C: SimComponent>(world: &World) -> bool {
     world.components().component_id::<C>().is_some_and(|id| {
         world
             .archetypes()
@@ -759,7 +759,7 @@ fn apply_resource<R: SimResource>(world: &mut World, body: &[u8], pass: Pass) {
 }
 
 fn check_component<C: SimComponent>(world: &World) -> Result<(), SnapshotError> {
-    if !held::<C>(world) {
+    if !is_held::<C>(world) {
         return Ok(());
     }
     for (id, entity) in world.resource::<EntityIndex>().iter() {

@@ -21,7 +21,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         max_payload_len: 7,
         max_per_tick: 2,
     };
-    let plan = [SlotPlan::Player, SlotPlan::Bot, SlotPlan::Open];
+    let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Open];
     let terms = |hz| {
         let hz = NonZeroU32::new(hz).unwrap();
         let visibility = rules.visibility().settings();
@@ -30,7 +30,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             seed_commitment: commitment,
             tick_hz: hz,
             inputs,
-            slots: plan.to_vec(),
+            seats: plan.to_vec(),
             visibility,
             picks: &OptionPicks::defaults(rules.options()),
         })
@@ -55,7 +55,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             mode: packages.fingerprint(),
             map: TestMode::Moba3v3.map(),
             dependencies,
-            slots: plan.to_vec(),
+            seats: plan.to_vec(),
             // The 3v3 sets no visibility: the defaults, which admit no spectator.
             visibility: Visibility::DEFAULT.encode(),
             // The 3v3 declares no option.
@@ -64,11 +64,11 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     );
     assert!(fixed.dependencies.len() > 1, "the swap below reorders them");
 
-    // The 3v3's teams have 6 slots: a session plays 1 to 6 of them.
-    let slots = |slots: u64| TermsError::Slots { slots, most: 6 };
+    // The 3v3's teams have 6 seats: a session plays 1 to 6 of them.
+    let seats = |seats: u64| TermsError::Seats { seats, most: 6 };
     let changes: [(Change, TermsError); 10] = [
-        (|terms| terms.slots.clear(), slots(0)),
-        (|terms| terms.slots = vec![SlotPlan::Open; 7], slots(7)),
+        (|terms| terms.seats.clear(), seats(0)),
+        (|terms| terms.seats = vec![SeatPlan::Open; 7], seats(7)),
         (
             |terms| terms.release = Version::new(0, 0, 9),
             TermsError::OtherRelease(Version::new(0, 0, 9)),

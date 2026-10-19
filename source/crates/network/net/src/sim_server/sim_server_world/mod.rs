@@ -37,7 +37,7 @@ pub trait SimServerWorld {
 
     /// Whether the session went back to a save, and its server is to start again on
     /// its data, which restores the match from it.
-    fn reload_wanted(&self) -> bool;
+    fn is_reload_wanted(&self) -> bool;
 
     /// How the server of the session exits in this frame, when it does: as `Faults`
     /// says, once a worker failed, which for its journal or a checkpoint's snapshot is with
@@ -128,7 +128,7 @@ impl SimServerWorld for World {
         Ok(())
     }
 
-    fn reload_wanted(&self) -> bool {
+    fn is_reload_wanted(&self) -> bool {
         ServerPhase::now(self) == ServerPhase::Reloading
     }
 
@@ -144,8 +144,8 @@ impl SimServerWorld for World {
             return (stop == StopRequest::Asked).then_some(AppExit::Success);
         }
         if self.resource::<Session>().log().result().is_none() {
-            // Every slot a player controlled left, and no player holds a link.
-            if stop == StopRequest::NotAsked && !Door::empty(self) {
+            // Every seat a player controlled left, and no player holds a link.
+            if stop == StopRequest::NotAsked && !Door::is_empty(self) {
                 return None;
             }
             if let Err(error) = self.end_session() {
@@ -201,7 +201,7 @@ impl SimServerWorldCrate for World {
 pub(crate) mod internals {
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
-    use campfire_common::{PlayerSlot, Tick};
+    use campfire_common::{Seat, Tick};
     use campfire_runner::SessionWorld;
 
     use crate::faults::Faults;
@@ -210,7 +210,7 @@ pub(crate) mod internals {
     use crate::sim_server::checkpoints::Checkpoints;
     use crate::sim_server::player_link::PlayerLink;
     use crate::sim_server::receipts::Receipts;
-    use crate::sim_server::server_bots::SlotBot;
+    use crate::sim_server::server_bots::SeatBot;
 
     /// What a server's world gives the tests and benches of any crate.
     pub trait SimServerWorldInternals {
@@ -221,9 +221,9 @@ pub(crate) mod internals {
         /// real clock, says when they go out.
         fn hold_receipts(&mut self);
 
-        /// The slots of the plan's bots of `slots` that play their script from tick `next` of
+        /// The seats of the plan's bots of `seats` that play their script from tick `next` of
         /// the world's session on, as a server that starts or restores builds its driver.
-        fn planned_bots(&self, slots: Vec<SlotBot>, next: Tick) -> Vec<PlayerSlot>;
+        fn planned_bots(&self, seats: Vec<SeatBot>, next: Tick) -> Vec<Seat>;
 
         /// Waits for the checkpoint on its thread in the session, whose server keeps its
         /// files, and logs its record; reports the fault when its snapshot was not written.
@@ -233,9 +233,9 @@ pub(crate) mod internals {
         /// server keeps its files.
         fn request_checkpoint(&mut self, tick: Tick);
 
-        /// The slot of the player the client link `link` carries the inputs of; none for a link
+        /// The seat of the player the client link `link` carries the inputs of; none for a link
         /// of no player.
-        fn link_slot(&self, link: Entity) -> Option<PlayerSlot>;
+        fn link_seat(&self, link: Entity) -> Option<Seat>;
 
         /// Whether the log refused one of the messages of the client link `link`; none for a
         /// link of no player.
@@ -251,9 +251,9 @@ pub(crate) mod internals {
             self.resource_mut::<Receipts>().hold();
         }
 
-        fn planned_bots(&self, slots: Vec<SlotBot>, next: Tick) -> Vec<PlayerSlot> {
-            let planned = BotDriver::planned(slots, self.session().log(), next);
-            planned.iter().map(|driven| driven.slot).collect()
+        fn planned_bots(&self, seats: Vec<SeatBot>, next: Tick) -> Vec<Seat> {
+            let planned = BotDriver::planned(seats, self.session().log(), next);
+            planned.iter().map(|driven| driven.seat).collect()
         }
 
         fn settle_checkpoint(&mut self) {
@@ -266,12 +266,12 @@ pub(crate) mod internals {
             self.resource_mut::<Checkpoints>().request(tick);
         }
 
-        fn link_slot(&self, link: Entity) -> Option<PlayerSlot> {
-            self.get::<PlayerLink>(link).map(|link| link.slot())
+        fn link_seat(&self, link: Entity) -> Option<Seat> {
+            self.get::<PlayerLink>(link).map(|link| link.seat())
         }
 
         fn link_refused(&self, link: Entity) -> Option<bool> {
-            self.get::<PlayerLink>(link).map(|link| link.refused())
+            self.get::<PlayerLink>(link).map(|link| link.is_refused())
         }
     }
 }

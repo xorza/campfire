@@ -121,7 +121,7 @@ impl PathWalker {
     }
 
     /// Whether it left the path, and walks it no more until it rejoins it.
-    pub const fn left(self) -> bool {
+    pub const fn is_left(self) -> bool {
         self.left
     }
 

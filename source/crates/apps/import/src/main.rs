@@ -13,9 +13,9 @@ use campfire_import::{ImportLoss, Imported, SkipReason, ZeroHour};
 use campfire_log::Logging;
 use tracing::{error, info, warn};
 
-use crate::args::{Args, Game};
+use crate::command_line::{CommandLine, Game};
 
-mod args;
+mod command_line;
 
 /// Logs `loss` as a warning, with what it is and why.
 fn warn_of(loss: &ImportLoss) {
@@ -75,7 +75,7 @@ fn main() -> ExitCode {
         file: "info",
     }
     .start();
-    let args: Args = match Logging::command_line(env::args_os()) {
+    let args: CommandLine = match Logging::command_line(env::args_os()) {
         Ok(args) => args,
         Err(status) => return ExitCode::from(status),
     };

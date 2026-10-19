@@ -27,7 +27,7 @@ pub(crate) enum OpeningError {
     OtherVisibility,
     #[error("could not end the session")]
     Abort(#[source] AbortError),
-    /// The new session does not open, as a bot names a slot the mode does not have, or keeps no
+    /// The new session does not open, as a bot names a seat the mode does not have, or keeps no
     /// files.
     #[error("the session does not open")]
     Open(#[source] LobbyOpenError),

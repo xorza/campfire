@@ -6,7 +6,7 @@ use crate::zero_hour::format::w3d::w3d_file::W3dFile;
 use crate::zero_hour::install::Install;
 
 /// The install's models and textures, found as `GameFileClass::Set_Name` finds them: in the
-/// language's folder, `Data\<language>\Art\...`, then in `Art\...`. Each W3D file is read once.
+/// language's directory, `Data\<language>\Art\...`, then in `Art\...`. Each W3D file is read once.
 #[derive(Debug)]
 pub(crate) struct ModelAssets<'a> {
     install: &'a Install,
@@ -63,31 +63,31 @@ impl<'a> ModelAssets<'a> {
         })
     }
 
-    /// The file `name` in `Data\<language>\Art\<folder>\`, else in `Art\<folder>\`.
-    fn find(&self, folder: &str, name: &str) -> Option<ArchivePath> {
+    /// The file `name` in `Data\<language>\Art\<art_dir>\`, else in `Art\<art_dir>\`.
+    fn find(&self, art_dir: &str, name: &str) -> Option<ArchivePath> {
         let localized = self
             .language
             .as_ref()
-            .map(|language| ArchivePath::of(&format!("data\\{language}\\art\\{folder}\\{name}")));
+            .map(|language| ArchivePath::of(&format!("data\\{language}\\art\\{art_dir}\\{name}")));
         localized
             .into_iter()
-            .chain([ArchivePath::of(&format!("art\\{folder}\\{name}"))])
+            .chain([ArchivePath::of(&format!("art\\{art_dir}\\{name}"))])
             .find(|path| self.install.contains(path))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use campfire_store::internals::Scratch;
+    use campfire_store::internals::TestDir;
 
     use super::*;
     use crate::zero_hour::install::internals::fixture;
 
     #[test]
     fn a_texture_is_its_dds_else_its_tga_as_named() {
-        let scratch = Scratch::new();
-        fixture(&scratch);
-        let install = Install::open(&scratch.path("zh")).unwrap();
+        let test_dir = TestDir::new();
+        fixture(&test_dir);
+        let install = Install::open(&test_dir.path("zh")).unwrap();
         let assets = ModelAssets::new(&install).unwrap();
         let texture = |name: &str| assets.texture(name).map(|path| path.to_string());
         // The archives hold `Rock.dds` and `Sign.tga`.

@@ -1,5 +1,5 @@
 use campfire_codec::BinaryError;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use thiserror::Error;
 
 use crate::delegation::error::DelegationError;
@@ -9,10 +9,10 @@ use crate::delegation::error::DelegationError;
 pub enum CheckpointDecodeError {
     #[error("does not decode")]
     Malformed(#[source] BinaryError),
-    /// The delegation the carry holds for `slot`'s player does not parse.
-    #[error("player {}'s delegation", .slot.get())]
+    /// The delegation the carry holds for `seat`'s player does not parse.
+    #[error("player {}'s delegation", .seat.get())]
     Delegation {
-        slot: PlayerSlot,
+        seat: Seat,
         #[source]
         error: DelegationError,
     },

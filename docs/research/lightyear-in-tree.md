@@ -1,6 +1,6 @@
 # Lightyear in the tree — research
 
-What the fork of Lightyear that Campfire takes into its tree holds, and what Campfire uses of the fork it builds on today, for [Lightyear in the tree](../design/22-lightyear-in-tree.md). Facts only. Read on 19 October 2026: the fork's branch `canonical-state-and-bounded-passes` at `16797a83`, which its `main` did not yet hold (`main` stood at `3e81ef79`, two commits past `f4b95d9d`); Campfire at `5d6cab490` with its uncommitted tree, on Lightyear `54e6be21`.
+What the fork of Lightyear that Campfire takes into its tree holds, and what Campfire uses of the fork it builds on today, for [Lightyear in the tree](../design/12-lightyear-in-tree.md). Facts only. Read on 19 October 2026: the fork's branch `canonical-state-and-bounded-passes` at `16797a83`, which its `main` did not yet hold (`main` stood at `3e81ef79`, two commits past `f4b95d9d`); Campfire at `5d6cab490` with its uncommitted tree, on Lightyear `54e6be21`.
 
 ## The fork
 

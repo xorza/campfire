@@ -14,7 +14,7 @@ use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 use bevy_replicon::shared::replication::registry::receive_fns::MutWrite;
 use bevy_replicon::shared::replication::visibility::VisibilityScope;
 use campfire_capabilities::Release;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_declare::CapabilitySet;
 use campfire_players::Player;
 use campfire_sim::SimResource;
@@ -82,7 +82,7 @@ filtered_kinds! {
     PoolsKind: Pools;
     /// A unit's modifiers.
     ModifiersKind: Modifiers;
-    /// A unit's slots' ready ticks, charges and toggles.
+    /// A unit's seats' ready ticks, charges and toggles.
     CooldownsKind: Cooldowns;
     /// A unit's experience and points.
     ProgressionKind: Progression;
@@ -211,7 +211,7 @@ impl SendingWays for ScopeTypes<'_> {
     fn server<C: Replication>(&mut self, _: Declared) {}
 }
 
-/// Each entity's owner, a unit's or a player's entity's slot, and its team, of the entities that
+/// Each entity's owner, a unit's or a player's entity's seat, and its team, of the entities that
 /// hold the filter of `K`.
 type Owners<'w, 's, K> = Query<
     'w,
@@ -224,8 +224,8 @@ type Owners<'w, 's, K> = Query<
     With<DataFilter<K>>,
 >;
 
-/// On each entity that holds a type of kind `K`: the slot that owns it, if one does, a player's
-/// entity its own slot, its team, if it has one, and the recipients beside the owner that receive
+/// On each entity that holds a type of kind `K`: the seat that owns it, if one does, a player's
+/// entity its own seat, its team, if it has one, and the recipients beside the owner that receive
 /// the kind in the match. Replicon reads it to send the kind's types to them alone. Immutable, as
 /// replicon requires: a change of owner or team inserts a new one. Each type of the kind requires
 /// it, so it comes in the move that gives an entity the type, closed, to no recipient, until the
@@ -233,7 +233,7 @@ type Owners<'w, 's, K> = Query<
 #[derive(Component, Debug)]
 #[component(immutable)]
 pub(crate) struct DataFilter<K: FilteredKind> {
-    owner: Option<PlayerSlot>,
+    owner: Option<Seat>,
     team: Option<Team>,
     audience: Recipients,
     kind: PhantomData<K>,
@@ -254,7 +254,7 @@ impl<K: FilteredKind> DataFilter<K> {
     const fn new(owner: Option<&Owner>, team: Option<&Team>, visibility: &MatchVisibility) -> Self {
         Self {
             owner: match owner {
-                Some(owner) => Some(owner.slot()),
+                Some(owner) => Some(owner.seat()),
                 None => None,
             },
             team: team.copied(),
@@ -272,7 +272,7 @@ impl<K: FilteredKind> DataFilter<K> {
     ) -> Self {
         let owner = owner
             .copied()
-            .or_else(|| player.map(|player| Owner::new(player.slot())));
+            .or_else(|| player.map(|player| Owner::new(player.seat())));
         Self::new(owner.as_ref(), team, visibility)
     }
 
@@ -503,43 +503,41 @@ mod tests {
                 .get::<DataFilter<ProgressionKind>>(entity)
                 .map(|filter| (filter.owner, filter.team))
         };
-        let (slot, team) = (PlayerSlot::new, Team::new);
-        let hero = world.spawn((Owner::new(slot(1)), team(0), Stray)).id();
+        let (seat, team) = (Seat::new, Team::new);
+        let hero = world.spawn((Owner::new(seat(1)), team(0), Stray)).id();
         world.flush();
-        assert_eq!(held(world, hero), Some((Some(slot(1)), Some(team(0)))));
-        world.entity_mut(hero).insert(Owner::new(slot(2)));
+        assert_eq!(held(world, hero), Some((Some(seat(1)), Some(team(0)))));
+        world.entity_mut(hero).insert(Owner::new(seat(2)));
         world.flush();
-        assert_eq!(held(world, hero), Some((Some(slot(2)), Some(team(0)))));
+        assert_eq!(held(world, hero), Some((Some(seat(2)), Some(team(0)))));
         world.entity_mut(hero).insert(team(1));
         world.flush();
-        assert_eq!(held(world, hero), Some((Some(slot(2)), Some(team(1)))));
+        assert_eq!(held(world, hero), Some((Some(seat(2)), Some(team(1)))));
         world.entity_mut(hero).remove::<Owner>();
         world.flush();
         assert_eq!(held(world, hero), Some((None, Some(team(1)))));
-        world.entity_mut(hero).insert(Owner::new(slot(2)));
+        world.entity_mut(hero).insert(Owner::new(seat(2)));
         world.entity_mut(hero).remove::<Team>();
         world.flush();
-        assert_eq!(held(world, hero), Some((Some(slot(2)), None)));
+        assert_eq!(held(world, hero), Some((Some(seat(2)), None)));
         // A unit no player owns, as a creep; and one that holds no type of the kind.
         let creep = world.spawn((team(1), Stray)).id();
-        let tower = world.spawn((Owner::new(slot(1)), team(0))).id();
+        let tower = world.spawn((Owner::new(seat(1)), team(0))).id();
         world.flush();
         assert_eq!(held(world, creep), Some((None, Some(team(1)))));
         assert_eq!(held(world, tower), None);
         // A player's own entity: its seat is its owner, through each change of its team.
-        let seat = world.spawn((Player::new(slot(3)), team(0), Stray)).id();
+        let own = world.spawn((Player::new(seat(3)), team(0), Stray)).id();
         world.flush();
-        assert_eq!(held(world, seat), Some((Some(slot(3)), Some(team(0)))));
-        world.entity_mut(seat).remove::<Team>();
+        assert_eq!(held(world, own), Some((Some(seat(3)), Some(team(0)))));
+        world.entity_mut(own).remove::<Team>();
         world.flush();
-        assert_eq!(held(world, seat), Some((Some(slot(3)), None)));
-        world
-            .entity_mut(seat)
-            .insert((Owner::new(slot(4)), team(1)));
-        world.entity_mut(seat).remove::<Owner>();
+        assert_eq!(held(world, own), Some((Some(seat(3)), None)));
+        world.entity_mut(own).insert((Owner::new(seat(4)), team(1)));
+        world.entity_mut(own).remove::<Owner>();
         world.flush();
-        assert_eq!(held(world, seat), Some((Some(slot(3)), Some(team(1)))));
-        world.entity_mut(hero).insert(Owner::new(slot(1)));
+        assert_eq!(held(world, own), Some((Some(seat(3)), Some(team(1)))));
+        world.entity_mut(hero).insert(Owner::new(seat(1)));
         world.flush();
         world.despawn(hero);
         world.flush();
@@ -560,16 +558,16 @@ mod tests {
 
     #[test]
     fn only_the_kinds_audience_in_the_match_holds_a_filtered_kind() {
-        let player = |slot, team| {
+        let player = |seat, team| {
             Some(Viewer::Player {
-                slot: PlayerSlot::new(slot),
+                seat: Seat::new(seat),
                 team: Team::new(team),
                 out: false,
             })
         };
         let spectator = Some(Viewer::Spectator(Watching::Teams(TeamSet::ALL)));
         let client = Entity::PLACEHOLDER;
-        let (owner, team) = (Owner::new(PlayerSlot::new(1)), Team::new(0));
+        let (owner, team) = (Owner::new(Seat::new(1)), Team::new(0));
         // The owner of team 0's unit, an ally, an enemy, a spectator, and a link with no seat.
         let viewers = [player(1, 0), player(0, 0), player(2, 1), spectator, None];
         // The defaults: prediction to the owner alone; a team field to its team; life to all.

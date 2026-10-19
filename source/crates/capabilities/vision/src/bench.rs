@@ -30,9 +30,9 @@ fn fog(c: &mut Criterion) {
     let mut scene = KernelScene::new(11);
     let units: Vec<(Vec3, Team)> = (0..KernelScene::UNITS)
         .map(|_| {
-            let pos = scene.point(span);
+            let position = scene.point(span);
             let team = Team::new(u8::try_from(scene.below(2)).unwrap());
-            (pos, team)
+            (position, team)
         })
         .collect();
     let edge = Num::from_int(span.cast_signed() + SIGHT).unwrap();
@@ -57,12 +57,12 @@ fn fog(c: &mut Criterion) {
         .collect();
     let mut tick = |fog: &mut Fog, units: &[(Vec3, Team)]| {
         fog.begin_tick();
-        for (slot, &(pos, team)) in units.iter().enumerate() {
-            fog.sight(&vision, slot, pos, team, range, false);
+        for (slot, &(position, team)) in units.iter().enumerate() {
+            fog.sight(&vision, slot, position, team, range, false);
         }
         seen.clear();
-        for (slot, &(pos, team)) in units.iter().enumerate() {
-            seen.push(fog.seen_by(&vision, slot, pos, None, team, false));
+        for (slot, &(position, team)) in units.iter().enumerate() {
+            seen.push(fog.seen_by(&vision, slot, position, None, team, false));
         }
         black_box(&seen);
     };

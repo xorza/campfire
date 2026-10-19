@@ -18,14 +18,14 @@ impl AppendWatch {
 
     /// Whether the writer synced every record appended so far, or stopped at a failure, after
     /// which it keeps none.
-    pub fn settled(&self) -> bool {
+    pub fn is_settled(&self) -> bool {
         let pending = self.0.pending.lock();
         pending.stopped || self.durable() == pending.records
     }
 
     /// The failure that stopped the writer, the first time it is asked after the failure; none
     /// before it, and after. A write and its sync that run past `AppendWriter::HUNG_SYNC` as it
-    /// is asked stop the writer, so an owner that asks each frame sees a hung disk.
+    /// is asked stop the writer, so a holder that asks each frame sees a hung disk.
     pub fn take_failure(&self) -> Option<AppendError> {
         self.0.check_hung();
         self.0.failure.take()

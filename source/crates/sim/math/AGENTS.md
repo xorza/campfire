@@ -1,6 +1,6 @@
 # campfire-math
 
-The numbers every crate of the sim shares: the fixed-point `Num`, vectors, roots, trig, the rounding of a quotient, and the random sequences. Every result is the same bits on every machine. The design is [Determinism core](../../../../docs/design/09-determinism-core.md): its decisions on `Num`, the one `i128` step, exactness, roots and references hold here, and the rule below adds what they leave to this crate; the repository's `AGENTS.md` comes first.
+The numbers every crate of the sim shares: the fixed-point `Num`, vectors, roots, trig, the rounding of a quotient, and the random sequences. Every result is the same bits on every machine. The design is [Determinism core](../../../../docs/design/07-determinism-core.md): its decisions on `Num`, the one `i128` step, exactness, roots and references hold here, and the rule below adds what they leave to this crate; the repository's `AGENTS.md` comes first.
 
 ## The rule
 

@@ -3,9 +3,9 @@ use std::ops::Range;
 
 use bevy_ecs::system::{Local, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_script::{
-    Ctx, HookSpec, ModeEvents, PlayerHandle, ScriptList, ScriptRole, ScriptText, ScriptValue,
+    Ctx, HookDecl, ModeEvents, PlayerHandle, ScriptList, ScriptRole, ScriptText, ScriptValue,
 };
 use campfire_sim::{SimTick, TickInputs};
 
@@ -13,10 +13,10 @@ use crate::calls::Calls;
 use crate::mode_input::{InputValue, ModeInput};
 use crate::timers::Timers;
 
-/// One mode input of the tick: its player's slot, and its body in the scratch buffer.
+/// One mode input of the tick: its player's seat, and its body in the scratch buffer.
 #[derive(Debug)]
 pub(super) struct Input {
-    slot: PlayerSlot,
+    seat: Seat,
     body: Range<usize>,
 }
 
@@ -65,7 +65,7 @@ pub(crate) struct OnQuestStage;
 /// A hook of the mode's script.
 macro_rules! mode_hook {
     ($($hook:ident: $name:literal, [$($param:literal),*], $args:ty;)*) => {$(
-        impl HookSpec for $hook {
+        impl HookDecl for $hook {
             const NAME: &'static str = $name;
             const ROLE: ScriptRole = ScriptRole::Mode;
             const PARAMS: &'static [&'static str] = &["ctx", $($param),*];
@@ -104,7 +104,7 @@ impl ModeHooks {
             let start = bodies.len();
             bodies.extend_from_slice(command.body);
             inputs.push(Input {
-                slot: command.slot,
+                seat: command.seat,
                 body: start..bodies.len(),
             });
         }
@@ -129,9 +129,9 @@ impl ModeHooks {
                     ),
                 };
                 let name = ScriptText::from(decoded.name);
-                let args = (call.ctx.clone(), PlayerHandle::new(input.slot), name, value);
+                let args = (call.ctx.clone(), PlayerHandle::new(input.seat), name, value);
                 // An input is answered once: one whose call finds its player's pool spent fails.
-                let answered = call.answer::<OnInput>(None, Some(input.slot), args);
+                let answered = call.answer::<OnInput>(None, Some(input.seat), args);
                 debug_assert!(answered.is_continue(), "an input's call never waits");
             }
         });
@@ -185,9 +185,9 @@ impl ModeHooks {
                     .data
                     .as_ref()
                     .map_or(ScriptValue::UNIT, |data| data.to_value(call.ctx.view()));
-                let owner = timer.owner;
+                let script = timer.script;
                 let args = (call.ctx.clone(), name, data);
-                if call.answer_in::<OnTimer>(owner, args).is_break() {
+                if call.answer_in::<OnTimer>(script, args).is_break() {
                     break;
                 }
                 call.batch.world().resource_mut::<Timers>().fire();

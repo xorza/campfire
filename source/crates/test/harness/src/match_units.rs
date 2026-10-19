@@ -37,11 +37,11 @@ impl<'a> MatchUnits<'a> {
         heroes.next().expect("each player has a hero")
     }
 
-    /// The units player `slot` owns that gain experience, by stable id.
-    pub fn heroes(self, slot: u32) -> impl Iterator<Item = StableId> {
+    /// The units player `seat` owns that gain experience, by stable id.
+    pub fn heroes(self, seat: u32) -> impl Iterator<Item = StableId> {
         self.all()
             .filter(move |(_, unit)| {
-                MatchUnits::owned_by(unit, slot) && unit.contains::<Experience>()
+                MatchUnits::owned_by(unit, seat) && unit.contains::<Experience>()
             })
             .map(|(id, _)| id)
     }
@@ -52,7 +52,7 @@ impl<'a> MatchUnits<'a> {
         self.world.entity(entity)
     }
 
-    pub fn pos(self, id: StableId) -> Vec3 {
+    pub fn position(self, id: StableId) -> Vec3 {
         self.unit(id)
             .get::<Position>()
             .expect("a unit stands somewhere")
@@ -63,7 +63,7 @@ impl<'a> MatchUnits<'a> {
     pub fn standing_at(self, at: impl Into<Vec3>) -> Vec<StableId> {
         let at = at.into();
         self.all()
-            .filter(|(_, unit)| unit.get::<Position>().map(|pos| pos.get()) == Some(at))
+            .filter(|(_, unit)| unit.get::<Position>().map(|position| position.get()) == Some(at))
             .map(|(id, _)| id)
             .collect()
     }
@@ -83,10 +83,10 @@ impl<'a> MatchUnits<'a> {
             .expect("a team with a shop")
     }
 
-    /// Whether player `slot` owns `unit`.
-    pub fn owned_by(unit: &EntityRef<'_>, slot: u32) -> bool {
+    /// Whether player `seat` owns `unit`.
+    pub fn owned_by(unit: &EntityRef<'_>, seat: u32) -> bool {
         unit.get::<Owner>()
-            .is_some_and(|owner| owner.slot().get() == slot)
+            .is_some_and(|owner| owner.seat().get() == seat)
     }
 
     /// The unit that spawned at `at`, of a team: a camp's, or a structure.

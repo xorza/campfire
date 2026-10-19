@@ -52,7 +52,7 @@ impl TagProperties {
         self.0 & (1 << block as u8) != 0
     }
 
-    pub const fn hidden(self) -> bool {
+    pub const fn is_hidden(self) -> bool {
         self.0 & Self::HIDDEN != 0
     }
 
@@ -60,7 +60,7 @@ impl TagProperties {
         self.0 & Self::DETECTS != 0
     }
 
-    pub const fn named_only(self) -> bool {
+    pub const fn is_named_only(self) -> bool {
         self.0 & Self::NAMED_ONLY != 0
     }
 
@@ -83,10 +83,10 @@ mod tests {
                 .filter(|&b| properties.blocks(b))
                 .collect();
             assert_eq!(blocked, [block]);
-            assert!(!properties.hidden() && !properties.detects());
+            assert!(!properties.is_hidden() && !properties.detects());
         }
         let both = none.with_hidden().union(none.with_detects());
-        assert!(both.hidden() && both.detects());
+        assert!(both.is_hidden() && both.detects());
         assert!(Block::ALL.into_iter().all(|block| !both.blocks(block)));
     }
 }

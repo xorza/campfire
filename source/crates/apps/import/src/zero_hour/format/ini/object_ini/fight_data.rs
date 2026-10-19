@@ -50,7 +50,7 @@ pub(crate) struct IniBody {
 
 /// A body module, of those the import reads as life: `ActiveBody` and `StructureBody`; the others,
 /// `ImmortalBody`, `HighlanderBody`, `UndeadBody`, `HiveStructureBody` and `InactiveBody`, keep a
-/// unit alive or move its damage by rules of their own (12-zero-hour.md, Life is the original's).
+/// unit alive or move its damage by rules of their own (09-zero-hour.md, Life is the original's).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BodyKind {
     Active,

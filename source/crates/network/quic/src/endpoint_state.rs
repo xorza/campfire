@@ -16,12 +16,12 @@ use crate::outbox::Outbox;
 use crate::peer::{Peer, PeerKey};
 use crate::recv_batch::Datagram;
 
-/// The name every client sends: its verifier reads the key alone (15-quic-transport.md, TLS 1.3,
+/// The name every client sends: its verifier reads the key alone (11-quic-transport.md, TLS 1.3,
 /// ALPN `campfire`, no client key, no resumption).
 const SERVER_NAME: &str = "campfire";
 
 /// An endpoint and its connections, which its thread and the app's frame share behind one mutex
-/// (15-quic-transport.md, A thread for each endpoint, and no IO in the frame; 15-quic-transport.md,
+/// (11-quic-transport.md, A thread for each endpoint, and no IO in the frame; 11-quic-transport.md,
 /// A link's entity is its peer, not its address). A connection lives in a table by `quinn-proto`'s
 /// handle, with the link entity that carries it, if any.
 #[derive(Debug)]
@@ -83,13 +83,13 @@ impl EndpointState {
         }
     }
 
-    pub(crate) const fn closing(&self) -> bool {
+    pub(crate) const fn is_closing(&self) -> bool {
         self.closing
     }
 
     /// Whether the thread ended, or ends after its pass: as its endpoint closed, or as its
     /// socket failed. A thread that ended otherwise panicked.
-    pub(crate) const fn ended(&self) -> bool {
+    pub(crate) const fn is_ended(&self) -> bool {
         self.closing || self.failed
     }
 
@@ -135,7 +135,7 @@ impl EndpointState {
     }
 
     /// The thread's work under the mutex for one read: each datagram to the endpoint, then each
-    /// connection served (15-quic-transport.md, A thread for each endpoint, and no IO in the
+    /// connection served (11-quic-transport.md, A thread for each endpoint, and no IO in the
     /// frame).
     pub(crate) fn pass(
         &mut self,

@@ -1,4 +1,4 @@
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 use campfire_values::{Team, UnitType};
@@ -13,8 +13,8 @@ pub struct SpawnAt {
     pub id: StableId,
     pub unit_type: UnitType,
     pub team: Team,
-    pub owner: Option<PlayerSlot>,
-    pub pos: Vec3,
+    pub owner: Option<Seat>,
+    pub position: Vec3,
     pub angle: Num,
 }
 
@@ -27,7 +27,7 @@ impl SpawnAt {
         };
         UnitCore {
             id: self.id,
-            pos: self.pos,
+            position: self.position,
             unit_type: self.unit_type,
             team: self.team,
             owner,

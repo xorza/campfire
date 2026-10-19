@@ -46,7 +46,7 @@ fn a_frame_is_kept_by_where_its_file_lies_in_the_workspace() {
         ),
         ("crates/base/common/src/codec/sink.rs", FrameKind::Source),
         ("crates/network/quic/tests/rejoin.rs", FrameKind::Other),
-        ("docs/design/15-quic-transport.md", FrameKind::Other),
+        ("docs/design/11-quic-transport.md", FrameKind::Other),
     ] {
         assert_eq!(kind_of(&native(file)), Some(kind), "{file}");
     }

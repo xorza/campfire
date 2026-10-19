@@ -2,7 +2,7 @@ use bevy_math::{UVec2, Vec2};
 use campfire_client_files::{GroundQuad, Overlay, TerrainQuads};
 
 use crate::zero_hour::format::map::map_file::MapHeights;
-use crate::zero_hour::format::map::terrain::{BlendShape, BlendTile, TerrainCell, TerrainParts};
+use crate::zero_hour::format::map::terrain::{BlendShape, BlendTile, TerrainCell, TerrainFields};
 use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::terrain_atlas::TerrainAtlas;
 
@@ -13,7 +13,7 @@ use crate::zero_hour::terrain_atlas::TerrainAtlas;
 /// down.
 #[derive(Debug)]
 pub(crate) struct TerrainCells<'a> {
-    terrain: &'a TerrainParts,
+    terrain: &'a TerrainFields,
     /// The heights, rows from the game's south, as the map holds them and the terrain's cells.
     samples: &'a [u8],
     columns: usize,
@@ -68,7 +68,7 @@ const OPAQUE: u8 = 255;
 impl<'a> TerrainCells<'a> {
     /// The cells of `terrain` over `heights`, the map's, with `atlas` and `game`'s settings.
     pub(crate) fn new(
-        terrain: &'a TerrainParts,
+        terrain: &'a TerrainFields,
         heights: &'a MapHeights,
         atlas: &'a TerrainAtlas,
         game: GameData,

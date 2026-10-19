@@ -21,7 +21,7 @@ pub enum DurableError {
     #[error("could not rename the temporary file")]
     Rename(#[source] io::Error),
     #[error("could not sync the directory")]
-    SyncDirectory(#[source] io::Error),
+    SyncDir(#[source] io::Error),
     /// The lock by which the writers of a new file take turns was not opened or taken.
     #[error("could not lock the file's makers out")]
     Lock(#[source] io::Error),

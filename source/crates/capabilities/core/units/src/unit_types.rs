@@ -201,7 +201,7 @@ impl UnitTypes {
                 Some(unit.unit_type),
                 "the build numbers the types as their load does"
             );
-            if unit.avatar() {
+            if unit.is_avatar() {
                 types.give_tag(unit.unit_type, Avatar::TAG.tag());
             }
         }

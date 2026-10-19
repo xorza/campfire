@@ -1,4 +1,4 @@
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_log::LogEvent;
 use campfire_sim::StableId;
 use campfire_units::{DeathView, Fallen};
@@ -18,7 +18,7 @@ pub(crate) struct UnitDied {
     #[serde(default)]
     pub team: Option<Team>,
     #[serde(default)]
-    pub owner: Option<PlayerSlot>,
+    pub owner: Option<Seat>,
     #[serde(default)]
     pub killer: Option<StableId>,
     #[serde(default)]
@@ -59,7 +59,7 @@ impl LogEvent for UnitDied {
         let (tick, unit) = (self.tick.map(Tick::get), self.unit.get());
         let team = self.team.map(Team::index);
         let killer = self.killer.map(StableId::get);
-        let owner = self.owner.map(PlayerSlot::get);
+        let owner = self.owner.map(Seat::get);
         if self.avatar {
             info!(
                 tick,

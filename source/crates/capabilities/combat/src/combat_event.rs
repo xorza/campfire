@@ -1,4 +1,4 @@
-use campfire_script::{Ctx, HookSpec, ScriptBatch, ScriptRole, ScriptValue};
+use campfire_script::{Ctx, HookDecl, ScriptBatch, ScriptRole, ScriptValue};
 use campfire_sim::StableId;
 use campfire_stats::{ModifierHandle, ModifierHook, ModifierHooks};
 
@@ -55,7 +55,7 @@ pub(crate) struct OnTakedown;
 /// damage.
 macro_rules! combat_hook {
     ($($hook:ident: $name:literal, $param:literal, $event:ty;)*) => {$(
-        impl HookSpec for $hook {
+        impl HookDecl for $hook {
             const NAME: &'static str = $name;
             const ROLE: ScriptRole = ScriptRole::Modifier;
             const PARAMS: &'static [&'static str] = &["ctx", "m", $param];

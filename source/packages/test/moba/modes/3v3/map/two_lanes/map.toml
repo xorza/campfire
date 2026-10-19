@@ -47,135 +47,135 @@ points = [[6, -50], [36, -36], [40, 0], [36, 36], [6, 50]]
 name = "north_spawn"
 tags = ["spawn"]
 team = "north"
-pos = [0, -60]
+position = [0, -60]
 params = { from = "start" }
 
 [[markers]]
 name = "south_spawn"
 tags = ["spawn"]
 team = "south"
-pos = [0, 60]
+position = [0, 60]
 params = { from = "end" }
 
 [[units]]
 unit_type = "core"
 team = "north"
-pos = [0, -54]
+position = [0, -54]
 
 [[units]]
 unit_type = "inhibitor"
 team = "north"
 path = "west"
-pos = [-11, -52]
+position = [-11, -52]
 
 [[units]]
 unit_type = "tower"
 team = "north"
 path = "west"
-pos = [-22, -46]
+position = [-22, -46]
 
 [[units]]
 unit_type = "tower"
 team = "north"
 path = "west"
-pos = [-42, -16]
+position = [-42, -16]
 
 [[units]]
 unit_type = "inhibitor"
 team = "north"
 path = "east"
-pos = [11, -52]
+position = [11, -52]
 
 [[units]]
 unit_type = "tower"
 team = "north"
 path = "east"
-pos = [22, -46]
+position = [22, -46]
 
 [[units]]
 unit_type = "tower"
 team = "north"
 path = "east"
-pos = [42, -16]
+position = [42, -16]
 
 [[units]]
 unit_type = "core"
 team = "south"
-pos = [0, 54]
+position = [0, 54]
 
 [[units]]
 unit_type = "inhibitor"
 team = "south"
 path = "west"
-pos = [-11, 52]
+position = [-11, 52]
 
 [[units]]
 unit_type = "tower"
 team = "south"
 path = "west"
-pos = [-22, 46]
+position = [-22, 46]
 
 [[units]]
 unit_type = "tower"
 team = "south"
 path = "west"
-pos = [-42, 16]
+position = [-42, 16]
 
 [[units]]
 unit_type = "inhibitor"
 team = "south"
 path = "east"
-pos = [11, 52]
+position = [11, 52]
 
 [[units]]
 unit_type = "tower"
 team = "south"
 path = "east"
-pos = [22, 46]
+position = [22, 46]
 
 [[units]]
 unit_type = "tower"
 team = "south"
 path = "east"
-pos = [42, 16]
+position = [42, 16]
 
 # Each base's fountain, its shop, behind its spawn.
 [[units]]
 unit_type = "fountain"
 team = "north"
-pos = [0, -62]
+position = [0, -62]
 
 [[units]]
 unit_type = "fountain"
 team = "south"
-pos = [0, 62]
+position = [0, 62]
 
 [[markers]]
 name = "camp1"
 tags = ["camp"]
-pos = [-18, -12]
+position = [-18, -12]
 params = { unit_type = "wolf" }
 
 [[markers]]
 name = "camp2"
 tags = ["camp"]
-pos = [18, -12]
+position = [18, -12]
 params = { unit_type = "wolf" }
 
 [[markers]]
 name = "camp3"
 tags = ["camp"]
-pos = [-18, 12]
+position = [-18, 12]
 params = { unit_type = "wolf" }
 
 [[markers]]
 name = "camp4"
 tags = ["camp"]
-pos = [18, 12]
+position = [18, 12]
 params = { unit_type = "wolf" }
 
 [[markers]]
 name = "camp5"
 tags = ["camp"]
-pos = [0, 0]
+position = [0, 0]
 params = { unit_type = "warden" }

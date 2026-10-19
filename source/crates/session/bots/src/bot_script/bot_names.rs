@@ -13,10 +13,10 @@ use campfire_values::{
 
 use crate::bot_script::error::BotScriptError;
 use crate::loaded::{ActionName, Loaded};
+use crate::location::{Location, MarkerLocation};
 use crate::named::Named;
-use crate::place::{MarkerPlace, Place};
 
-/// The kind of a map marker's name, which a bot's script names a place by.
+/// The kind of a map marker's name, which a bot's script names a location by.
 const MARKERS: NameKind = NameKind::new("marker", Article::A, NameScope::Match);
 
 /// What a bot's script names, as the books of its match hold it: the unit types and their tags,
@@ -91,19 +91,19 @@ impl RefMap<Named, Loaded> for LoadRefs<'_, '_> {
         Ok(name)
     }
 
-    fn ground(&mut self, ground: Place) -> Result<GroundPoint, BotScriptError> {
+    fn ground(&mut self, ground: Location) -> Result<GroundPoint, BotScriptError> {
         self.point(ground).map(GroundPoint::under)
     }
 
-    fn point(&mut self, point: Place) -> Result<Vec3, BotScriptError> {
+    fn point(&mut self, point: Location) -> Result<Vec3, BotScriptError> {
         let map = self.names.map;
         match point {
-            Place::Marker(MarkerPlace { marker }) => {
+            Location::Marker(MarkerLocation { marker }) => {
                 let found = self.names.markers.iter().find(|spec| spec.name == marker);
                 let spec = found.ok_or_else(|| UnknownName::new(MARKERS, &marker))?;
-                spec.pos.ok_or(BotScriptError::NoPoint(marker))
+                spec.position.ok_or(BotScriptError::NoPoint(marker))
             }
-            Place::At(at) => at
+            Location::At(at) => at
                 .place(map.metric, Bounds::WORLD)
                 .map_err(BotScriptError::Point),
         }

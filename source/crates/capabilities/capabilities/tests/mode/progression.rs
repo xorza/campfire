@@ -1,0 +1,242 @@
+use campfire_common::Tick;
+use campfire_progression::ProgressionRefusal;
+use campfire_script::CapabilityRefusal;
+use campfire_units::TagData;
+use campfire_values::Named;
+
+use super::*;
+
+#[test]
+fn a_mode_learns_a_hero_ability_up_to_its_last_rank_and_a_failed_call_learns_nothing() {
+    // Hero X holds its ability in slot 0, of 2 ranks, and the spell in slot 1, of 1.
+    let learner = r#"
+fn on_input(ctx, player, name, value) {
+    if name == "spells" {
+        ctx.choose(player, "spells", value);
+        return;
+    }
+    if name == "hero" {
+        pick(ctx, player, value);
+        return;
+    }
+    let hero = ctx.avatars()[0];
+    let slot = if value == "spell" { 1 } else if value == "none" { 2 } else if value == "negative" { -1 } else { 0 };
+    let times = if value == "twice" { 2 } else if value == "thrice" { 3 } else { 1 };
+    for time in 0..times {
+        ctx.learn(hero, slot);
+    }
+}
+"#;
+    let mut game = mode_match(learner, ScriptLimits::ROOMY);
+    let spells = ModeInput {
+        name: "spells",
+        value: InputValue::StringList(vec!["blink"]),
+    };
+    Mode::tick_inputs(&mut game, &[(0, spells), (0, input("hero", "hero-x"))]);
+    let mut owned = game.query_filtered::<Entity, With<Owner>>();
+    let hero = owned.single(&game).unwrap();
+    let ranks = |game: &Match| {
+        let slots = game.get::<ActionSlots>(hero).unwrap();
+        slots
+            .iter()
+            .map(|slot| Rank::count(slot.rank))
+            .collect::<Vec<_>>()
+    };
+    // Three ranks of two fail at the third, and the call learns none; two in one call count the
+    // first queued, and reach the last rank; then neither slot has a rank more, and two slots do
+    // not exist.
+    let steps = [
+        (
+            "thrice",
+            [0, 1],
+            Some(FailureKind::Api(ModeRefusal::MaxRank.refused())),
+        ),
+        ("twice", [2, 1], None),
+        (
+            "once",
+            [2, 1],
+            Some(FailureKind::Api(ModeRefusal::MaxRank.refused())),
+        ),
+        (
+            "spell",
+            [2, 1],
+            Some(FailureKind::Api(ModeRefusal::MaxRank.refused())),
+        ),
+        (
+            "none",
+            [2, 1],
+            Some(FailureKind::Api(ModeRefusal::NoAbilitySlot.refused())),
+        ),
+        (
+            "negative",
+            [2, 1],
+            Some(FailureKind::Api(ModeRefusal::NoAbilitySlot.refused())),
+        ),
+    ];
+    for (value, expected, failure) in steps {
+        Mode::tick_inputs(&mut game, &[(0, input("probe", value))]);
+        assert_eq!(ranks(&game), expected, "{value}");
+        // The mode grants ranks with no point: the one the spawn gave stays.
+        assert_eq!(game.get::<Points>(hero).map(|points| points.get()), Some(1));
+        let failures: Vec<_> = failure.into_iter().collect();
+        assert_eq!(Mode::failures(&game), failures, "{value}");
+    }
+}
+
+#[test]
+fn experience_raises_levels_and_each_level_reached_runs_on_level_up_in_the_tick() {
+    let leveler = r#"
+fn take_input(ctx, player, name, value) {
+    let hero = ctx.avatars()[0];
+    if value == "99" {
+        ctx.add_xp(hero, "level", 99);
+    } else if value == "1.5" {
+        ctx.add_xp(hero, "level", num(3) / 2);
+    } else if value == "500" {
+        ctx.add_xp(hero, "level", 500);
+    } else if value == "tower" {
+        ctx.add_xp(ctx.units_tagged("tower")[0], "level", 1);
+    } else if value == "fame" {
+        ctx.add_xp(hero, "fame", 1);
+    } else if value == "negative" {
+        ctx.add_xp(hero, "level", -1);
+    } else if value == "read" {
+        ctx.state.kind = `${hero.points} ${hero.xp("valor")} ${hero.track_level("level")} ${hero.track_level("valor")}`;
+    } else if value == "tower points" {
+        ctx.units_tagged("tower")[0].points;
+    } else if value == "tower level" {
+        ctx.units_tagged("tower")[0].track_level("level");
+    } else if value == "fame level" {
+        hero.track_level("fame");
+    }
+}
+
+fn on_level_up(ctx, unit, track, level) {
+    ctx.state.kind += `${track} ${level};`;
+    if track == "level" && level == 3 {
+        ctx.add_xp(unit, "valor", 50);
+    }
+}
+"#;
+    let mut game = picking_match(leveler, ScriptLimits::ROOMY);
+    let hero = Mode::pick(&mut game, 0, "hero-x");
+    // Each track holds its level, and the `level` track's raises the unit's, which stats owns.
+    // A point comes with each level of the `level` track, the first at the spawn, and none with
+    // valor's.
+    let progress = |game: &Match| {
+        let experience = game.get::<Experience>(hero).unwrap();
+        let [level, valor] = [0, 1].map(|at| experience.get(TrackId::new(at)).unwrap());
+        let unit_level = game.get::<Level>(hero).unwrap().get();
+        assert_eq!(level.level.get(), unit_level);
+        let points = game.get::<Points>(hero).unwrap().get();
+        (level.xp, unit_level, valor.xp, valor.level.get(), points)
+    };
+
+    let kind = |game: &Match| Mode::field(game, "kind");
+    let half = Num::HALF;
+    // 99 stays below level 2's 100. 1.5 more makes 100.5: level 2, and the unit's level with it.
+    // 500 more makes 600.5, past level 3's 300, the last; level 3 adds 50 valor, valor's level 2,
+    // and its `on_level_up` runs in the same tick.
+    let steps = [
+        ("99", (Num::int(99), 1, Num::ZERO, 1, 1), ""),
+        (
+            "1.5",
+            (Num::int(100) + half, 2, Num::ZERO, 1, 2),
+            "level 2;",
+        ),
+        (
+            "500",
+            (Num::int(600) + half, 3, Num::int(50), 2, 3),
+            "level 2;level 3;valor 2;",
+        ),
+    ];
+    for (value, expected, reached) in steps {
+        Mode::tick_inputs(&mut game, &[(0, input("probe", value))]);
+        assert_eq!(progress(&game), expected, "{value}");
+        assert_eq!(kind(&game), StateValue::Text(reached.into()), "{value}");
+        assert_eq!(Mode::failures(&game), [], "{value}");
+    }
+    // A unit without the track, a track the mode does not declare, and a negative amount fail
+    // the call, and change nothing.
+    let refused = [
+        ("tower", ProgressionRefusal::NoTrack.refused()),
+        ("fame", ApiError::Unknown(TrackId::NAMES)),
+        ("negative", ProgressionRefusal::NegativeXp.refused()),
+    ];
+    for (value, error) in refused {
+        Mode::tick_inputs(&mut game, &[(0, input("probe", value))]);
+        assert_eq!(Mode::failures(&game), [FailureKind::Api(error)], "{value}");
+        assert_eq!(
+            progress(&game),
+            (Num::int(600) + half, 3, Num::int(50), 2, 3),
+            "{value}"
+        );
+    }
+    // A script reads the points, the experience and each track's level, the `level` track's
+    // the unit's; a unit without the `level` track has no points, and a track the unit lacks,
+    // or the mode, has no level.
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "read"))]);
+    assert_eq!(Mode::failures(&game), []);
+    assert_eq!(kind(&game), StateValue::Text("3 50 3 2".into()));
+    let unread = [
+        ("tower points", ProgressionRefusal::NoTrack.refused()),
+        ("tower level", ProgressionRefusal::NoTrack.refused()),
+        ("fame level", ApiError::Unknown(TrackId::NAMES)),
+    ];
+    for (value, error) in unread {
+        Mode::tick_inputs(&mut game, &[(0, input("probe", value))]);
+        assert_eq!(Mode::failures(&game), [FailureKind::Api(error)], "{value}");
+    }
+}
+
+#[test]
+fn a_hero_dead_beside_an_enemy_hero_gives_it_experience_and_comes_back() {
+    // The 3v3's `on_unit_death` as it is: hero Y, 10 m from hero X, dies to the mode's damage,
+    // with no killer. X takes all of Y's 150 + 25 × 1 experience, past level 2's 100, and Y
+    // comes back after 1000 + 500 × 1 ms, as the call that gave the experience did not fail.
+    let killer = r#"
+fn take_input(ctx, player, name, value) {
+    ctx.damage(ctx.avatars("b")[0], "physical", 1000);
+}
+"#;
+    let script = format!("{killer}{DEATHS_3V3}");
+    // The 3v3's tag of its cores, which `on_unit_death` reads first.
+    let mut files = mode_files();
+    let core = DeclaredName::new("core").unwrap();
+    let mut tags = files.data.section_or_default::<ModeTagsData>().into_owned();
+    tags.0.insert(core, TagData::default());
+    files.data = files.data.with(tags);
+    let script = format!("{script}{PICKING}");
+    let mut game = start_match(&script, ScriptLimits::ROOMY, &files).unwrap();
+    Mode::tick_inputs(
+        &mut game,
+        &[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))],
+    );
+    let hero = |game: &mut Match, seat| {
+        let mut owned = game.query::<(Entity, &Owner)>();
+        let (entity, _) = owned
+            .iter(game)
+            .find(|(_, owner)| owner.seat() == Seat::new(seat))
+            .unwrap();
+        entity
+    };
+    let (x, y) = (hero(&mut game, 0), hero(&mut game, 2));
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "kill"))]);
+    assert_eq!(Mode::failures(&game), []);
+    assert!(game.get::<Dead>(y).is_some());
+    let xp = |game: &Match| {
+        let experience = game.get::<Experience>(x).unwrap();
+        experience.get(TrackId::new(0)).unwrap().xp
+    };
+    assert_eq!(xp(&game), Num::int(175));
+    assert_eq!(game.get::<Level>(x).unwrap().get(), 2);
+    // Y died in tick 1, and the mode set its respawn from the end of tick 1, the start of tick
+    // 2: 1500 ms is 15 ticks at 10 a second, so Y is dead through tick 16 and back in tick 17.
+    assert_eq!(game.get::<Respawn>(y), Some(&Respawn { at: Tick::new(17) }));
+    for _ in 2..=16 {
+        Mode::tick_inputs(&mut game, &[]);
+        assert!(game.get::<Dead>(y).is_some());
+    }
+    Mode::tick_inputs(&mut game, &[]);
+    assert!(game.get::<Dead>(y).is_none());
+}

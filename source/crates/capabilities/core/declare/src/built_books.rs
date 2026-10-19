@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::book::Book;
 
-/// The books the build made, each once, until the install takes each where its owner declares
+/// The books the build made, each once, until the install takes each where its module declares
 /// it.
 #[derive(Default)]
 pub struct BuiltBooks(Vec<Built>);

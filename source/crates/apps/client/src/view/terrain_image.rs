@@ -162,7 +162,7 @@ impl TerrainImage {
 
 #[cfg(test)]
 mod tests {
-    use campfire_store::internals::Scratch;
+    use campfire_store::internals::TestDir;
 
     use super::*;
     use crate::view::package_source::internals::package;
@@ -200,9 +200,9 @@ mod tests {
 
     #[test]
     fn copies_fill_their_places_at_each_level_their_borders_wrap_and_a_missing_one_is_black() {
-        let scratch = Scratch::new();
+        let test_dir = TestDir::new();
         let files = package(
-            &scratch,
+            &test_dir,
             "mode",
             &[("client/textures/sand.ktx2", &numbered(16))],
         );

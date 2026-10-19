@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_declare::{Book, BookCx, BookError, BookPlace, ByType, Section};
 use campfire_math::Num;
 use campfire_players::{PlayersWorld, ResourceBook};
@@ -99,12 +99,12 @@ impl Bounty {
         payments.clear();
         Self::payments(world, &mut payments);
         for &Payment {
-            slot,
+            seat,
             resource,
             amount,
         } in &*payments
         {
-            if let Some(mut resources) = world.player_resources_mut(slot) {
+            if let Some(mut resources) = world.player_resources_mut(seat) {
                 resources.add(resource, amount);
             }
         }
@@ -149,11 +149,11 @@ impl Bounty {
             {
                 continue;
             }
-            let slot = owner.slot();
+            let seat = owner.seat();
             let amount = match pays {
                 Pays::Amount(amount) => Some(i64::from(amount)),
                 Pays::Cost(cost) => {
-                    let player = world.player_entity(slot);
+                    let player = world.player_entity(seat);
                     let share = player.and_then(|player| world.get::<BountyShare>(player));
                     let share = share.map_or(Num::ZERO, |share| share.0);
                     share.checked_mul_int(i64::from(cost)).map(Num::ceil)
@@ -161,7 +161,7 @@ impl Bounty {
             };
             if let Some(amount) = amount.filter(|&amount| amount > 0) {
                 payments.push(Payment {
-                    slot,
+                    seat,
                     resource,
                     amount,
                 });
@@ -173,7 +173,7 @@ impl Bounty {
 /// A death's bounty: the player it pays, the resource and the amount.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Payment {
-    slot: PlayerSlot,
+    seat: Seat,
     resource: ResourceId,
     amount: i64,
 }

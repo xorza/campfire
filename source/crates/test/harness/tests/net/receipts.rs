@@ -6,7 +6,7 @@
 use std::thread;
 use std::time::Duration;
 
-use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
+use campfire_harness::{InProcessMatch, InProcessSetup, LinkModel};
 use campfire_math::Num;
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
@@ -16,7 +16,7 @@ use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Controller, ServerInput, SignedReceipt, Verifier};
 use campfire_runner::Session;
-use campfire_store::internals::Scratch;
+use campfire_store::internals::TestDir;
 use campfire_store::{EntryKind, InputFile};
 use campfire_units::GroundPoint;
 
@@ -24,12 +24,12 @@ use campfire_units::GroundPoint;
 const RECEIPT_LEN: usize = 4096;
 #[test]
 fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
-    let scratch = Scratch::new();
-    let mut local = InProcessMatch::new(MatchSetup::duo(
+    let test_dir = TestDir::new();
+    let mut local = InProcessMatch::new(InProcessSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(scratch.path("data"));
+    local.keep_data(test_dir.path("data"));
     local.start_match();
     local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     // 150 steps of 1/60 s: two and a half seconds of the server's clock, which gives receipts
@@ -39,7 +39,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
         local.step();
     }
     let watch = local.server().world().resource::<JournalWatch>().0.clone();
-    while !watch.settled() {
+    while !watch.is_settled() {
         thread::sleep(Duration::from_millis(1));
     }
     for _ in 0..60 {
@@ -50,15 +50,15 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     let server = TestKey::server().x_only_public_key().0;
     let mut kept = Vec::new();
     for client in 0..2 {
-        let slot = world.link_slot(local.link(client)).unwrap();
+        let seat = world.link_seat(local.link(client)).unwrap();
         let state = local.client(client).world().resource::<JoinState>();
         let receipt = *state.receipt().expect("a receipt of the synced inputs");
         assert_eq!(
-            (receipt.receipt.session_id, receipt.receipt.slot),
-            (id, slot)
+            (receipt.receipt.session_id, receipt.receipt.seat),
+            (id, seat)
         );
         assert!(Verifier::new().verifies(&receipt.signature, &server, &receipt.receipt));
-        let file = scratch
+        let file = test_dir
             .path("data")
             .join(format!("client-{client}"))
             .join("receipts")
@@ -82,7 +82,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     // A crash after the journal's last sync: the log the journal rebuilds holds each slot's
     // chain past the seq its receipt names, under the delegation it names.
     local.stop_server();
-    let stopped = ServerDir::open(&scratch.path("data")).unwrap();
+    let stopped = ServerDir::open(&test_dir.path("data")).unwrap();
     let restored = SessionDir::find(&stopped)
         .unwrap()
         .unwrap()
@@ -90,15 +90,15 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
         .unwrap()
         .unwrap();
     for receipt in kept {
-        let Some(Controller::Player { chain, .. }) = restored.log.controller(receipt.slot) else {
-            panic!("slot {} has no player", receipt.slot.get());
+        let Some(Controller::Player { chain, .. }) = restored.log.controller(receipt.seat) else {
+            panic!("seat {} has no player", receipt.seat.get());
         };
         assert!(chain.next_seq() > receipt.seq, "{receipt:?}");
         let (_, delegation) = restored
             .log
             .header()
             .players()
-            .find(|&(slot, _)| slot == receipt.slot)
+            .find(|&(seat, _)| seat == receipt.seat)
             .unwrap();
         assert_eq!(*delegation.id(), receipt.delegation);
     }
@@ -108,14 +108,14 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
 fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
     // A file holds the place of client 0's receipts' directory, so its receipts are not written,
     // on every OS; client 1's are.
-    let scratch = Scratch::new();
-    let mut local = InProcessMatch::new(MatchSetup::duo(
+    let test_dir = TestDir::new();
+    let mut local = InProcessMatch::new(InProcessSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(scratch.path("data"));
-    let place = scratch.path("data").join("client-0").join("receipts");
-    scratch.write(&place, b"");
+    local.keep_data(test_dir.path("data"));
+    let place = test_dir.path("data").join("client-0").join("receipts");
+    test_dir.write(&place, b"");
     local.start_match();
     local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     // The writer fails in its own time, after a receipt came; the client's `Faults` logs it.
@@ -133,7 +133,7 @@ fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
     let state = local.client(0).world().resource::<JoinState>();
     assert!(state.receipt().is_some());
     assert!(state.playing_clock().is_some());
-    assert_eq!(scratch.kind(&place), Some(EntryKind::File));
+    assert_eq!(test_dir.kind(&place), Some(EntryKind::File));
 }
 
 #[test]
@@ -142,12 +142,12 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
     // journal syncs; then, in one step, it leaves and the server gives receipts. The receipt of
     // the move crosses the leave on the way: the client keeps it, as the newest, and refuses
     // none, until the server ends the link, after which it takes no receipt.
-    let scratch = Scratch::new();
-    let mut local = InProcessMatch::new(MatchSetup::duo(
+    let test_dir = TestDir::new();
+    let mut local = InProcessMatch::new(InProcessSetup::duo(
         LinkModel::DELAYED,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(scratch.path("data"));
+    local.keep_data(test_dir.path("data"));
     local.start_match();
     local.hold_receipts();
     let watch = local.server().world().resource::<JournalWatch>().0.clone();
@@ -155,7 +155,7 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
         for _ in 0..30 {
             local.step();
         }
-        while !watch.settled() {
+        while !watch.is_settled() {
             thread::sleep(Duration::from_millis(1));
         }
     };
@@ -169,10 +169,10 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
         },
     );
     settle(&mut local);
-    let slot = local.server().world().link_slot(local.link(0)).unwrap();
+    let seat = local.server().world().link_seat(local.link(0)).unwrap();
     let session = local.server().world().resource::<Session>();
-    let Some(Controller::Player { chain, .. }) = session.log().controller(slot) else {
-        panic!("slot {} has no player", slot.get());
+    let Some(Controller::Player { chain, .. }) = session.log().controller(seat) else {
+        panic!("seat {} has no player", seat.get());
     };
     let last = chain.next_seq() - 1;
     let receipt = |local: &InProcessMatch| {
@@ -180,7 +180,7 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
         state.receipt().map(|kept| kept.receipt.seq)
     };
     assert!(receipt(&local).is_none_or(|seq| seq < last));
-    let left = |local: &InProcessMatch| local.client(0).world().resource::<JoinState>().left();
+    let left = |local: &InProcessMatch| local.client(0).world().resource::<JoinState>().is_left();
     local
         .client_mut(0)
         .world_mut()
@@ -193,7 +193,7 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
         local
             .server_inputs()
             .iter()
-            .any(|input| matches!(input, ServerInput::Leave { slot: gone, .. } if *gone == slot))
+            .any(|input| matches!(input, ServerInput::Leave { seat: gone, .. } if *gone == seat))
     };
     let mut steps = 0;
     while receipt(&local) != Some(last) || !took_leave(&local) {

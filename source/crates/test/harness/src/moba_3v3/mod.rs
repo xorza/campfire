@@ -3,7 +3,7 @@ use std::iter;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, UseGroup};
 use campfire_capabilities::{Action, Order};
-use campfire_common::{DeclaredName, PlayerSlot, Tick};
+use campfire_common::{DeclaredName, Seat, Tick};
 use campfire_geometry::internals::{Density, KernelScene};
 use campfire_items::{Inventory, ItemsAction};
 use campfire_math::Num;
@@ -11,7 +11,7 @@ use campfire_mode::{InputValue, Mode, ModeInput};
 use campfire_navigation::PathWalker;
 use campfire_orders::OrdersAction;
 use campfire_progression::ProgressionAction;
-use campfire_protocol::{InputRules, ServerInput, ServerSeeds, SlotPlan};
+use campfire_protocol::{InputRules, SeatPlan, ServerInput, ServerSeeds};
 use campfire_sim::{Position, StableId};
 use campfire_test_packages::TestMode;
 use campfire_units::{Dead, GroundPoint, Life};
@@ -44,8 +44,8 @@ pub enum Moba3v3 {
     Move { x: i16, z: i16 },
     /// The hero attacks the unit that spawned at a point: a camp's, or a structure.
     AttackSpawnedAt { x: i16, z: i16 },
-    /// The hero attacks player `slot`'s hero.
-    AttackHero { slot: u32 },
+    /// The hero attacks player `seat`'s hero.
+    AttackHero { seat: u32 },
     /// The hero casts the action in `slot` at `aim`.
     Cast { slot: u8, aim: Aim },
     /// The hero uses the item `item` it carries in its first slot of it.
@@ -126,13 +126,13 @@ const SKIRMISH: [Scripted<Moba3v3>; 45] = {
         Scripted::new(1200, 5, Moba3v3::Move { x: 38, z: 8 }),
         Scripted::new(1200, 2, cast(HASTE, Aim::Nothing)),
         Scripted::new(1201, 2, Moba3v3::Move { x: -34, z: 4 }),
-        Scripted::new(1700, 0, Moba3v3::AttackHero { slot: 4 }),
-        Scripted::new(1700, 1, Moba3v3::AttackHero { slot: 4 }),
-        Scripted::new(1700, 4, Moba3v3::AttackHero { slot: 1 }),
+        Scripted::new(1700, 0, Moba3v3::AttackHero { seat: 4 }),
+        Scripted::new(1700, 1, Moba3v3::AttackHero { seat: 4 }),
+        Scripted::new(1700, 4, Moba3v3::AttackHero { seat: 1 }),
         Scripted::new(1880, 1, cast(MEND, Aim::Nothing)),
         Scripted::new(1880, 0, Moba3v3::Move { x: -36, z: 10 }),
         Scripted::new(2000, 4, Moba3v3::Move { x: -18, z: 24 }),
-        Scripted::new(2160, 2, Moba3v3::AttackHero { slot: 3 }),
+        Scripted::new(2160, 2, Moba3v3::AttackHero { seat: 3 }),
         Scripted::new(2225, 0, Moba3v3::Move { x: -30, z: -6 }),
         Scripted::new(2240, 0, Moba3v3::Move { x: -38, z: -8 }),
         Scripted::new(2320, 3, attack_at(SOUTH_CAMP)),
@@ -245,7 +245,7 @@ impl Moba3v3 {
         script
     }
 
-    /// The showcase's casts, by player slot, in order: first the items, then each hero's
+    /// The showcase's casts, by seat, in order: first the items, then each hero's
     /// abilities, the teams by turns. Players 0 to 2 hold Cinder, Gale and Husk; 3 to 5 Kensho,
     /// Rime and Veil. Veil and Gale cast all theirs first, before the others' blows could fell
     /// them; Rime strikes Husk with Chill Arrows on, then walks back to her place, which
@@ -278,7 +278,7 @@ impl Moba3v3 {
             (0, cast(FIRST, at(3))),
             (2, cast(SECOND, Aim::Nothing)),
             (4, cast(FIRST, Aim::Nothing)),
-            (4, Self::AttackHero { slot: 2 }),
+            (4, Self::AttackHero { seat: 2 }),
             (3, cast(FIRST, hero(0))),
             (4, walk_to(ARENA[4])),
             (0, cast(SECOND, at(4))),
@@ -300,11 +300,11 @@ impl Moba3v3 {
 
     pub fn load() -> ScriptedMode<Self> {
         let players = usize::try_from(Self::PLAYERS).expect("6 fits usize");
-        Self::planned(iter::repeat_n(SlotPlan::Player, players))
+        Self::planned(iter::repeat_n(SeatPlan::Player, players))
     }
 
     /// The MOBA 3v3 with its slots opened as `plan` says.
-    pub fn planned(plan: impl IntoIterator<Item = SlotPlan>) -> ScriptedMode<Self> {
+    pub fn planned(plan: impl IntoIterator<Item = SeatPlan>) -> ScriptedMode<Self> {
         let packages = TestMode::Moba3v3.packages();
         let items = packages.mode().content.items();
         let items: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
@@ -319,9 +319,9 @@ impl Moba3v3 {
     pub fn crowd_creeps(world: &mut World) {
         let mut scene = KernelScene::new(13);
         for unit in 0..KernelScene::UNITS {
-            let pos = scene.point(Density::Crowded.span());
+            let position = scene.point(Density::Crowded.span());
             let team = Team::new(u8::from(unit % 4 >= 2));
-            Mode::spawn_typed(world, CREEPS[unit % 2], pos, team, ());
+            Mode::spawn_typed(world, CREEPS[unit % 2], position, team, ());
         }
     }
 
@@ -332,9 +332,9 @@ impl Moba3v3 {
 }
 
 impl Plan for Moba3v3 {
-    /// Each player and each bot picks a hero, in slot order, and two spells; an open slot picks
+    /// Each player and each bot picks a hero, in slot order, and two spells; an open seat picks
     /// nothing.
-    fn start(fixed: &mut FixedMatch, slots: &[SlotPlan]) {
+    fn start(fixed: &mut FixedMatch, slots: &[SeatPlan]) {
         for ((slot, hero), plan) in (0..).zip(HEROES).zip(slots) {
             let payload = ModeInput::payload(&[
                 ModeInput {
@@ -347,24 +347,24 @@ impl Plan for Moba3v3 {
                 },
             ]);
             match plan {
-                SlotPlan::Player => {
+                SeatPlan::Player => {
                     fixed.send(slot, Tick::new(0), &payload);
                 }
-                SlotPlan::Bot => {
-                    let slot = PlayerSlot::new(slot);
+                SeatPlan::Bot => {
+                    let seat = Seat::new(slot);
                     let pick = ServerInput::Bot {
-                        slot,
+                        seat,
                         payload: &payload,
                     };
                     fixed.serve(pick).unwrap();
                 }
-                SlotPlan::Open => {}
+                SeatPlan::Open => {}
             }
         }
     }
 
-    fn order(self, units: MatchUnits<'_>, slot: u32) -> Order {
-        let hero = units.hero(slot);
+    fn order(self, units: MatchUnits<'_>, seat: u32) -> Order {
+        let hero = units.hero(seat);
         let action = match self {
             Self::Move { x, z } => Action::Orders(OrdersAction::Move {
                 to: GroundPoint {
@@ -375,8 +375,8 @@ impl Plan for Moba3v3 {
             Self::AttackSpawnedAt { x, z } => Action::Orders(OrdersAction::Attack {
                 target: units.spawned_at((x, 0, z)),
             }),
-            Self::AttackHero { slot } => Action::Orders(OrdersAction::Attack {
-                target: units.hero(slot),
+            Self::AttackHero { seat } => Action::Orders(OrdersAction::Attack {
+                target: units.hero(seat),
             }),
             Self::Cast { slot, aim } => Action::Orders(OrdersAction::Slot {
                 slot,
@@ -445,7 +445,7 @@ fn carried_at(units: MatchUnits<'_>, hero: StableId, item: ItemId) -> u8 {
 /// The living creep of `hero`'s enemies, a unit that walks a lane, of least life within
 /// `FARM_REACH` of it, by stable id on a tie.
 fn weakest_creep(units: MatchUnits<'_>, hero: StableId) -> Option<StableId> {
-    let at = units.pos(hero);
+    let at = units.position(hero);
     let team = *units.unit(hero).get::<Team>().expect("a hero has a team");
     units
         .all()
@@ -455,7 +455,7 @@ fn weakest_creep(units: MatchUnits<'_>, hero: StableId) -> Option<StableId> {
                 && unit.get::<Team>().is_some_and(|&other| other != team)
                 && unit
                     .get::<Position>()
-                    .is_some_and(|pos| pos.get().distance(at) <= Num::int(FARM_REACH))
+                    .is_some_and(|position| position.get().distance(at) <= Num::int(FARM_REACH))
         })
         .filter_map(|(id, unit)| Some((unit.get::<Life>()?.current(), id)))
         .min()

@@ -9,18 +9,18 @@ use campfire_mode::{Mode, SavesData};
 use campfire_players::Seating;
 use campfire_protocol::{
     Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Journal, LogLoadError,
-    LogReplay, PlayerPacket, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds,
-    SessionLog, SessionResult, Signer, SlotStart, SnapshotFingerprint,
+    LogReplay, PlayerPacket, RecordSink, ResultError, SeatStart, SeedError, ServerInput,
+    ServerSeeds, SessionLog, SessionResult, Signer, SnapshotFingerprint,
 };
 use campfire_sim::{SimWorld, TickRate};
 
 use crate::match_build::MatchBuild;
+use crate::seat_rules::SeatRules;
 use crate::session::error::{
-    CheckpointBeginError, ResumeError, ServerInputRefused, SnapshotCheckError, StartError,
+    CheckpointBeginError, ResumeError, ServerInputRefusal, SnapshotCheckError, StartError,
 };
 use crate::session::session_source::{ResumeAt, SessionSource};
 use crate::session_rules::{CheckedTerms, SessionRules};
-use crate::slot_rules::SlotRules;
 
 pub(crate) mod error;
 pub(crate) mod session_source;
@@ -39,8 +39,8 @@ pub struct Session {
     /// The segment whose seed the sim draws from.
     segment: u32,
     log: SessionLog,
-    /// Who the mode lets take a slot.
-    rules: SlotRules,
+    /// Who the mode lets take a seat.
+    rules: SeatRules,
     /// Who may ask for a save, and the mode's autosaves.
     saves: SavesData,
     /// The ticks between two autosaves, without which the mode makes none.
@@ -48,11 +48,11 @@ pub struct Session {
     /// The server's signer, which signs what the session logs; none on a verifier.
     signer: Option<Arc<Signer>>,
     /// The journal the server's log takes each record into, once the server keeps one; none on
-    /// a verifier (10-sessions.md, The journal belongs to the server's session).
+    /// a verifier (08-sessions.md, The journal belongs to the server's session).
     journal: Option<Journal>,
     /// The replay of the log's sealed ticks, while the session runs them again: a verifier's,
     /// a restore's or a load's; none once it reached the log's next tick
-    /// (10-sessions.md, The replay is a cursor the session owns).
+    /// (08-sessions.md, The replay is a cursor the session owns).
     replay: Option<LogReplay>,
     /// The log's terms as the mode's rules checked them, once for the session.
     checked: CheckedTerms,
@@ -91,13 +91,13 @@ impl Session {
             .seed(segment)
             .expect("the seeds reach the log's last segment");
         let seed = header.segment_seed(segment, server_seed);
-        let rules = SlotRules::new(packages.data().players);
+        let rules = SeatRules::new(packages.data().players);
         for &change in log.changes() {
             rules
                 .check(change.kind)
-                .map_err(|error| StartError::SlotRule { change, error })?;
+                .map_err(|error| StartError::SeatRule { change, error })?;
         }
-        let players = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
+        let players = u32::try_from(header.seats.len()).expect("the log counts seats in u32");
         let rate = TickRate::new(header.terms.tick_hz);
         let spec = MatchBuild::spec(packages, seed, rate, players).out(visibility.out());
         MatchBuild::build(world, spec, packages, players, picks);
@@ -132,7 +132,7 @@ impl Session {
         if self
             .replay
             .as_ref()
-            .is_some_and(|replay| replay.done(&self.log))
+            .is_some_and(|replay| replay.is_done(&self.log))
         {
             self.replay = None;
         }
@@ -181,14 +181,14 @@ impl Session {
     }
 
     /// Logs a server input before the next tick, signed in the log by the server at the place it
-    /// takes; see `SessionLog::serve`. The mode's `[players]` refuses a change of a slot's
+    /// takes; see `SessionLog::serve`. The mode's `[players]` refuses a change of a seat's
     /// controller it does not allow, before the log takes it.
-    pub fn serve(&mut self, input: ServerInput<'_>) -> Result<(), ServerInputRefused> {
+    pub fn serve(&mut self, input: ServerInput<'_>) -> Result<(), ServerInputRefusal> {
         self.check_rules(&input)?;
         let server = Self::server(self.signer.as_deref());
         self.log
             .serve(input, server, self.journal.as_mut())
-            .map_err(ServerInputRefused::Log)
+            .map_err(ServerInputRefusal::Log)
     }
 
     /// The server's signer, which a server's session holds: only a server serves and records.
@@ -201,10 +201,10 @@ impl Session {
         self.signer.as_ref()
     }
 
-    /// Refuses a change of a slot's controller that the mode's `[players]` does not allow.
-    fn check_rules(&self, input: &ServerInput<'_>) -> Result<(), ServerInputRefused> {
-        if let Some(change) = self.log.change_of(input).map_err(ServerInputRefused::Log)? {
-            self.rules.check(change).map_err(ServerInputRefused::Rule)?;
+    /// Refuses a change of a seat's controller that the mode's `[players]` does not allow.
+    fn check_rules(&self, input: &ServerInput<'_>) -> Result<(), ServerInputRefusal> {
+        if let Some(change) = self.log.change_of(input).map_err(ServerInputRefusal::Log)? {
+            self.rules.check(change).map_err(ServerInputRefusal::Rule)?;
         }
         Ok(())
     }
@@ -220,7 +220,7 @@ impl Session {
         self.saves
     }
 
-    /// What the slot of a player who leaves becomes, as the mode's `[players] leaver` says.
+    /// What the seat of a player who leaves becomes, as the mode's `[players] leaver` says.
     pub const fn after_leave(&self) -> AfterLeave {
         self.rules.after_leave()
     }
@@ -258,8 +258,8 @@ impl Session {
 
     /// Whether the log may refuse its next entry, its journal's room counted; see
     /// `SessionLog::full`.
-    pub fn log_full(&self) -> bool {
-        self.log.full(self.journal.as_ref())
+    pub fn is_log_full(&self) -> bool {
+        self.log.is_full(self.journal.as_ref())
     }
 
     /// Begins a checkpoint at the boundary before the next tick, which starts the segment after
@@ -306,15 +306,15 @@ impl Session {
         &self.log
     }
 
-    /// Whether a player or a bot held each slot of the session, in order, as the match started:
-    /// as its log's header gives it, whatever a later change made of the slot, so a replay of a
+    /// Whether a player or a bot held each seat of the session, in order, as the match started:
+    /// as its log's header gives it, whatever a later change made of the seat, so a replay of a
     /// published log starts as the run did.
     fn seatings(&self) -> Vec<Seating> {
-        let starts = self.log.header().slots.iter();
+        let starts = self.log.header().seats.iter();
         starts
             .map(|start| match start {
-                SlotStart::Player(_) | SlotStart::Bot => Seating::Held,
-                SlotStart::Open => Seating::Open,
+                SeatStart::Player(_) | SeatStart::Bot => Seating::Held,
+                SeatStart::Open => Seating::Open,
             })
             .collect()
     }
@@ -324,9 +324,9 @@ impl Session {
     /// seed of its seeds and the players' contributions; starts the match; and inserts the
     /// session, which records into the log from its first tick. An error when the terms name
     /// another release, mode or dependencies than this release and the packages, a tick rate
-    /// outside the mode's range, or more slots than the mode's teams have, when the seeds are not
+    /// outside the mode's range, or more seats than the mode's teams have, when the seeds are not
     /// those of the chain the header commits to or do not reach the log's last segment, when a
-    /// change of a slot's controller the log holds, as a published log replayed does, breaks the
+    /// change of a seat's controller the log holds, as a published log replayed does, breaks the
     /// mode's `[players]`, or when the packages do not load into the match.
     pub fn start(world: &mut World, source: SessionSource<'_>) -> Result<(), StartError> {
         let session = Self::build(world, source, 0)?;

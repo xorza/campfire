@@ -7,8 +7,8 @@ use crate::setting::error::VisibilityError;
 use crate::setting::{Setting, SettingValue};
 use crate::visibility::Visibility;
 
-/// What a session's host sets of its visibility (14-replication-audiences.md, Three layers;
-/// 14-replication-audiences.md, The host admits spectators, and their fog is a setting): the
+/// What a session's host sets of its visibility (10-replication-audiences.md, Three layers;
+/// 10-replication-audiences.md, The host admits spectators, and their fog is a setting): the
 /// settings it gives in place of the mode's, and the most spectators it admits, none unless it
 /// says.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -17,8 +17,8 @@ pub struct HostVisibility {
     pub max_spectators: u32,
 }
 
-/// A mode's `[visibility]` (14-replication-audiences.md, Each kind has a default audience, and a
-/// mode may set it; 14-replication-audiences.md, Three layers): its own settings, from the
+/// A mode's `[visibility]` (10-replication-audiences.md, Each kind has a default audience, and a
+/// mode may set it; 10-replication-audiences.md, Three layers): its own settings, from the
 /// defaults, and those it leaves to the host, `spectators` and `out` unless its `host` list names
 /// others.
 #[derive(Debug, Clone, PartialEq, Eq)]

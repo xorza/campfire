@@ -19,7 +19,7 @@ const PCP_PORT: u16 = 5351;
 /// apart; it holds a gateway that grants a very short lifetime off a loop of requests.
 const RENEWAL_MIN: Duration = Duration::from_secs(4);
 
-/// How long each part of the port map waits (15-quic-transport.md, A server maps its own port).
+/// How long each part of the port map waits (11-quic-transport.md, A server maps its own port).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct MapTimes {
     /// The lifetime each mapping asks for.
@@ -276,7 +276,7 @@ impl PortMapper {
     }
 
     /// Maps the port through the router a search finds, else through the last that announced
-    /// itself, whose answer a host firewall may have dropped (15-quic-transport.md, A server maps
+    /// itself, whose answer a host firewall may have dropped (11-quic-transport.md, A server maps
     /// its own port).
     fn map_by_upnp(&self, stop: &AtomicBool) -> Result<Held, MapError> {
         if stop.load(Ordering::SeqCst) {
@@ -307,7 +307,7 @@ impl PortMapper {
         let Some(external) = mapping.external() else {
             return;
         };
-        if Self::public(*external.ip()) {
+        if Self::is_public(*external.ip()) {
             info!(%external, by = ?mapping.by, "the router forwards the server's port; a player outside joins at this address");
         } else {
             warn!(%external, by = ?mapping.by, "the router forwards the server's port, but its own address is private: another NAT stands before it, and a player outside joins only if that NAT forwards the port to the router");
@@ -317,7 +317,7 @@ impl PortMapper {
     /// Whether a router's external address is one the internet routes to: none of the private
     /// ranges of RFC 1918, carrier-grade NAT's 100.64.0.0/10 of RFC 6598, link-local, loopback or
     /// unspecified.
-    const fn public(address: Ipv4Addr) -> bool {
+    const fn is_public(address: Ipv4Addr) -> bool {
         let [first, second, ..] = address.octets();
         let carrier_grade = first == 100 && second & 0xc0 == 64;
         !(address.is_private()

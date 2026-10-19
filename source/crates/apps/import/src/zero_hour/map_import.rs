@@ -62,10 +62,10 @@ pub(crate) struct MapImport {
 struct Waypoint {
     id: u32,
     name: String,
-    pos: [Num; 2],
+    position: [Num; 2],
 }
 
-/// A waypoint a skirmish starts a slot's player at, by the slot's number from 1: its start, or
+/// A waypoint a skirmish starts a seat's player at, by the seat's number from 1: its start, or
 /// its rally.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SkirmishPoint {
@@ -110,7 +110,7 @@ pub(crate) struct MapSources<'a> {
 }
 
 /// The terrain's surface, rough, of no metal or specular, as the import's materials are
-/// (12-zero-hour.md, A W3D material becomes the one material).
+/// (09-zero-hour.md, A W3D material becomes the one material).
 const SURFACE: TerrainSurface = TerrainSurface {
     metallic: 0.0,
     roughness: 1.0,
@@ -126,7 +126,7 @@ const CELL: i64 = 10;
 const PARTITION_CELL: i64 = 40;
 
 /// A cell of the pathfinder, 10 units wide (`PATHFIND_CELL_SIZE`), which the navigation's cells
-/// take (12-zero-hour.md, Cliffs are walls).
+/// take (09-zero-hour.md, Cliffs are walls).
 const PATHFIND_CELL: i64 = 10;
 
 /// A step of height, 0.625 units (`MAP_HEIGHT_SCALE`): 5 · 2⁻³, exact in a `Num`.
@@ -142,23 +142,23 @@ const WAYPOINT: &str = "waypoint";
 const WAYPOINT_NAME: &str = "name";
 
 /// The tag beside `waypoint` of a skirmish's start and rally waypoints, which the mode spawns its
-/// players' start objects at (12-zero-hour.md, A skirmish starts with the faction's start objects).
+/// players' start objects at (09-zero-hour.md, A skirmish starts with the faction's start objects).
 pub(crate) const START: &str = "start";
 
-/// The player slots of a game, `MAX_SLOTS`: the starts a map may name, from `Player_1_Start`,
+/// The seats of a game, `MAX_SEATS`: the starts a map may name, from `Player_1_Start`,
 /// and the players of a skirmish, each its own team, as the original's default skirmish holds
-/// them (12-zero-hour.md, Eight teams of one).
+/// them (09-zero-hour.md, Eight teams of one).
 pub(crate) const SLOTS: u8 = 8;
 
 impl MapImport {
     /// The files of `file`, of `sources`: its heights on the engine's axes, its terrain over them
     /// as a terrain file, its texture the atlas the game builds of its classes; its objects as a
-    /// multiplayer game spawns them (12-zero-hour.md, The multiplayer rule for client objects),
+    /// multiplayer game spawns them (09-zero-hour.md, The multiplayer rule for client objects),
     /// none of a template no INI object names, an optimized tree, a prop and fluff as client
     /// objects, of a look of `looks`, or none when it has none, and every other as a unit of the
     /// type `names` gives it, the bridge-like ones first, in the map's order; bounds that hold its
     /// heights and each unit's body whole; its waypoints within them as markers, and the names of
-    /// those past them, which it drops; the walls of its cliffs within them (12-zero-hour.md,
+    /// those past them, which it drops; the walls of its cliffs within them (09-zero-hour.md,
     /// Cliffs are walls); and its first `lights` object lights, as the game draws
     /// `NumberGlobalLights` of each, which the terrain is lit by too; their ambient color is the
     /// first light's, as the game takes it.
@@ -187,8 +187,8 @@ impl MapImport {
         .ok_or(MapError::LightDirection)?;
         let terrain =
             Terrain::new(file.terrain.clone(), file.heights.width).map_err(MapError::Terrain)?;
-        let atlas = TerrainAtlas::new(terrain.parts(), textures);
-        let cells = TerrainCells::new(terrain.parts(), &file.heights, &atlas, game);
+        let atlas = TerrainAtlas::new(terrain.fields(), textures);
+        let cells = TerrainCells::new(terrain.fields(), &file.heights, &atlas, game);
         let untextured = cells.untextured();
         let quads = cells.quads();
         let terrain = TerrainFile::new(quads, atlas.into_texture(), SURFACE)
@@ -216,11 +216,11 @@ impl MapImport {
         let mut waypoints = Vec::new();
         let mut ids = BTreeSet::new();
         for (at, object) in file.objects.iter().enumerate() {
-            if object.road_or_bridge() {
+            if object.is_road_or_bridge() {
                 continue;
             }
             if let Some(waypoint) = &object.waypoint {
-                let pos = object.ground().ok_or(MapError::Placement(at))?;
+                let position = object.ground().ok_or(MapError::Placement(at))?;
                 let id = u32::try_from(waypoint.id)
                     .ok()
                     .ok_or(MapError::WaypointId(waypoint.id))?;
@@ -235,7 +235,7 @@ impl MapImport {
                 if name.parse::<Num>().is_ok() {
                     return Err(MapError::WaypointName(name));
                 }
-                waypoints.push(Waypoint { id, name, pos });
+                waypoints.push(Waypoint { id, name, position });
             } else {
                 let Some(template) = ini.object(&object.template) else {
                     continue;
@@ -251,7 +251,7 @@ impl MapImport {
                     if looks.objects.contains_key(&look) {
                         client.objects.push(ClientObject {
                             look,
-                            pos: ground,
+                            position: ground,
                             height,
                             angle: degrees,
                         });
@@ -274,7 +274,7 @@ impl MapImport {
                 let unit = PlacedUnitData {
                     unit_type: placed_type.name,
                     team: neutral.clone(),
-                    pos: MapPoint::Ground(take(ground)),
+                    position: MapPoint::Ground(take(ground)),
                     angle: degrees,
                     height,
                     path: None,
@@ -310,15 +310,15 @@ impl MapImport {
             {
                 tags.push(start_tag.clone());
             }
-            let Waypoint { id, name, pos } = waypoint;
-            if bounds.clamp_ground(pos) != pos {
+            let Waypoint { id, name, position } = waypoint;
+            if bounds.clamp_ground(position) != position {
                 dropped_waypoints.push(name);
                 continue;
             }
             markers.push(MarkerData {
                 name: declared(&format!("w{id}")),
                 tags,
-                pos: Some(MapPoint::Ground(pos)),
+                position: Some(MapPoint::Ground(position)),
                 region: None,
                 team: None,
                 params: [(waypoint_name.clone(), ModeParam::Text(name))].into(),
@@ -644,10 +644,10 @@ tags = ["wall"]
         let map = read_map(&imported.map);
         let decimal = |text: &str| text.parse::<Num>().unwrap();
         let ground = |x: &str, z: &str| MapPoint::Ground([decimal(x), decimal(z)]);
-        let unit = |unit_type: &str, pos, angle: i64, height: Num| PlacedUnitData {
+        let unit = |unit_type: &str, position, angle: i64, height: Num| PlacedUnitData {
             unit_type: DeclaredName::new(unit_type).unwrap(),
             team: DeclaredName::new("neutral").unwrap(),
-            pos,
+            position,
             angle: Num::from_bits(angle),
             height,
             path: None,
@@ -676,7 +676,7 @@ tags = ["wall"]
             [MarkerData {
                 name: DeclaredName::new("w3").unwrap(),
                 tags: vec![DeclaredName::new("waypoint").unwrap()],
-                pos: Some(ground("12.5", "-7.5")),
+                position: Some(ground("12.5", "-7.5")),
                 region: None,
                 team: None,
                 params: [(
@@ -717,7 +717,7 @@ tags = ["wall"]
         // names and the one of another case are none; the fence that a build clears is a unit.
         let client = |look: &str, x: i64, z: i64, height: i64| ClientObject {
             look: DeclaredName::new(look).unwrap(),
-            pos: [Num::int(x), Num::int(z)],
+            position: [Num::int(x), Num::int(z)],
             height: Num::int(height),
             angle: Num::ZERO,
         };
@@ -788,7 +788,7 @@ tags = ["wall"]
         assert!(imported.dropped_waypoints.is_empty());
         let waypoint = 2;
         for (x, kept) in [(35.0, true), (35.5, false)] {
-            file.objects[waypoint].pos[0] = x;
+            file.objects[waypoint].position[0] = x;
             let moved = import(&file, &mut names, 3).unwrap();
             let map = read_map(&moved.map);
             assert_eq!(map.bounds(), bounds);
@@ -801,7 +801,7 @@ tags = ["wall"]
         // start and rally of those slots is tagged `start` too, the count of tags 2. One past a
         // gap in the row, a map of one start or none of slot 1, and another slot's, case's or
         // name's waypoint are not: 1.
-        file.objects[waypoint].pos[0] = 12.5;
+        file.objects[waypoint].position[0] = 12.5;
         let base = file.objects[waypoint].clone();
         let tags = |names: &[&str]| {
             let mut placed = file.clone();
@@ -865,13 +865,13 @@ tags = ["wall"]
         // height refuses it; its ground point past the world's bound does.
         let mut turned = file.clone();
         turned.objects[waypoint].angle = f32::INFINITY;
-        turned.objects[waypoint].pos[2] = f32::INFINITY;
+        turned.objects[waypoint].position[2] = f32::INFINITY;
         assert_eq!(import(&turned), Ok(()));
-        turned.objects[waypoint].pos[1] = f32::INFINITY;
+        turned.objects[waypoint].position[1] = f32::INFINITY;
         assert_eq!(import(&turned), Err(MapError::Placement(waypoint)));
-        file.objects[1].pos[0] = f32::INFINITY;
+        file.objects[1].position[0] = f32::INFINITY;
         assert_eq!(import(&file), Err(MapError::Placement(1)));
-        file.objects[1].pos[0] = 0.0;
+        file.objects[1].position[0] = 0.0;
         file.objects[1].angle = f32::INFINITY;
         assert_eq!(import(&file), Err(MapError::Placement(1)));
     }

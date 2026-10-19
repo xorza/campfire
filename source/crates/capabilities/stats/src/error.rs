@@ -53,7 +53,7 @@ impl EdgeError {
 /// Why a package's modifier breaks a rule of stats. Packages are untrusted, so each is an
 /// expected failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum ModifiersDataError {
+pub enum ModifierDataError {
     /// It grants a tag only the engine gives.
     #[error("the tag {0}, which only the engine gives")]
     EngineTag(DeclaredName),
@@ -107,7 +107,7 @@ pub enum StatsRefusal {
 }
 
 impl CapabilityRefusal for StatsRefusal {
-    const OWNER: Capability = Capability::Stats;
+    const CAPABILITY: Capability = Capability::Stats;
     const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {

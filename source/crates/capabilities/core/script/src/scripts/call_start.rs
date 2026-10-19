@@ -1,4 +1,4 @@
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_sim::StableId;
 use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, ModifierId, PackageIndex, Rank};
 
@@ -26,7 +26,7 @@ pub struct CallStart {
     pub hit: Option<Hit>,
     pub start: Option<ActionStart>,
     pub dash_delivers: Option<DashDelivery>,
-    pub payer: Option<PlayerSlot>,
+    pub payer: Option<Seat>,
     /// Only the mode's own script holds the mode's state and choices, and ends the match.
     pub listed: Option<ListPlace>,
     /// The tick the call runs in, which its effects apply in.

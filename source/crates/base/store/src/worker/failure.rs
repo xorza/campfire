@@ -1,6 +1,6 @@
 use crate::worker::worker_lock::WorkerLock;
 
-/// The failure that stopped a worker, kept until its owner takes it, once.
+/// The failure that stopped a worker, kept until its holder takes it, once.
 #[derive(Debug)]
 pub(crate) struct Failure<E>(WorkerLock<Option<E>>);
 

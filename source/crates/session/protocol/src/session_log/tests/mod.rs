@@ -15,6 +15,7 @@ use crate::input_hash::InputHash;
 use crate::input_rules::InputRules;
 use crate::journal::journal_frames::JournalFrames;
 use crate::journal::tests::MemorySink;
+use crate::seat_plan::SeatPlan;
 use crate::seed_chain::SeedChain;
 use crate::server_input::LeaveReason;
 use crate::server_input::error::ServerInputDecodeError;
@@ -23,7 +24,6 @@ use crate::session_log::file::{LOG_TAG, PACKET_ENTRY};
 use crate::session_log::log_replay::LogReplay;
 use crate::session_result::{Outcome, SessionResult};
 use crate::session_terms::SessionTerms;
-use crate::slot_plan::SlotPlan;
 use crate::snapshot_fingerprint::SnapshotFingerprint;
 use crate::spill::Spill;
 use crate::stamp_count::StampCount;
@@ -55,23 +55,23 @@ fn server_key() -> XOnlyPublicKey {
     TestKey::server().x_only_public_key().0
 }
 
-/// Player `slot`'s session key.
-fn session_key(slot: u32) -> Keypair {
-    TestKey::of(u8::try_from(21 + slot).unwrap())
+/// Player `seat`'s session key.
+fn session_key(seat: u32) -> Keypair {
+    TestKey::of(u8::try_from(21 + seat).unwrap())
 }
 
-/// Player `slot`'s delegation of their session key in this session, with `change` applied to its
+/// Player `seat`'s delegation of their session key in this session, with `change` applied to its
 /// terms.
-fn delegation_with(slot: u32, change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
+fn delegation_with(seat: u32, change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
     let mut terms = DelegationTerms {
-        session_key: session_key(slot).x_only_public_key().0,
+        session_key: session_key(seat).x_only_public_key().0,
         server_key: server_key(),
         session_id: session_id(),
-        seed_contribution: SeedContribution::new(CONTRIBUTIONS[slot as usize]),
+        seed_contribution: SeedContribution::new(CONTRIBUTIONS[seat as usize]),
         expiration: TestKey::NOW + 86_400,
     };
     change(&mut terms);
-    let main_key = TestKey::of(u8::try_from(11 + slot).unwrap());
+    let main_key = TestKey::of(u8::try_from(11 + seat).unwrap());
     Delegation::sign(&TestKey::signer(main_key), &terms, TestKey::NOW)
 }
 
@@ -90,7 +90,7 @@ fn terms() -> SessionTerms {
         mode: MODE,
         map: MapName::parse("lane").unwrap(),
         dependencies: DEPENDENCIES.to_vec(),
-        slots: vec![SlotPlan::Player; 2],
+        seats: vec![SeatPlan::Player; 2],
         visibility: VISIBILITY.to_vec(),
         options: vec![2, 0],
     }
@@ -100,8 +100,8 @@ fn session_id() -> SessionId {
     terms().session_id()
 }
 
-fn delegation(slot: u32) -> Delegation {
-    delegation_with(slot, |_| ())
+fn delegation(seat: u32) -> Delegation {
+    delegation_with(seat, |_| ())
 }
 
 /// The first segment's server seed, which the log reveals.
@@ -109,15 +109,15 @@ fn server_seed() -> ServerSeed {
     SEED_CHAIN.seed(0)
 }
 
-fn root(slot: u32) -> InputHash {
-    delegation(slot).chain_root()
+fn root(seat: u32) -> InputHash {
+    delegation(seat).chain_root()
 }
 
 fn header() -> SessionHeader {
     SessionHeader {
         terms: terms(),
-        slots: (0..2)
-            .map(|slot| SlotStart::player(delegation(slot)))
+        seats: (0..2)
+            .map(|seat| SeatStart::player(delegation(seat)))
             .collect(),
     }
 }
@@ -144,18 +144,16 @@ impl Sent<'_> {
     ) -> Result<(), InputError> {
         let inputs = self.inputs.iter().map(|input| (input.stamp, input.payload));
         let packet = PlayerPacket {
-            slot: self.slot(),
+            seat: self.seat(),
             inputs,
             signature: &self.signature,
         };
         log.record(packet, applied, journal)
     }
 
-    /// The slot of its first input, or slot 0 for a packet of none.
-    fn slot(&self) -> PlayerSlot {
-        self.inputs
-            .first()
-            .map_or(PlayerSlot::new(0), |input| input.slot)
+    /// The seat of its first input, or seat 0 for a packet of none.
+    fn seat(&self) -> Seat {
+        self.inputs.first().map_or(Seat::new(0), |input| input.seat)
     }
 }
 
@@ -194,7 +192,7 @@ fn tail_applied() -> PerTick {
     per_tick(&[&[(1, b"d")], &[(0, b"k"), (1, b"j")], &[(1, b"l")]])
 }
 
-/// Inputs as `(slot, stamp, payload)`; a run of one slot's inputs within a tick is one packet.
+/// Inputs as `(seat, stamp, payload)`; a run of one seat's inputs within a tick is one packet.
 type Sends = &'static [(u32, u64, &'static [u8])];
 
 /// What the players send before each tick, 0 to 4, each player's stamps never back. Player 0
@@ -231,19 +229,19 @@ fn chained_with_tail() -> Vec<Vec<Sent<'static>>> {
 
 fn chain(script: &[Sends]) -> Vec<Vec<Sent<'static>>> {
     let keys = [0, 1].map(session_key);
-    let mut chains = [0, 1].map(|slot| InputChain::new(PlayerSlot::new(slot), root(slot)));
+    let mut chains = [0, 1].map(|seat| InputChain::new(Seat::new(seat), root(seat)));
     script
         .iter()
         .map(|sends| {
             let mut packets: Vec<Sent<'static>> = Vec::new();
-            let mut last_slot = None;
-            for &(slot, stamp, payload) in *sends {
-                let chain = &mut chains[slot as usize];
+            let mut last_seat = None;
+            for &(seat, stamp, payload) in *sends {
+                let chain = &mut chains[seat as usize];
                 let input = chain.extend(Tick::new(stamp), payload);
                 let signature =
-                    TestKey::signer(keys[slot as usize]).sign(&chain.signed_head(session_id()));
+                    TestKey::signer(keys[seat as usize]).sign(&chain.signed_head(session_id()));
                 match packets.last_mut() {
-                    Some(packet) if last_slot == Some(slot) => {
+                    Some(packet) if last_seat == Some(seat) => {
                         packet.inputs.push(input);
                         packet.signature = signature;
                     }
@@ -252,17 +250,17 @@ fn chain(script: &[Sends]) -> Vec<Vec<Sent<'static>>> {
                         signature,
                     }),
                 }
-                last_slot = Some(slot);
+                last_seat = Some(seat);
             }
             packets
         })
         .collect()
 }
 
-/// Player `slot`'s first packets, `(stamp, payload)` each, chained from the root and signed by
+/// Player `seat`'s first packets, `(stamp, payload)` each, chained from the root and signed by
 /// the session key of `signer`.
-fn resent(slot: u32, packets: &[&[(u64, &'static [u8])]], signer: u32) -> Vec<Sent<'static>> {
-    let mut chain = InputChain::new(PlayerSlot::new(slot), root(slot));
+fn resent(seat: u32, packets: &[&[(u64, &'static [u8])]], signer: u32) -> Vec<Sent<'static>> {
+    let mut chain = InputChain::new(Seat::new(seat), root(seat));
     packets
         .iter()
         .map(|sends| {
@@ -277,7 +275,7 @@ fn resent(slot: u32, packets: &[&[(u64, &'static [u8])]], signer: u32) -> Vec<Se
         .collect()
 }
 
-/// Each tick's applied inputs as `(slot, payload)`.
+/// Each tick's applied inputs as `(seat, payload)`.
 type PerTick = Vec<Vec<(u32, Vec<u8>)>>;
 
 fn per_tick(ticks: &[&[(u32, &[u8])]]) -> PerTick {
@@ -286,7 +284,7 @@ fn per_tick(ticks: &[&[(u32, &[u8])]]) -> PerTick {
         .map(|inputs| {
             inputs
                 .iter()
-                .map(|&(slot, payload)| (slot, payload.to_vec()))
+                .map(|&(seat, payload)| (seat, payload.to_vec()))
                 .collect()
         })
         .collect()
@@ -322,10 +320,10 @@ fn record_into(mut log: SessionLog, ticks: &[Vec<Sent<'_>>]) -> Result<Recorded,
     Ok(Recorded { log, applied })
 }
 
-/// The applied inputs of the next tick, sealed now, as `(slot, payload)`.
+/// The applied inputs of the next tick, sealed now, as `(seat, payload)`.
 fn seal(log: &mut SessionLog) -> Vec<(u32, Vec<u8>)> {
     log.seal_tick(None)
-        .map(|input| (input.slot.get(), input.payload.to_vec()))
+        .map(|input| (input.seat.get(), input.payload.to_vec()))
         .collect()
 }
 
@@ -334,11 +332,11 @@ fn seal(log: &mut SessionLog) -> Vec<(u32, Vec<u8>)> {
 fn replayed(log: SessionLog) -> Recorded {
     let mut applied = Vec::new();
     if let Some(mut replay) = LogReplay::of(&log) {
-        while !replay.done(&log) {
+        while !replay.is_done(&log) {
             let sealed = replay.seal_tick(&log);
             applied.push(
                 sealed
-                    .map(|input| (input.slot.get(), input.payload.to_vec()))
+                    .map(|input| (input.seat.get(), input.payload.to_vec()))
                     .collect(),
             );
         }
@@ -347,7 +345,7 @@ fn replayed(log: SessionLog) -> Recorded {
 }
 
 #[test]
-fn inputs_apply_by_the_delay_rule_in_slot_order() {
+fn inputs_apply_by_the_delay_rule_in_seat_order() {
     let mut log = new_log();
     let mut outcomes = Vec::new();
     let mut applied = Vec::new();
@@ -458,12 +456,12 @@ fn broken_sends() -> [Tamper; 8] {
             refused: refused(0, InputError::BadSignature),
         },
         Tamper {
-            name: "an input from a slot not in the header",
+            name: "an input from a seat not in the header",
             change: |ticks| {
                 let signature = ticks[0][0].signature;
                 ticks[2].push(Sent {
                     inputs: vec![PlayerInput {
-                        slot: PlayerSlot::new(2),
+                        seat: Seat::new(2),
                         stamp: Tick::new(2),
                         payload: b"x",
                     }],
@@ -564,7 +562,7 @@ fn a_tampered_packet_is_refused() {
 fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     // Each record of the terms takes at most their largest, 9,778 bytes, and 64 more, and the
     // session's end keeps four: 4 × 9,842 = 39,368. Player 1's packet of a, stamped 0, is its
-    // slot, its count, a's stamp, length and byte, and the 64-byte signature, 69 bytes: 70 in the
+    // seat, its count, a's stamp, length and byte, and the 64-byte signature, 69 bytes: 70 in the
     // file with its kind's byte, and 4 + 1 + 69 + 32 = 106 in the journal, framed.
     let (unit, kept) = (9_842, 4 * 9_842);
     let start = new_log().file_len;
@@ -588,14 +586,12 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     let mut log = bounded(70 + kept);
     sent[0].submit(&mut log, &mut applied).unwrap();
     assert_eq!(log.file_len, start + 70);
-    assert!(log.full(None));
+    assert!(log.is_full(None));
     assert_eq!(
         sent[1].submit(&mut log, &mut applied),
         Err(InputError::LogFull)
     );
-    let connected = ServerInput::Connected {
-        slot: PlayerSlot::new(0),
-    };
+    let connected = ServerInput::Connected { seat: Seat::new(0) };
     assert_eq!(serve(&mut log, connected), Err(ServerInputError::LogFull));
     // Its file decodes within the same bound, and not within one a byte less.
     let file = encoded(&log);
@@ -614,9 +610,9 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     );
     // A log full only once it takes a record of the most bytes and the end no more.
     let mut log = bounded(unit + kept);
-    assert!(!log.full(None));
+    assert!(!log.is_full(None));
     sent[0].submit(&mut log, &mut applied).unwrap();
-    assert!(log.full(None));
+    assert!(log.is_full(None));
 
     // The journal counts on its own: its frames past what the log holds.
     let mut log = new_log();
@@ -646,10 +642,10 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     // full within 2 + 9,842 + 5 × 9,842 bytes less one.
     let mut log = bounded(2 + 6 * unit - 1);
     drop(log.seal_tick(None));
-    assert!(!log.full(None));
+    assert!(!log.is_full(None));
     log.begin_checkpoint(None).unwrap();
     assert_eq!(log.file_len, start + 2);
-    assert!(log.full(None));
+    assert!(log.is_full(None));
 }
 
 #[test]
@@ -697,42 +693,38 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     ];
     for (delegation, error) in cases {
         let mut other = header();
-        other.slots[1] = SlotStart::player(delegation);
+        other.seats[1] = SeatStart::player(delegation);
         refuses(&other, error);
     }
-    // A header that starts fewer slots than the terms plan, or a slot otherwise.
+    // A header that starts fewer seats than the terms plan, or a seat otherwise.
     let mut fewer = header();
-    fewer.slots.pop();
-    assert_eq!(SessionLog::new(fewer).err(), Some(HeaderError::SlotCount));
+    fewer.seats.pop();
+    assert_eq!(SessionLog::new(fewer).err(), Some(HeaderError::SeatCount));
     let mut bot = header();
-    bot.slots[1] = SlotStart::Bot;
-    let mismatch = HeaderError::PlanMismatch {
-        slot: PlayerSlot::new(1),
-    };
+    bot.seats[1] = SeatStart::Bot;
+    let mismatch = HeaderError::PlanMismatch { seat: Seat::new(1) };
     assert_eq!(SessionLog::new(bot).err(), Some(mismatch));
-    // Player 0's main key in slot 1 too, with slot 1's session key.
+    // Player 0's main key in seat 1 too, with seat 1's session key.
     let mut twice = header();
     let main = TestKey::signer(TestKey::of(11));
     let shared = Delegation::sign(&main, delegation(1).terms(), TestKey::NOW);
-    twice.slots[1] = SlotStart::player(shared);
-    let repeated = HeaderError::MainKeyRepeated {
-        slot: PlayerSlot::new(1),
-    };
+    twice.seats[1] = SeatStart::player(shared);
+    let repeated = HeaderError::MainKeyRepeated { seat: Seat::new(1) };
     assert_eq!(SessionLog::new(twice.clone()).err(), Some(repeated.clone()));
     assert_eq!(
         SessionLog::decode(&frame(&twice, &[], &[], None)).err(),
         Some(LogError::Header(repeated))
     );
 
-    // The largest record of the terms, a checkpoint's: each of the 2 slots carries a delegation
+    // The largest record of the terms, a checkpoint's: each of the 2 seats carries a delegation
     // of at most 4,096 bytes and its length, 4,101, and its inputs still to apply, 2 a stamp
-    // over the delay, the lead and the next tick, 5 stamps, each a tick, a slot, a stamp, a
-    // length and 4 bytes, 10 + 5 + 10 + 5 + 4 = 34: 4,101 + 340 + 256 = 4,697 a slot; then two
+    // over the delay, the lead and the next tick, 5 stamps, each a tick, a seat, a stamp, a
+    // length and 4 bytes, 10 + 5 + 10 + 5 + 4 = 34: 4,101 + 340 + 256 = 4,697 a seat; then two
     // hashes, the signature and the slack, 64 + 64 + 256 = 384: 2 × 4,697 + 384 = 9,778. A
     // packet takes 2 × 19 + 320 = 358, a server input 4,101 + 320 = 4,421, the header
     // 2 × 4,357 + 2 × 32 + 5 + 256 = 9,039.
     assert_eq!(terms().largest_record(), Some(9_778));
-    // A lead of 2¹⁸ ticks lets each slot hold 2 × (2¹⁸ + 3) inputs of 34 bytes, past 16 MiB in
+    // A lead of 2¹⁸ ticks lets each seat hold 2 × (2¹⁸ + 3) inputs of 34 bytes, past 16 MiB in
     // all.
     let mut far = header();
     far.terms.inputs.max_lead = Ticks::new(1 << 18);
@@ -763,7 +755,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         |terms| terms.map = MapName::parse("lanes").unwrap(),
         |terms| terms.dependencies[1] = PackageFingerprint::new([54; 32]),
         |terms| terms.dependencies.swap(0, 1),
-        |terms| terms.slots[1] = SlotPlan::Bot,
+        |terms| terms.seats[1] = SeatPlan::Bot,
         |terms| terms.visibility[1] = 1,
         |terms| terms.visibility.push(0),
         |terms| terms.options[1] = 1,
@@ -778,7 +770,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
             ScopeError::OtherServer
         };
         let refused = HeaderError::Scope {
-            slot: PlayerSlot::new(0),
+            seat: Seat::new(0),
             error,
         };
         assert_eq!(SessionLog::new(other).err(), Some(refused), "change {at}");
@@ -804,7 +796,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         .update(&2_u64.to_le_bytes())
         .update(&[52; 32])
         .update(&[53; 32])
-        // 2 slots, each a player's.
+        // 2 seats, each a player's.
         .update(&2_u64.to_le_bytes())
         .update(&[0, 0])
         // The visibility's 3 bytes, after their length.
@@ -819,7 +811,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
 /// `other` fails to start a log, and to decode, as player 1's delegation fails with `error`.
 fn refuses(other: &SessionHeader, error: ScopeError) {
     let refused = HeaderError::Scope {
-        slot: PlayerSlot::new(1),
+        seat: Seat::new(1),
         error,
     };
     assert_eq!(SessionLog::new(other.clone()).err(), Some(refused.clone()));
@@ -862,15 +854,15 @@ fn each_segment_seed_comes_from_its_chain_seed_and_the_signed_contributions() {
         assert!(!seeds.commits_to(&commitment), "{segment}: {server_seed:?}");
     }
 
-    // Each signed contribution counts in every segment, and so does their slot order.
+    // Each signed contribution counts in every segment, and so does their seat order.
     let mut changed = header();
-    changed.slots[1] = SlotStart::player(delegation_with(1, |terms| {
+    changed.seats[1] = SeatStart::player(delegation_with(1, |terms| {
         let mut contribution = *terms.seed_contribution.as_bytes();
         contribution[31] ^= 1;
         terms.seed_contribution = SeedContribution::new(contribution);
     }));
     let mut swapped = header();
-    swapped.slots.swap(0, 1);
+    swapped.seats.swap(0, 1);
     for other in [changed, swapped] {
         for (segment, expected) in (0..).zip(&expected) {
             let seed = other.segment_seed(segment, &SEED_CHAIN.seed(segment));
@@ -913,13 +905,13 @@ fn frame(
     put(&mut bytes, &terms.mode);
     put(&mut bytes, &terms.map);
     put(&mut bytes, &terms.dependencies);
-    put(&mut bytes, &terms.slots);
+    put(&mut bytes, &terms.seats);
     put(&mut bytes, &terms.visibility);
     put(&mut bytes, &terms.options);
-    put(&mut bytes, &u32::try_from(header.slots.len()).unwrap());
-    for start in &header.slots {
+    put(&mut bytes, &u32::try_from(header.seats.len()).unwrap());
+    for start in &header.seats {
         put(&mut bytes, &start.plan().code());
-        if let SlotStart::Player(delegation) = start {
+        if let SeatStart::Player(delegation) = start {
             put(&mut bytes, delegation.json());
         }
     }
@@ -930,7 +922,7 @@ fn frame(
         put(&mut bytes, &u32::try_from(packets.len()).unwrap());
         for packet in packets {
             put(&mut bytes, &PACKET_ENTRY);
-            put(&mut bytes, &packet.slot().get());
+            put(&mut bytes, &packet.seat().get());
             put(&mut bytes, &u32::try_from(packet.inputs.len()).unwrap());
             for input in &packet.inputs {
                 put(&mut bytes, &input.stamp);
@@ -1013,9 +1005,7 @@ fn a_log_file_has_its_layout() {
     let a = chained()[0][0].clone();
     let mut applied = Vec::new();
     a.submit(&mut log, &mut applied).unwrap();
-    let disconnected = ServerInput::Disconnected {
-        slot: PlayerSlot::new(0),
-    };
+    let disconnected = ServerInput::Disconnected { seat: Seat::new(0) };
     let place = log.next_place();
     let signature = TestKey::signer(TestKey::server()).sign(&PlacedInput {
         input: &disconnected,
@@ -1045,24 +1035,24 @@ fn a_log_file_has_its_layout() {
         &[2],
         &[52; 32],
         &[53; 32],
-        // The plan of 2 slots, each a player's.
+        // The plan of 2 seats, each a player's.
         &[2, 0, 0],
         // The visibility's 3 bytes, after their length, then the 2 options' picks.
         &[3, 7, 0, 1],
         &[2, 2, 0],
-        // 2 slots, each a player's start, 0, and the delegation's JSON as a length and UTF-8.
+        // 2 seats, each a player's start, 0, and the delegation's JSON as a length and UTF-8.
         &[2, 0],
         &varint(first.json().len()),
         first.json().as_bytes(),
         &[0],
         &varint(second.json().len()),
         second.json().as_bytes(),
-        // 1 segment of 1 tick with 2 entries. A packet, 0: slot 1, 1 input: stamp 0, 1 payload
+        // 1 segment of 1 tick with 2 entries. A packet, 0: seat 1, 1 input: stamp 0, 1 payload
         // byte.
         &[1, 1, 2, 0, 1, 1, 0, 1],
         b"a",
         &a.signature.to_bytes(),
-        // A server input, 1: `Disconnected`, the sixth kind, 5, of slot 0.
+        // A server input, 1: `Disconnected`, the sixth kind, 5, of seat 0.
         &[1, 5, 0],
         &signature.to_bytes(),
         // No entry since the tick, then the revealed seed, and no result.
@@ -1101,9 +1091,7 @@ fn play_minimal(log: &mut SessionLog, journal: Option<&mut Journal>) {
     sent[0]
         .submit_to(log, &mut applied, journal.as_deref_mut())
         .unwrap();
-    let connected = ServerInput::Connected {
-        slot: PlayerSlot::new(0),
-    };
+    let connected = ServerInput::Connected { seat: Seat::new(0) };
     serve_to(log, connected, journal.as_deref_mut()).unwrap();
     drop(log.seal_tick(journal.as_deref_mut()));
     log.begin_checkpoint(journal.as_deref_mut()).unwrap();
@@ -1174,12 +1162,10 @@ fn every_truncation_and_every_flip_of_a_log_file_is_refused() {
 #[test]
 fn flawed_server_entries_are_refused() {
     // `mixed_log` with one server input before its first tick, which ends its file: the entry
-    // count 1, the kind 1, `Disconnected`'s 5 and slot 0, the signature, no reveal and no
+    // count 1, the kind 1, `Disconnected`'s 5 and seat 0, the signature, no reveal and no
     // result.
     let mut log = mixed_log();
-    let disconnected = ServerInput::Disconnected {
-        slot: PlayerSlot::new(0),
-    };
+    let disconnected = ServerInput::Disconnected { seat: Seat::new(0) };
     serve(&mut log, disconnected).unwrap();
     let valid = encoded(&log);
     let kind_at = valid.len() - 2 - 64 - 2 - 1;
@@ -1260,15 +1246,13 @@ fn flawed_log_files_are_refused() {
         (
             forged,
             LogError::Header(HeaderError::Delegation {
-                slot: PlayerSlot::new(1),
+                seat: Seat::new(1),
                 error: DelegationError::BadSignature,
             }),
         ),
         (
             unknown_start,
-            LogError::Header(HeaderError::UnknownStart {
-                slot: PlayerSlot::new(1),
-            }),
+            LogError::Header(HeaderError::UnknownStart { seat: Seat::new(1) }),
         ),
     ];
     for (at, (bytes, error)) in cases.into_iter().enumerate() {
@@ -1276,10 +1260,10 @@ fn flawed_log_files_are_refused() {
     }
 }
 
-/// The terms of three slots: a player's, a bot's and an open one.
+/// The terms of three seats: a player's, a bot's and an open one.
 fn mixed_terms() -> SessionTerms {
     SessionTerms {
-        slots: vec![SlotPlan::Player, SlotPlan::Bot, SlotPlan::Open],
+        seats: vec![SeatPlan::Player, SeatPlan::Bot, SeatPlan::Open],
         ..terms()
     }
 }
@@ -1298,14 +1282,14 @@ fn mixed_delegation(main: u32, key: u32) -> Delegation {
     Delegation::sign(&TestKey::signer(main_key), &terms, TestKey::NOW)
 }
 
-/// A log of `mixed_terms`: player 0 in slot 0, a bot in slot 1, slot 2 open.
+/// A log of `mixed_terms`: player 0 in seat 0, a bot in seat 1, seat 2 open.
 fn mixed_log() -> SessionLog {
     SessionLog::new(SessionHeader {
         terms: mixed_terms(),
-        slots: vec![
-            SlotStart::player(mixed_delegation(0, 0)),
-            SlotStart::Bot,
-            SlotStart::Open,
+        seats: vec![
+            SeatStart::player(mixed_delegation(0, 0)),
+            SeatStart::Bot,
+            SeatStart::Open,
         ],
     })
     .unwrap()
@@ -1327,7 +1311,7 @@ fn serve_to(
 }
 
 /// A packet of `inputs`, `(stamp, payload)` each, that the session key of `key` signs on the chain
-/// `chain` of `slot`, in the session of `mixed_terms`.
+/// `chain` of `seat`, in the session of `mixed_terms`.
 fn mixed_packet(
     chain: &mut InputChain,
     inputs: &[(u64, &'static [u8])],
@@ -1342,42 +1326,42 @@ fn mixed_packet(
     Sent { inputs, signature }
 }
 
-/// Player `main`'s join of `slot` with the session key of `key`, in the session of
+/// Player `main`'s join of `seat` with the session key of `key`, in the session of
 /// `mixed_terms`.
-fn joins(slot: u32, main: u32, key: u32) -> ServerInput<'static> {
+fn joins(seat: u32, main: u32, key: u32) -> ServerInput<'static> {
     ServerInput::Join {
-        slot: PlayerSlot::new(slot),
+        seat: Seat::new(seat),
         delegation: mixed_delegation(main, key),
     }
 }
 
-/// The leave of `slot`'s player after the grace period, the slot becoming `becomes`.
-fn leaves(slot: u32, becomes: AfterLeave) -> ServerInput<'static> {
+/// The leave of `seat`'s player after the grace period, the seat becoming `becomes`.
+fn leaves(seat: u32, becomes: AfterLeave) -> ServerInput<'static> {
     ServerInput::Leave {
-        slot: PlayerSlot::new(slot),
+        seat: Seat::new(seat),
         reason: LeaveReason::Grace,
         becomes,
     }
 }
 
-fn bot(slot: u32, payload: &[u8]) -> ServerInput<'_> {
+fn bot(seat: u32, payload: &[u8]) -> ServerInput<'_> {
     ServerInput::Bot {
-        slot: PlayerSlot::new(slot),
+        seat: Seat::new(seat),
         payload,
     }
 }
 
 /// Server inputs a log of `mixed_log` refuses before tick 1 for their structure alone: a bot's
-/// commands for a player's slot, a join of a player's slot, a join of the open one by the main
-/// key of slot 0's player, a leave of the bot's, a renewal by another main key, a join of a
-/// delegation of another session, and an input for no slot.
+/// commands for a player's seat, a join of a player's seat, a join of the open one by the main
+/// key of seat 0's player, a leave of the bot's, a renewal by another main key, a join of a
+/// delegation of another session, and an input for no seat.
 fn refused_by_structure() -> [(ServerInput<'static>, ServerInputError); 7] {
     let renewal = ServerInput::Renew {
-        slot: PlayerSlot::new(0),
+        seat: Seat::new(0),
         delegation: mixed_delegation(1, 1),
     };
     let other_session = ServerInput::Join {
-        slot: PlayerSlot::new(2),
+        seat: Seat::new(2),
         delegation: delegation(1),
     };
     [
@@ -1390,28 +1374,28 @@ fn refused_by_structure() -> [(ServerInput<'static>, ServerInputError); 7] {
             other_session,
             ServerInputError::Scope(ScopeError::OtherSession),
         ),
-        (bot(7, b""), ServerInputError::UnknownSlot),
+        (bot(7, b""), ServerInputError::UnknownSeat),
     ]
 }
 
 #[test]
-fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_forbids() {
-    let slot = PlayerSlot::new;
+fn a_bots_commands_apply_in_seat_order_and_the_log_refuses_inputs_its_structure_forbids() {
+    let seat = Seat::new;
     let mut log = mixed_log();
     let mut applied = Vec::new();
-    let mut zero = InputChain::new(slot(0), mixed_delegation(0, 0).chain_root());
+    let mut zero = InputChain::new(seat(0), mixed_delegation(0, 0).chain_root());
     // Before tick 0: player 0's packet, stamped 0 and 1; the bot's commands, which apply in tick
-    // 0 after slot 0's, by slot; player 0's link fails. A packet for the bot's slot, or for the
+    // 0 after seat 0's, by seat; player 0's link fails. A packet for the bot's seat, or for the
     // open one, is refused: no player controls it.
     mixed_packet(&mut zero, &[(0, b"p"), (1, b"q")], 0)
         .submit(&mut log, &mut applied)
         .unwrap();
     serve(&mut log, bot(1, b"x")).unwrap();
-    serve(&mut log, ServerInput::Disconnected { slot: slot(0) }).unwrap();
+    serve(&mut log, ServerInput::Disconnected { seat: seat(0) }).unwrap();
     for other in [1, 2] {
-        let mut chain = InputChain::new(slot(other), mixed_delegation(0, 0).chain_root());
+        let mut chain = InputChain::new(seat(other), mixed_delegation(0, 0).chain_root());
         let refused = mixed_packet(&mut chain, &[(0, b"r")], 0).submit(&mut log, &mut applied);
-        assert_eq!(refused, Err(InputError::NotPlayer), "slot {other}");
+        assert_eq!(refused, Err(InputError::NotPlayer), "seat {other}");
     }
     assert_eq!(seal(&mut log), [(0, b"p".to_vec()), (1, b"x".to_vec())]);
 
@@ -1429,7 +1413,7 @@ fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_
         Err(ServerInputError::AheadOfTime)
     );
     // A signature at another place is refused: the next server input of tick 1 is the third.
-    let input = ServerInput::Connected { slot: slot(0) };
+    let input = ServerInput::Connected { seat: seat(0) };
     let early = InputPlace {
         tick: log.next_tick(),
         index: 0,
@@ -1446,7 +1430,7 @@ fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_
     // Player 0 renews their session key: the chain goes on, now signed by key 3, and their q,
     // held for tick 1, still applies there, before the bot's.
     let renewal = ServerInput::Renew {
-        slot: slot(0),
+        seat: seat(0),
         delegation: mixed_delegation(0, 3),
     };
     serve(&mut log, renewal).unwrap();
@@ -1457,7 +1441,7 @@ fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_
         seal(&mut log),
         [(0, b"q".to_vec()), (1, b"y".to_vec()), (1, b"z".to_vec())]
     );
-    // The spilled commands apply in ticks 2 and 3, after player 0's s in slot order.
+    // The spilled commands apply in ticks 2 and 3, after player 0's s in seat order.
     assert_eq!(
         seal(&mut log),
         [(0, b"s".to_vec()), (1, b"1".to_vec()), (1, b"2".to_vec())]
@@ -1468,21 +1452,21 @@ fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_
 /// `mixed_log` through ticks 0 and 1 of the test before: player 0's p and q, the bot's x, y and
 /// z, and player 0's renewal to key 3 and their s; with player 0's chain.
 fn two_ticks_played() -> (SessionLog, InputChain) {
-    let slot = PlayerSlot::new;
+    let seat = Seat::new;
     let mut log = mixed_log();
     let mut applied = Vec::new();
-    let mut zero = InputChain::new(slot(0), mixed_delegation(0, 0).chain_root());
+    let mut zero = InputChain::new(seat(0), mixed_delegation(0, 0).chain_root());
     mixed_packet(&mut zero, &[(0, b"p"), (1, b"q")], 0)
         .submit(&mut log, &mut applied)
         .unwrap();
     serve(&mut log, bot(1, b"x")).unwrap();
-    serve(&mut log, ServerInput::Disconnected { slot: slot(0) }).unwrap();
+    serve(&mut log, ServerInput::Disconnected { seat: seat(0) }).unwrap();
     drop(log.seal_tick(None));
     for payload in [b"y", b"z"] {
         serve(&mut log, bot(1, payload)).unwrap();
     }
     let renewal = ServerInput::Renew {
-        slot: slot(0),
+        seat: seat(0),
         delegation: mixed_delegation(0, 3),
     };
     serve(&mut log, renewal).unwrap();
@@ -1494,37 +1478,37 @@ fn two_ticks_played() -> (SessionLog, InputChain) {
 }
 
 #[test]
-fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
-    let slot = PlayerSlot::new;
+fn a_leave_and_a_join_change_who_controls_a_seat_and_the_log_replays_them() {
+    let seat = Seat::new;
     let (mut log, zero) = two_ticks_played();
     let mut applied = Vec::new();
-    // Player 0 leaves, and its slot goes to a bot: their s, held for tick 2, never applies, and
-    // their packets are refused from then on. Player 1 joins the open slot 2.
+    // Player 0 leaves, and its seat goes to a bot: their s, held for tick 2, never applies, and
+    // their packets are refused from then on. Player 1 joins the open seat 2.
     serve(&mut log, leaves(0, AfterLeave::Bot)).unwrap();
     let refused = mixed_packet(&mut zero.clone(), &[(2, b"t")], 3).submit(&mut log, &mut applied);
     assert_eq!(refused, Err(InputError::NotPlayer));
     serve(&mut log, joins(2, 1, 1)).unwrap();
     assert_eq!(seal(&mut log), Vec::<(u32, Vec<u8>)>::new());
-    let at = |tick: u64, at: u32, kind| SlotChange {
+    let at = |tick: u64, at: u32, kind| SeatChange {
         tick: Tick::new(tick),
-        slot: slot(at),
+        seat: seat(at),
         kind,
     };
     let left = at(
         2,
         0,
-        SlotChangeKind::Left {
+        SeatChangeKind::Left {
             becomes: AfterLeave::Bot,
         },
     );
-    let joined_open = at(2, 2, SlotChangeKind::Joined { from: Taken::Open });
+    let joined_open = at(2, 2, SeatChangeKind::Joined { from: Taken::Open });
     assert_eq!(log.sealed_changes(), [left, joined_open]);
-    // The log's own view: slot 0 a bot's, left by player 0's main key; slot 1 the bot's; slot 2
+    // The log's own view: seat 0 a bot's, left by player 0's main key; seat 1 the bot's; seat 2
     // player 1's, on the chain their join starts, from the root of its place, the second server
     // input before tick 2; and the server inputs as logged.
     let main = |player: u32| *mixed_delegation(player, player).main_key();
-    assert_eq!(log.controller(slot(0)), Some(Controller::Bot));
-    assert_eq!(log.leaver(slot(0)), Some(main(0)));
+    assert_eq!(log.controller(seat(0)), Some(Controller::Bot));
+    assert_eq!(log.leaver(seat(0)), Some(main(0)));
     let delegation = mixed_delegation(1, 1);
     assert_eq!(*delegation.main_key(), main(1));
     assert_eq!(
@@ -1534,7 +1518,7 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
     let joiner = Controller::Player {
         delegation: &delegation,
         chain: InputChain::joined(
-            slot(2),
+            seat(2),
             mixed_delegation(1, 1).id(),
             InputPlace {
                 tick: Tick::new(2),
@@ -1542,19 +1526,19 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
             },
         ),
     };
-    assert_eq!(log.controller(slot(2)), Some(joiner));
-    assert_eq!(log.controller(slot(3)), None);
-    assert_eq!(log.player_slots().collect::<Vec<_>>(), [slot(2)]);
-    assert_eq!(log.slot_count(), 3);
+    assert_eq!(log.controller(seat(2)), Some(joiner));
+    assert_eq!(log.controller(seat(3)), None);
+    assert_eq!(log.player_seats().collect::<Vec<_>>(), [seat(2)]);
+    assert_eq!(log.seat_count(), 3);
     // The bot's x and player 0's link down before tick 0; the bot's y and z, and player 0's
     // renewal, before tick 1; the leave and the join before tick 2.
     assert_eq!(log.server_inputs().count(), 7);
     assert!(matches!(
         log.server_inputs().last(),
-        Some(ServerInput::Join { slot: taken, .. }) if taken == slot(2)
+        Some(ServerInput::Join { seat: taken, .. }) if taken == seat(2)
     ));
-    // Player 0 takes their own slot back from the bot; a third player may not take player 1's.
-    // Player 1 leaves slot 2, reserved for them: another player may not take it either.
+    // Player 0 takes their own seat back from the bot; a third player may not take player 1's.
+    // Player 1 leaves seat 2, reserved for them: another player may not take it either.
     serve(&mut log, joins(0, 0, 0)).unwrap();
     assert_eq!(
         serve(&mut log, joins(2, 2, 2)),
@@ -1570,7 +1554,7 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
     // from that delegation's id, which they joined with before, is refused: the host may not log
     // it again.
     let first = mixed_packet(
-        &mut InputChain::new(slot(0), mixed_delegation(0, 0).chain_root()),
+        &mut InputChain::new(seat(0), mixed_delegation(0, 0).chain_root()),
         &[(0, b"p"), (1, b"q")],
         0,
     );
@@ -1582,16 +1566,16 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
         tick: Tick::new(3),
         index: 0,
     };
-    let mut back = InputChain::joined(slot(0), mixed_delegation(0, 0).id(), place);
+    let mut back = InputChain::joined(seat(0), mixed_delegation(0, 0).id(), place);
     mixed_packet(&mut back, &[(3, b"u")], 0)
         .submit(&mut log, &mut applied)
         .unwrap();
     assert_eq!(seal(&mut log), [(0, b"u".to_vec())]);
-    let own = at(3, 0, SlotChangeKind::Joined { from: Taken::Own });
+    let own = at(3, 0, SeatChangeKind::Joined { from: Taken::Own });
     let reserved = at(
         3,
         2,
-        SlotChangeKind::Left {
+        SeatChangeKind::Left {
             becomes: AfterLeave::Reserve,
         },
     );
@@ -1599,8 +1583,8 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
     assert_eq!(log.changes(), [left, joined_open, own, reserved]);
     // Two link changes after the last tick wait in the file, and in the log replayed, which
     // takes its next server input as the third before tick 4.
-    serve(&mut log, ServerInput::Disconnected { slot: slot(0) }).unwrap();
-    serve(&mut log, ServerInput::Connected { slot: slot(0) }).unwrap();
+    serve(&mut log, ServerInput::Disconnected { seat: seat(0) }).unwrap();
+    serve(&mut log, ServerInput::Connected { seat: seat(0) }).unwrap();
 
     // The file decodes to the same log, which replays to the same ticks and changes.
     log.reveal_seed(server_seed());

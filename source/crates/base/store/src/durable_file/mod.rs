@@ -5,14 +5,14 @@ use std::path::{Path, PathBuf};
 use crate::durable_file::error::{DurableCreateError, DurableError};
 use crate::path_error::PathError;
 use crate::platform::durable_name::DurableName;
-use crate::platform::owner_only::OwnerOnly;
+use crate::platform::user_only::UserOnly;
 
 pub(crate) mod error;
 
 /// A file written whole or not at all, which a crash leaves either as it was or as written: the
 /// bytes go to a temporary file beside it, which is synced and given its name durably, so the
 /// new name survives a crash as well as the bytes. The temporary file is always made new, a stale
-/// one a crash left removed first, so the file is its owner's only, whatever access the stale one
+/// one a crash left removed first, so the file is its user's only, whatever access the stale one
 /// gave; a write that fails removes its own.
 #[derive(Debug)]
 pub struct DurableFile;
@@ -28,7 +28,7 @@ struct Temporary<'a> {
 
 impl DurableFile {
     /// Replaces the file at `path`, or makes it, with `bytes`, through the one temporary
-    /// `<name>.part`, so the writers of one name take turns by their owner's lock, as a data
+    /// `<name>.part`, so the writers of one name take turns by their holder's lock, as a data
     /// directory's.
     pub fn write(path: &Path, bytes: &[u8]) -> Result<(), PathError<DurableError>> {
         Self::write_case(path, bytes).map_err(PathError::at(path))
@@ -39,7 +39,7 @@ impl DurableFile {
         let mut temporary = Self::write_beside(path, ".part", bytes)?;
         DurableName::rename(&temporary.path, path).map_err(DurableError::Rename)?;
         temporary.named = true;
-        DurableName::sync_dir(temporary.directory).map_err(DurableError::SyncDirectory)
+        DurableName::sync_dir(temporary.directory).map_err(DurableError::SyncDir)
     }
 
     /// Makes the file at `path` with `bytes` only when no file holds its name, and leaves one
@@ -53,7 +53,7 @@ impl DurableFile {
 
     fn create_new_case(path: &Path, bytes: &[u8]) -> Result<(), DurableCreateError> {
         let lock =
-            OwnerOnly::open_or_create(&Self::beside(path, ".lock")?).map_err(DurableError::Lock)?;
+            UserOnly::open_or_create(&Self::beside(path, ".lock")?).map_err(DurableError::Lock)?;
         lock.lock().map_err(DurableError::Lock)?;
         let mut temporary = Self::write_beside(path, ".new", bytes)?;
         match DurableName::create(&temporary.path, path) {
@@ -63,7 +63,7 @@ impl DurableFile {
             }
             Err(error) => return Err(DurableError::Rename(error).into()),
         }
-        DurableName::sync_dir(temporary.directory).map_err(DurableError::SyncDirectory)?;
+        DurableName::sync_dir(temporary.directory).map_err(DurableError::SyncDir)?;
         Ok(())
     }
 
@@ -91,7 +91,7 @@ impl DurableFile {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(DurableError::RemoveStale(error)),
         }
-        let mut file = OwnerOnly::create_new(&temporary).map_err(DurableError::Create)?;
+        let mut file = UserOnly::create_new(&temporary).map_err(DurableError::Create)?;
         let temporary = Temporary {
             directory,
             path: temporary,

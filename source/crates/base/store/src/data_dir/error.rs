@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use crate::durable_dir::error::DurableDirError;
 use crate::path_error::PathError;
-use crate::platform::owner_only::Exposure;
+use crate::platform::user_only::Exposure;
 
 /// Why a data directory did not open, each case with the path of its step: the directory or
 /// one above it, the directory, or its lock file.
@@ -17,8 +17,8 @@ pub enum DataDirError {
     /// Who may open it did not read.
     #[error("could not check who may open the data directory")]
     Inspect(#[source] PathError<io::Error>),
-    /// Others than its owner may open it, as the OS names them.
-    #[error("others may open the data directory {} ({exposure}); make it its owner's only", .path.display())]
+    /// Others than its user may open it, as the OS names them.
+    #[error("others may open the data directory {} ({exposure}); make it its user's only", .path.display())]
     Exposed { path: PathBuf, exposure: Exposure },
     #[error("could not lock the data directory")]
     Lock(#[source] PathError<io::Error>),

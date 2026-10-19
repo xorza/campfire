@@ -8,7 +8,7 @@ language = "en"
 kind = "mode"
 capabilities = ["combat", "stats", "abilities", "projectiles", "areas", "orders", "navigation", "vision", "progression", "production", "items", "interaction"]
 tick_hz = { min = 20, max = 20, default = 20 }
-teams = [{ name = "north", slots = 1 }, { name = "south", slots = 1 }, { name = "camps", slots = 0 }]
+teams = [{ name = "north", seats = 1 }, { name = "south", seats = 1 }, { name = "camps", seats = 0 }]
 max_move_speed = "7.5"
 script_limits = { per_call = 20000, player = 20000, think = 200000, mode = 20000 }
 

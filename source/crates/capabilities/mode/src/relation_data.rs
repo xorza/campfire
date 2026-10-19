@@ -11,12 +11,12 @@ pub struct RelationData {
     pub teams: [DeclaredName; 2],
     pub relation: Relation,
     /// Absent: on.
-    #[serde(default = "RelationData::vision_on")]
+    #[serde(default = "RelationData::is_vision_on")]
     pub vision: bool,
 }
 
 impl RelationData {
-    const fn vision_on() -> bool {
+    const fn is_vision_on() -> bool {
         true
     }
 }

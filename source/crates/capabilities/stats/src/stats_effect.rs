@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_common::{PlayerSlot, Ticks};
+use campfire_common::{Seat, Ticks};
 use campfire_math::Num;
 use campfire_script::{Effect, EffectKind, Frame};
 use campfire_sim::StableId;
@@ -23,9 +23,9 @@ pub(crate) enum StatsEffect {
         duration: Option<Ticks>,
     },
     /// Modifier `id` held by `player`, for the units it owns.
-    AddPlayer { player: PlayerSlot, id: ModifierId },
+    AddPlayer { player: Seat, id: ModifierId },
     /// The end of `player`'s modifier `id`, if it holds it.
-    RemovePlayer { player: PlayerSlot, id: ModifierId },
+    RemovePlayer { player: Seat, id: ModifierId },
     /// The end of the instance of `id` from `source` on `carrier`.
     Remove {
         carrier: StableId,

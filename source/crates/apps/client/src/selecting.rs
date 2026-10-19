@@ -111,7 +111,7 @@ impl Selecting {
     fn press(pointer: Pointer<'_, '_>, mut held: ResMut<'_, Held>) {
         held.0 = pointer
             .cursor()
-            .filter(|_| !pointer.over_ui())
+            .filter(|_| !pointer.is_over_ui())
             .map(|at| Press {
                 from: at,
                 to: at,

@@ -32,7 +32,7 @@ use crate::move_step::MoveStep;
 use crate::new_unit_states::NewUnitStates;
 use crate::owner::Owner;
 use crate::script_book::ScriptBook;
-use crate::spawn_hooks::SpawnHooks;
+use crate::spawn_callbacks::SpawnCallbacks;
 use crate::spawn_point::SpawnPoint;
 use crate::status_tags::StatusTags;
 use crate::tag_book::TagBook;
@@ -97,7 +97,7 @@ impl Module for Units {
         // Before every book, which shares its names into it as it installs.
         d.cache::<MatchNames>();
         Self::runtime(d);
-        d.calls::<SpawnHooks>();
+        d.calls::<SpawnCallbacks>();
         d.engine_tags(&[Avatar::TAG, Dead::TAG]);
         d.section::<TypeTagsData>();
         d.section::<TypeParamsData>();
@@ -166,8 +166,8 @@ impl Module for Units {
         d.book::<MapBook>(MapBook::build);
         d.book::<ScriptBook>(ScriptBook::build);
         d.column::<UnitsColumn, StateRowReads>(UnitsColumn::fill_state);
-        d.call_part::<UnitsCall>();
-        d.call_part::<ScriptCall>();
+        d.call_extension::<UnitsCall>();
+        d.call_extension::<ScriptCall>();
         d.api(CoreApi::register);
         d.api(ViewApi::register_unit);
         d.api(UnitsApi::register);
@@ -177,7 +177,7 @@ impl Module for Units {
         d.book::<ByType<BodyForm>>(CollisionData::bodies);
         // A unit faces its spawn's angle, which its body turns by.
         d.part::<BodyUnit, Facing>(|at| Some(Facing::of(Facing::angle_of(at))));
-        d.part::<BodyUnit, SpawnPoint>(|at| at.pos().map(SpawnPoint::new));
+        d.part::<BodyUnit, SpawnPoint>(|at| at.position().map(SpawnPoint::new));
         d.part::<BodyUnit, Body>(|at| {
             at.of_type::<BodyForm>()
                 .map(|form| form.at(Facing::angle_of(at)))
@@ -207,7 +207,7 @@ impl Units {
     /// Every avatar of `view`, living or dead, of `team` or of every team, by stable id.
     pub fn avatars(view: &View, team: Option<Team>, listing: Listing) -> ScriptList {
         view.units_where(|row| {
-            listing.lists(row) && Avatar::tagged(row) && team.is_none_or(|team| row.team == team)
+            listing.lists(row) && Avatar::is_tagged(row) && team.is_none_or(|team| row.team == team)
         })
     }
 

@@ -26,7 +26,7 @@ use crate::order_dues::{self, OrderDues};
 pub(crate) mod checked_gather;
 pub(crate) mod gather;
 pub(crate) mod gather_view;
-pub(crate) mod place;
+pub(crate) mod location;
 pub(crate) mod step;
 
 /// The systems of the gather loop: an order checked as it applies, the loop's steps, the nodes
@@ -392,7 +392,7 @@ impl GatherLoop {
 
     /// The node of `entity` to write; none on a client for a node it holds as the server sent
     /// it, whose amount and holder are the server's word, as a client writes nothing of one
-    /// (14-replication-audiences.md, A client derives what it can for every unit it holds).
+    /// (10-replication-audiences.md, A client derives what it can for every unit it holds).
     fn node_mut(world: &mut World, entity: Entity) -> Option<Mut<'_, Node>> {
         if world.entity(entity).contains::<Unpredicted>() {
             return None;
@@ -416,7 +416,7 @@ impl GatherLoop {
                 .get::<Owner>(entity)
                 .expect("a load joins its owner's");
             world
-                .player_resources_mut(owner.slot())
+                .player_resources_mut(owner.seat())
                 .expect("a player of the session holds its resources")
                 .add(load.resource, i64::from(load.amount))
                 .expect("the step checked the player's resources take the load");

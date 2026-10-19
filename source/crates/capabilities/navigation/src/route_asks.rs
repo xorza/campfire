@@ -67,7 +67,7 @@ struct Waiting {
 pub(crate) struct Member {
     pub id: StableId,
     pub(crate) entity: Entity,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub(crate) walker: Walker,
     pub(crate) goal: Vec3,
 }
@@ -134,17 +134,19 @@ impl RouteAsks {
             if next.answered {
                 continue;
             }
-            if search.planner.spent() {
+            if search.planner.is_spent() {
                 break;
             }
             let run = next.ask.party.map_or(0..0, |party| self.party_run(party));
             if run.len() < 2 {
                 let member = next.ask.member;
                 let walkable = search.walkable(member.walker);
-                let outcome =
-                    search
-                        .planner
-                        .plan(walkable, member.pos, member.goal, &mut self.waypoints);
+                let outcome = search.planner.plan(
+                    walkable,
+                    member.position,
+                    member.goal,
+                    &mut self.waypoints,
+                );
                 answer(member, &self.waypoints, outcome.reached);
                 self.waiting[index].answered = true;
                 continue;
@@ -229,7 +231,7 @@ impl RouteAsks {
     ) -> Planning {
         debug_assert!(self.members.len() >= 2);
         debug_assert!(self.members.is_sorted_by_key(|member| member.id));
-        let center = GroupBox::of(self.members.iter().map(|member| member.pos))
+        let center = GroupBox::of(self.members.iter().map(|member| member.position))
             .expect("a party has members")
             .center();
         self.shared.clear();
@@ -242,7 +244,7 @@ impl RouteAsks {
                 .any(|shared| shared.layer == member.walker.layer);
             if searched {
                 self.search(search, member.walker.layer, center);
-            } else if search.search.planner.spent() {
+            } else if search.search.planner.is_spent() {
                 return Planning::Spent;
             }
             self.follow(search, member, answer);
@@ -264,17 +266,19 @@ impl RouteAsks {
             .max()
             .expect("a layer of a member");
         let squared = |value: Num| u128::from(value.to_bits().unsigned_abs()).pow(2);
-        let distance = |pos: Vec3| squared(pos.x - center[0]) + squared(pos.z - center[1]);
+        let distance =
+            |position: Vec3| squared(position.x - center[0]) + squared(position.z - center[1]);
         let leader = on_layer
             .filter(|member| member.walker == widest)
-            .min_by_key(|member| (distance(member.pos), member.id))
+            .min_by_key(|member| (distance(member.position), member.id))
             .expect("the widest walker is a member's");
         let goal = search.party.goal;
         let walkable = search.search.walkable(widest);
-        let outcome = search
-            .search
-            .planner
-            .plan(walkable, leader.pos, goal, &mut self.waypoints);
+        let outcome =
+            search
+                .search
+                .planner
+                .plan(walkable, leader.position, goal, &mut self.waypoints);
         let start = self.shared.len();
         self.shared.extend_from_slice(&self.waypoints);
         self.layers.push(SharedRoute {
@@ -306,9 +310,9 @@ impl RouteAsks {
         let planner = &mut *search.planner;
         let seen = (0..route.len())
             .rev()
-            .find(|&at| planner.sees(walkable, Segment::new(member.pos, route[at])));
+            .find(|&at| planner.sees(walkable, Segment::new(member.position, route[at])));
         let Some(first) = seen else {
-            let outcome = planner.plan(walkable, member.pos, member.goal, &mut self.waypoints);
+            let outcome = planner.plan(walkable, member.position, member.goal, &mut self.waypoints);
             answer(member, &self.waypoints, outcome.reached);
             return;
         };
@@ -317,7 +321,7 @@ impl RouteAsks {
         let mut reached = shared.reached && member.goal == party.goal;
         if shared.reached && member.goal != party.goal {
             let before = match route.len() - first {
-                1 => member.pos,
+                1 => member.position,
                 _ => route[route.len() - 2],
             };
             if planner.sees(walkable, Segment::new(before, member.goal)) {

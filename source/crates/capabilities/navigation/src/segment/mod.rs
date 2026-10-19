@@ -30,11 +30,11 @@ pub(crate) mod internals {
     use crate::segment::Segment;
 
     impl Segment {
-        /// Whether the segment comes closer than `reach` to `pos`, exactly; touching at `reach`
-        /// is not closer: the circles' test, which the shapes' must agree with.
-        pub fn comes_closer(self, pos: Vec3, reach: Num) -> bool {
+        /// Whether the segment comes closer than `reach` to `position`, exactly; touching at
+        /// `reach` is not closer: the circles' test, which the shapes' must agree with.
+        pub fn comes_closer(self, position: Vec3, reach: Num) -> bool {
             let path = self.from.ground_offset(self.to);
-            let off = self.from.ground_offset(pos);
+            let off = self.from.ground_offset(position);
             path_comes_closer(path, off, reach)
         }
     }

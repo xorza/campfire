@@ -1,4 +1,4 @@
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 
 use crate::journal::journal_frames::{self, JournalFrames};
 use crate::journal::record_sink::RecordSink;
@@ -8,9 +8,9 @@ use crate::session_log::durable_heads::DurableHeads;
 
 /// A server's journal of its session's log: the sink its records go to, the frames of the records
 /// the log took since the sink last took them, how many records the log took, how many bytes the
-/// journal's file holds, and where each slot's chain stands in the records the sink synced. Only a
+/// journal's file holds, and where each seat's chain stands in the records the sink synced. Only a
 /// server's session holds one, and gives it to each call of its log that takes a record
-/// (10-sessions.md, The journal belongs to the server's session). A drop hands the sink what the
+/// (08-sessions.md, The journal belongs to the server's session). A drop hands the sink what the
 /// journal holds.
 #[derive(Debug)]
 pub struct Journal {
@@ -28,16 +28,16 @@ pub struct Journal {
 }
 
 impl Journal {
-    /// The journal of `sink`, whose file holds `len` bytes so far, of a session of `slots` slots.
-    pub(crate) fn new(sink: Box<dyn RecordSink>, len: u64, slots: u32) -> Self {
-        let slots = usize::try_from(slots).expect("a u32 fits usize");
+    /// The journal of `sink`, whose file holds `len` bytes so far, of a session of `seats` seats.
+    pub(crate) fn new(sink: Box<dyn RecordSink>, len: u64, seats: u32) -> Self {
+        let seats = usize::try_from(seats).expect("a u32 fits usize");
         Self {
             sink,
             frames: Vec::new(),
             framed: 0,
             written: 0,
             len,
-            durable: DurableHeads::new(slots),
+            durable: DurableHeads::new(seats),
         }
     }
 
@@ -45,7 +45,7 @@ impl Journal {
     /// what `log` holds; the log's calls that take a record add each of theirs as they take it.
     pub fn start(log: &SessionLog, sink: Box<dyn RecordSink>) -> Self {
         let tag = u64::try_from(JournalFrames::TAG.len()).expect("the tag's length fits u64");
-        let mut journal = Self::new(sink, tag, log.slot_count());
+        let mut journal = Self::new(sink, tag, log.seat_count());
         log.write_journal(&mut journal);
         journal
     }
@@ -54,7 +54,7 @@ impl Journal {
     /// log was rebuilt from it: every chain whose head its player's current delegation signed
     /// stands durably where the log holds it, as the journal was read back from the disk.
     pub fn resume(log: &SessionLog, sink: Box<dyn RecordSink>, len: u64) -> Self {
-        let mut journal = Self::new(sink, len, log.slot_count());
+        let mut journal = Self::new(sink, len, log.seat_count());
         log.resume_durable(&mut journal);
         journal
     }
@@ -71,7 +71,7 @@ impl Journal {
     }
 
     /// Hands the sink the frames of the records the log took since the last flush, as one call,
-    /// so its writer wakes once for them (10-sessions.md, A record is encoded once).
+    /// so its writer wakes once for them (08-sessions.md, A record is encoded once).
     pub fn flush(&mut self) {
         if self.framed == 0 {
             return;
@@ -93,7 +93,7 @@ impl Journal {
         self.len
     }
 
-    /// Where each slot's chain stands in the records the sink synced.
+    /// Where each seat's chain stands in the records the sink synced.
     pub(crate) const fn durable_mut(&mut self) -> &mut DurableHeads {
         &mut self.durable
     }
@@ -108,11 +108,11 @@ impl Journal {
         self.durable.advance(durable);
     }
 
-    /// Where `slot`'s player's chain stands in the records the sink synced, as of the last
-    /// `advance_durable`; none before any, and since a player took the slot, renewed their
+    /// Where `seat`'s player's chain stands in the records the sink synced, as of the last
+    /// `advance_durable`; none before any, and since a player took the seat, renewed their
     /// delegation, or left it.
-    pub fn durable_head(&self, slot: PlayerSlot) -> Option<DurableHead> {
-        self.durable.get(slot)
+    pub fn durable_head(&self, seat: Seat) -> Option<DurableHead> {
+        self.durable.get(seat)
     }
 }
 

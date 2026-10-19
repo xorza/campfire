@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_script::{
-    CallError, CallPart, CallStart, Commit, Frame, StateField, StateValue, View,
+    CallError, CallExtension, CallStart, Commit, Frame, StateField, StateValue, View,
 };
 use campfire_sim::{SimWorld, StableId};
 
@@ -16,7 +16,7 @@ pub struct UnitsCall {
     writes: Vec<StateWrite>,
 }
 
-impl CallPart for UnitsCall {
+impl CallExtension for UnitsCall {
     /// After the effects, so a unit an effect spawns takes the call's writes to it.
     const COMMITS: Commit = Commit::AfterEffects;
 
@@ -47,14 +47,14 @@ impl UnitsCall {
     /// The core's part of `frame`; the core adds it as it installs a match that runs scripts.
     pub fn of(frame: &Frame) -> &Self {
         frame
-            .part()
+            .extension()
             .expect("a match that runs scripts has the core's part")
     }
 
     /// The core's part of `frame`, to change.
     pub fn of_mut(frame: &mut Frame) -> &mut Self {
         frame
-            .part_mut()
+            .extension_mut()
             .expect("a match that runs scripts has the core's part")
     }
 

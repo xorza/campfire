@@ -36,7 +36,7 @@ impl Refresh {
     /// An effect whose stat the mode does not declare keeps what the unit's type gave it as it
     /// spawned. A predicting client derives the stats and tags of every unit it holds, as their
     /// inputs reach it, so an aura's numbers resolve there as on the server
-    /// (14-replication-audiences.md, A client derives what it can for every unit it holds); it
+    /// (10-replication-audiences.md, A client derives what it can for every unit it holds); it
     /// writes nothing else of a unit it holds as the server sent it.
     #[expect(
         clippy::too_many_arguments,

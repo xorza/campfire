@@ -6,12 +6,12 @@ use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, ResMut};
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_mode::{OptionPicks, OptionValue};
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    Delegation, InputRules, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms,
-    SlotPlan, SlotStart,
+    Delegation, InputRules, SeatPlan, SeatStart, SeedChain, SessionHeader, SessionLog,
+    SessionPrivate, SessionTerms,
 };
 use campfire_runner::{CheckedTerms, HostChoices, SessionRules};
 use campfire_visibility::HostVisibility;
@@ -28,25 +28,25 @@ use crate::sim_server::server_phase::ServerPhase;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{SessionDir, SessionFiles};
 use crate::sim_server::spectators::Spectators;
-use crate::sim_server::spectators::spectators_world::SpectatorsWorldCrate;
+use crate::sim_server::spectators::spectators_world::SpectatorsWorld;
 use crate::sim_server::viewer::Viewer;
 
 pub(crate) mod error;
 
 /// A session open for players to join: the server offers each connected client the terms and a
-/// challenge, checks each answer, gives the players slots in the order they joined, those of one
-/// frame in `Offering::check_all`'s order, and starts the match when every slot is taken. A main
+/// challenge, checks each answer, gives the players seats in the order they joined, those of one
+/// frame in `Offering::check_all`'s order, and starts the match when every seat is taken. A main
 /// key that joined again takes its seat back, and its older link ends.
 #[derive(Resource, Debug)]
 pub struct Lobby {
     offering: Offering,
     seed_chain: SeedChain,
     packages: Arc<ModePackages>,
-    /// How many slots players take: every slot but the bots'.
+    /// How many seats players take: every seat but the bots'.
     players: usize,
     bots: ServerBots,
     server: ServerSetup,
-    /// The links that joined, by slot, with their delegations.
+    /// The links that joined, by seat, with their delegations.
     joined: Vec<(Entity, Delegation)>,
     /// The session's terms as the mode's rules made them: its visibility, which bounds its
     /// spectators, and its picks.
@@ -59,11 +59,11 @@ pub struct Lobby {
 #[derive(Debug)]
 pub struct LobbyOpening {
     pub packages: Arc<ModePackages>,
-    /// The bots the server plays: their slots are the bots'.
+    /// The bots the server plays: their seats are the bots'.
     pub bots: ServerBots,
-    /// The slots no one takes at the start, which a late join may take; the rest but the bots'
+    /// The seats no one takes at the start, which a late join may take; the rest but the bots'
     /// are the players'.
-    pub open: Vec<PlayerSlot>,
+    pub open: Vec<Seat>,
     /// What the host sets of the session's visibility, within what the mode leaves it.
     pub host: HostVisibility,
     /// The values the host picks of the mode's options, the others their defaults.
@@ -80,8 +80,8 @@ pub struct LobbySetup {
     /// Ticks a second, which the mode's range must hold.
     pub tick_hz: NonZeroU32,
     pub inputs: InputRules,
-    /// How many slots the session plays.
-    pub slots: usize,
+    /// How many seats the session plays.
+    pub seats: usize,
 }
 
 impl AsRef<Offering> for Lobby {
@@ -94,28 +94,28 @@ impl Lobby {
     /// The segments of a server's seed chain: the most checkpoints a session may take, less one.
     const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 
-    /// A new session of a server, as `new` opens it, its files kept under `data`: every slot
+    /// A new session of a server, as `new` opens it, its files kept under `data`: every seat
     /// the mode has, its seed chain fresh from the server's entropy, at the mode's default rate,
     /// its inputs within `InputRules::LAN`. An error when it does not open or keeps no files.
     pub fn open(opening: LobbyOpening, data: &ServerDir) -> Result<Self, LobbyOpenError> {
         let root = opening.server.os.entropy.random();
         let manifest = opening.packages.manifest();
-        let slots = usize::try_from(manifest.slots()).expect("slots fit usize");
+        let seats = usize::try_from(manifest.seats()).expect("seats fit usize");
         let tick_hz = manifest.tick_hz.default();
         let mut lobby = Self::new(LobbySetup {
             opening,
             seed_chain: SeedChain::new(root, Self::SEGMENTS),
             tick_hz,
             inputs: InputRules::LAN,
-            slots,
+            seats,
         })?;
         lobby.keep_files(data)?;
         Ok(lobby)
     }
 
     /// A session of the mode `packages` holds, by the setup's rules; an error when the mode does
-    /// not run at the setup's tick rate or has not as many slots, when a bot or an open slot
-    /// names a slot the session does not have or one already named, when no slot is left to a
+    /// not run at the setup's tick rate or has not as many seats, when a bot or an open seat
+    /// names a seat the session does not have or one already named, when no seat is left to a
     /// player, when the host sets a visibility the mode does not leave it, and when it picks a
     /// value of no option of the mode's.
     pub fn new(setup: LobbySetup) -> Result<Self, LobbyError> {
@@ -132,23 +132,23 @@ impl Lobby {
             seed_chain,
             tick_hz,
             inputs,
-            slots,
+            seats,
         } = setup;
-        let mut plan = vec![SlotPlan::Player; slots];
-        let named = (bots.slots.iter().map(|bot| (bot.slot, SlotPlan::Bot)))
-            .chain(open.into_iter().map(|slot| (slot, SlotPlan::Open)));
-        for (slot, kind) in named {
+        let mut plan = vec![SeatPlan::Player; seats];
+        let named = (bots.seats.iter().map(|bot| (bot.seat, SeatPlan::Bot)))
+            .chain(open.into_iter().map(|seat| (seat, SeatPlan::Open)));
+        for (seat, kind) in named {
             let at = plan
-                .get_mut(slot.index())
-                .ok_or(LobbyError::NoSuchSlot(slot))?;
-            if *at != SlotPlan::Player {
-                return Err(LobbyError::SlotNamedTwice(slot));
+                .get_mut(seat.index())
+                .ok_or(LobbyError::NoSuchSeat(seat))?;
+            if *at != SeatPlan::Player {
+                return Err(LobbyError::SeatNamedTwice(seat));
             }
             *at = kind;
         }
         let players = plan
             .iter()
-            .filter(|&&plan| plan == SlotPlan::Player)
+            .filter(|&&plan| plan == SeatPlan::Player)
             .count();
         if players == 0 {
             return Err(LobbyError::NoPlayer);
@@ -166,7 +166,7 @@ impl Lobby {
                 seed_commitment: seed_chain.commitment(),
                 tick_hz,
                 inputs,
-                slots: plan,
+                seats: plan,
                 visibility: &visibility,
                 picks: &picks,
             })
@@ -218,9 +218,9 @@ impl Lobby {
     }
 
     /// Takes each offered link's join: a player who answered their challenge joins in the next
-    /// free slot, or the seat their main key held, whose older link ends; one who answered to
+    /// free seat, or the seat their main key held, whose older link ends; one who answered to
     /// watch takes a spectator's place while one is free; a refused link keeps its reason. The
-    /// joins of one frame take their slots in `Offering::check_all`'s order.
+    /// joins of one frame take their seats in `Offering::check_all`'s order.
     pub(crate) fn take_joins(
         mut lobby: ResMut<'_, Self>,
         mut links: JoinLinks<'_, '_>,
@@ -264,7 +264,7 @@ impl Lobby {
         }
     }
 
-    /// Starts the match once every slot is taken, and closes the lobby: the door takes the
+    /// Starts the match once every seat is taken, and closes the lobby: the door takes the
     /// joins from then on.
     pub(crate) fn start_when_full(world: &mut World) {
         if world.resource::<Self>().joined.len() < world.resource::<Self>().players {
@@ -274,23 +274,23 @@ impl Lobby {
         let terms = SessionTerms::clone(&lobby.offering.terms);
         let mut joined = lobby.joined.into_iter();
         let mut links = Vec::with_capacity(lobby.players);
-        let mut slots = Vec::with_capacity(terms.slots.len());
-        for (slot, plan) in (0..).map(PlayerSlot::new).zip(&terms.slots) {
-            slots.push(match plan {
-                SlotPlan::Player => {
-                    let (link, delegation) = joined.next().expect("a player for each slot");
-                    links.push((slot, link));
-                    SlotStart::player(delegation)
+        let mut seats = Vec::with_capacity(terms.seats.len());
+        for (seat, plan) in (0..).map(Seat::new).zip(&terms.seats) {
+            seats.push(match plan {
+                SeatPlan::Player => {
+                    let (link, delegation) = joined.next().expect("a player for each seat");
+                    links.push((seat, link));
+                    SeatStart::player(delegation)
                 }
-                SlotPlan::Bot => SlotStart::Bot,
-                SlotPlan::Open => SlotStart::Open,
+                SeatPlan::Bot => SeatStart::Bot,
+                SeatPlan::Open => SeatStart::Open,
             });
         }
-        let header = SessionHeader { terms, slots };
+        let header = SessionHeader { terms, seats };
         let session = header.terms.session_id();
         let log = SessionLog::new(header)
             .expect("every delegation names this session, one main key each");
-        info!(%session, players = links.len(), "every slot is taken; the match starts");
+        info!(%session, players = links.len(), "every seat is taken; the match starts");
         let seeds = lobby.seed_chain.seeds();
         let begin = MatchBegin {
             source: MatchSource::New(NewMatch {
@@ -332,16 +332,16 @@ impl Lobby {
     }
 
     /// Seats the player of `link`, whose `delegation` the offering checked: in the seat their main
-    /// key holds, whose older link it gives, or else in the next free slot.
+    /// key holds, whose older link it gives, or else in the next free seat.
     fn seat(&mut self, link: Entity, delegation: Delegation) -> Result<Option<Entity>, JoinError> {
         let main_key = delegation.main_key();
-        if let Some(seat) = self
+        if let Some(joined) = self
             .joined
             .iter_mut()
             .find(|(_, seated)| seated.main_key() == main_key)
         {
-            let older = seat.0;
-            *seat = (link, delegation);
+            let older = joined.0;
+            *joined = (link, delegation);
             return Ok(Some(older));
         }
         if self.joined.len() == self.players {

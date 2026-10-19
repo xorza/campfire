@@ -78,7 +78,7 @@ impl SimComponent for Life {
         world
             .get_resource::<ByType<Self>>()
             .is_some_and(|lives| !lives.is_empty())
-            && self.0.settled(hz)
+            && self.0.is_settled(hz)
     }
 }
 

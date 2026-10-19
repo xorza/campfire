@@ -4,12 +4,12 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
 
 ## Layout
 
-- `docs/design/` — the design: the decisions every change follows ([Documents](#documents)). Read the documents of the systems a change touches before you change them. `08-script-api-reference.md` is generated from the registry by a test, never edited by hand.
+- `docs/design/` — the design: the decisions every change follows ([Documents](#documents)). Read the documents of the systems a change touches before you change them. `06-script-api-reference.md` is generated from the registry by a test, never edited by hand.
 - `docs/research/` — what the design is taken from: measurements and sources read, facts only.
 - `PLAN.md` — the one plan: every open step, in the order it is done, in batches of one commit each, and the foundations ([Workflow](#workflow)). It lists open items only.
 - `.notes/ISSUES.md` — the issue log: every open problem ([Issue log](#issue-log)).
 - `source/` — engine and game code, and `drive/`, the driver of every check, a submodule ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, the MOBA test content among them; `source/packages/<game>/` an imported game's rules package.
-- `../GeneralsX/` — beside this repository, not in it: [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS: the reference for Zero Hour's formats and rules. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/12-zero-hour.md#decisions)).
+- `../GeneralsX/` — beside this repository, not in it: [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS: the reference for Zero Hour's formats and rules. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/09-zero-hour.md#decisions)).
 
 When code and design disagree, fix one of them, and state which one.
 
@@ -33,7 +33,7 @@ Every change moves the engine toward one shape. The rules and the tests that hol
 - **What a module adds is declared once,** and one walk of the declarations serves the install, the script API's binding, the network's lists and the declaration audit, so a new piece left out fails a test.
 - **A kind is a marker, and an entity spawns whole:** each part it carries is declared on its kind and comes with its spawn, so a new entity moves between archetypes once; a derived part comes by required components or a hook, and one derived each tick is written in place.
 - **A name is resolved once,** at the load, by a builder that is the check of what it resolves.
-- **One word, one meaning:** module, owner, kind, part, callback (`Hook` is the scripts' alone), `*File`, `*Data`, `*Spec`, `*Book`.
+- **One word, one meaning:** module, owner, seat, slot, kind, part, place, callback (`Hook` is the scripts' alone), extension, `*File`, `*Data`, `*Spec`, `*Book`, `*Decl`, `*Setup`, each as [Names](docs/design/02-engine-core.md#names) gives it.
 - **A pass visits what changed:** no query state, structural change or allocation per item on a hot path, and a fact fixed at install or load is a fact of the schedule, not a check each tick.
 - **Each crate depends only on lower layers,** and a capability asks another for its work through a contract below both, never by writing its state.
 - **One rendering pipeline for every game.** An importer converts its game to Bevy's standard material and the generic formats, and writes down what it loses; a need the pipeline cannot say becomes a general feature, never a path, a flag or a shader for one game.

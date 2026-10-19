@@ -47,7 +47,7 @@ impl FlightState {
     }
 
     /// Whether it lost the unit it homes on; a curve loses none.
-    pub const fn lost(self) -> bool {
+    pub const fn is_lost(self) -> bool {
         match self {
             Self::Flown { lost, .. } => lost,
             Self::Curve { .. } => false,

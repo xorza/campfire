@@ -36,8 +36,8 @@ pub(crate) const RULES_FILES: [(&str, &[u8]); 3] = [
 /// depending on the rules package beside it.
 pub(crate) fn mode_manifest(max_move_speed: Num) -> String {
     let teams: Vec<String> = (1..=SLOTS)
-        .map(|player| format!("{{ name = \"player_{player}\", slots = 1 }}"))
-        .chain(["{ name = \"neutral\", slots = 0 }".to_owned()])
+        .map(|player| format!("{{ name = \"player_{player}\", seats = 1 }}"))
+        .chain(["{ name = \"neutral\", seats = 0 }".to_owned()])
         .collect();
     format!(
         r#"# Zero Hour, imported from the player's install: its units drive, are made and fight on its maps.
@@ -72,9 +72,9 @@ pub(crate) struct ModeImport<'a> {
 /// The imported package's mode data: what the install gives, over the rules package's fixed
 /// data (03-game-scripting.md, Overrides by load order): its name and its teams' names, as its
 /// manifest names the teams, the rules package's mode script, its params of what each starts
-/// with, `start` (12-zero-hour.md, A skirmish starts with the faction's start objects), and the
-/// option of the money it starts with, of `start_money`'s values (12-zero-hour.md, The import
-/// writes Zero Hour's money as an option); the armors and weapons of `combat` (12-zero-hour.md)
+/// with, `start` (09-zero-hour.md, A skirmish starts with the faction's start objects), and the
+/// option of the money it starts with, of `start_money`'s values (09-zero-hour.md, The import
+/// writes Zero Hour's money as an option); the armors and weapons of `combat` (09-zero-hour.md)
 /// and the trains and builds of `production` (04-capabilities/production.md).
 pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     let ModeImport {

@@ -3,7 +3,7 @@ use campfire_protocol::Signature;
 use serde::{Deserialize, Serialize};
 
 /// A packet of player inputs as the client sends it, signed once over the chain head after the
-/// last. The server knows the sender's slot from the connection, so the message does not carry
+/// last. The server knows the sender's seat from the connection, so the message does not carry
 /// it. The payloads sit end to end in one buffer, each frame giving the length of its own.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputMessage {

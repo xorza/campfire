@@ -52,7 +52,7 @@ impl RoomMaking {
         let Shape::Box(boxed) = body.shape() else {
             return;
         };
-        let pos = *unit.get::<Position>().expect("a unit has a place");
+        let position = *unit.get::<Position>().expect("a unit has a place");
         let run = world.resource::<StaticTrackingRun>().0;
         world
             .run_system(run)
@@ -65,7 +65,7 @@ impl RoomMaking {
                 .filter(|&(_, _, &walker_pos, other)| {
                     let radius = Walker::walking(Some(other)).radius;
                     other.layer() == body.layer()
-                        && boxed.closer(pos.get(), walker_pos.get(), radius)
+                        && boxed.closer(position.get(), walker_pos.get(), radius)
                 })
                 .map(|(entity, &id, ..)| Keyed { id, entity }),
         );
@@ -83,7 +83,7 @@ impl RoomMaking {
                     .unwrap_or_else(|| walker_pos.get())
             } else {
                 boxed
-                    .push_out(pos.get(), walker_pos.get(), kind.radius)
+                    .push_out(position.get(), walker_pos.get(), kind.radius)
                     .expect("the box overlaps the walker, so it pushes the walker out")
             };
             NavigationEffect::put(world, walker, place, now);

@@ -12,7 +12,7 @@ use crate::unit_stats::UnitStats;
 
 /// What a system reads a modifier's params from: the param book, and the units a param scales by,
 /// by stable id, those a predicting client holds as the server sent them among them
-/// (14-replication-audiences.md, A client derives what it can for every unit it holds).
+/// (10-replication-audiences.md, A client derives what it can for every unit it holds).
 #[derive(SystemParam, Debug)]
 pub struct ModifierParams<'w, 's> {
     params: Res<'w, ParamBook>,
@@ -42,7 +42,7 @@ impl ModifierParams<'_, '_> {
     }
 
     /// Whether the param book changed since the system last ran.
-    pub fn changed(&self) -> bool {
+    pub fn is_changed(&self) -> bool {
         self.params.is_changed()
     }
 }

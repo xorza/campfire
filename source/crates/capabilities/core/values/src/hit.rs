@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub struct Hit {
     pub delivery: Option<StableId>,
     pub target: Option<StableId>,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub distance: Num,
     pub direction: Option<Vec3>,
 }

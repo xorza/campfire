@@ -39,9 +39,9 @@ use campfire_verifier::Verified;
 use tracing::{error, info};
 
 use crate::binaries::Binaries;
+use crate::command_line::Args;
 use crate::error::CheckError;
 use crate::lan_match::{LOCAL_DATA, LanMatch, RESTARTED, SERVER_DATA};
-use crate::mode::Mode;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
 use crate::process_outcome::ProcessOutcome;
@@ -49,11 +49,11 @@ use crate::session_kind::SessionKind;
 use crate::verdict::{BotEvents, LoggedInput, Verdict};
 
 mod binaries;
+mod command_line;
 mod error;
 mod failure;
 mod lan_match;
 mod log_tail;
-mod mode;
 mod process;
 mod process_group;
 mod process_log;
@@ -89,23 +89,23 @@ fn main() -> ExitCode {
         file: "info",
     }
     .start();
-    let mode = match Logging::command_line(env::args_os()) {
-        Ok(line) => Mode::of(line),
+    let args = match Logging::command_line(env::args_os()) {
+        Ok(line) => Args::of(line),
         Err(status) => return ExitCode::from(status),
     };
-    let dir = match &mode {
-        Mode::Play { root } => match RunDir::create(root, SystemTime::now()) {
+    let dir = match &args {
+        Args::Play { root } => match RunDir::create(root, SystemTime::now()) {
             Ok(run) => run.path().to_owned(),
             Err(error) => {
                 error!(error = %ErrorReport::of(&error), "the LAN check did not run");
                 return ExitCode::from(ExitStatus::Failure);
             }
         },
-        Mode::Verify { dir, .. } => dir.clone(),
+        Args::Verify { dir, .. } => dir.clone(),
     };
-    let result = match mode {
-        Mode::Play { .. } => play(&dir),
-        Mode::Verify { verifier, .. } => verify_run(&dir, verifier),
+    let result = match args {
+        Args::Play { .. } => play(&dir),
+        Args::Verify { verifier, .. } => verify_run(&dir, verifier),
     };
     report(result, &dir)
 }
@@ -211,10 +211,10 @@ fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<LoggedInput>,
     let Some(mut replay) = LogReplay::of(&published) else {
         return Ok(inputs);
     };
-    while !replay.done(&published) {
+    while !replay.is_done(&published) {
         let tick = replay.next_tick();
         inputs.extend(replay.seal_tick(&published).map(|input| LoggedInput {
-            slot: input.slot,
+            seat: input.seat,
             stamp: input.stamp,
             tick,
         }));

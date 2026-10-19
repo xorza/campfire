@@ -1,6 +1,6 @@
 use campfire_bots::{BotBuffers, BotScript, BotSink, HeldBotView, Named, OrderUnsent};
 use campfire_capabilities::{Action, Match, Order};
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_harness::{FixedMatch, MatchUnits};
 use campfire_math::{Num, Vec3};
 use campfire_protocol::ServerInput;
@@ -26,13 +26,13 @@ pub(crate) struct MatchPlay {
     bot: Option<MatchBot>,
 }
 
-/// A bot a play drives by the step a server's bot driver takes: its slot, its script, the view of
+/// A bot a play drives by the step a server's bot driver takes: its seat, its script, the view of
 /// the match its step reads, as the driver's does, and the step's buffers, the payloads a step
 /// gives, the point its command center stands at, and the farthest any of its units stood from
 /// there.
 #[derive(Debug)]
 struct MatchBot {
-    slot: u32,
+    seat: u32,
     script: BotScript,
     view: HeldBotView,
     buffers: BotBuffers,
@@ -47,11 +47,11 @@ struct MatchBot {
 struct DuePayloads(Vec<Vec<u8>>);
 
 impl BotSink for DuePayloads {
-    fn send(&mut self, _: PlayerSlot, payload: &[u8]) {
+    fn send(&mut self, _: Seat, payload: &[u8]) {
         self.0.push(payload.to_vec());
     }
 
-    fn unsent(&mut self, _: PlayerSlot, _: &Action<Named>, _: OrderUnsent) {}
+    fn unsent(&mut self, _: Seat, _: &Action<Named>, _: OrderUnsent) {}
 }
 
 impl MatchPlay {
@@ -64,16 +64,16 @@ impl MatchPlay {
         }
     }
 
-    /// Drives player `slot` by `script` from the tick it runs next, as a server drives its bot,
+    /// Drives player `seat` by `script` from the tick it runs next, as a server drives its bot,
     /// and keeps the farthest its units stand from its command center; a failure when the player
     /// has no one center.
-    pub(crate) fn drive_bot(&mut self, slot: u32, script: BotScript) -> Result<(), Failure> {
-        let [center] = self.owned(CENTER, slot)?[..] else {
+    pub(crate) fn drive_bot(&mut self, seat: u32, script: BotScript) -> Result<(), Failure> {
+        let [center] = self.owned(CENTER, seat)?[..] else {
             return Err(Failure::FightStart);
         };
-        let home = MatchUnits::of(self.game()).pos(center);
+        let home = MatchUnits::of(self.game()).position(center);
         self.bot = Some(MatchBot {
-            slot,
+            seat,
             script,
             view: HeldBotView::new(self.fixed.game_mut()),
             buffers: BotBuffers::default(),
@@ -109,15 +109,15 @@ impl MatchPlay {
         self.tick = Tick::new(self.tick.get() + 1);
         if let Some(bot) = &mut self.bot {
             let units = MatchUnits::of(self.fixed.game());
-            let slot = bot.slot;
+            let seat = bot.seat;
             for (_, unit) in units
                 .all()
-                .filter(|(_, unit)| MatchUnits::owned_by(unit, slot))
+                .filter(|(_, unit)| MatchUnits::owned_by(unit, seat))
             {
-                let Some(pos) = unit.get::<Position>() else {
+                let Some(position) = unit.get::<Position>() else {
                     continue;
                 };
-                let distance = bot.home.ground_offset(pos.get()).length();
+                let distance = bot.home.ground_offset(position.get()).length();
                 bot.farthest = bot.farthest.max(distance);
             }
         }
@@ -127,19 +127,19 @@ impl MatchPlay {
     /// step gives it: its mode inputs, then its orders, each for the bot's units it names.
     fn serve_bot(&mut self, bot: &mut MatchBot) {
         let MatchBot {
-            slot,
+            seat,
             script,
             view,
             buffers,
             due,
             ..
         } = bot;
-        let slot = PlayerSlot::new(*slot);
+        let seat = Seat::new(*seat);
         let view = view.get(self.fixed.game());
-        script.step(self.tick, slot, &view, buffers, due);
+        script.step(self.tick, seat, &view, buffers, due);
         for payload in due.0.drain(..) {
             let input = ServerInput::Bot {
-                slot,
+                seat,
                 payload: &payload,
             };
             self.fixed
@@ -153,16 +153,16 @@ impl MatchPlay {
         self.fixed.send(0, self.tick, &Order::payload(orders));
     }
 
-    /// The living units player `slot` owns of the type `name`, by stable id; a failure when the
+    /// The living units player `seat` owns of the type `name`, by stable id; a failure when the
     /// mode has no such type.
-    pub(crate) fn owned(&self, name: &'static str, slot: u32) -> Result<Vec<StableId>, Failure> {
+    pub(crate) fn owned(&self, name: &'static str, seat: u32) -> Result<Vec<StableId>, Failure> {
         let world = self.fixed.game();
         let typed: UnitType = Units::type_named(world, name).ok_or(Failure::NoType(name))?;
         let owned = MatchUnits::of(world)
             .all()
             .filter(|(_, unit)| {
                 unit.get::<UnitType>() == Some(&typed)
-                    && MatchUnits::owned_by(unit, slot)
+                    && MatchUnits::owned_by(unit, seat)
                     && unit.get::<Life>().is_none_or(|life| !life.is_empty())
             })
             .map(|(id, _)| id)

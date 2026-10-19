@@ -4,13 +4,13 @@ use std::ops::ControlFlow;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_sim::StableId;
 
 use crate::script_host::ScriptId;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::hook::{Hook, HookSpec};
+use crate::scripts::hook::{Hook, HookDecl};
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::mode_scripts::ListPlace;
 use crate::scripts::script_batch::{Answered, ScriptBatch};
@@ -18,7 +18,7 @@ use crate::scripts::script_batch::{Answered, ScriptBatch};
 /// A queue of events the mode's scripts answer by their hooks, in order, the state of the
 /// capability that produces them: an event whose call finds the mode's pool spent waits, with
 /// those after it, for a later tick, which runs it in the scripts that did not answer it
-/// (08-script-api.md, A queue of mode events answers itself; 03-game-scripting.md, An event waits
+/// (06-script-api.md, A queue of mode events answers itself; 03-game-scripting.md, An event waits
 /// in the scripts that did not answer it).
 pub trait ModeEvents: Resource + Component<Mutability = Mutable> + Default {
     /// The hooks that answer its events: the mode answers it when one of its scripts defines one.
@@ -104,7 +104,7 @@ impl<'a, 'w> ModeAnswer<'a, 'w> {
 
     /// Answers with the hook `H` in each script that defines it, for `id` if any, from the mode's
     /// pool, as `call_from` does.
-    pub fn call<H: HookSpec>(
+    pub fn call<H: HookDecl>(
         &mut self,
         id: Option<StableId>,
         args: impl Fn(&Ctx) -> Option<H::Args>,
@@ -118,10 +118,10 @@ impl<'a, 'w> ModeAnswer<'a, 'w> {
     /// then. The first call of the answer runs only in the scripts that did not answer it before.
     /// A failure is recorded; `Break` when a call waits, which `partial` then counts the scripts
     /// before.
-    pub fn call_from<H: HookSpec>(
+    pub fn call_from<H: HookDecl>(
         &mut self,
         id: Option<StableId>,
-        payer: Option<PlayerSlot>,
+        payer: Option<Seat>,
         args: impl Fn(&Ctx) -> Option<H::Args>,
     ) -> ControlFlow<()> {
         let hook = Hook::of::<H>();
@@ -145,7 +145,7 @@ impl<'a, 'w> ModeAnswer<'a, 'w> {
 
     /// Answers with the hook `H` in the script at `place` alone, when it defines it, as
     /// `call_from` does, from the mode's pool.
-    pub fn call_in<H: HookSpec>(
+    pub fn call_in<H: HookDecl>(
         &mut self,
         place: ListPlace,
         id: Option<StableId>,
@@ -164,12 +164,12 @@ impl<'a, 'w> ModeAnswer<'a, 'w> {
     }
 
     /// Runs `H` in `script`, at `place` in the list, with the arguments `args` gives.
-    fn answer_in<H: HookSpec>(
+    fn answer_in<H: HookDecl>(
         &mut self,
         place: ListPlace,
         script: ScriptId,
         id: Option<StableId>,
-        payer: Option<PlayerSlot>,
+        payer: Option<Seat>,
         args: &impl Fn(&Ctx) -> Option<H::Args>,
     ) -> Outcome {
         let Some(args) = args(self.batch.ctx()) else {

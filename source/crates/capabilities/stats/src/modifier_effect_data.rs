@@ -8,7 +8,7 @@ use campfire_common::DeclaredName;
 use campfire_common::Ticks;
 use campfire_declare::{BookError, Listed};
 use campfire_script::{
-    ApiBuilder, Applies, CallError, Checked, Ctx, Frame, MemberSpec, ScriptTicks, Unit, View,
+    ApiBuilder, Applies, CallError, Checked, Ctx, Frame, MemberDecl, ScriptTicks, Unit, View,
 };
 use campfire_sim::Capability;
 use campfire_values::{ModifierId, Number};
@@ -44,7 +44,7 @@ impl Listed for ModifierEffectData {
     }
 
     fn api(api: &mut ApiBuilder<'_>) {
-        let add = MemberSpec::call(
+        let add = MemberDecl::call(
             "add_modifier",
             &[&["unit", "id"], &["unit", "id", "duration_ms"]],
             "applies the modifier `id` of the script's package to `unit` from the acting unit, with \

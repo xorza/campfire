@@ -3,7 +3,7 @@ use std::ops::Range;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_actions::ByAction;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_math::Num;
 use campfire_script::{
     AnyKeptRows, Checked, ColumnRows, KeptRows, RowFill, ScriptList, ScriptText, ScriptValue, Unit,
@@ -51,7 +51,7 @@ pub struct ProductionColumn {
 /// for no node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProductionRow {
-    owner: Option<PlayerSlot>,
+    owner: Option<Seat>,
     counted: UnitSupply,
     load: u32,
     site: Option<Num>,
@@ -71,7 +71,7 @@ struct ProductionRows {
 /// A unit's row as it joins, but its queue.
 #[derive(Debug, Clone, Copy)]
 struct RowOf {
-    owner: Option<PlayerSlot>,
+    owner: Option<Seat>,
     counted: UnitSupply,
     load: u32,
     site: Option<Num>,
@@ -215,11 +215,11 @@ impl ProductionColumn {
         &self.costs
     }
 
-    /// `slot`'s supply as `view` read the match; `None` in a mode with no supply.
-    pub(crate) fn supply(view: &View, slot: PlayerSlot) -> Option<ReadSupply> {
+    /// `seat`'s supply as `view` read the match; `None` in a mode with no supply.
+    pub(crate) fn supply(view: &View, seat: Seat) -> Option<ReadSupply> {
         view.column(|column: &Self| {
             let rules = column.rules?;
-            let sums = column.rows.now().sums.get(slot.index());
+            let sums = column.rows.now().sums.get(seat.index());
             let total = sums.copied().unwrap_or_default();
             Some(ReadSupply {
                 used: total.used,
@@ -242,7 +242,7 @@ impl ProductionColumn {
             .and_then(|gatherer| gatherer.load())
             .map_or(0, |load| load.amount);
         let row = RowOf {
-            owner: owner.map(|owner| owner.slot()),
+            owner: owner.map(|owner| owner.seat()),
             counted,
             load,
             site: site
@@ -268,7 +268,7 @@ mod tests {
         // player owns counts for no one. Player 0 sums to (5, 10), player 1 to none. The rows
         // queue trains 0 and 1, none, 2, and 3, 4 and 5: runs 0..2, 2..2, 2..3 and 3..6.
         let row = |owner: Option<u32>, used, given| RowOf {
-            owner: owner.map(PlayerSlot::new),
+            owner: owner.map(Seat::new),
             counted: UnitSupply { used, given },
             load: 0,
             site: None,

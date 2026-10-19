@@ -88,7 +88,7 @@ impl Launching {
             let delivery = NewDelivery {
                 source,
                 unit_type,
-                pos: from,
+                position: from,
                 id,
             };
             spawner.spawn(delivery, |id| {

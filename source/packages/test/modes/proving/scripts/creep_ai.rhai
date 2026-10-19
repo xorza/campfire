@@ -20,7 +20,7 @@ fn on_think(ctx, unit) {
 }
 
 fn defend_hero(ctx, unit) {
-    for ally in ctx.find(unit, unit.pos, unit.params.help_range, "allies:avatar") {
+    for ally in ctx.find(unit, unit.position, unit.params.help_range, "allies:avatar") {
         for attacker in ally.recent_attackers(unit.params.help_window_ms) {
             if attacker.is_avatar && attacker.is_enemy_of(unit) && in_reach(unit, attacker) {
                 return attacker;
@@ -40,5 +40,5 @@ fn keep_target(unit) {
 }
 
 fn in_reach(unit, other) {
-    unit.can_see(other) && unit.pos.within(other.pos, unit.params.aggro_range)
+    unit.can_see(other) && unit.position.within(other.position, unit.params.aggro_range)
 }

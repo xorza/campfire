@@ -137,7 +137,7 @@ fn battle(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
                         let spent = (0..BATTLE_TICKS)
                             .map(|_| stage_tick(fixed.game_mut(), stage))
                             .sum::<Duration>();
-                        assert!(hurt(fixed.game_mut()), "the creeps fight");
+                        assert!(is_hurt(fixed.game_mut()), "the creeps fight");
                         spent
                     })
                     .sum()
@@ -192,7 +192,7 @@ fn session_log(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
 
 /// Whether a unit of `world` holds its life or a pool below its maximum, as one that took damage
 /// does.
-fn hurt(world: &mut World) -> bool {
+fn is_hurt(world: &mut World) -> bool {
     let mut lives = world.query::<&Life>();
     let mut pools = world.query::<&Pools>();
     lives.iter(world).any(|life| life.current() < life.max())

@@ -4,7 +4,7 @@ use bevy_ecs::query::{Allow, Has};
 use bevy_ecs::system::{Query, Res, SystemParam, SystemState};
 use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_players::OnMatch;
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
@@ -43,15 +43,15 @@ type UnitRow = (
 pub struct HeldBotView(SystemState<BotView<'static, 'static, ByVision>>);
 
 impl<S: TeamSight> BotView<'_, '_, S> {
-    /// The avatar of the player of `slot`, when it has one.
-    pub fn avatar(&self, slot: PlayerSlot) -> Option<Commanded> {
-        self.players.avatar(slot)
+    /// The avatar of the player of `seat`, when it has one.
+    pub fn avatar(&self, seat: Seat) -> Option<Commanded> {
+        self.players.avatar(seat)
     }
 
-    /// Puts in `out` the stable ids of the living units of `unit_type` the player of `slot` owns,
+    /// Puts in `out` the stable ids of the living units of `unit_type` the player of `seat` owns,
     /// in increasing order.
-    pub(crate) fn typed(&self, slot: PlayerSlot, unit_type: UnitType, out: &mut Vec<StableId>) {
-        self.players.typed(slot, unit_type, out);
+    pub(crate) fn typed(&self, seat: Seat, unit_type: UnitType, out: &mut Vec<StableId>) {
+        self.players.typed(seat, unit_type, out);
     }
 
     /// The first slot of the unit `id` that holds an action of `name`, when it holds one.
@@ -69,8 +69,8 @@ impl<S: TeamSight> BotView<'_, '_, S> {
     /// least distance between their points in the map's metric, exactly, and of those the least
     /// stable id, so the query's order chooses nothing.
     pub(crate) fn nearest(&self, from: StableId, filter: Filter) -> Option<StableId> {
-        let (_, pos, &team, ..) = self.units.get(self.index.get(from)?).ok()?;
-        let (from, metric) = (pos.get(), self.map.metric);
+        let (_, position, &team, ..) = self.units.get(self.index.get(from)?).ok()?;
+        let (from, metric) = (position.get(), self.map.metric);
         let relations = self.relations.get();
         let targets = self
             .units
@@ -82,8 +82,11 @@ impl<S: TeamSight> BotView<'_, '_, S> {
                     && filter.selects(relations.between(team, other), tags.tags)
                     && self.seen.sees(team, id)
             });
-        let nearest = targets.min_by_key(|&(&id, pos, ..)| {
-            (metric.offset(from, pos.get()).length_squared_bits(), id)
+        let nearest = targets.min_by_key(|&(&id, position, ..)| {
+            (
+                metric.offset(from, position.get()).length_squared_bits(),
+                id,
+            )
         });
         nearest.map(|(&id, ..)| id)
     }

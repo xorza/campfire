@@ -9,7 +9,7 @@ pub struct PlacedUnit {
     pub(crate) unit_type: UnitType,
     pub team: Team,
     pub(crate) path: Option<PlacedPath>,
-    pub pos: Vec3,
+    pub position: Vec3,
     pub(crate) angle: Num,
 }
 

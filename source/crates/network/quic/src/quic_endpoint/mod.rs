@@ -54,8 +54,8 @@ const TOKENS_SENT: u32 = 2;
 const TOKEN_LIFETIME: Duration = Duration::from_secs(120);
 
 /// A QUIC endpoint on a server's entity or a client's: its socket, its connections and the thread
-/// that drives them (15-quic-transport.md, A thread for each endpoint, and no IO in the frame;
-/// 15-quic-transport.md, A link's entity is its peer, not its address). A `LinkStart` opens it: a
+/// that drives them (11-quic-transport.md, A thread for each endpoint, and no IO in the frame;
+/// 11-quic-transport.md, A link's entity is its peer, not its address). A `LinkStart` opens it: a
 /// server takes connections within its `AddressLimit` (D13), and spawns a `LinkOf` for each once
 /// its handshake completes; a client connects to its server, and its entity carries the connection.
 /// Taken from a started entity, by any path, it ends that entity's link; dropped, it closes every
@@ -197,7 +197,7 @@ impl QuicEndpoint {
     /// Opens the endpoint on its entity `entity`, whose `link` a client's connection fills: a
     /// server takes connections within its limit for each address, and is linked at once; a
     /// client connects, and is linked once its handshake completes.
-    pub(crate) fn start(
+    pub(crate) fn open(
         &self,
         entity: Entity,
         link: Option<&Link>,
@@ -243,7 +243,7 @@ impl QuicEndpoint {
     /// Ends a server's endpoint's taking of connections, as its `Unlink` ends the server, whose
     /// links Lightyear despawns, which closes them; a connection no link carries yet closes with
     /// `AppCode::ENDED`. A client's endpoint takes none.
-    pub(crate) fn stop(&self) {
+    pub(crate) fn stop_accepting(&self) {
         if let Side::Server { .. } = self.side {
             self.shared.lock().stop_accepting(Instant::now());
             self.shared.wake();
@@ -262,7 +262,7 @@ impl QuicEndpoint {
         let Ok(mut state) = self.shared.lock_result() else {
             self.worker.resume_panic();
         };
-        if !state.ended() {
+        if !state.is_ended() {
             self.worker.check();
         }
         while let Some(news) = state.next_news() {

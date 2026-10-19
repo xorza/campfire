@@ -2,7 +2,7 @@ use campfire_actions::{DeliveryData, DeliveryShape};
 use campfire_deliveries::Launcher;
 use campfire_math::Vec3;
 use campfire_script::{
-    ApiBuilder, CapabilityRefusal, Checked, Ctx, MemberSpec, RoleSet, ScriptPosition, Status, Unit,
+    ApiBuilder, CapabilityRefusal, Checked, Ctx, MemberDecl, RoleSet, ScriptPosition, Status, Unit,
 };
 
 use crate::error::ProjectilesRefusal;
@@ -15,7 +15,7 @@ pub struct ProjectilesApi;
 
 impl ProjectilesApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        let projectile = MemberSpec::call(
+        let projectile = MemberDecl::call(
             "launch",
             &[&["from", "direction"], &["from", "unit"]],
             "launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, homing on `unit` for a homing type, or on a curve to `unit`'s center for a curve type; the new projectile, which spawns later in the tick",
@@ -47,7 +47,7 @@ impl ProjectilesApi {
         let DeliveryShape::Projectile { flight, .. } = launcher.delivery.shape else {
             panic!("a launcher of projectiles");
         };
-        if flight.at_unit() != matches!(toward, Toward::Unit(_)) {
+        if flight.is_at_unit() != matches!(toward, Toward::Unit(_)) {
             return Err(ProjectilesRefusal::OtherFlight.fail().into());
         }
         let unit_type = launcher.delivery.unit_type;

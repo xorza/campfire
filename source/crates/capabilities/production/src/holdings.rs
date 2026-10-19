@@ -5,7 +5,7 @@ use bevy_ecs::observer::On;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut, SystemChangeTick, SystemParam};
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_declare::Cache;
 use campfire_sim::Unpredicted;
 use campfire_stats::PlayerModifiers;
@@ -44,7 +44,7 @@ pub(crate) struct Holdings {
 #[derive(Debug, Clone, Copy)]
 struct Share {
     entity: Entity,
-    owner: PlayerSlot,
+    owner: Seat,
     supply: UnitSupply,
     held: Option<UnitType>,
 }
@@ -52,7 +52,7 @@ struct Share {
 /// How many living, complete units of a type a player holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct HeldCount {
-    owner: PlayerSlot,
+    owner: Seat,
     unit_type: UnitType,
     count: u32,
 }
@@ -86,7 +86,7 @@ impl Holdings {
             self.held.clear();
             self.marked.clear();
             for (entity, owner, parts) in &owned.units {
-                self.add(entity, owner.slot(), &parts, owned);
+                self.add(entity, owner.seat(), &parts, owned);
             }
             self.followed = Some(now);
             return;
@@ -109,38 +109,38 @@ impl Holdings {
         self.followed = Some(now);
     }
 
-    /// What `slot` uses.
-    pub(crate) fn used(&self, slot: PlayerSlot) -> u64 {
-        self.players.get(slot.index()).map_or(0, |sums| sums.used)
+    /// What `seat` uses.
+    pub(crate) fn used(&self, seat: Seat) -> u64 {
+        self.players.get(seat.index()).map_or(0, |sums| sums.used)
     }
 
-    /// What `slot`'s units give, at most `max`.
-    pub(crate) fn cap(&self, slot: PlayerSlot, max: u64) -> u64 {
-        let sums = self.players.get(slot.index()).copied();
+    /// What `seat`'s units give, at most `max`.
+    pub(crate) fn cap(&self, seat: Seat, max: u64) -> u64 {
+        let sums = self.players.get(seat.index()).copied();
         sums.unwrap_or_default().cap(max)
     }
 
-    /// Whether `slot` has room for `cost` more under its cap of at most `max`.
-    pub(crate) fn has_room(&self, slot: PlayerSlot, cost: u32, max: u64) -> bool {
-        self.used(slot) + u64::from(cost) <= self.cap(slot, max)
+    /// Whether `seat` has room for `cost` more under its cap of at most `max`.
+    pub(crate) fn has_room(&self, seat: Seat, cost: u32, max: u64) -> bool {
+        self.used(seat) + u64::from(cost) <= self.cap(seat, max)
     }
 
-    /// Counts `cost` more used by `slot`, as a train joins the queue of `producer`, whose share
+    /// Counts `cost` more used by `seat`, as a train joins the queue of `producer`, whose share
     /// then holds it, so a count of its queue gives the same.
-    pub(crate) fn reserve(&mut self, producer: Entity, slot: PlayerSlot, cost: u32) {
+    pub(crate) fn reserve(&mut self, producer: Entity, seat: Seat, cost: u32) {
         let at = Self::index(producer);
         let share = self.units.get_mut(at).and_then(Option::as_mut);
-        let share = share.filter(|share| share.entity == producer && share.owner == slot);
+        let share = share.filter(|share| share.entity == producer && share.owner == seat);
         let share = share.expect("a train joins the queue of a unit of its player's");
         share.supply.used += u64::from(cost);
-        self.sums_mut(slot).used += u64::from(cost);
+        self.sums_mut(seat).used += u64::from(cost);
     }
 
     /// Whether `owner`, who holds `modifiers`, holds what `required` needs: one with no
     /// `requires` needs nothing, and a unit no player owns meets no need.
     pub(crate) fn meet(
         &self,
-        owner: Option<PlayerSlot>,
+        owner: Option<Seat>,
         modifiers: Option<&PlayerModifiers>,
         required: Option<Required<'_>>,
     ) -> bool {
@@ -209,7 +209,7 @@ impl Holdings {
             self.take(share);
         }
         if let Ok((entity, owner, parts)) = owned.units.get(entity) {
-            self.add(entity, owner.slot(), &parts, owned);
+            self.add(entity, owner.seat(), &parts, owned);
         }
     }
 
@@ -218,7 +218,7 @@ impl Holdings {
     fn add(
         &mut self,
         entity: Entity,
-        owner: PlayerSlot,
+        owner: Seat,
         parts: &SupplyPartsItem<'_, '_>,
         owned: &OwnedUnits<'_, '_>,
     ) {
@@ -276,14 +276,14 @@ impl Holdings {
     }
 
     /// Where `owner`'s count of `unit_type` stands among the held, or would.
-    fn held_at(&self, owner: PlayerSlot, unit_type: UnitType) -> Result<usize, usize> {
+    fn held_at(&self, owner: Seat, unit_type: UnitType) -> Result<usize, usize> {
         self.held
             .binary_search_by_key(&(owner, unit_type), |held| (held.owner, held.unit_type))
     }
 
-    /// `slot`'s supply, to change, the players grown to hold it.
-    fn sums_mut(&mut self, slot: PlayerSlot) -> &mut SupplySums {
-        let at = slot.index();
+    /// `seat`'s supply, to change, the players grown to hold it.
+    fn sums_mut(&mut self, seat: Seat) -> &mut SupplySums {
+        let at = seat.index();
         if self.players.len() <= at {
             self.players.resize(at + 1, SupplySums::default());
         }
@@ -340,7 +340,7 @@ mod tests {
         world.add_observer(Holdings::inserted);
         world.add_observer(Holdings::removed);
         let mut state = SystemState::new(&mut world);
-        let player = PlayerSlot::new(0);
+        let player = Seat::new(0);
         let owned = (Owner::new(player), depot);
         let first = world.spawn(owned).id();
         let second = world.spawn(owned).id();
@@ -382,7 +382,7 @@ mod tests {
 
     #[test]
     fn a_cap_is_what_the_units_give_at_most_the_max_and_a_reserve_adds_to_what_is_used() {
-        let [first, second, absent] = [0, 1, 5].map(PlayerSlot::new);
+        let [first, second, absent] = [0, 1, 5].map(Seat::new);
         let producer = Entity::from_raw_u32(3).unwrap();
         let mut holdings = Holdings {
             players: vec![

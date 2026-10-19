@@ -2,7 +2,7 @@ use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::query::Allow;
 use bevy_ecs::system::{Query, Res, SystemParam};
 use bevy_ecs::world::Mut;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_units::Owner;
 
@@ -18,12 +18,12 @@ impl<C: Component> PlayerRows<'_, '_, C> {
     /// The `C` of the player that owns a unit of `owner`: none for a unit no player owns, or in a
     /// match whose players hold none.
     pub fn of(&self, owner: Option<&Owner>) -> Option<&C> {
-        self.of_slot(owner?.slot())
+        self.of_seat(owner?.seat())
     }
 
-    /// The `C` of player `slot`.
-    pub fn of_slot(&self, slot: PlayerSlot) -> Option<&C> {
-        let entity = self.index.get(StableId::of_player(slot))?;
+    /// The `C` of player `seat`.
+    pub fn of_seat(&self, seat: Seat) -> Option<&C> {
+        let entity = self.index.get(StableId::of_player(seat))?;
         self.rows.get(entity).ok()
     }
 }
@@ -38,23 +38,23 @@ pub struct PlayerRowsMut<'w, 's, C: Component<Mutability = Mutable>> {
 impl<C: Component<Mutability = Mutable>> PlayerRowsMut<'_, '_, C> {
     /// The `C` of the player that owns a unit of `owner`, as `PlayerRows::of` finds it.
     pub fn of(&self, owner: Option<&Owner>) -> Option<&C> {
-        self.of_slot(owner?.slot())
+        self.of_seat(owner?.seat())
     }
 
-    /// The `C` of player `slot`.
-    pub fn of_slot(&self, slot: PlayerSlot) -> Option<&C> {
-        let entity = self.index.get(StableId::of_player(slot))?;
+    /// The `C` of player `seat`.
+    pub fn of_seat(&self, seat: Seat) -> Option<&C> {
+        let entity = self.index.get(StableId::of_player(seat))?;
         self.rows.get(entity).ok()
     }
 
     /// The `C` of the player that owns a unit of `owner`, to change.
     pub fn of_mut(&mut self, owner: Option<&Owner>) -> Option<Mut<'_, C>> {
-        self.of_slot_mut(owner?.slot())
+        self.of_seat_mut(owner?.seat())
     }
 
-    /// The `C` of player `slot`, to change.
-    pub fn of_slot_mut(&mut self, slot: PlayerSlot) -> Option<Mut<'_, C>> {
-        let entity = self.index.get(StableId::of_player(slot))?;
+    /// The `C` of player `seat`, to change.
+    pub fn of_seat_mut(&mut self, seat: Seat) -> Option<Mut<'_, C>> {
+        let entity = self.index.get(StableId::of_player(seat))?;
         self.rows.get_mut(entity).ok()
     }
 }

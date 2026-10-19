@@ -1,4 +1,4 @@
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 
 use super::*;
 
@@ -6,7 +6,7 @@ use super::*;
 fn a_history_gives_each_head_it_holds_and_cuts_to_one() {
     // From a chain that holds 2 inputs already: seq 2 links to its head, and the history
     // notes the heads after seq 2, 3 and 4.
-    let mut chain = InputChain::new(PlayerSlot::new(1), InputHash::new([1; 32]));
+    let mut chain = InputChain::new(Seat::new(1), InputHash::new([1; 32]));
     chain.extend(Tick::new(0), b"a");
     chain.extend(Tick::new(0), b"b");
     let mut history = ChainHistory::of(&chain);

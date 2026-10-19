@@ -19,48 +19,48 @@ points = [[-16, 0], [0, 0], [16, 0]]
 name = "north_spawn"
 tags = ["spawn"]
 team = "north"
-pos = [-4, -4]
+position = [-4, -4]
 params = { from = "start" }
 
 [[markers]]
 name = "south_spawn"
 tags = ["spawn"]
 team = "south"
-pos = [4, 4]
+position = [4, 4]
 params = { from = "end" }
 
 [[markers]]
 name = "north_barracks_west"
 tags = ["barracks"]
 team = "north"
-pos = [-15, -7]
+position = [-15, -7]
 
 [[markers]]
 name = "north_barracks_east"
 tags = ["barracks"]
 team = "north"
-pos = [-12, -7]
+position = [-12, -7]
 
 [[markers]]
 name = "south_barracks"
 tags = ["barracks"]
 team = "south"
-pos = [14, 7]
+position = [14, 7]
 
 [[units]]
 unit_type = "tower"
 team = "north"
 path = "lane"
-pos = [-9, -3]
+position = [-9, -3]
 
 [[units]]
 unit_type = "tower"
 team = "south"
 path = "lane"
-pos = [9, 3]
+position = [9, 3]
 
 [[units]]
 unit_type = "boulder"
 team = "camps"
-pos = [1, -2]
+position = [1, -2]
 angle = -30

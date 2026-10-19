@@ -98,7 +98,7 @@ impl SourceType<'_> {
     }
 
     /// Whether it is the avatar its package stands as.
-    pub const fn avatar(&self) -> bool {
+    pub const fn is_avatar(&self) -> bool {
         self.declared.is_none()
     }
 

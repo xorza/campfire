@@ -9,7 +9,7 @@ use campfire_values::{NameKind, Named};
 
 /// The name of an id of type `I`, as a form gives it: a script reads it as text, and the load
 /// checks each literal a script compares it with as a name of `I`'s kind
-/// (08-script-api.md, A returned name is checked where a script compares it).
+/// (06-script-api.md, A returned name is checked where a script compares it).
 ///
 /// It is not `Clone`: a value that clones is a `ScriptType`, which names no kind.
 #[derive(Debug)]

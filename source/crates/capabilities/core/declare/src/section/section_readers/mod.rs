@@ -25,7 +25,7 @@ pub struct SectionReaders {
 struct SectionReader {
     table: SectionTable,
     key: &'static str,
-    owner: Option<Capability>,
+    capability: Option<Capability>,
     read: fn(TomlValue, &SectionReaders) -> Result<Box<dyn SectionValue>, TomlError>,
     fields: &'static [&'static str],
 }
@@ -43,9 +43,9 @@ struct ListedReader {
 }
 
 impl SectionReaders {
-    /// Registers `S`, of a module of `owner`, none for the core's; a key that a section of its
+    /// Registers `S`, of a module of `capability`, none for the core's; a key that a section of its
     /// table registers already is a logic error.
-    pub fn add<S: Section>(&mut self, owner: Option<Capability>) {
+    pub fn add<S: Section>(&mut self, capability: Option<Capability>) {
         let table = S::TABLE.read_in();
         assert!(
             self.reader(table, S::KEY).is_none(),
@@ -55,7 +55,7 @@ impl SectionReaders {
         self.sections.push(SectionReader {
             table: S::TABLE,
             key: S::KEY,
-            owner,
+            capability,
             read: |value, readers| {
                 let section: Box<dyn SectionValue> = Box::new(S::read_value(value, readers)?);
                 Ok(section)
@@ -126,8 +126,8 @@ impl SectionReaders {
 
     /// The capability of the module that registers the section `key` of `table`; none for a
     /// section of the core's, or of no module.
-    pub fn owner(&self, table: SectionTable, key: &str) -> Option<Capability> {
-        self.reader(table.read_in(), key)?.owner
+    pub fn capability(&self, table: SectionTable, key: &str) -> Option<Capability> {
+        self.reader(table.read_in(), key)?.capability
     }
 
     fn of(&self, table: SectionTable) -> impl Iterator<Item = &SectionReader> {

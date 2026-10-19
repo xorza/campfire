@@ -1,11 +1,11 @@
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_net::MatchStarted;
 
 use super::*;
 
 #[test]
 fn a_log_drops_its_unfinished_last_line_and_names_a_line_it_cannot_read() {
-    let started = r#"{"level":"INFO","target":"t","fields":{"message":"the match started","slot":1,"start_tick":5}}"#;
+    let started = r#"{"level":"INFO","target":"t","fields":{"message":"the match started","seat":1,"start_tick":5}}"#;
     let text = format!("{started}\n{}", &started[..20]);
     let log = ProcessLog::parse(Process::Bot(0), text.as_bytes()).unwrap();
     assert_eq!(log.lines().len(), 1);
@@ -22,20 +22,20 @@ fn a_log_drops_its_unfinished_last_line_and_names_a_line_it_cannot_read() {
     assert_eq!(
         log.read_all::<MatchStarted>().unwrap(),
         [MatchStarted {
-            slot: PlayerSlot::new(1),
+            seat: Seat::new(1),
             start_tick: 5
         }]
     );
     // The event of the second line has a field that does not read.
-    let flawed = started.replace(r#""slot":1"#, r#""slot":"one""#);
+    let flawed = started.replace(r#""seat":1"#, r#""seat":"one""#);
     let log =
         ProcessLog::parse(Process::Bot(0), format!("{started}\n{flawed}\n").as_bytes()).unwrap();
     // The first event reads, whatever follows it.
     assert_eq!(
         log.first::<MatchStarted>()
             .unwrap()
-            .map(|started| started.slot),
-        Some(PlayerSlot::new(1))
+            .map(|started| started.seat),
+        Some(Seat::new(1))
     );
     assert!(
         ProcessLog::empty(Process::Server)
@@ -72,13 +72,13 @@ fn a_log_drops_its_unfinished_last_line_and_names_a_line_it_cannot_read() {
 fn a_bot_keeps_the_orders_it_sent_but_the_last_each_resume_discarded() {
     let sent = |seq: u64, stamp: u64, orders: usize| {
         format!(
-            r#"{{"level":"DEBUG","target":"t","fields":{{"message":"{}","slot":0,"seq":{seq},"stamp":{stamp},"orders":{orders}}}}}"#,
+            r#"{{"level":"DEBUG","target":"t","fields":{{"message":"{}","seat":0,"seq":{seq},"stamp":{stamp},"orders":{orders}}}}}"#,
             OrdersSent::MESSAGE
         )
     };
     let discarded = |count: u64| {
         format!(
-            r#"{{"level":"WARN","target":"t","fields":{{"message":"{}","slot":0,"count":{count}}}}}"#,
+            r#"{{"level":"WARN","target":"t","fields":{{"message":"{}","seat":0,"count":{count}}}}}"#,
             InputsDiscarded::MESSAGE
         )
     };
@@ -92,7 +92,7 @@ fn a_bot_keeps_the_orders_it_sent_but_the_last_each_resume_discarded() {
     )
     .unwrap();
     let kept = |seq, stamp, orders| OrdersSent {
-        slot: PlayerSlot::new(0),
+        seat: Seat::new(0),
         seq,
         stamp: Tick::new(stamp),
         orders,

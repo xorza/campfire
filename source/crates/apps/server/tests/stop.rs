@@ -1,4 +1,4 @@
-//! The server's stop (10-sessions.md, A stop is an exit, not a crash): a stop's signal ends the
+//! The server's stop (08-sessions.md, A stop is an exit, not a crash): a stop's signal ends the
 //! server by an exit with code 130, whose endpoint closes each link, so a client hears it at once;
 //! a server whose start ignored the terminal's signals still takes the stop's.
 
@@ -14,7 +14,7 @@ use campfire_log::LogLine;
 use campfire_net::Listening;
 use campfire_protocol::SessionId;
 use campfire_quic::{LinkEnd, LinkTimes, QuicEndpoint, QuicPlugin};
-use campfire_store::internals::Scratch;
+use campfire_store::internals::TestDir;
 use campfire_store::{InputFile, StopSignals};
 use campfire_test_packages::TestMode;
 use lightyear::link::{LinkStart, Linked};
@@ -59,8 +59,8 @@ fn listening(log: &Path) -> Option<Listening> {
 
 #[test]
 fn a_stop_closes_each_link_and_exits_with_its_code() {
-    let scratch = Scratch::new();
-    let log = scratch.path("log.jsonl");
+    let test_dir = TestDir::new();
+    let log = test_dir.path("log.jsonl");
     let mut command = Command::new(env!("CARGO_BIN_EXE_campfire-server"));
     command
         .env("RUST_LOG", "warn")
@@ -68,7 +68,7 @@ fn a_stop_closes_each_link_and_exits_with_its_code() {
         .env_remove("CAMPFIRE_LOG_FILTER")
         .env_remove("CAMPFIRE_LOG_FILTER_EXTRA")
         .arg("--data")
-        .arg(scratch.path("data"))
+        .arg(test_dir.path("data"))
         .arg("--no-port-map")
         .arg(TestMode::Lane.dir())
         .arg("127.0.0.1:0");

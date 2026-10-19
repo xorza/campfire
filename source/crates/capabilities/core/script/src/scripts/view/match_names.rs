@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_values::{
     DamageKind, NameId, NameKey, NameTable, Names, ResourceId, Scalar, Team, UnitType,
 };
@@ -90,7 +90,7 @@ impl MatchNames {
         }
     }
 
-    /// The names of the ids of type `I`; none before their owner puts them in.
+    /// The names of the ids of type `I`; none before their module puts them in.
     pub fn table<I: NameId + 'static>(&self) -> Option<&Names<I>> {
         Some(&self.tables.get::<Table<I>>()?.0)
     }
@@ -105,7 +105,7 @@ impl MatchNames {
         self.table::<I>()?.named(key)
     }
 
-    /// How many ids of type `I` the match names; none before their owner puts it in.
+    /// How many ids of type `I` the match names; none before their module puts it in.
     pub fn count<I: NameId + 'static>(&self) -> usize {
         self.table::<I>().map_or(0, Names::len)
     }
@@ -163,16 +163,16 @@ impl MatchNames {
             .is_none_or(|teams| team.index() < teams.count())
     }
 
-    /// Whether `slot` is a player of the session; any slot is before a mode sets the teams.
-    pub fn has_player(&self, slot: PlayerSlot) -> bool {
-        self.teams().is_none_or(|teams| teams.of(slot).is_some())
+    /// Whether `seat` is a player of the session; any slot is before a mode sets the teams.
+    pub fn has_player(&self, seat: Seat) -> bool {
+        self.teams().is_none_or(|teams| teams.of(seat).is_some())
     }
 
-    /// Whether `slot` is a player of `team`; any slot is of any team before a mode sets the
+    /// Whether `seat` is a player of `team`; any slot is of any team before a mode sets the
     /// teams.
-    pub fn plays_for(&self, slot: PlayerSlot, team: Team) -> bool {
+    pub fn plays_for(&self, seat: Seat, team: Team) -> bool {
         self.teams()
-            .is_none_or(|teams| teams.of(slot) == Some(team))
+            .is_none_or(|teams| teams.of(seat) == Some(team))
     }
 
     /// Whether a player's `resources` amounts make one of each resource the mode declares; any do

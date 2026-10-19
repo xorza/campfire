@@ -15,18 +15,18 @@ fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
         .map(|entry| entry.unwrap().file_name())
         .collect();
     assert_eq!(names, ["state"]);
-    assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
+    assert_eq!(UserOnly::exposure_at(&path).unwrap(), None);
 
     // A crash left a temporary file, which others may read: the write makes its own, so the file
-    // is its owner's only.
+    // is its user's only.
     let stale = dir.path().join("state.part");
     fs::write(&stale, b"stale and longer").unwrap();
-    OwnerOnly::expose(&stale);
-    assert!(OwnerOnly::exposure_at(&stale).unwrap().is_some());
+    UserOnly::expose(&stale);
+    assert!(UserOnly::exposure_at(&stale).unwrap().is_some());
     DurableFile::write(&path, b"third").unwrap();
     assert_eq!(fs::read(&path).unwrap(), b"third");
     assert!(!stale.exists());
-    assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
+    assert_eq!(UserOnly::exposure_at(&path).unwrap(), None);
 
     // A path with no file name, and a directory that is not there.
     assert!(matches!(
@@ -57,7 +57,7 @@ fn a_durable_create_makes_a_file_once_and_never_replaces_it() {
         })
     ));
     assert_eq!(fs::read(&path).unwrap(), b"first");
-    assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
+    assert_eq!(UserOnly::exposure_at(&path).unwrap(), None);
 
     // Two threads make one file at once: one makes it, the other finds it made, and the file
     // holds the maker's bytes, with no temporary file left.

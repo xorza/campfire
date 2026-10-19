@@ -1,4 +1,4 @@
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_script::{ApiBuilder, ApiError, Checked, Ctx, ScriptHandle, ScriptValue};
 
 use crate::mode_call::ModeCall;
@@ -7,7 +7,7 @@ use crate::mode_ctx::ModeCtx;
 /// `player.state`, `PlayerState` in scripts: the script state fields of a player a script holds,
 /// by name, to read and write, as its mode's `[player_state]` declares them.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct PlayerStateAccess(pub(crate) PlayerSlot);
+pub(crate) struct PlayerStateAccess(pub(crate) Seat);
 
 impl PlayerStateAccess {
     /// Indexes `PlayerState` by field name, to read and to write.

@@ -20,14 +20,14 @@ fn texture(path: &str, side: u32) -> ClassTexture {
 }
 
 /// A terrain of `classes`, holding their tiles, with one cell.
-fn terrain(classes: impl IntoIterator<Item = TextureClass>) -> TerrainParts {
+fn terrain(classes: impl IntoIterator<Item = TextureClass>) -> TerrainFields {
     let classes: Vec<TextureClass> = classes.into_iter().collect();
     let tiles = classes
         .iter()
         .map(|class| class.first_tile + class.tiles)
         .max()
         .unwrap_or(0);
-    TerrainParts {
+    TerrainFields {
         cells: vec![TerrainCell {
             tile: 0,
             blend: None,

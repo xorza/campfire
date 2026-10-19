@@ -7,12 +7,12 @@
 fn on_match_start(ctx) {
     let heroes = ["hero-lancer", "hero-sage"];
     for player in ctx.players {
-        ctx.choose(player, "hero", heroes[player.slot]);
+        ctx.choose(player, "hero", heroes[player.seat]);
         let team = player.team;
-        ctx.spawn_unit(heroes[player.slot], team, spawn_marker(ctx, team).pos, player);
+        ctx.spawn_unit(heroes[player.seat], team, spawn_marker(ctx, team).position, player);
         for marker in ctx.map.markers("barracks") {
             if marker.team == team {
-                ctx.spawn_unit("barracks", team, marker.pos, player);
+                ctx.spawn_unit("barracks", team, marker.position, player);
             }
         }
         ctx.add_resource(player, "gold", ctx.params.income);
@@ -22,11 +22,11 @@ fn on_match_start(ctx) {
 }
 
 fn on_player_join(ctx, player) {
-    ctx.state.joined = player.slot;
+    ctx.state.joined = player.seat;
 }
 
 fn on_player_leave(ctx, player) {
-    ctx.state.left = player.slot;
+    ctx.state.left = player.seat;
 }
 
 fn on_timer(ctx, name, data) {
@@ -53,7 +53,7 @@ fn on_timer(ctx, name, data) {
 }
 
 fn on_unit_death(ctx, unit, killer, assisters) {
-    let heroes = ctx.find(unit, unit.pos, ctx.params.xp_radius, "enemies:avatar");
+    let heroes = ctx.find(unit, unit.position, ctx.params.xp_radius, "enemies:avatar");
     if !heroes.is_empty() && unit.params.xp > 0 {
         for hero in heroes {
             ctx.add_xp(hero, "level", num(unit.params.xp) / heroes.len());

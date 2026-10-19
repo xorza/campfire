@@ -1,4 +1,4 @@
-use campfire_script::{ApiBuilder, ApiOwner, Checked, MemberSpec, Unit};
+use campfire_script::{ApiBuilder, ApiHolder, Checked, MemberDecl, Unit};
 use campfire_values::TrackId;
 
 use crate::progression_column::ProgressionColumn;
@@ -11,10 +11,11 @@ pub struct ProgressionApi;
 
 impl ProgressionApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        let call = |name, signature, description| MemberSpec::call(name, signature, description);
-        let unit = |name, description| MemberSpec::field(ApiOwner::of::<Unit>(), name, description);
+        let call = |name, signature, description| MemberDecl::call(name, signature, description);
+        let unit =
+            |name, description| MemberDecl::field(ApiHolder::of::<Unit>(), name, description);
         let method = |name, signature, description| {
-            MemberSpec::method(ApiOwner::of::<Unit>(), name, signature, description)
+            MemberDecl::method(ApiHolder::of::<Unit>(), name, signature, description)
         };
         api.plan(call(
             "grant_perk",

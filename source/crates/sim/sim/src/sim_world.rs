@@ -140,12 +140,12 @@ pub(crate) mod internals {
     };
     use bevy_ecs::system::ScheduleSystem;
     use bevy_ecs::world::{Mut, World};
-    use campfire_common::{PlayerSlot, Tick};
+    use campfire_common::{Seat, Tick};
     use campfire_schedule::StrictSchedule;
 
     use crate::restoring::Restoring;
     use crate::sim_tick::SimTick;
-    use crate::sim_update::{SimUpdate, TickEnd, start_tick};
+    use crate::sim_update::{SimUpdate, TickEnd, begin_tick};
     use crate::sim_world::SimWorld;
     use crate::sim_world_builder::internals::OpenBuild;
     use crate::stable_id::StableId;
@@ -186,12 +186,12 @@ pub(crate) mod internals {
         /// nothing to change so.
         fn mutate_state(&mut self, name: &str, draws: &mut Draws, mutation: Mutation) -> bool;
 
-        /// Queues player `slot`'s input of `payload` for the next tick, as a session's log gives
+        /// Queues player `seat`'s input of `payload` for the next tick, as a session's log gives
         /// one.
-        fn push_input(&mut self, slot: PlayerSlot, payload: &[u8]);
+        fn push_input(&mut self, seat: Seat, payload: &[u8]);
 
-        /// Runs a tick in which each slot sends its payload, in their order.
-        fn step_with(&mut self, inputs: &[(PlayerSlot, &[u8])]);
+        /// Runs a tick in which each seat sends its payload, in their order.
+        fn step_with(&mut self, inputs: &[(Seat, &[u8])]);
 
         /// The tick the match runs next.
         fn now(&self) -> Tick;
@@ -236,7 +236,7 @@ pub(crate) mod internals {
                 let sets = sets
                     .iter()
                     .copied()
-                    .chain([start_tick.into_system_set().intern(), TickEnd.intern()]);
+                    .chain([begin_tick.into_system_set().intern(), TickEnd.intern()]);
                 let mut placed = BTreeSet::new();
                 for set in sets {
                     let systems = graph
@@ -287,14 +287,14 @@ pub(crate) mod internals {
             mutated
         }
 
-        fn push_input(&mut self, slot: PlayerSlot, payload: &[u8]) {
+        fn push_input(&mut self, seat: Seat, payload: &[u8]) {
             self.resource_mut::<TickInputs>()
-                .push(TickInput { slot, payload });
+                .push(TickInput { seat, payload });
         }
 
-        fn step_with(&mut self, inputs: &[(PlayerSlot, &[u8])]) {
-            for &(slot, payload) in inputs {
-                self.push_input(slot, payload);
+        fn step_with(&mut self, inputs: &[(Seat, &[u8])]) {
+            for &(seat, payload) in inputs {
+                self.push_input(seat, payload);
             }
             self.step();
         }

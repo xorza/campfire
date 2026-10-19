@@ -3,7 +3,7 @@ resolver = "3"
 members = [
     "crates/base/*",
     "crates/sim/*",
-    "crates/capabilities",
+    "crates/capabilities/capabilities",
     "crates/capabilities/abilities",
     "crates/capabilities/areas",
     "crates/capabilities/combat",
@@ -37,9 +37,9 @@ default-members = [
     "crates/base/log",
     "crates/base/schedule",
     "crates/base/store",
-    "crates/capabilities",
     "crates/capabilities/abilities",
     "crates/capabilities/areas",
+    "crates/capabilities/capabilities",
     "crates/capabilities/combat",
     "crates/capabilities/core/actions",
     "crates/capabilities/core/declare",
@@ -124,7 +124,7 @@ license = "MIT OR Apache-2.0"
 
 
 [workspace.dependencies]
-campfire-capabilities = { path = "crates/capabilities" }
+campfire-capabilities = { path = "crates/capabilities/capabilities" }
 campfire-abilities = { path = "crates/capabilities/abilities" }
 campfire-actions = { path = "crates/capabilities/core/actions" }
 campfire-areas = { path = "crates/capabilities/areas" }

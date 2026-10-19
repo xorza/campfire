@@ -24,7 +24,7 @@ use campfire_values::{ActionId, DamageKind, PackageIndex, PackagePath, Rank};
 use super::*;
 use crate::test_app::client_app;
 use crate::view::area_view::{AREA_LIFT, AreaView};
-use crate::view::unit_looks::ModelParts;
+use crate::view::unit_looks::LookNodes;
 
 /// A unit type the client data draws with no model, as every type of a view with no looks: its
 /// units take the figure of their team.
@@ -302,10 +302,10 @@ fn a_position_stands_on_the_drawn_ground_of_a_planar_map_and_is_its_own_point_on
         heights: Some(GroundHeights::of(grid, None)),
         ..ClientData::default()
     };
-    let pos = Position::from((3, 2, 0));
-    assert_eq!(ground(pos, data.lifts()), Vec3::new(3.0, 6.0, 0.0));
+    let position = Position::from((3, 2, 0));
+    assert_eq!(ground(position, data.lifts()), Vec3::new(3.0, 6.0, 0.0));
     data.metric = Metric::Spatial;
-    assert_eq!(ground(pos, data.lifts()), Vec3::new(3.0, 2.0, 0.0));
+    assert_eq!(ground(position, data.lifts()), Vec3::new(3.0, 2.0, 0.0));
 }
 
 #[test]
@@ -362,14 +362,14 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     let [unit_type, sound_type, pit_type, shed_type] =
         [0, 1, 2, 3].map(|at| origins.iter().nth(at).unwrap().0);
     // The tank stands 2 m above the ground at (3, 0), turned 90°; a sound beside it.
-    let pos = Position::from((3, 2, 0));
+    let position = Position::from((3, 2, 0));
     let mut ids = IdAllocator::default();
     let unit = app
         .world_mut()
         .spawn((
             ids.allocate(),
             BodyUnit,
-            pos,
+            position,
             Team::new(0),
             unit_type,
             Facing::of(Num::int(90)),
@@ -409,8 +409,8 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     let model = world.entity(children[0]);
     assert!(model.get::<WorldAssetRoot>().is_some());
     assert_eq!(
-        model.get::<ModelParts>(),
-        Some(&ModelParts {
+        model.get::<LookNodes>(),
+        Some(&LookNodes {
             hide: ["tank.flash".to_owned()].into(),
             turret: None,
         })

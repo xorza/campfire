@@ -69,7 +69,7 @@ impl SourceReads {
     }
 
     /// Adds what each source kept to its column, as the read ends.
-    pub(crate) fn finish(&mut self, sources: &[Box<dyn FillRow>], columns: &mut ViewColumns) {
+    pub(crate) fn end(&mut self, sources: &[Box<dyn FillRow>], columns: &mut ViewColumns) {
         self.take_clean(sources, columns);
         for (source, read) in sources.iter().zip(&mut self.each) {
             read.flush(source.as_ref(), columns);

@@ -1,4 +1,4 @@
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_math::Vec3;
 use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
@@ -34,12 +34,8 @@ impl Party {
 /// Which group a party is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum PartyKey {
-    /// The units of the order that player `slot` sent `number`th in tick `tick`.
-    Order {
-        tick: Tick,
-        slot: PlayerSlot,
-        number: u32,
-    },
+    /// The units of the order that player `seat` sent `number`th in tick `tick`.
+    Order { tick: Tick, seat: Seat, number: u32 },
     /// The units of the spawn group whose first unit has this stable id.
     Spawn(StableId),
 }

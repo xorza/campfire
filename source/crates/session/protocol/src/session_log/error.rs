@@ -1,5 +1,5 @@
 use campfire_codec::BinaryError;
-use campfire_common::{PlayerSlot, Tick, Version};
+use campfire_common::{Seat, Tick, Version};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -15,11 +15,11 @@ pub enum InputError {
     /// The packet holds no input.
     #[error("packet holds no input")]
     EmptyPacket,
-    /// The slot is not in the session header.
+    /// The seat is not in the session header.
     #[error("input from a player not in the session")]
     UnknownPlayer,
-    /// No player controls the slot now: a bot plays it, it is open, or its player left.
-    #[error("input for a slot no player controls")]
+    /// No player controls the seat now: a bot plays it, it is open, or its player left.
+    #[error("input for a seat no player controls")]
     NotPlayer,
     /// A payload is longer than the header's max payload length.
     #[error("input payload above the max length")]
@@ -57,9 +57,9 @@ impl From<StampError> for InputError {
 /// fault of the server, or of a log someone altered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum ServerInputError {
-    /// The slot is not in the session header.
-    #[error("server input for a slot not in the session")]
-    UnknownSlot,
+    /// The seat is not in the session header.
+    #[error("server input for a seat not in the session")]
+    UnknownSeat,
     /// The server key did not sign the input at its place.
     #[error("server input not signed by the server key at its place")]
     BadSignature,
@@ -70,22 +70,22 @@ pub enum ServerInputError {
     /// max inputs per tick.
     #[error("bot inputs fill the ticks up to the max input lead")]
     AheadOfTime,
-    /// Bot commands for a slot no bot plays.
-    #[error("bot commands for a slot no bot plays")]
+    /// Bot commands for a seat no bot plays.
+    #[error("bot commands for a seat no bot plays")]
     NotBot,
-    /// A join of a slot a player controls.
-    #[error("join of a slot a player controls")]
+    /// A join of a seat a player controls.
+    #[error("join of a seat a player controls")]
     Occupied,
-    /// A join of a slot reserved for the player who left it, by another player.
-    #[error("join of a slot reserved for the player who left it")]
+    /// A join of a seat reserved for the player who left it, by another player.
+    #[error("join of a seat reserved for the player who left it")]
     Reserved,
-    /// A join by a main key whose player controls another slot: one slot for each main key.
-    #[error("join by a player who controls another slot")]
+    /// A join by a main key whose player controls another seat: one seat for each main key.
+    #[error("join by a player who controls another seat")]
     MainKeyHeld,
-    /// A renewal, a leave or a link's change for a slot no player controls.
-    #[error("server input for a slot no player controls")]
+    /// A renewal, a leave or a link's change for a seat no player controls.
+    #[error("server input for a seat no player controls")]
     NotPlayer,
-    /// A renewal by another main key than the slot's player's.
+    /// A renewal by another main key than the seat's player's.
     #[error("renewal by another player")]
     OtherPlayer,
     /// The delegation of a join or a renewal grants another session.
@@ -149,38 +149,38 @@ pub enum SeedError {
 /// failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum HeaderError {
-    /// More slots than a `u32` counts.
-    #[error("more slots than a u32 counts")]
-    TooManySlots,
-    /// The delegation of the player in `slot` is not a delegation.
-    #[error("player {}", .slot.get())]
+    /// More seats than a `u32` counts.
+    #[error("more seats than a u32 counts")]
+    TooManySeats,
+    /// The delegation of the player in `seat` is not a delegation.
+    #[error("player {}", .seat.get())]
     Delegation {
-        slot: PlayerSlot,
+        seat: Seat,
         #[source]
         error: DelegationError,
     },
-    /// The delegation of the player in `slot` grants another session.
-    #[error("player {}", .slot.get())]
+    /// The delegation of the player in `seat` grants another session.
+    #[error("player {}", .seat.get())]
     Scope {
-        slot: PlayerSlot,
+        seat: Seat,
         #[source]
         error: ScopeError,
     },
-    /// The header starts another count of slots than the terms plan.
-    #[error("slot starts other than the terms' slots")]
-    SlotCount,
-    /// The slot `slot` starts otherwise than the terms plan it: a player, a bot or open.
-    #[error("slot {} starts otherwise than the terms plan", .slot.get())]
-    PlanMismatch { slot: PlayerSlot },
-    /// The player in `slot` holds the main key of a player in an earlier slot: one slot for each
+    /// The header starts another count of seats than the terms plan.
+    #[error("seat starts other than the terms' seats")]
+    SeatCount,
+    /// The seat `seat` starts otherwise than the terms plan it: a player, a bot or open.
+    #[error("seat {} starts otherwise than the terms plan", .seat.get())]
+    PlanMismatch { seat: Seat },
+    /// The player in `seat` holds the main key of a player in an earlier seat: one seat for each
     /// main key.
-    #[error("slot {} starts the main key of an earlier slot's player", .slot.get())]
-    MainKeyRepeated { slot: PlayerSlot },
-    /// The file starts the slot `slot` as no known kind of start.
-    #[error("slot {} starts as no known kind", .slot.get())]
-    UnknownStart { slot: PlayerSlot },
+    #[error("seat {} starts the main key of an earlier seat's player", .seat.get())]
+    MainKeyRepeated { seat: Seat },
+    /// The file starts the seat `seat` as no known kind of start.
+    #[error("seat {} starts as no known kind", .seat.get())]
+    UnknownStart { seat: Seat },
     /// The terms let a journal record hold more than a journal frame takes: inputs, payloads, a
-    /// window of stamps or slots past what a record of 16 MiB holds.
+    /// window of stamps or seats past what a record of 16 MiB holds.
     #[error("the terms let a journal record pass 16 MiB")]
     RecordTooLarge,
 }

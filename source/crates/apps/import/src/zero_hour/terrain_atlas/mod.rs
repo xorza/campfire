@@ -3,7 +3,7 @@ use campfire_client_files::{BorderWrap, TerrainTexture, TextureCopy};
 
 use campfire_values::PackagePath;
 
-use crate::zero_hour::format::map::terrain::TerrainParts;
+use crate::zero_hour::format::map::terrain::TerrainFields;
 
 /// Zero Hour's terrain texture, as `WorldHeightMap` lays it out and `TerrainTextureClass` fills it,
 /// as a terrain file's texture (02-engine-core.md, The terrain's texture is composed at load):
@@ -63,7 +63,7 @@ impl TerrainAtlas {
     /// The atlas of `terrain`'s classes and `textures`, the texture of each class in its order;
     /// none for a class `Terrain.ini` names none of, or a TGA the install lacks, which the game
     /// draws as no texture.
-    pub(crate) fn new(terrain: &TerrainParts, textures: &[Option<ClassTexture>]) -> Self {
+    pub(crate) fn new(terrain: &TerrainFields, textures: &[Option<ClassTexture>]) -> Self {
         debug_assert_eq!(
             terrain.classes.len(),
             textures.len(),
@@ -190,7 +190,7 @@ impl TerrainAtlas {
     /// first free cell starts a free square of its width. A class with no room, or of a width
     /// past the grid, has none. The texture's height: the least power of two that holds every
     /// block and its border.
-    fn place(terrain: &TerrainParts) -> BlockPlaces {
+    fn place(terrain: &TerrainFields) -> BlockPlaces {
         let cells = Self::CELLS;
         let mut free = vec![[true; Self::CELLS]; cells];
         let mut corners = vec![None; terrain.classes.len()];

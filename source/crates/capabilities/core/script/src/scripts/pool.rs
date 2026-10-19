@@ -1,4 +1,4 @@
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 
 use crate::scripts::call_start::{CallStart, Purity};
 use crate::scripts::script_role::ScriptRole;
@@ -10,7 +10,7 @@ use crate::scripts::script_role::ScriptRole;
 pub enum Pool {
     /// The calls a player causes: their units' actions, with those actions' deliveries and
     /// modifiers, and their mode inputs.
-    Player(PlayerSlot),
+    Player(Seat),
     /// AI `on_think` calls, and an action's or a modifier's hooks whose source no player
     /// controls, or is gone.
     Think,
@@ -53,7 +53,7 @@ mod tests {
     fn a_call_draws_from_its_payers_pool_and_only_a_call_no_player_causes_waits() {
         let now = Tick::new(3);
         let unit = IdAllocator::default().allocate();
-        let slot = PlayerSlot::new(1);
+        let slot = Seat::new(1);
         let package = PackageIndex::MODE;
         let cast = CallStart::cast(ActionId::new(0), Rank::FIRST, unit, package, now);
         let hook = CallStart::hook(ModifierId::new(0), package, 0, now);

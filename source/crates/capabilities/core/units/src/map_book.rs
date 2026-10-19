@@ -34,17 +34,21 @@ impl Default for MapBook {
 impl MapBook {
     /// The place of the map's point `point`; an error unless it fits the map's metric and lies
     /// within its bounds.
-    pub fn pos(&self, point: MapPoint) -> Result<Vec3, MapPointError> {
+    pub fn checked_position(&self, point: MapPoint) -> Result<Vec3, MapPointError> {
         point.place(self.metric, self.bounds)
     }
 
-    /// The point in space of the position `pos`: on a planar map, its ground's height at it
+    /// The point in space of the position `position`: on a planar map, its ground's height at it
     /// raised by the position's height above the ground (04-capabilities/00-overview.md, The sim's
     /// ground is the map's height grid); on a spatial map, the position itself.
-    pub fn point(&self, pos: Vec3) -> Vec3 {
+    pub fn point(&self, position: Vec3) -> Vec3 {
         match self.metric {
-            Metric::Planar => Vec3::new(pos.x, self.ground.height(pos.x, pos.z) + pos.y, pos.z),
-            Metric::Spatial => pos,
+            Metric::Planar => Vec3::new(
+                position.x,
+                self.ground.height(position.x, position.z) + position.y,
+                position.z,
+            ),
+            Metric::Spatial => position,
         }
     }
 

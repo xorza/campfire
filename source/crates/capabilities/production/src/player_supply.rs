@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::holdings::{Holdings, OwnedUnits};
 use crate::supply_book::SupplyBook;
 
-/// A player's supply, on its entity, as its kind's audience sees it (14-replication-audiences.md,
+/// A player's supply, on its entity, as its kind's audience sees it (10-replication-audiences.md,
 /// The match and each player are entities): what its living units and queued trains use, and its
 /// cap. The server derives it as each tick ends, as a train counts it, and sends it on each change:
 /// a client holds only the units it sees, and no hash or snapshot holds it.
@@ -43,8 +43,8 @@ impl PlayerSupply {
         let max = u64::from(rules.max);
         for (player, mut held) in &mut players {
             held.set_if_neq(Self {
-                used: holdings.used(player.slot()),
-                cap: holdings.cap(player.slot(), max),
+                used: holdings.used(player.seat()),
+                cap: holdings.cap(player.seat(), max),
             });
         }
     }

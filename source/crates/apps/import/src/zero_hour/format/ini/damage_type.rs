@@ -59,7 +59,7 @@ impl DamageType {
 
     /// Whether an armor's share applies to it: `ArmorTemplate::adjustDamage` passes
     /// `UNRESISTABLE` and `SUBDUAL_UNRESISTABLE` whole, whatever an armor says of them.
-    pub(crate) const fn resisted(self) -> bool {
+    pub(crate) const fn is_resisted(self) -> bool {
         !matches!(self, Self::Unresistable | Self::SubdualUnresistable)
     }
 
@@ -150,7 +150,7 @@ mod tests {
         );
         let unresisted: Vec<_> = DamageType::ALL
             .into_iter()
-            .filter(|kind| !kind.resisted())
+            .filter(|kind| !kind.is_resisted())
             .collect();
         assert_eq!(
             unresisted,

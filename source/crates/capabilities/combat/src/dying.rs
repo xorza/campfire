@@ -54,7 +54,7 @@ impl Dying {
             if let Some(mut progress) = progress {
                 let dues = &mut indexes.of(id, entity);
                 progress.set_attack_target(None, dues);
-                progress.stop(dues);
+                progress.end(dues);
             }
             commands.entity(entity).insert(Dead);
             commands.trigger(Died { id });
@@ -62,7 +62,7 @@ impl Dying {
                 let fallen = Fallen {
                     id,
                     team: team.copied(),
-                    owner: owner.map(|owner| owner.slot()),
+                    owner: owner.map(|owner| owner.seat()),
                     avatar,
                 };
                 deaths.push(fallen, None, []);

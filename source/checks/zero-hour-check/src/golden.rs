@@ -16,7 +16,7 @@ use crate::pins::{
 /// What the check measured of the known version and this importer, each a value no closed form
 /// gives: the fingerprints, a run on Linux and a run on macOS alike; Tournament Desert's counts;
 /// the import's looks, trains, builds and weapons; the plays' ticks; and the bot's base. A run
-/// pins them, and a run that blesses writes them again (12-zero-hour.md, The check's measures
+/// pins them, and a run that blesses writes them again (09-zero-hour.md, The check's measures
 /// are a golden file).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -81,8 +81,8 @@ impl Golden {
     }
 
     /// Whether the run writes the file again, in place of pinning its values.
-    pub(crate) fn blessing() -> bool {
-        PinnedFile::blessing()
+    pub(crate) fn is_blessing() -> bool {
+        PinnedFile::is_blessing()
     }
 }
 

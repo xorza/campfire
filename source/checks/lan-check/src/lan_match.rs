@@ -4,7 +4,7 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use campfire_common::{Bytes32, PlayerSlot, Tick};
+use campfire_common::{Bytes32, Seat, Tick};
 use campfire_net::{InputLogged, Listening, MatchStarted};
 use campfire_store::OutputFile;
 
@@ -201,38 +201,38 @@ impl LanMatch<'_> {
         Ok(false)
     }
 
-    /// Waits until the server logged the first input of the slot that bot `RESTARTED` learned it
-    /// plays, and an input of each bot's slot stamped as late or later, or the deadline passed;
+    /// Waits until the server logged the first input of the seat that bot `RESTARTED` learned it
+    /// plays, and an input of each bot's seat stamped as late or later, or the deadline passed;
     /// whether it did. A bot's order of that stamp still on its way would share the machine with
     /// the restarted bot's new process as it starts, and could miss its stamp tick.
     fn first_orders_logged(&self, deadline: Instant) -> Result<bool, CheckError> {
         let mut bots: Vec<LogTail> = (0..self.scripts.len())
             .map(|bot| LogTail::new(Process::Bot(bot), self.dir))
             .collect();
-        let mut slots: Vec<Option<PlayerSlot>> = vec![None; bots.len()];
+        let mut seats: Vec<Option<Seat>> = vec![None; bots.len()];
         let mut server = LogTail::new(Process::Server, self.dir);
         let mut logged = Vec::new();
         while Instant::now() < deadline {
-            for (log, slot) in bots.iter_mut().zip(&mut slots) {
-                if slot.is_none() {
-                    *slot = log
+            for (log, seat) in bots.iter_mut().zip(&mut seats) {
+                if seat.is_none() {
+                    *seat = log
                         .read::<MatchStarted>()?
                         .first()
-                        .map(|started| started.slot);
+                        .map(|started| started.seat);
                 }
             }
             logged.extend(server.read::<InputLogged>()?);
-            if let Some(slots) = slots.iter().copied().collect::<Option<Vec<_>>>() {
+            if let Some(seats) = seats.iter().copied().collect::<Option<Vec<_>>>() {
                 let first = logged
                     .iter()
-                    .filter(|input| input.slot == slots[RESTARTED])
+                    .filter(|input| input.seat == seats[RESTARTED])
                     .map(|input| input.stamp)
                     .min();
                 let reached = |stamp: Tick| {
-                    slots.iter().all(|&slot| {
+                    seats.iter().all(|&seat| {
                         logged
                             .iter()
-                            .any(|input| input.slot == slot && input.stamp >= stamp)
+                            .any(|input| input.seat == seat && input.stamp >= stamp)
                     })
                 };
                 if first.is_some_and(reached) {
@@ -245,7 +245,7 @@ impl LanMatch<'_> {
     }
 
     /// Plays a client bot of the first script alone on a local server with no network, a server
-    /// bot of the second in slot 1, and waits until it ended or the deadline passed.
+    /// bot of the second in seat 1, and waits until it ended or the deadline passed.
     pub(crate) fn play_local(&self) -> Result<ProcessOutcome, CheckError> {
         let deadline = Instant::now() + DEADLINE;
         let mut children = ProcessGroup::default();

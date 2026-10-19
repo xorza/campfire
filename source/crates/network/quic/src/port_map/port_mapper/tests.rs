@@ -344,7 +344,7 @@ fn an_external_address_is_public_unless_a_nat_or_the_host_holds_it() {
         ([0, 0, 0, 0], false),
     ] {
         assert_eq!(
-            PortMapper::public(Ipv4Addr::from(address)),
+            PortMapper::is_public(Ipv4Addr::from(address)),
             public,
             "{address:?}"
         );

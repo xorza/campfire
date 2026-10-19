@@ -1,7 +1,7 @@
 //! How the engine writes files and runs threads: durable and secret files, data directories and
 //! their locks, and the worker threads that write them, each with its failure; and the signals
 //! that stop its process, the other promise of its platform layer. The bytes of each
-//! file are its owner's: this crate depends on no engine crate, and decides no policy for a
+//! file are its caller's: this crate depends on no engine crate, and decides no policy for a
 //! failure.
 
 #![expect(
@@ -28,12 +28,12 @@ mod platform;
 #[cfg(feature = "internals")]
 mod race;
 mod run_dir;
-#[cfg(feature = "internals")]
-mod scratch;
 mod secret_file;
 #[cfg(feature = "internals")]
 mod source_files;
 mod stream_writer;
+#[cfg(feature = "internals")]
+mod test_dir;
 mod worker;
 
 pub use crate::append_writer::AppendWriter;
@@ -53,9 +53,9 @@ pub use crate::input_file::{FileStamp, InputFile, InputRanges, InputStream, Stam
 pub use crate::latest_writer::LatestWriter;
 pub use crate::output_file::OutputFile;
 pub use crate::path_error::PathError;
-pub use crate::platform::owner_only::Exposure;
 pub use crate::platform::shared_port::SharedPort;
 pub use crate::platform::stop_signals::StopSignals;
+pub use crate::platform::user_only::Exposure;
 pub use crate::run_dir::RunDir;
 pub use crate::run_dir::error::RunDirError;
 pub use crate::secret_file::SecretFile;
@@ -72,6 +72,6 @@ pub mod internals {
     pub use crate::pinned_file::PinnedFile;
     pub use crate::platform::file_link::FileLink;
     pub use crate::race::Race;
-    pub use crate::scratch::Scratch;
     pub use crate::source_files::{Gate, SourceFile, SourceFiles};
+    pub use crate::test_dir::TestDir;
 }

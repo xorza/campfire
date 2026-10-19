@@ -10,7 +10,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `common-derive` | built | `common`'s derives, which `common` alone names and re-exports: an enum's members, their identifiers and their names |
 | `codec` | built | The one gateway of serialization, a proxy crate ([Serialization](#serialization)) |
 | `schedule` | built | The sim schedules' build settings, a proxy crate |
-| `math` | built | Fixed-point numbers and vectors, trig, roots, RNG ([Determinism core](09-determinism-core.md)) |
+| `math` | built | Fixed-point numbers and vectors, trig, roots, RNG ([Determinism core](07-determinism-core.md)) |
 | `protocol` | built | Signatures, keys, the handshake, input and seed chains, the session log; no IO ([Protocol Spec](05-protocol-spec.md)) |
 | `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | built | The Rhai host, the script API's registry, and the script view ([Scripting](#scripting)) |
@@ -18,7 +18,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `values` | built | Data value types, names and ids |
 | `geometry` | built | Exact geometry: metric, bounds, bodies, polygons, grids |
 | `state-types` | built | The state types modules declare, and how each is sent |
-| `visibility` | built | Who receives each kind of state ([Replication audiences](14-replication-audiences.md)) |
+| `visibility` | built | Who receives each kind of state ([Replication audiences](10-replication-audiences.md)) |
 | `declare` | built | How a module declares what it adds to a match |
 | `units` | built | The unit model, the map's book and its ground |
 | `players` | built | The match's and players' entities, resources and commands |
@@ -51,12 +51,12 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `test-packages` | built | The workspace's test packages; never shipped |
 | `server` | built | The dedicated server's binary |
 | `net` | built | Lightyear over `quic`, and the session host ([Networking](#networking)) |
-| `quic` | built | QUIC under Lightyear's link ([QUIC transport](15-quic-transport.md)) |
+| `quic` | built | QUIC under Lightyear's link ([QUIC transport](11-quic-transport.md)) |
 | `log` | built | Log output and the events a tool reads back |
 | `store` | built | Files, data directories, threads and the platform layer, a proxy crate ([Storage](#storage)) |
 | `launcher` | planned | Fetches, checks and starts the engine release a server names |
 | `client` | built | The Bevy client |
-| `import` | built | Writes one reproducible package from a game's install ([Zero Hour](12-zero-hour.md)) |
+| `import` | built | Writes one reproducible package from a game's install ([Zero Hour](09-zero-hour.md)) |
 | `content` | planned | Package signatures, pinning, Blossom fetch |
 | `editor` | planned | Map and content editors |
 | `identity` | planned | Nostr keys, listings, reputation |
@@ -71,7 +71,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 - **`common` holds only shared plain values.** A type enters `common` only when two crates that do not depend on each other both name it, with construction, parsing, display and serde alone.
 - **A name stays beside its member.** An enum derives `NamedEnum`, each member named by its identifier in snake case, as serde's `rename_all` names it, or by its own `#[name = "…"]`, and data and serde read it by those names alone. Not strum, whose names and serde's are two attributes that can drift; not a declarative macro, whose body rustfmt and the IDE read as opaque.
 - **Needs and uses.** A capability's dependency on another is a need, without which it does not run, or a use, which it reads when the match has it, as `Module::NEEDS` and `Module::USES` declare; a test holds the crates' dependencies equal to them.
-- **The senders' `Order` lives at the top.** `Order` and its `Action`, a sum of each owner's action, are the top crate's, so `orders` depends on no capability whose action it carries.
+- **The senders' `Order` lives at the top.** `Order` and its `Action`, a sum of each capability's action, are the top crate's, so `orders` depends on no capability whose action it carries.
 - **Contracts through `units`.** A capability asks another for work through a part of `units` both read, never by writing the other's state, as 0 A.D.'s components ask `UnitMotion` for a walk: `Dead`, `ForcedMove`, `Destination` with `ArrivedShort`, combat's record of the tick's `Deaths` and vision's `SeenBy`, which the server's sending reads with no capability crate. A change the asker decides and the owner applies is an event of `units` the owner observes, as `LevelRaised`.
 - **One published surface.** A crate's `lib.rs` names only its own items, and a caller depends on each type's home crate.
 - **Tests live at the top.** A test that builds a whole `Match` lives in the top crate's `tests/`, and one that plays a session or a network match in `harness`, so no crate dev-depends on a crate above it and no test build holds a second copy of a crate, whose types would not be the match's.
@@ -80,10 +80,10 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 - **One rendering pipeline.** The client draws every game with Bevy's physically based standard material and the generic formats, glTF and the client files; an importer converts its game to them and writes down what it loses, and a need the pipeline cannot say becomes a general feature, never a path for one game.
 - **Bots are inputs.** A bot plays an order script of `bots` and produces inputs as a player does, so no replay depends on bot code.
 - **Books are one pure function.** One function of a match's packages and a tick rate builds every book, with no world. The load calls it at the fastest rate the manifest allows, where a time counts the most ticks, so what a book cannot hold fails the load; ids follow the builder's order.
-- **Books built by their owners.** A module declares each book it reads with its builder, and the build makes a book the first time a builder asks for it, so a module reads the books of the modules it builds on whatever the order of the list, as Bevy's asset loaders load what an asset depends on; only the modules of the match build. A fact is what a lower module's book reads of a higher module's data, as actions read the damage kinds of combat's `[combat]`, and an extension adds a higher module's part to a lower module's book, as an inventory adds its slots to the action slots; an extension of a book of a module the match does not run does nothing, as actions add to the stats' graph in a match of no stats, and one of a book no module of the release declares is a logic error. A module's error is its own type, which the book error carries for the load to read by type. Refused: one builder in the top crate that named every capability's books, sections and names, and built every book for every mode.
-- **Books before the install.** A match's books are built before its build, and each goes in as its owner declares it, before its owner installs, so an install reads the facts of its books and adds only the systems they need, as Bevy's plugins add systems by their config at build; a match installs each module once, its mode with it, and builds its schedule once. Refused: an install of empty books that the books filled after, which made each load fact a run condition of every tick and the mode's install a second build of the schedule.
+- **Books built by their modules.** A module declares each book it reads with its builder, and the build makes a book the first time a builder asks for it, so a module reads the books of the modules it builds on whatever the order of the list, as Bevy's asset loaders load what an asset depends on; only the modules of the match build. A fact is what a lower module's book reads of a higher module's data, as actions read the damage kinds of combat's `[combat]`, and an extension adds a higher module's part to a lower module's book, as an inventory adds its slots to the action slots; an extension of a book of a module the match does not run does nothing, as actions add to the stats' graph in a match of no stats, and one of a book no module of the release declares is a logic error. A module's error is its own type, which the book error carries for the load to read by type. Refused: one builder in the top crate that named every capability's books, sections and names, and built every book for every mode.
+- **Books before the install.** A match's books are built before its build, and each goes in as its module declares it, before that module installs, so an install reads the facts of its books and adds only the systems they need, as Bevy's plugins add systems by their config at build; a match installs each module once, its mode with it, and builds its schedule once. Refused: an install of empty books that the books filled after, which made each load fact a run condition of every tick and the mode's install a second build of the schedule.
 - **A unit spawns in one write.** A spawn puts the kind's marker, the caller's parts, the core and every declared part on the entity in one move between archetypes, the caller's parts taken by their components, and a declared part is made from the core, its facing angle among it, and the type's books, never from the half-built entity. Refused: the caller's parts first and the declared ones after, two moves for each unit, as Bevy inserts a bundle only of types fixed at compile time; a harness watch counts each spawn's moves in the 3v3, the lane match and the proving match.
-- **Spawn reactions run on the spawner's path.** The capabilities' spawn hooks, a type's passive and a box's room, run where the mode's spawner spawns a unit that stands, and the load refuses a passive on a delivery type, so no reaction is lost. Refused: observers of a unit's type, which would fire at a restore and at a client's replication too, and so apply a passive the snapshot holds again or move walkers the server placed.
+- **Spawn reactions run on the spawner's path.** The capabilities' spawn callbacks, a type's passive and a box's room, run where the mode's spawner spawns a unit that stands, and the load refuses a passive on a delivery type, so no reaction is lost. Refused: observers of a unit's type, which would fire at a restore and at a client's replication too, and so apply a passive the snapshot holds again or move walkers the server placed.
 - **A unit type's section says which types hold it.** A section of a unit type is a stander's, a delivery's, which makes its type a delivery type, or one any type holds, as the tags, so the units' rule that a delivery type holds one delivery's section and only those of any type names no capability's section. Refused: a list in the load check of the sections a delivery type may hold, which named the sight of `vision`.
 - **A module checks the rules of its own data.** Each rule of the data a module reads is a rule the module declares, which the package load checks before its own checks and before it builds the books, so a script that names what a broken rule leaves out shows the rule, and whose error is the module's own, which the load shows at its place; `package` keeps only the checks across packages: names, scripts, texts and the index, of what each module adds to a fact of the core that its data names, a script with the role it serves or a message. A build of data the load checked, or a test's, checks no rule. Refused: one load check in `package` of every capability's rules, which named each module's data and errors, so a new rule edited the session layer.
 - **A test's match installs at its first tick.** A test builds its match with its declarations and its books in place and loads its own data into the books; its first tick seals its unit types, adds the systems as the books then are, and builds the schedule, and a book that loads after it panics, so a fact an install read cannot change under it. Refused: a run condition or a pass of nothing to do for each fact a test may load late, which a match of packages pays each tick, and a fixture that writes each test's data as package files first, which would rewrite every test's loads; Bevy's `Plugin::finish` runs the same way, after every plugin's build and before the first update.
@@ -97,13 +97,32 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 - **Markers stay in tables.** The markers that toggle during play, `ForcedMove`, `Resetting`, `Kept`, `Respawn`, `AreaTrigger`, `OutOfPlay` and `HeldOut`, keep Bevy's table storage, as sparse-set storage of each moved neither the battle benches nor the whole 3v3 tick past the spread of a run ([Sparse-set markers](../research/sparse-set-markers.md)); `Dead` stays in a table too, as `Without<Dead>` on the hot queries is dense only for tables. Refused: sparse sets on the ground of the archetype moves alone, which no bench shows to cost.
 - **`net` is one crate.** The client's and the server's roles stay in one crate, as Lightyear and bevy_replicon keep both in one: the workspace build unifies their features anyway, and fat LTO drops what a binary does not reach. Refused: a crate for each role.
 
+## Names
+
+The vocabulary the code, the data, the scripts and the documents share, each word with one meaning; the audit that found where they drifted is [Vocabulary](../research/vocabulary.md).
+
+- **An owner is a player.** `owner` is the seat that owns a unit, as the replication's audiences name it; the module that declares a thing is its module, or its `capability`, and the struct that holds a worker its holder. Refused: `owner` for a player, a module, a place in data and a file only its user opens at once.
+- **A seat is a player's, a slot a unit's.** `Seat` numbers a session's players, as a lobby seats them, and `slot` alone is a unit's action or item slot, as a MOBA binds its abilities to slots. Refused: `slot` for both, `PlayerSlot` beside `ActionSlot`.
+- **A part is a component an entity carries.** A module's share of a call's frame is a call extension, as `http::Extensions` keeps data by type; a value's fields taken apart are its `*Fields`; a model's pieces are its nodes. Refused: `part` for any piece of anything.
+- **A place is a position in an ordered whole.** An index in a list, a step of the schedule, an entry of a log or a path in a package's data; a location in the world is a location or a point. Refused: `place` for a world location beside an error's place.
+- **A kind is a member of a closed set.** An entity's kind and a damage kind alike; a `type` is a unit type or a script value's type.
+- **A hook is a script's.** An engine function the core calls for a module is a callback, as `SpawnCallback`.
+- **Lifecycle verbs by what they bracket.** `begin` and `end` a span the caller drives, as a tick or a batch; `start` and `stop` what runs on its own, as a thread, a process or an endpoint's accepting; `open` and `close` a handle; `finish` consumes a builder, as `Hasher::finish` does. Refused: `start_tick` beside `begin_tick`, and `start` beside `begin` on one type for two jobs.
+- **Errors by what they report.** `*Error` an expected failure; `*Refusal` why a capability, a peer or a gateway refused a request; `*Refused` the event that one did; `*Problem` what is wrong with data, which an error carries; a test's `Flaw` the break it makes in data. A `*DataError` takes its subject, singular, or the capability's name when it covers several.
+- **A predicate names a state or a relation.** A state is `is_<adjective>`, as the Rust API Guidelines' `is_empty`; a relation keeps its verb, as `holds` and `contains`. Refused: a bare adjective beside an `is_` one.
+- **Whole words.** `position`, not `pos`, in code, data and scripts; `dir` in a name and "directory" in prose; `len` a count of elements or bytes, `length` a geometric length. `Ctx`, the script's `ctx`, and `Cx`, an engine context, are two words of two meanings.
+- **A `*Spec` is a resolved section, a `*Setup` what a thing starts from.** A `*Data` is a section as a package writes it, a `*Spec` the same with its names resolved, a `*Book` a module's specs by id, a `*Decl` what a module declares, a `*Setup` what a match, a mode or a server is built from.
+- **A binary's command line.** Its clap struct is `CommandLine`, in its `command_line` module, beside `Args`, what the line resolves to, where the binary resolves it.
+- **A group holds crates.** A group's top crate has a directory of its own name beside the group's others, as `sim/sim`, `network/net` and `capabilities/capabilities`, and no crate's directory holds another crate, which a `rules` test holds.
+- **Design documents number in reading order, with no gaps.** A document that goes takes its number with it, and the later ones close up; code cites a document by its path and a decision's title, never by a number alone.
+
 ## Structural rules
 
 Each rule has a test that fails when it breaks, as a rule only review holds drifts again.
 
 | Rule | Enforced by |
 | --- | --- |
-| One owner for each fact: a package fact in one immutable book, a match fact in state, a call's fact in its frame. | The declaration audit; the behaviour golden |
+| One home for each fact: a package fact in one immutable book, a match fact in state, a call's fact in its frame. | The declaration audit; the behaviour golden |
 | Each module declares once all it adds to a match but its systems, and every consumer reads that one list: the install, the script API's binding, the network's lists and the audit. An install holds only its systems, each in a set of its own module; a fact the install or the load fixes is a fact of the schedule, not a check each tick; a set orders against the steps of the modules it builds on alone. | `Declarations` and `ModuleSet` have no default method; the declaration audit; the test that a module names another's set only in its sets' places; the strict schedule's ambiguity check; `Release::unlisted_resources` |
 | A name becomes an id where it enters, and every lookup by name is a method ending in `named`; the book builder that resolves a name is its check. | The book builder's tests; the name-lookup allowlist; the load's flaw tests |
 | A rule of a package's data has one home, the function that tests it, and untrusted data never reaches an `expect`. | The load's flaw tests |
@@ -113,7 +132,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 | Every order that matters is by stable id: a system that spends something shared, takes ids or runs scripts walks its units through `Ordered`. | The archetype-shuffle test |
 | Each tick's work has a fixed limit or a cost in proportion to the units that take part. | The work record; the benches |
 | Restored state is checked like package data: every flaw is an error, never a panic; times and counts stay within 2⁶², every period at least a tick. | The `Tick` decode; each state type's check; the snapshot, structured and mutation fuzz |
-| Each rule of a network session has one owner on each side, and a client that follows the rules is never refused. | The net scenarios under load |
+| Each rule of a network session has one home on each side, and a client that follows the rules is never refused. | The net scenarios under load |
 | A function that acts on a match has one home, by what it acts on: the whole match a trait on `World`, the match's content an associated function of its module's type, a value made from the world a constructor of its own type, a test fixture a struct of the ids it places. | The world rule test of `rules` |
 | `common` depends on no crate but `serde`, `derive_more`, its hashers and, behind `internals`, `backtrace`. | The manifest test of `rules` |
 | A dev-dependency that turns on `internals` of a normal dependency names a crate whose `internals` gates code of its own. | `a_dev_dependency_turns_on_internals_that_gate_code` |
@@ -127,7 +146,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 
 - **Three engine states.** Waiting, running, ended; what happens inside running, picks and rounds and overtime, is the mode's scripts', and a persistent world never ends.
 - **Gates and hooks for optional modules.** Start gates and end hooks are how an optional module joins the lifecycle, so `payments` locks and settles stakes and the engine holds no money code.
-- **A session outlives its process.** A match restores by replaying its log from its latest checkpoint, and the server logs each input before its tick and syncs from a background thread, so no tick waits on the disk ([Sessions](10-sessions.md)).
+- **A session outlives its process.** A match restores by replaying its log from its latest checkpoint, and the server logs each input before its tick and syncs from a background thread, so no tick waits on the disk ([Sessions](08-sessions.md)).
 - **Everything outside is a recorded input.** Player commands, bot inputs, connects, carry loads, admin commands, payment events and calendar time enter the sim as logged inputs; what the log lacks, the sim cannot depend on.
 
 ## Session log
@@ -135,10 +154,10 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 - **A snapshot belongs to the release.** A snapshot is the postcard encoding of every state component and resource by stable id, with `StateRegistry::DATA_VERSION`, raised whenever the format changes, as Minecraft's `DataVersion`; a restore refuses another version before it reads a type, and a golden pins each type's layout with the version.
 - **A restore writes each entity once.** A restore decodes every section first, then writes each entity, in stable-id order, with its stable id and every value of it in one move between archetypes, so a hook that runs as its parts come finds the entity whole. Refused: each section's values inserted as it decodes, which moved each entity once for each state type it holds.
 - **A hook skips a restore's rules.** A hook that asserts a rule of the state, as one kind's marker on an entity, skips the rule while a restore puts in its untrusted values, which the restore's checks then refuse with an error, never a panic; Bevy has no switch that stops the hooks during a load. Refused: each such rule checked again on the decoded values before the write, a second form of each, and no assert in a hook, which loses the check of a second kind outside a restore.
-- **A hash for each state type.** One BLAKE3 hash per state type, then one over the list, so a mismatch names its first divergence ([Determinism core](09-determinism-core.md)).
+- **A hash for each state type.** One BLAKE3 hash per state type, then one over the list, so a mismatch names its first divergence ([Determinism core](07-determinism-core.md)).
 - **A registry's types are fixed as it builds.** The installs register the state types in a `StateRegistryBuilder`, whose `build` gives the `StateRegistry` a match holds, which registers nothing, so the hash, the snapshot and a record of a world's changes, which holds each type by its place, read one fixed list; a test that opens a built match takes its types back into a builder, which refuses a new type once a record holds them. Refused: one registry that registers, encodes and records, with a flag that refused a type after its world's changes were tracked, a rule each caller learned only at run time.
 - **Each state type walks the entity index.** A type's hash and its snapshot section read each entity's value in stable-id order from the entity index, which gives the canonical order with no sort. Refused: a query of the type's holders, sorted by id, which made the hash and the snapshot 5 % to 6 % slower, as the encoding, not the walk, costs the time ([State hash walk](../research/state-hash-walk.md)).
-- **No slow tick for a checkpoint.** At a boundary the server copies only what changed since the last checkpoint, and a background thread encodes, hashes and writes it ([Sessions](10-sessions.md)).
+- **No slow tick for a checkpoint.** At a boundary the server copies only what changed since the last checkpoint, and a background thread encodes, hashes and writes it ([Sessions](08-sessions.md)).
 
 ## Saves
 
@@ -149,10 +168,10 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 ## Storage
 
 - **`store` owns every file and thread.** One layer gives each read and write one place to keep its promises: a bound on what it reads, a refusal of a link, a durable write, and an error of cases for each failure. The crate that defines a file's bytes owns what they hold.
-- **Durable writes.** A write goes to a temporary file, syncs it, renames it over the target and syncs the directory; each step's failure is its own error and is never retried ([Sessions](10-sessions.md)).
-- **Secret files.** `SecretFile` is owner-only, gives no `&Path` back, refuses a file others may open, never replaces a secret on create, and holds its bytes in `Zeroizing` buffers.
+- **Durable writes.** A write goes to a temporary file, syncs it, renames it over the target and syncs the directory; each step's failure is its own error and is never retried ([Sessions](08-sessions.md)).
+- **Secret files.** `SecretFile` is user-only, gives no `&Path` back, refuses a file others may open, never replaces a secret on create, and holds its bytes in `Zeroizing` buffers.
 - **`protocol` does no IO.** The session log writes framed records into a `RecordSink`, which `net` implements over `store`.
-- **One thread for each job.** Every thread starts through `store`'s `Worker`, named and joined; none waits for the disk or allocates in a steady state, and each keeps its failure for its owner, so a failure at shutdown reaches the exit code.
+- **One thread for each job.** Every thread starts through `store`'s `Worker`, named and joined; none waits for the disk or allocates in a steady state, and each keeps its failure for its holder, so a failure at shutdown reaches the exit code.
 - **A data directory is locked.** `DataDir` exists only while it holds its directory's lock, so a second process on one directory is refused, and refuses a directory others may open, as Tor does.
 - **Reads follow no link.** A read opens with `O_NOFOLLOW`, or the link itself on Windows, and refuses a path whose last name is a link, as OpenSSH opens a key; a caller that means a link's target, as the Zero Hour import reads a player's install, names the target first. Refused: reads that follow links, by which a link left in a data directory reads a file elsewhere.
 - **Bounded reads, no existence checks.** A read never passes a bound its format's owner derives, and no code asks whether a path exists: it reads or lists, and takes `Missing`, so every answer comes from one moment.
@@ -169,10 +188,10 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 ## Platform
 
 - **One promise on every OS.** OS-specific code lives only in `store`'s `platform` module behind one interface; a promise one OS cannot keep is narrowed for every OS.
-- **Owner-only files.** Mode 0600 or 0700 on Unix; on Windows a protected DACL for the user, a file checked as OpenSSH for Windows checks a key.
+- **User-only files.** Mode 0600 or 0700 on Unix; on Windows a protected DACL for the user, a file checked as OpenSSH for Windows checks a key.
 - **Durable names.** A rename then a directory sync on Unix, `MoveFileExW` with write-through on Windows, never retried.
 - **Stop signals.** The first `SIGINT`, `SIGTERM` or `SIGHUP`, or console event on Windows, raises a flag the app reads; a second ends the process with code 130.
-- **Unsafe only where an outside API asks.** Win32 through Microsoft's `windows` crate, `libc` on Unix, each block saying why it is sound; the one other is math's wide division ([Determinism core](09-determinism-core.md)).
+- **Unsafe only where an outside API asks.** Win32 through Microsoft's `windows` crate, `libc` on Unix, each block saying why it is sound; the one other is math's wide division ([Determinism core](07-determinism-core.md)).
 
 ## Scripting
 
@@ -180,7 +199,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 - **A raw engine.** `Engine::new_raw` with only the packages scripts need, strict variables, a fixed hashing seed; no `eval`, imports, floats or time.
 - **Operation pools.** A limit per call, and per-tick pools the manifest sets, counted the same everywhere, so an over-budget script fails the same everywhere. A player's calls spend the player's pool, the `on_input` of each mode input the player sends among them, so one player's flood of inputs spends no other's pool, as Ethereum's sender pays for the work it causes; AI calls and the calls of units no player controls spend `think`, a modifier's from no source and the mode's other hooks `mode`; `calc_damage` and `calc_heal` have no pool, so a crowded fight cannot change how they weigh. A mode hook or an AI that finds its pool spent runs first in a later tick; a call a player causes fails as over budget. One rule picks the pool from the call's start, and the script batch answers each hook's end by that policy, so no caller chooses either.
 - **All or nothing per call.** A call's state writes go to an overlay and its effects queue in its frame; on success both apply in call order, on failure both are dropped and a `script_error` is recorded.
-- **Declared script state.** Script state is declared and stored in sim components, one `StateSchema` per owner, so no script keeps hidden state ([Script state](03-game-scripting.md#script-state)).
+- **Declared script state.** Script state is declared and stored in sim components, one `StateSchema` for each declaration, the mode's, a unit type's or a modifier's, so no script keeps hidden state ([Script state](03-game-scripting.md#script-state)).
 - **A batch's calls share what no call changes.** Each call part takes, as its batch starts, what every call of the batch reads alike, as the tick's draws and the book of params; a call takes only what an earlier call's effects of the batch may change, as the mode's state and the players' resources. Refused: each part's whole read at each call, which made the check of the tick's draws 1.9 % of a 3v3 run's samples ([Server tick profile](../research/server-tick-profile.md)); and a copy at first use, as a call's functions reach no world.
 - **A filter's text resolves once.** The view keeps each filter a script gives as text, found first by the identity of the shared text Rhai passes for a literal, then by its letters, up to a bound past which a text resolves at each call. Refused: a parse at each call, 1.5 % to 2.5 % of a 3v3 run's samples ([Server tick profile](../research/server-tick-profile.md)).
 - **A scripted pass collects in a plain system.** A plain system collects what a scripted pass runs in the tick into the pass's `Due` scratch, in the order the pass runs it, and the pass's exclusive part only runs the scripts; a check or a step that an earlier call's effects may change stays in the exclusive part, between the calls, as a channel's step does. Refused: one exclusive system that collects and runs, which holds the world for the whole pass and hides what the pass reads.
@@ -200,13 +219,13 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 - **Every schedule of the server runs on one thread.** `SimServerPlugins` sets the single-threaded executor on each schedule as the app finishes, as Cargo turns `multi_threaded` on wherever a build's member enables it, and Lightyear's unordered systems would otherwise run in an order set by timing.
 - **The server's frame declares its order.** Its `Update` and `FixedUpdate` are strict schedules, as the sim's is: the frame's steps are chained sets after Lightyear's own, an app's own system goes after them, and two systems of conflicting access with no order between them fail the build. Refused: the order the single-threaded executor picks, which no code states and a new system changes; marking Lightyear's sets ambiguous with the frame, as the frame's exclusive systems do touch what they touch.
 - **The server's life is a Bevy state.** `ServerPhase` names the phase each system of the frame runs in, and one call opens a session with its phase. A phase changes at the next transition, so a session that ends within a frame stops its systems by its log's result. Refused: the set of resources that exist as the phase, which no type lists; an `Ended` phase, a second record of the result the log holds; building the match in `OnEnter(Running)`, which would keep the lobby's log and links in a resource for a frame.
-- **The frame checks the packets' signatures on its own thread.** A packet's record is almost all its chain head's check, about 19 µs, so 32 players' packets take under 2 % of one core at 30 ticks a second, and the worst frame, a burst of 9 ticks after a stall, about 5.6 ms ([Signature checks](../research/signature-checks.md)). Refused: checking the slots' packets on worker threads and applying them in slot order, which saves under 0.6 ms a tick at 32 players and pays a wake of each worker every frame.
+- **The frame checks the packets' signatures on its own thread.** A packet's record is almost all its chain head's check, about 19 µs, so 32 players' packets take under 2 % of one core at 30 ticks a second, and the worst frame, a burst of 9 ticks after a stall, about 5.6 ms ([Signature checks](../research/signature-checks.md)). Refused: checking the seats' packets on worker threads and applying them in seat order, which saves under 0.6 ms a tick at 32 players and pays a wake of each worker every frame.
 - **A match is a world the release built.** `Release::build(world, spec)` is the one build; the `App` owns the world on the server and the client, as Lightyear replicates only its main world, and `Match` everywhere else. The match's operations are traits on `World`, so every host reads the same.
 - **A world with no `App` clears its trackers.** A replay or a test's `Match` clears change trackers after each tick, as an `App`'s update does, so a long replay holds removals in bounded memory.
 - **A tick's removals are the tick's.** A sim system reads a part's removals through `Removals`, which an observer fills and the tick ages, never Bevy's `RemovedComponents`, which an `App` ages at each of its updates: a server updates many times a tick and a replay once a tick, so a removal after its reader ran would reach the replay's reader alone. A test of `rules` refuses `RemovedComponents` in the sim's crates.
 - **A client predicts what its player controls.** Lightyear keeps the client's tick ahead of the server's; a rollback reruns the sim from the server's state; it predicts movement, never a random outcome, and runs no effect and no script.
 - **Floats only in the client.** `Transform` exists only in the client, which draws each unit interpolated between ticks.
-- **Determinism rules.** Ordered stages, with a strict schedule that fails on an ambiguity or a redundant edge; stable entity ids, never Bevy's `Entity`, as Bevy does not guarantee query order; fixed-point positions within ±2²⁰ m; no floats, seeded hash maps or wall clock; a cryptographic PRF as the RNG, so no client can recover the seed ([Determinism core](09-determinism-core.md)).
+- **Determinism rules.** Ordered stages, with a strict schedule that fails on an ambiguity or a redundant edge; stable entity ids, never Bevy's `Entity`, as Bevy does not guarantee query order; fixed-point positions within ±2²⁰ m; no floats, seeded hash maps or wall clock; a cryptographic PRF as the RNG, so no client can recover the seed ([Determinism core](07-determinism-core.md)).
 
 ## Client
 
@@ -230,7 +249,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 - **The input's modes are states.** Whether a click selects and orders or places a build is a Bevy state, which the selection, the orders and the build preview each run in, as Bevy's own `States` drive a schedule; the build placed is the state's resource, which goes as the state leaves. Refused: a mode held by whether a resource exists, which each reader tests apart.
 - **Text by Bevy's own UI.** `bevy_ui` and `bevy_text` with the embedded font add no crate outside Bevy, where `bevy_egui` would be a new dependency and a second UI system.
 - **Every key on a keyboard with no keypad.** The camera turns and zooms by Alt with the arrows beside Zero Hour's keypad keys, and Space pauses a local match as in Paradox's games; the middle button pans, keeping the grabbed ground under the cursor, as Unity, Unreal and StarCraft II do, and orbits with Ctrl, as Blender's turntable.
-- **Keys are the mode's data.** The client's keys are the mode's `client/input.toml`: each action a list of chords, a key by its W3C `KeyboardEvent.code` name with the modifiers held, matched exactly as Zero Hour's `MetaMap` matches its modifiers, and an action the file does not give keeps the engine's own keys. The camera file gives the width of the edge that scrolls and the time of a click, which the Zero Hour import takes from the game's `edgeScrollSize` and its `Mouse.ini`'s `DragToleranceMS`. Refused: Bevy's `KeyCode` names, which change with Bevy's releases as a package's format must not; and an input crate, as the client needs no more than chords.
+- **Keys are the mode's data.** The client's keys are the mode's `client/keys.toml`: each action a list of chords, a key by its W3C `KeyboardEvent.code` name with the modifiers held, matched exactly as Zero Hour's `MetaMap` matches its modifiers, and an action the file does not give keeps the engine's own keys. The camera file gives the width of the edge that scrolls and the time of a click, which the Zero Hour import takes from the game's `edgeScrollSize` and its `Mouse.ini`'s `DragToleranceMS`. Refused: Bevy's `KeyCode` names, which change with Bevy's releases as a package's format must not; and an input crate, as the client needs no more than chords.
 
 ## Creator tools
 
@@ -239,7 +258,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 
 ## Testing and diagnostics
 
-- **Scenarios on a modeled link.** Whole matches between scripted players run through a link of delay, jitter and loss on a manual clock, so each run repeats; a match played with its links reversed proves the server orders joins and inputs by key and slot.
+- **Scenarios on a modeled link.** Whole matches between scripted players run through a link of delay, jitter and loss on a manual clock, so each run repeats; a match played with its links reversed proves the server orders joins and inputs by key and seat.
 - **Two goldens.** The state golden pins each tick's state hash and moves with the layout; the behaviour golden pins a digest of each tick's units, deaths and resources, and does not.
 - **One scripted match for each mode.** A new rule of a mode joins its scripted match, the one test exempt from the 1 s bound; the suite keeps 30 s.
 - **nextest.** A process per test, as libtest cannot end a stuck test; a test is slow past 1 s, and no profile stops at the first failure.
@@ -268,15 +287,15 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 - **A lane is one cache shape.** Each lane covers the workspace and runs `--locked`; no command takes a crate list.
 - **The ship lint leaves out what unifies `internals`.** A member whose normal dependency turns `internals` on is left out of the shipped build's lint, which `lint` covers.
 - **A check is the format and the lint.** `check` runs `fmt` and the lint of every target with every feature, and ends at its first failure, in seconds; `test` writes each package's index again, then runs the tests; `gate` runs every lane. Refused: the tests in each check, which made a check of a one-line change wait for every test binary.
-- **A step runs again only for what a change reaches.** A step that passed keeps the tree of files it passed on, and runs again only when a file it reads changed; a test step runs only the crates a change reaches and their dependents. A member whose tests read files outside its folder declares them, as the workspace's rules read every crate and the design documents, so a change of a document reaches them. A command's steps share one pass, as a later step runs what an earlier one built, which the tests' build writes over.
-- **Measured, not assumed.** Each command appends its steps' times and results to the driver's run log, a file a month in the OS's state folder.
+- **A step runs again only for what a change reaches.** A step that passed keeps the tree of files it passed on, and runs again only when a file it reads changed; a test step runs only the crates a change reaches and their dependents. A member whose tests read files outside its directory declares them, as the workspace's rules read every crate and the design documents, so a change of a document reaches them. A command's steps share one pass, as a later step runs what an earlier one built, which the tests' build writes over.
+- **Measured, not assumed.** Each command appends its steps' times and results to the driver's run log, a file a month in the OS's state directory.
 - **A local run stops at its first failure, and CI runs on.** A local `check` or `gate` formats the code and ends at its first failure, as its fix comes first; `gate --ci` checks the format and runs every step, so one run, of half an hour, lists every failure, and the driver refuses a local `gate` in CI, which would format the checkout and stop early. Refused: CI that stops at its first failure, which a second failure takes another run to show.
 - **No docs lane.** The workspace's drive table leaves rustdoc and the doc tests off: no crate's docs are a product, and each doc test is a binary of its own.
 - **A release keeps its debug info beside its binaries.** `cargo drive package` builds the release profile of the shipped binaries, its debug info full, and moves it out of each binary into a file beside it: `objcopy --only-keep-debug`, then `--strip-debug` with a GNU debug link, on Linux; a packed `.dSYM` and `strip -S` on macOS; the linker's own PDB on Windows. Refused: Cargo's packed split on Linux, which keeps skeleton DWARF in the binary, so a strip of it orphans the `.dwp`.
 
 ## Networking
 
-- **The protocol is apart from the transport.** `protocol` is the versioned, documented format a replay needs; `net` uses Lightyear over `bevy_replicon` for transport, replication, prediction and interest, and links over QUIC alone ([QUIC transport](15-quic-transport.md)).
+- **The protocol is apart from the transport.** `protocol` is the versioned, documented format a replay needs; `net` uses Lightyear over `bevy_replicon` for transport, replication, prediction and interest, and links over QUIC alone ([QUIC transport](11-quic-transport.md)).
 - **One release on both ends.** Client and server always run the same engine release.
 
 ## Libraries
@@ -285,7 +304,7 @@ Exact versions are pinned; each release tag pins its toolchain and `Cargo.lock`,
 
 | Area | Crate | Why |
 | --- | --- | --- |
-| Fixed-point numbers, trig, roots, SIMD lanes | Own code in `math` | Exact and portable ([Determinism core](09-determinism-core.md)); `std::simd` is unstable and intrinsics need `unsafe` |
+| Fixed-point numbers, trig, roots, SIMD lanes | Own code in `math` | Exact and portable ([Determinism core](07-determinism-core.md)); `std::simd` is unstable and intrinsics need `unsafe` |
 | RNG | `blake3` keyed hash | A PRF by specification, counter-based as Random123; `rand` may change output in minor releases |
 | Binary encoding | `postcard` | A stable wire format since 1.0 |
 | Data files, log lines | `toml`, `serde_json` | Through `codec` |
@@ -293,7 +312,7 @@ Exact versions are pinned; each release tag pins its toolchain and `Cargo.lock`,
 | State hashes | `blake3` | |
 | File and package fingerprints | `sha2` | SHA-256, as Blossom addresses blobs |
 | Secret buffers | `zeroize` | Already in the build through `rustls` |
-| QUIC | `quinn-proto`, `quinn-udp`, `polling` | QUIC with no IO and no async runtime ([QUIC transport](15-quic-transport.md)) |
+| QUIC | `quinn-proto`, `quinn-udp`, `polling` | QUIC with no IO and no async runtime ([QUIC transport](11-quic-transport.md)) |
 | Stop signals | `signal-hook` | A handler that does only what POSIX allows |
 | Port mapping | `igd-next`, `netdev`, `socket2` | UPnP-IGD by its blocking API, and the default gateway for PCP and NAT-PMP |
 | TLS | `rustls` over `ring` | TLS 1.3 alone, a raw pinned Ed25519 key |

@@ -17,7 +17,7 @@ pub trait Effect: Debug + 'static {
 }
 
 /// What an effect does to the match: a change, which no AI's call makes, or an order its unit
-/// takes, which an AI's call gives (08-script-api.md, An AI reads and orders).
+/// takes, which an AI's call gives (06-script-api.md, An AI reads and orders).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectKind {
     Change,
@@ -100,7 +100,7 @@ mod tests {
     use campfire_common::Tick;
 
     use super::*;
-    use crate::scripts::call_part::{CallPart, Commit};
+    use crate::scripts::call_extension::{CallExtension, Commit};
     use crate::scripts::call_start::CallStart;
     use crate::scripts::error::CallError;
 
@@ -146,7 +146,7 @@ mod tests {
     #[derive(Debug)]
     struct Late;
 
-    impl CallPart for Early {
+    impl CallExtension for Early {
         const COMMITS: Commit = Commit::BeforeEffects;
 
         fn begin_batch(&mut self, _: &World) {}
@@ -160,7 +160,7 @@ mod tests {
         }
     }
 
-    impl CallPart for Late {
+    impl CallExtension for Late {
         const COMMITS: Commit = Commit::AfterEffects;
 
         fn begin_batch(&mut self, _: &World) {}
@@ -180,8 +180,8 @@ mod tests {
         world.init_resource::<Applied>();
         let mut frame = Frame::in_tick(Tick::new(7));
         // Added in the other order, each part commits at its own side of the effects.
-        frame.add_part(Late);
-        frame.add_part(Early);
+        frame.add_extension(Late);
+        frame.add_extension(Early);
         frame.effects.push(Hit(1));
         frame.effects.push(Heal(2));
         frame.effects.push(Hit(3));

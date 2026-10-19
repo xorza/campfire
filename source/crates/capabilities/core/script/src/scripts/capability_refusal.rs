@@ -9,7 +9,7 @@ use crate::scripts::error::{ApiError, Refusal};
 /// which the script API carries as a `Refusal` of the capability.
 pub trait CapabilityRefusal: Copy + PartialEq + fmt::Debug + 'static {
     /// The capability whose calls refuse with it.
-    const OWNER: Capability;
+    const CAPABILITY: Capability;
     /// Every case, each at its code.
     const CASES: &'static [Self];
 
@@ -23,7 +23,7 @@ pub trait CapabilityRefusal: Copy + PartialEq + fmt::Debug + 'static {
             .position(|listed| *listed == self)
             .expect("a refusal's cases list each of its cases");
         let code = u8::try_from(at).expect("a capability refuses in at most 256 ways");
-        ApiError::Refused(Refusal::new(Self::OWNER, code, self.message()))
+        ApiError::Refused(Refusal::new(Self::CAPABILITY, code, self.message()))
     }
 
     /// The error that fails the call with this refusal.
@@ -45,7 +45,7 @@ mod tests {
     }
 
     impl CapabilityRefusal for Sample {
-        const OWNER: Capability = Capability::Combat;
+        const CAPABILITY: Capability = Capability::Combat;
         const CASES: &'static [Self] = &Self::ALL;
 
         fn message(self) -> &'static str {
@@ -61,7 +61,7 @@ mod tests {
     struct Other;
 
     impl CapabilityRefusal for Other {
-        const OWNER: Capability = Capability::Stats;
+        const CAPABILITY: Capability = Capability::Stats;
         const CASES: &'static [Self] = &[Self];
 
         fn message(self) -> &'static str {

@@ -49,7 +49,7 @@ impl Plugin for PlayerCamera {
         app.add_systems(Startup, Self::spawn);
         app.add_systems(
             Update,
-            (Self::steer, Self::place.run_if(Self::moved))
+            (Self::steer, Self::place.run_if(Self::is_moved))
                 .chain()
                 .before(ViewSystems),
         );
@@ -93,7 +93,7 @@ impl PlayerCamera {
     ) {
         let seconds = time.delta_secs();
         let now = time.elapsed_secs_f64();
-        let held = |act| input.held(act, &keys);
+        let held = |act| input.is_held(act, &keys);
         let axis = |minus: bool, plus: bool| f32::from(i8::from(plus) - i8::from(minus));
         let cursor = window.cursor_position();
         let width = rig.edge();
@@ -148,18 +148,18 @@ impl PlayerCamera {
                 }
             }
             // A rig changes only as it moves, so the camera is placed only then.
-            if rig.dragging() {
+            if rig.is_dragging() {
                 rig.drag_to(cursor);
             }
         }
-        if buttons.just_released(MouseButton::Middle) && rig.dragging() {
+        if buttons.just_released(MouseButton::Middle) && rig.is_dragging() {
             rig.release(now);
         }
     }
 
     /// Whether the camera's place or field of view may differ from the rig's: the rig moved, or
     /// the window changed its shape.
-    fn moved(
+    fn is_moved(
         rig: Res<'_, CameraRig>,
         resized: Query<'_, '_, (), (Changed<Window>, With<PrimaryWindow>)>,
     ) -> bool {

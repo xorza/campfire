@@ -6,7 +6,7 @@ use campfire_actions::{
 };
 use campfire_common::DeclaredName;
 use campfire_declare::{BookError, Listed};
-use campfire_script::{ApiBuilder, CallError, Frame, MemberSpec, View};
+use campfire_script::{ApiBuilder, CallError, Frame, MemberDecl, View};
 use campfire_sim::Capability;
 use campfire_values::{Number, Tag};
 use serde::Deserialize;
@@ -36,7 +36,7 @@ impl Listed for PurgeEffectData {
     }
 
     fn api(api: &mut ApiBuilder<'_>) {
-        api.plan(MemberSpec::call(
+        api.plan(MemberDecl::call(
             "purge",
             &[&["unit", "tag"]],
             "ends every modifier on `unit` that grants `tag`",

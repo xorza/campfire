@@ -18,7 +18,7 @@ impl Callbacks for CastSpends {
     type Key = ();
     type Callback = Spend;
 
-    fn owner((): ()) -> Option<Capability> {
+    fn capability((): ()) -> Option<Capability> {
         Some(Capability::Items)
     }
 

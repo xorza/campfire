@@ -95,7 +95,7 @@ impl CheckedAction<'_> {
     pub fn aimed_at(&self, targets: &Targets<'_, '_>) -> Option<Vec3> {
         match (self.action.aim, self.target) {
             (Aim::Unit(_), ActionTarget::Unit(target)) => {
-                targets.living(target).map(|unit| unit.pos)
+                targets.living(target).map(|unit| unit.position)
             }
             (Aim::Point { .. }, ActionTarget::Point(at)) => Some(at),
             _ => None,

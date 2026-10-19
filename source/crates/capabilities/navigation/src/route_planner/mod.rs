@@ -144,7 +144,7 @@ impl<'a> Walkable<'a> {
         let walker = self.clearance.walker();
         let radius = walker.radius;
         self.statics.blocks(segment, walker)
-            || self.clearance.walled(segment, work)
+            || self.clearance.is_walled(segment, work)
             || self.short.is_some_and(|short| {
                 short
                     .blockers
@@ -183,7 +183,7 @@ impl RoutePlanner {
 
     /// Whether this tick did all the work it may: the plan that met the limit finished, and the
     /// rest wait for a later tick.
-    pub(crate) const fn spent(&self) -> bool {
+    pub(crate) const fn is_spent(&self) -> bool {
         self.spent >= self.limit
     }
 
@@ -474,15 +474,15 @@ impl RoutePlanner {
         best.map(|(_, at)| at)
     }
 
-    /// Where a walker of `walkable` stands for `pos`: `pos` itself when nothing blocks it
-    /// there, else the center of the nearest cell it may stand in, at `pos`'s height, as a
+    /// Where a walker of `walkable` stands for `position`: `position` itself when nothing blocks it
+    /// there, else the center of the nearest cell it may stand in, at `position`'s height, as a
     /// route's goal gives way; `None` on a grid with no such cell.
-    pub(crate) fn stand_at(&self, walkable: Walkable<'_>, pos: Vec3) -> Option<Vec3> {
-        if !walkable.blocks(Segment::new(pos, pos)) {
-            return Some(pos);
+    pub(crate) fn stand_at(&self, walkable: Walkable<'_>, position: Vec3) -> Option<Vec3> {
+        if !walkable.blocks(Segment::new(position, position)) {
+            return Some(position);
         }
-        let cell = self.nearest_open(walkable, pos, &mut 0)?;
-        Some(walkable.clearance.grid().center(cell, pos.y))
+        let cell = self.nearest_open(walkable, position, &mut 0)?;
+        Some(walkable.clearance.grid().center(cell, position.y))
     }
 
     /// Reaches the cells around `at` a walker may stand in, and the search's target whether it

@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_script::{
-    Ctx, Hook, HookSpec, ModeAnswer, ModeEvents, PendingCalls, ScriptRole, ScriptValue, Unit,
+    Ctx, Hook, HookDecl, ModeAnswer, ModeEvents, PendingCalls, ScriptRole, ScriptValue, Unit,
 };
 use campfire_sim::{SimResource, StableId};
 use serde::{Deserialize, Serialize};
@@ -32,7 +32,7 @@ impl SimResource for TrainedUnits {
 #[derive(Debug)]
 pub struct OnUnitTrained;
 
-impl HookSpec for OnUnitTrained {
+impl HookDecl for OnUnitTrained {
     const NAME: &'static str = "on_unit_trained";
     const ROLE: ScriptRole = ScriptRole::Mode;
     const PARAMS: &'static [&'static str] = &["ctx", "unit", "producer"];

@@ -41,7 +41,7 @@ pub(crate) const BOT_TYPES: [&str; 10] = [
 /// Tournament Desert as the import writes it: its height samples, as columns and rows; its placed
 /// units, once its road ends are dropped, and their types; its client objects, the rest of its
 /// objects, and their looks; its markers; and its walls, its cliff cells grown by one ring and
-/// merged row by row (12-zero-hour.md, Cliffs are walls).
+/// merged row by row (09-zero-hour.md, Cliffs are walls).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MapCounts {
@@ -97,7 +97,7 @@ pub(crate) struct FactorySteps {
 
 /// What the bot built: the living units of each of `BOT_TYPES` it owns as player 1's attack
 /// starts, and the farthest any of its units stood from its command center over the play, in
-/// whole meters (12-zero-hour.md, A bot that builds and does not fight).
+/// whole meters (09-zero-hour.md, A bot that builds and does not fight).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BotBase {
@@ -138,8 +138,8 @@ pub(crate) struct SkirmishTicks {
 /// How many weapons the import converts from every starting weapon set, how many it drops for
 /// each cause, in the order of `WeaponDrop::ALL`, how many armors and damage kinds it writes, and
 /// how many unit types' objects it gives no life, or a life that starts below its most
-/// (12-zero-hour.md, Life is the original's; 12-zero-hour.md, A weapon converts when it hits one
-/// target at once; 12-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
+/// (09-zero-hour.md, Life is the original's; 09-zero-hour.md, A weapon converts when it hits one
+/// target at once; 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
 /// slow weapons).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
@@ -157,7 +157,7 @@ pub(crate) struct FoughtCounts {
 }
 
 /// How many trains and builds the import converts from every command set, and how many buttons it
-/// drops for each cause, in the order of `DropCause::ALL` (12-zero-hour.md, Every command set's
+/// drops for each cause, in the order of `DropCause::ALL` (09-zero-hour.md, Every command set's
 /// trains and builds are imported).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display("{trains} trains, {builds} builds, dropped {:?}", dropped)]
@@ -176,8 +176,8 @@ pub(crate) struct TerrainDrawn {
 }
 
 /// The fingerprints of an import: the imported package's and the rules package's, which a run
-/// on Linux and a run on macOS give alike (12-zero-hour.md, One reproducible package;
-/// 12-zero-hour.md, Fixtures in the tests, the install on request).
+/// on Linux and a run on macOS give alike (09-zero-hour.md, One reproducible package;
+/// 09-zero-hour.md, Fixtures in the tests, the install on request).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display("the fingerprints {game} and rules {rules}")]
 #[serde(deny_unknown_fields)]
@@ -212,7 +212,7 @@ impl FactorySteps {
 impl FightSteps {
     /// The fight of `ticks`: `CRUSADERS` trains of 10 s one after another; the money after the
     /// factory less each crusader's 900; and no end of the match, as the bot's other buildings
-    /// count for its victory (12-zero-hour.md, Defeat by the last building that counts).
+    /// count for its victory (09-zero-hour.md, Defeat by the last building that counts).
     pub(crate) fn expected(ticks: SkirmishTicks) -> Self {
         Self {
             train_ticks: u64::from(CRUSADERS) * 10 * HZ,

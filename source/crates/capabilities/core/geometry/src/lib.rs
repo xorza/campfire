@@ -3,7 +3,7 @@
 //! path their tests compute.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
-// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+// in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
 mod approach;
@@ -19,7 +19,7 @@ mod metric;
 mod placed;
 mod polygon;
 mod radius;
-mod row_directory;
+mod row_index;
 mod shape;
 mod volume;
 
@@ -36,7 +36,7 @@ pub use crate::polygon::Polygon;
 pub use crate::polygon::error::PolygonError;
 pub use crate::radius::Radius;
 pub use crate::radius::error::NotRadius;
-pub use crate::row_directory::{LayerView, RowDirectory, RowEntries};
+pub use crate::row_index::{LayerView, RowEntries, RowIndex};
 pub use crate::shape::Shape;
 pub use crate::volume::Volume;
 

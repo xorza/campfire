@@ -3,12 +3,14 @@
 use std::ops::Range;
 
 use campfire_codec::BinaryError;
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 
 use crate::bytes::Bytes;
 use crate::checkpoint::Checkpoint;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::delegation::Delegation;
+use crate::seat_plan::SeatPlan;
+use crate::seat_start::SeatStart;
 use crate::server_input::ServerInput;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::server_seed::ServerSeed;
@@ -19,8 +21,6 @@ use crate::session_log::player_packet::PlayerPacket;
 use crate::session_log::session_header::SessionHeader;
 use crate::session_log::{Bounds, LoggedResult, Past, SessionLog, len, offset, put, take};
 use crate::session_terms::SessionTerms;
-use crate::slot_plan::SlotPlan;
-use crate::slot_start::SlotStart;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
 pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v6";
@@ -35,11 +35,11 @@ impl SessionLog {
     /// entries logged before each; the entries logged since the last tick; the revealed seed as
     /// an option; and the result with its signature as an option. Entries go as a `u32` count,
     /// then each as a byte, 0 for a player's packet and 1 for a server input. A packet goes as its
-    /// `u32` slot, its inputs as a `u32` count and each input's stamp and payload bytes, and its
+    /// `u32` seat, its inputs as a `u32` count and each input's stamp and payload bytes, and its
     /// signature; a server input as its postcard encoding and its signature. An input's seq and
     /// link are not written: a reader computes them from the chain, and the signature covers
-    /// them. The header goes field by field, each slot's start as a byte, 0 for a player, then
-    /// the delegation's JSON, 1 for a bot and 2 for an open slot.
+    /// them. The header goes field by field, each seat's start as a byte, 0 for a player, then
+    /// the delegation's JSON, 1 for a bot and 2 for an open seat.
     pub fn encode(&self, out: &mut Vec<u8>) {
         debug_assert!(
             self.holds_all(),
@@ -142,10 +142,10 @@ impl SessionLog {
 
     pub(super) fn put_header(&self, out: &mut Vec<u8>) {
         put(out, &self.header.terms);
-        put(out, &offset(self.header.slots.len()));
-        for start in &self.header.slots {
+        put(out, &offset(self.header.seats.len()));
+        for start in &self.header.seats {
             put(out, &start.plan().code());
-            if let SlotStart::Player(delegation) = start {
+            if let SeatStart::Player(delegation) = start {
                 put(out, delegation.json());
             }
         }
@@ -171,13 +171,13 @@ impl SessionLog {
     /// Writes the packet `index`, as `write_packet` does.
     pub(super) fn put_packet(&self, out: &mut Vec<u8>, index: u32) {
         let packet = self.entries.packet(index);
-        let slot = self.entries.input(packet.inputs.start).slot;
+        let seat = self.entries.input(packet.inputs.start).seat;
         let inputs = packet.inputs.clone().map(|index| {
             let input = self.entries.input(index);
             (input.stamp, input.payload)
         });
         let written = PlayerPacket {
-            slot,
+            seat,
             inputs,
             signature: &packet.signature,
         };
@@ -219,7 +219,7 @@ impl SessionLog {
         applied: &mut Vec<Applied>,
     ) -> Result<(), LogError> {
         let tick = self.next_tick();
-        let slot = PlayerSlot::new(take(rest)?);
+        let seat = Seat::new(take(rest)?);
         let count: u32 = take(rest)?;
         inputs.clear();
         for _ in 0..count {
@@ -229,7 +229,7 @@ impl SessionLog {
         }
         let signature = take(rest)?;
         let packet = PlayerPacket {
-            slot,
+            seat,
             inputs: inputs.iter().copied(),
             signature: &signature,
         };
@@ -278,14 +278,14 @@ impl SessionLog {
     }
 }
 
-/// Writes `packet`: its `u32` slot, its inputs as a `u32` count and each input's stamp and
+/// Writes `packet`: its `u32` seat, its inputs as a `u32` count and each input's stamp and
 /// payload bytes, and its signature.
 pub(super) fn write_packet<'a>(
     out: &mut Vec<u8>,
     packet: PlayerPacket<'_, impl Iterator<Item = (Tick, &'a [u8])> + Clone>,
 ) {
     let count = u32::try_from(packet.inputs.clone().count()).expect("a packet's inputs fit u32");
-    put(out, &packet.slot.get());
+    put(out, &packet.seat.get());
     put(out, &count);
     for (stamp, payload) in packet.inputs {
         put(out, &stamp);
@@ -298,28 +298,28 @@ pub(super) fn write_packet<'a>(
 pub(super) fn take_header(rest: &mut &[u8]) -> Result<SessionHeader, LogError> {
     let terms: SessionTerms = take(rest)?;
     let count: u32 = take(rest)?;
-    let mut slots = Vec::new();
-    for slot in 0..count {
-        let plan = SlotPlan::try_from(take::<u8>(rest)?).map_err(|_| {
+    let mut seats = Vec::new();
+    for seat in 0..count {
+        let plan = SeatPlan::try_from(take::<u8>(rest)?).map_err(|_| {
             LogError::Header(HeaderError::UnknownStart {
-                slot: PlayerSlot::new(slot),
+                seat: Seat::new(seat),
             })
         })?;
         let start = match plan {
-            SlotPlan::Player => {
+            SeatPlan::Player => {
                 let json = take(rest)?;
                 let delegation = Delegation::parse(json).map_err(|error| {
                     LogError::Header(HeaderError::Delegation {
-                        slot: PlayerSlot::new(slot),
+                        seat: Seat::new(seat),
                         error,
                     })
                 })?;
-                SlotStart::player(delegation)
+                SeatStart::player(delegation)
             }
-            SlotPlan::Bot => SlotStart::Bot,
-            SlotPlan::Open => SlotStart::Open,
+            SeatPlan::Bot => SeatStart::Bot,
+            SeatPlan::Open => SeatStart::Open,
         };
-        slots.push(start);
+        seats.push(start);
     }
-    Ok(SessionHeader { terms, slots })
+    Ok(SessionHeader { terms, seats })
 }

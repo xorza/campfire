@@ -14,7 +14,7 @@ use crate::zero_hour::format::map::map_dict::{self, DictValue};
 /// waypoint.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct MapObject {
-    pub(crate) pos: [f32; 3],
+    pub(crate) position: [f32; 3],
     pub(crate) angle: f32,
     pub(crate) flags: u32,
     pub(crate) template: Vec<u8>,
@@ -65,7 +65,7 @@ impl MapObject {
         body: &mut ChunkReader<'_>,
         names: &BTreeMap<u32, &[u8]>,
     ) -> Result<Self, MapReadError> {
-        let pos = [body.cursor.f32()?, body.cursor.f32()?, body.cursor.f32()?];
+        let position = [body.cursor.f32()?, body.cursor.f32()?, body.cursor.f32()?];
         let angle = body.cursor.f32()?;
         let flags = body.cursor.u32()?;
         let template = body.text()?;
@@ -86,7 +86,7 @@ impl MapObject {
             _ => {}
         })?;
         Ok(Self {
-            pos,
+            position,
             angle,
             flags,
             template,
@@ -99,20 +99,20 @@ impl MapObject {
 
     /// Whether the game keeps the object as it reads the map: its height is not past the
     /// bounds it checks, which a NaN never is.
-    pub(crate) fn kept(&self) -> bool {
-        let z = self.pos[2];
+    pub(crate) fn is_kept(&self) -> bool {
+        let z = self.position[2];
         !(z < LOWEST || z > HIGHEST)
     }
 
     /// Whether it is a road's or a bridge's end, which the game draws as terrain.
-    pub(crate) const fn road_or_bridge(&self) -> bool {
+    pub(crate) const fn is_road_or_bridge(&self) -> bool {
         self.flags & ROAD_OR_BRIDGE != 0
     }
 
     /// Where it stands on the engine's ground plane: the original's `x` east and `y` north become
     /// `x` and `−z`, which keeps the axes right-handed with `y` up. `None` past the world's bound.
     pub(crate) fn ground(&self) -> Option<[Num; 2]> {
-        let [x, y, _] = self.pos.map(|axis| game_float::to_num(axis).ok());
+        let [x, y, _] = self.position.map(|axis| game_float::to_num(axis).ok());
         let ground = [x?, y?.checked_neg()?];
         let bound = Vec3::BOUND.to_bits();
         ground
@@ -129,7 +129,7 @@ impl MapObject {
     pub(crate) fn placement(&self) -> Option<Placement> {
         Some(Placement {
             ground: self.ground()?,
-            height: game_float::to_num(self.pos[2]).ok()?,
+            height: game_float::to_num(self.position[2]).ok()?,
             degrees: Self::degrees(Self::normalized(self.angle)?)?,
         })
     }
@@ -199,7 +199,7 @@ pub(crate) mod internals {
     /// dictionary of its waypoint's id and name when it has one, beside an initial health.
     pub(crate) fn object(
         writer: &mut ChunkWriter,
-        pos: [f32; 3],
+        position: [f32; 3],
         angle: f32,
         flags: u32,
         template: &str,
@@ -210,18 +210,18 @@ pub(crate) mod internals {
             entries.push(writer.entry("waypointID", 1, &id.to_le_bytes()));
             entries.push(writer.entry("waypointName", 3, &ChunkWriter::text(name.as_bytes())));
         }
-        body(pos, angle, flags, template, &entries)
+        body(position, angle, flags, template, &entries)
     }
 
     /// An object's body of these fields and dictionary `entries`.
     pub(crate) fn body(
-        pos: [f32; 3],
+        position: [f32; 3],
         angle: f32,
         flags: u32,
         template: &str,
         entries: &[Vec<u8>],
     ) -> Vec<u8> {
-        let mut body = [pos[0], pos[1], pos[2], angle]
+        let mut body = [position[0], position[1], position[2], angle]
             .map(f32::to_le_bytes)
             .concat();
         body.extend(flags.to_le_bytes());
@@ -296,11 +296,11 @@ mod tests {
         // The game drops an object past −1,000 or 1,593.75, not one at either, nor a NaN height,
         // whose placement the engine cannot hold.
         let at = |z: f32| MapObject {
-            pos: [0.0, 0.0, z],
+            position: [0.0, 0.0, z],
             ..waypoint.clone()
         };
-        assert!(at(-1000.0).kept() && at(1593.75).kept() && at(f32::NAN).kept());
-        assert!(!at(-1000.1).kept() && !at(1594.0).kept());
+        assert!(at(-1000.0).is_kept() && at(1593.75).is_kept() && at(f32::NAN).is_kept());
+        assert!(!at(-1000.1).is_kept() && !at(1594.0).is_kept());
         assert_eq!(at(f32::NAN).placement(), None);
     }
 
@@ -308,7 +308,7 @@ mod tests {
     fn a_position_converts_exactly_on_the_engine_s_axes() {
         // The original's north is the engine's −z, and its angle keeps its sign.
         let object = MapObject {
-            pos: [30.0, 20.0, -4.5],
+            position: [30.0, 20.0, -4.5],
             angle: PI / 2.0,
             flags: 0,
             template: b"Rock".to_vec(),
@@ -319,7 +319,7 @@ mod tests {
         assert_eq!(placement.height, Num::int(-9) / Num::int(2));
         assert_eq!(placement.degrees.to_bits(), 1_509_949_482);
         let far = MapObject {
-            pos: [2_000_000.0, 0.0, 0.0],
+            position: [2_000_000.0, 0.0, 0.0],
             ..object
         };
         assert_eq!(far.placement(), None);

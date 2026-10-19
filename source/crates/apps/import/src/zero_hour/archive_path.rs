@@ -69,7 +69,7 @@ mod tests {
             path.without_extension(),
             "maps\\alpine.assault\\alpine assault"
         );
-        // A dot in a folder is no extension, nor is a name's leading dot.
+        // A dot in a directory is no extension, nor is a name's leading dot.
         for bare in ["art\\v1.2\\readme", "art\\.hidden", "plain"] {
             let path = ArchivePath::of(bare);
             assert_eq!((path.extension(), path.without_extension()), (None, bare));

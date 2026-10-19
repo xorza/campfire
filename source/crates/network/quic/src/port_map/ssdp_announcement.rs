@@ -13,7 +13,7 @@ const GATEWAY_TYPES: [&str; 5] = [
 ];
 
 /// A UPnP-IGD router's `NOTIFY` announcement that it is alive, multicast to SSDP's group
-/// (15-quic-transport.md, A server maps its own port): where its description is. Its location's
+/// (11-quic-transport.md, A server maps its own port): where its description is. Its location's
 /// address is the announcer's, as `igd-next` trusts a search's answer only at its sender's address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SsdpAnnouncement {

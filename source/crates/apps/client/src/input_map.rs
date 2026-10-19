@@ -2,14 +2,14 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::Res;
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
-use campfire_client_files::{Chord, InputFile, Key, Modifiers};
+use campfire_client_files::{Chord, Key, KeysFile, Modifiers};
 
-/// The client's keys: the mode's `client/input.toml`, or the engine's own for a mode of none,
+/// The client's keys: the mode's `client/keys.toml`, or the engine's own for a mode of none,
 /// each chord pressed when its key is and exactly its modifiers are held (02-engine-core.md, Keys
 /// are the mode's data).
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct InputMap {
-    file: InputFile,
+    file: KeysFile,
 }
 
 /// An action of the client that its chords do, any of them.
@@ -43,12 +43,12 @@ pub(crate) enum Row {
 }
 
 impl InputMap {
-    pub(crate) const fn new(file: InputFile) -> Self {
+    pub(crate) const fn new(file: KeysFile) -> Self {
         Self { file }
     }
 
     /// Whether a chord of `act` is held.
-    pub(crate) fn held(&self, act: Act, keys: &ButtonInput<KeyCode>) -> bool {
+    pub(crate) fn is_held(&self, act: Act, keys: &ButtonInput<KeyCode>) -> bool {
         let modifiers = held_modifiers(keys);
         self.chords(act)
             .iter()
@@ -165,9 +165,9 @@ mod tests {
         let mut keys = ButtonInput::<KeyCode>::default();
         // Up alone scrolls; with Alt it zooms, and scrolls no more.
         keys.press(KeyCode::ArrowUp);
-        assert!(input.held(Act::ScrollUp, &keys) && !input.held(Act::ZoomIn, &keys));
+        assert!(input.is_held(Act::ScrollUp, &keys) && !input.is_held(Act::ZoomIn, &keys));
         keys.press(KeyCode::AltRight);
-        assert!(!input.held(Act::ScrollUp, &keys) && input.held(Act::ZoomIn, &keys));
+        assert!(!input.is_held(Act::ScrollUp, &keys) && input.is_held(Act::ZoomIn, &keys));
         // Q casts the first slot; with Control it learns it; with Shift too, it does neither.
         let mut keys = ButtonInput::<KeyCode>::default();
         let first = |row| input.row(row)[0];

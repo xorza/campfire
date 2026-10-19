@@ -4,7 +4,7 @@ use campfire_common::{PackageFingerprint, Version};
 use campfire_mode::OptionPicks;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
-    ConnectChallenge, Entropy, InputHash, MainKey, Receipt, SeedChain, SlotPlan,
+    ConnectChallenge, Entropy, InputHash, MainKey, Receipt, SeatPlan, SeedChain,
 };
 use campfire_runner::{HostChoices, TermsError};
 use campfire_test_packages::TestMode;
@@ -51,7 +51,7 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
             seed_commitment: SeedChain::new([7; 32], NonZeroU32::MIN).commitment(),
             tick_hz: TICK_HZ,
             inputs: InputRules::LAN,
-            slots: vec![SlotPlan::Player; 2],
+            seats: vec![SeatPlan::Player; 2],
             visibility: rules.visibility().settings(),
             picks: &OptionPicks::defaults(rules.options()),
         })
@@ -67,12 +67,12 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
 /// The root the server names for a new chain.
 const ROOT: InputHash = InputHash::new([3; 32]);
 
-/// The start of the match in slot 1, of team 1, at sim tick 0, Lightyear tick 40, with a new
+/// The start of the match in seat 1, of team 1, at sim tick 0, Lightyear tick 40, with a new
 /// chain from `ROOT`.
 const START: MatchStart = MatchStart {
     start_tick: 40,
     first: Tick::new(0),
-    slot: PlayerSlot::new(1),
+    seat: Seat::new(1),
     team: Team::new(1),
     chain: SeatChain::New { root: ROOT },
     loaded: false,
@@ -174,9 +174,9 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     assert_eq!(check(BINDING), Ok(()));
     assert!(check(ChannelBinding::new([4; 32])).is_err());
     assert_eq!(state.playing_clock(), None);
-    assert_eq!((state.slot(), state.team()), (None, None));
+    assert_eq!((state.seat(), state.team()), (None, None));
 
-    // The match starts once: sim tick 0 is Lightyear tick 40, and the player's chain in slot 1
+    // The match starts once: sim tick 0 is Lightyear tick 40, and the player's chain in seat 1
     // starts from the delegation's id.
     assert_eq!(
         state.start(START, Hosting::Remote),
@@ -184,8 +184,8 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     );
     assert_eq!(state.start(START, Hosting::Remote), Started::No);
     assert_eq!(
-        (state.slot(), state.team()),
-        (Some(PlayerSlot::new(1)), Some(Team::new(1)))
+        (state.seat(), state.team()),
+        (Some(Seat::new(1)), Some(Team::new(1)))
     );
     let clock = state.playing_clock().unwrap();
     assert_eq!(
@@ -194,10 +194,10 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     );
     let playing = state.playing_mut().unwrap();
     assert_eq!(playing.member.session.id, offer.terms.session_id());
-    assert_eq!(playing.chain, InputChain::new(PlayerSlot::new(1), ROOT));
+    assert_eq!(playing.chain, InputChain::new(Seat::new(1), ROOT));
 }
 
-/// A client that played: its chain in slot 1 holds the inputs of `payloads`, stamped 0; with the
+/// A client that played: its chain in seat 1 holds the inputs of `payloads`, stamped 0; with the
 /// heads after each and the delegation it answered with.
 fn played(payloads: &[&[u8]]) -> (JoinState, Signer, Vec<InputHash>, Delegation) {
     let mut signer = signer();
@@ -228,7 +228,7 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
     let (mut state, mut signer, heads, delegation) = played(&[b"a", b"b", b"c"]);
     let lost = Duration::from_secs(10);
     assert_eq!(state.lose(lost, [0xFF; 32]), LinkLoss::Rejoining);
-    assert!(state.rejoining() && state.playing_clock().is_none());
+    assert!(state.is_rejoining() && state.playing_clock().is_none());
     assert_eq!(state.lose(lost, [0xFF; 32]), LinkLoss::Nothing);
     let at = |nanos| lost + Duration::from_nanos(nanos);
     assert_eq!(state.retry(at(999_999_998), [0; 32]), Retry::Wait);
@@ -260,17 +260,14 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
         Started::Playing { discarded: 1 }
     );
     let playing = state.playing().unwrap();
-    assert_eq!(
-        playing.chain,
-        InputChain::resume(PlayerSlot::new(1), heads[2], 2)
-    );
+    assert_eq!(playing.chain, InputChain::resume(Seat::new(1), heads[2], 2));
     assert_eq!(playing.clock.sim_tick(NetTick(8)), Some(Tick::new(501)));
     // Its next input, predicted in 501, takes the log's last stamp, 503, as the log refuses a
     // stamp that goes back; one predicted past it, in 504, keeps its own.
     assert_eq!(playing.stamp(Tick::new(501)), Tick::new(503));
     assert_eq!(playing.stamp(Tick::new(504)), Tick::new(504));
 
-    // Its slot was given up and joined again: the server names a new chain's root, which the
+    // Its seat was given up and joined again: the server names a new chain's root, which the
     // client starts from whatever its history.
     assert_eq!(state.lose(lost, [0; 32]), LinkLoss::Rejoining);
     state
@@ -287,7 +284,7 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
         Started::Playing { discarded: 0 }
     );
     let playing = state.playing_mut().unwrap();
-    assert_eq!(playing.chain, InputChain::new(PlayerSlot::new(1), rejoined));
+    assert_eq!(playing.chain, InputChain::new(Seat::new(1), rejoined));
     let heads: Vec<_> = [b"d", b"e", b"f"]
         .into_iter()
         .map(|payload| {
@@ -394,7 +391,7 @@ fn receipted() -> (JoinState, Signer, Vec<InputHash>, Delegation, Receipt) {
     let (state, signer, heads, delegation) = played(&[b"a", b"b", b"c"]);
     let receipt = Receipt {
         session_id: offer(|_| {}).terms.session_id(),
-        slot: PlayerSlot::new(1),
+        seat: Seat::new(1),
         delegation: *delegation.id(),
         tick: Tick::new(5),
         seq: 1,
@@ -426,7 +423,7 @@ fn a_client_refuses_a_receipt_not_signed_over_its_own_chain() {
         ),
         (
             signed(Receipt {
-                slot: PlayerSlot::new(0),
+                seat: Seat::new(0),
                 ..receipt
             }),
             ReceiptRefusal::Other,
@@ -497,10 +494,7 @@ fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it()
                 Started::Playing { discarded: 2 }
             );
             let playing = state.playing().unwrap();
-            assert_eq!(
-                playing.chain,
-                InputChain::resume(PlayerSlot::new(1), heads[3], 1)
-            );
+            assert_eq!(playing.chain, InputChain::resume(Seat::new(1), heads[3], 1));
             assert_eq!(state.receipt(), None);
         } else {
             assert_eq!(state.start(loaded, hosting), Started::Rewritten);
@@ -633,7 +627,7 @@ fn a_client_that_left_takes_a_receipt_until_its_link_closes() {
     let (mut state, _, heads, _, receipt) = receipted();
     state.take_receipt(&signed(receipt), &mut verifier).unwrap();
     state.leave();
-    assert!(state.left());
+    assert!(state.is_left());
     let last = Receipt {
         seq: 2,
         head: heads[3],
@@ -642,7 +636,7 @@ fn a_client_that_left_takes_a_receipt_until_its_link_closes() {
     assert_eq!(state.take_receipt(&signed(last), &mut verifier), Ok(()));
     assert_eq!(state.receipt(), Some(&signed(last)));
     assert_eq!(state.lose(Duration::ZERO, [0; 32]), LinkLoss::Nothing);
-    assert!(state.left());
+    assert!(state.is_left());
     assert_eq!(
         state.take_receipt(&signed(last), &mut verifier),
         Err(ReceiptRefusal::NotPlaying)

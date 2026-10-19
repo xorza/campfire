@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_capabilities::{Match, MatchKind, MatchSpec, ModeStart, Release};
+use campfire_capabilities::{Match, MatchKind, MatchSetup, ModeStart, Release};
 use campfire_common::SegmentSeed;
 use campfire_declare::Role;
 use campfire_mode::{ModeSetup, OptionPicks};
@@ -20,13 +20,13 @@ impl MatchBuild {
         seed: SegmentSeed,
         rate: TickRate,
         players: u32,
-    ) -> MatchSpec {
+    ) -> MatchSetup {
         let manifest = packages.manifest();
         let pools = ScriptPools {
             limits: manifest.script_limits,
             players,
         };
-        MatchSpec::new(seed, rate, Role::Server(pools)).set(manifest.capabilities)
+        MatchSetup::new(seed, rate, Role::Server(pools)).set(manifest.capabilities)
     }
 
     /// Builds the match of `spec` in `world`, a new world, of `packages`, for `players` players,
@@ -34,12 +34,12 @@ impl MatchBuild {
     /// values `picks` gives its options.
     pub(crate) fn build(
         world: &mut World,
-        spec: MatchSpec,
+        match_setup: MatchSetup,
         packages: &ModePackages,
         players: u32,
         picks: &OptionPicks,
     ) {
-        let books = packages.books(spec.rate());
+        let books = packages.books(match_setup.rate());
         let scripts = packages.scripts();
         let setup = ModeSetup {
             scripts: packages.mode_scripts(),
@@ -52,7 +52,7 @@ impl MatchBuild {
             scripts: &scripts,
             setup,
         };
-        Release::build(world, spec, books, MatchKind::Mode(start));
+        Release::build(world, match_setup, books, MatchKind::Mode(start));
     }
 
     /// A restore target: the match of `packages` for `players` players at `rate`, of the values
@@ -70,15 +70,15 @@ impl MatchBuild {
         Self::restore_target_of(spec, packages, players, picks)
     }
 
-    /// The restore target of `spec`, the spec of `packages` for `players` players, of `picks`.
+    /// The restore target of `setup`, the setup of `packages` for `players` players, of `picks`.
     fn restore_target_of(
-        spec: MatchSpec,
+        setup: MatchSetup,
         packages: &ModePackages,
         players: u32,
         picks: &OptionPicks,
     ) -> Match {
         let mut world = World::new();
-        Self::build(&mut world, spec, packages, players, picks);
+        Self::build(&mut world, setup, packages, players, picks);
         Match::from_built(world)
     }
 }
@@ -99,7 +99,7 @@ pub(crate) mod internals {
     /// What an arena's match is built of: its packages, its tick rate, its players, and its map's
     /// vision, the one book a test gives in place of the packages'.
     #[derive(Debug)]
-    pub struct ArenaSpec<'a> {
+    pub struct ArenaSetup<'a> {
         pub packages: &'a ModePackages,
         pub rate: TickRate,
         pub players: u32,
@@ -111,8 +111,8 @@ pub(crate) mod internals {
         /// but the map's vision, which is its own, and no mode installed, as an arena holds it; it
         /// starts with the match's entity alone, spawns the mode's unit types as the mode does
         /// for a test to spawn, and fails its test on any warning it logs.
-        pub fn arena(arena: ArenaSpec<'_>) -> Match {
-            let ArenaSpec {
+        pub fn arena(arena: ArenaSetup<'_>) -> Match {
+            let ArenaSetup {
                 packages,
                 rate,
                 players,

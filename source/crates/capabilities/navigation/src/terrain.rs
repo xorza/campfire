@@ -63,8 +63,8 @@ mod tests {
         let terrain = Terrain::new(&grid, &walls);
         let blocked = terrain.blocked(Layer::FIRST).unwrap();
         let at = |x: i64, z: i64| {
-            let pos = Vec3::new(Num::int(x) + Num::HALF, Num::ZERO, Num::int(z) + Num::HALF);
-            let cell = grid.cell_of(pos).unwrap();
+            let position = Vec3::new(Num::int(x) + Num::HALF, Num::ZERO, Num::int(z) + Num::HALF);
+            let cell = grid.cell_of(position).unwrap();
             blocked[cell / 64] & (1 << (cell % 64)) != 0
         };
         // Inside each of the four pieces.

@@ -107,7 +107,7 @@ impl Walking {
                 walkers.get_mut(entity).expect("a walker in the order");
             let steered = Steered {
                 id,
-                pos: at.get(),
+                position: at.get(),
                 step: step.get(),
                 walker: Walker::walking(Some(body)),
                 stuck: u64::from(progress.track(at.get(), step.get())) >= stuck_ticks,
@@ -196,7 +196,7 @@ impl Walking {
                 let Some(&waypoint) = route.read().ahead().first() else {
                     if route.asked().is_none() {
                         destination.set_if_neq(Destination::to(None));
-                        if route.reached() {
+                        if route.is_reached() {
                             route.clear();
                             progress.restart();
                         }

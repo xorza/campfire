@@ -1,5 +1,5 @@
 use campfire_protocol::{ConnectError, DelegationError};
-use campfire_runner::ServerInputRefused;
+use campfire_runner::ServerInputRefusal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -10,15 +10,15 @@ pub enum JoinError {
     Delegation(DelegationError),
     #[error(transparent)]
     Connect(ConnectError),
-    /// Every slot was taken by the time the join arrived.
-    #[error("every slot is taken")]
+    /// Every seat was taken by the time the join arrived.
+    #[error("every seat is taken")]
     Full,
-    /// After the start, no slot is the player's, open to them or a bot's they may take.
-    #[error("no slot is the player's or open to them")]
-    NoSlot,
+    /// After the start, no seat is the player's, open to them or a bot's they may take.
+    #[error("no seat is the player's or open to them")]
+    NoSeat,
     /// The log refused what the join would change.
     #[error(transparent)]
-    Refused(ServerInputRefused),
+    Refused(ServerInputRefusal),
     /// A newer login of the player took the link's seat.
     #[error("a newer login of the player took the seat")]
     Superseded,
@@ -36,8 +36,8 @@ pub enum ReceiptRefusal {
     /// The server key did not sign it.
     #[error("the server key did not sign it")]
     BadSignature,
-    /// It names another session, slot or delegation than the player's.
-    #[error("it names another session, slot or delegation")]
+    /// It names another session, seat or delegation than the player's.
+    #[error("it names another session, seat or delegation")]
     Other,
     /// It names a seq the client's history does not hold, or a head that is not the player's.
     #[error("it names a head that is not the player's at its seq")]

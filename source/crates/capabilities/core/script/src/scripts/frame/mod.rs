@@ -3,7 +3,7 @@ use campfire_common::Tick;
 use campfire_sim::{IdAllocator, StableId};
 use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, PackageIndex, Rank, Scalar};
 
-use crate::scripts::call_part::{CallParams, CallPart, CallParts, Commit};
+use crate::scripts::call_extension::{CallExtension, CallExtensions, CallParams, Commit};
 use crate::scripts::call_start::{CallStart, Purity};
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::frame::effects::{Effect, Effects};
@@ -28,7 +28,7 @@ pub struct Frame {
     ids_taken: bool,
     effects: Effects,
     /// What each capability reads and writes of a call besides the core's.
-    parts: CallParts,
+    extensions: CallExtensions,
 }
 
 impl Frame {
@@ -83,29 +83,29 @@ impl Frame {
     }
 
     /// Whether the running call is a pure hook's, whose `ctx` only reads.
-    pub fn pure(&self) -> bool {
+    pub fn is_pure(&self) -> bool {
         self.call.is_some_and(|call| call.purity == Purity::Reads)
     }
 
-    /// Adds `part`, which every call readies, and which commits what a call wrote to it.
-    pub fn add_part<P: CallPart>(&mut self, part: P) {
-        self.parts.add(part);
+    /// Adds `extension`, which every call readies, and which commits what a call wrote to it.
+    pub fn add_extension<P: CallExtension>(&mut self, extension: P) {
+        self.extensions.add(extension);
     }
 
-    /// Adds `part` as `add_part` does, the source of the params of its scope, which no part
-    /// holds yet.
-    pub fn add_params<P: CallParams>(&mut self, part: P) {
-        self.parts.add_params(part);
+    /// Adds `extension` as `add_extension` does, the source of the params of its scope, which no
+    /// extension holds yet.
+    pub fn add_params<P: CallParams>(&mut self, extension: P) {
+        self.extensions.add_params(extension);
     }
 
-    /// The part of type `P`, when one was added.
-    pub fn part<P: CallPart>(&self) -> Option<&P> {
-        self.parts.get()
+    /// The extension of type `P`, when one was added.
+    pub fn extension<P: CallExtension>(&self) -> Option<&P> {
+        self.extensions.get()
     }
 
-    /// The part of type `P`, to change, when one was added.
-    pub fn part_mut<P: CallPart>(&mut self) -> Option<&mut P> {
-        self.parts.get_mut()
+    /// The extension of type `P`, to change, when one was added.
+    pub fn extension_mut<P: CallExtension>(&mut self) -> Option<&mut P> {
+        self.extensions.get_mut()
     }
 
     /// Takes the stable id of a unit the call creates, which the unit spawns with once the call
@@ -117,7 +117,7 @@ impl Frame {
 
     /// Starts a batch of calls in `world`, every part readied for it.
     pub(crate) fn begin_batch(&mut self, world: &World) {
-        self.parts.begin_batch(world);
+        self.extensions.begin_batch(world);
     }
 
     /// Starts the call `start` in `world`, every part readied for it; a part that fails to ready,
@@ -131,7 +131,7 @@ impl Frame {
         self.ids_taken = false;
         self.call = Some(start);
         self.effects.clear();
-        self.parts.begin(world, &start)
+        self.extensions.begin(world, &start)
     }
 
     /// Queues `effect`, which applies when the call's effects do.
@@ -150,14 +150,14 @@ impl Frame {
     }
 
     /// Commits what the call that ran wrote and applies the effects it queued: the ids it took,
-    /// so a unit it creates spawns with the id it took; the parts that commit before the
+    /// so a unit it creates spawns with the id it took; the extensions that commit before the
     /// effects; the effects, in order, each itself, from the call's acting unit and its action
-    /// at its rank, in the call's tick; then the other parts.
+    /// at its rank, in the call's tick; then the other extensions.
     pub fn apply(&mut self, world: &mut World) {
         if self.ids_taken {
             world.resource_mut::<IdAllocator>().clone_from(&self.ids);
         }
-        self.parts.commit(world, Commit::BeforeEffects);
+        self.extensions.commit(world, Commit::BeforeEffects);
         let count = self.effects.order().len();
         for at in 0..count {
             let apply = self.effects.order()[at];
@@ -169,19 +169,19 @@ impl Frame {
             "an effect queues no effect as it applies, which the clear would drop"
         );
         self.effects.clear();
-        self.parts.commit(world, Commit::AfterEffects);
+        self.extensions.commit(world, Commit::AfterEffects);
     }
 
     /// The running call's param `name`, of the part that holds its role's scope of params; an
     /// error when no part holds them, or that part's call declares no such param.
     pub fn param(&self, name: &str) -> Result<ScriptValue, ApiError> {
-        self.parts.param(self.running().role.params(), name)
+        self.extensions.param(self.running().role.params(), name)
     }
 
     /// The running call's param at place `at` among its call's, of the part that holds its
     /// role's scope of params; none when no part holds them, or the call has no param there.
     pub fn param_at(&self, at: usize) -> Option<Scalar> {
-        self.parts.param_at(self.running().role.params(), at)
+        self.extensions.param_at(self.running().role.params(), at)
     }
 }
 

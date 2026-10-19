@@ -13,7 +13,7 @@ use crate::mode_data::ModeParam;
 pub struct MarkerSpec {
     pub name: DeclaredName,
     pub tags: Box<[DeclaredName]>,
-    pub pos: Option<Vec3>,
+    pub position: Option<Vec3>,
     pub region: Option<Bounds>,
     pub team: Option<Team>,
     pub params: BTreeMap<DeclaredName, ModeParam>,

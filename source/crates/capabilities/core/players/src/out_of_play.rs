@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::player::Player;
 
-/// Marks a player out of play, on its entity (14-replication-audiences.md, A player out of play
+/// Marks a player out of play, on its entity (10-replication-audiences.md, A player out of play
 /// sees what its team sees, or what a spectator sees): while it holds avatars and every one is
 /// dead, or while the mode's script holds it out. The mode's server derives it as each tick ends,
-/// as out of play is the mode's (14-replication-audiences.md, Prediction reads only what its client
+/// as out of play is the mode's (10-replication-audiences.md, Prediction reads only what its client
 /// holds), and sends it to every client, as who is out of play is the match's public state. A
 /// player out of play that sees what a spectator sees gives no order, so the hash and the snapshot
 /// hold it: a restore refuses the orders the run it restores refused.

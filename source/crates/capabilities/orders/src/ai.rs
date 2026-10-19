@@ -1,6 +1,6 @@
 use campfire_common::Ticks;
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, NamedScripts, PerType, ScriptParams};
-use campfire_script::{Ctx, Hook, HookSpec, ScriptId, ScriptRole, Unit};
+use campfire_script::{Ctx, Hook, HookDecl, ScriptId, ScriptRole, Unit};
 use campfire_sim::TickRate;
 use campfire_stats::{ModifierAppliers, Way};
 use campfire_units::ScriptBook;
@@ -20,7 +20,7 @@ pub struct Ai {
 #[derive(Debug)]
 pub(crate) struct OnThink;
 
-impl HookSpec for OnThink {
+impl HookDecl for OnThink {
     const NAME: &'static str = "on_think";
     const ROLE: ScriptRole = ScriptRole::Ai;
     const PARAMS: &'static [&'static str] = &["ctx", "unit"];
@@ -85,7 +85,7 @@ impl Ai {
         let ordered = cx
             .types()
             .iter()
-            .find(|unit| unit.avatar() && unit.data.section::<AiData>().is_some());
+            .find(|unit| unit.is_avatar() && unit.data.section::<AiData>().is_some());
         ordered.map_or(Ok(()), |unit| {
             let at = BookPlace::UnitType(unit.place());
             Err(BookError::rule(unit.package, at, AiError::AvatarOrders))

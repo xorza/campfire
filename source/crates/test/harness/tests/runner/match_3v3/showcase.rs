@@ -76,7 +76,7 @@ fn pools_of(world: &World, entity: Entity) -> [Option<Num>; PoolId::LIMIT] {
     held
 }
 
-/// What the match left after each tick from the one before the shop: each hero, by player slot.
+/// What the match left after each tick from the one before the shop: each hero, by seat.
 #[derive(Debug, Default)]
 pub(crate) struct Showcase {
     ticks: Vec<[HeroState; 6]>,
@@ -439,10 +439,10 @@ fn assert_consumables(moba: &ScriptedMode<Moba3v3>, showcase: &Showcase, world: 
     let units = MatchUnits::of(world);
     let gale = units.hero(1);
     let ward = |x: i16| {
-        let pos = Vec3::from((x, 0, -23));
+        let position = Vec3::from((x, 0, -23));
         let found = units.all().find(|(id, unit)| {
             *id != gale
-                && unit.get::<Position>().map(|at| at.get()) == Some(pos)
+                && unit.get::<Position>().map(|at| at.get()) == Some(position)
                 && MatchUnits::owned_by(unit, 1)
         });
         let (_, unit) = found.expect("a ward");

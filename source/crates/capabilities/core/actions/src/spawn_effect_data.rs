@@ -100,13 +100,13 @@ impl ListedSpec for SpawnEffectSpec {
     fn queue(&self, at: ListedAt, frame: &mut Frame, view: &View) -> Result<(), CallError> {
         let source = frame.acting().and_then(|id| view.row(id));
         let source = source.expect("an action's list runs for its acting unit");
-        let pos = match (at.to, at.reached) {
-            (EffectTo::Source, _) => source.pos,
+        let position = match (at.to, at.reached) {
+            (EffectTo::Source, _) => source.position,
             (EffectTo::Reached, ActionTarget::Point(point)) => point,
             (EffectTo::Reached, ActionTarget::Unit(id)) => {
                 view.row(id)
                     .expect("a list reaches a unit the view holds")
-                    .pos
+                    .position
             }
             (EffectTo::Reached, ActionTarget::None) => {
                 unreachable!("the load lets a spawn reach no place only from the source")
@@ -117,7 +117,7 @@ impl ListedSpec for SpawnEffectSpec {
             unit_type: self.unit_type,
             team: source.team,
             owner: source.owner,
-            pos,
+            position,
             angle: Num::ZERO,
         };
         let life = self.duration_ms.map(|ms| ms.duration(frame, view.rate()));

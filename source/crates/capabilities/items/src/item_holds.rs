@@ -29,7 +29,7 @@ impl ItemHolds {
         if items.modifiers().is_empty() {
             return;
         }
-        let every = items.is_changed() || book.is_changed() || params.changed();
+        let every = items.is_changed() || book.is_changed() || params.is_changed();
         for (entity, &id, inventory, modifiers) in &units {
             if !(every || inventory.is_changed() || modifiers.is_changed()) {
                 continue;

@@ -79,13 +79,18 @@ impl Scatter {
         self.radius + widest.map(|tag| tag.radius).max().unwrap_or(Num::ZERO)
     }
 
-    /// The point of the ground a shot at a unit at `pos` of `tags` aims at, when its radius there
-    /// is above 0: at a distance from the unit's ground point of the radius times the first of
-    /// `draw`'s fractions, at an angle of a turn times the second, from `x` toward `−z` as a
+    /// The point of the ground a shot at a unit at `position` of `tags` aims at, when its radius
+    /// there is above 0: at a distance from the unit's ground point of the radius times the first
+    /// of `draw`'s fractions, at an angle of a turn times the second, from `x` toward `−z` as a
     /// facing turns, each axis's offset the product of the radius, the fraction and the angle's
     /// cosine or sine rounded once, as Zero Hour's `fireWeaponTemplate` scatters a shot. None at a
     /// radius of 0, which draws nothing.
-    pub fn point(&self, pos: Vec3, tags: TagSet, draw: impl FnOnce() -> [Num; 2]) -> Option<Vec3> {
+    pub fn point(
+        &self,
+        position: Vec3,
+        tags: TagSet,
+        draw: impl FnOnce() -> [Num; 2],
+    ) -> Option<Vec3> {
         let radius = self.radius(tags);
         if radius <= Num::ZERO {
             return None;
@@ -103,8 +108,8 @@ impl Scatter {
                 .checked_mul_mul(distance, axis, Rounding::NearestEven)
                 .expect("a scatter's offset is within its radius")
         };
-        let x = pos.x + offset(cos);
-        let z = pos.z - offset(sin);
+        let x = position.x + offset(cos);
+        let z = position.z - offset(sin);
         Some(Vec3::new(x, Num::ZERO, z))
     }
 }
@@ -125,7 +130,7 @@ impl Pitch {
     /// when `sin(φ − θ) ≥ 0`, so `y cos θ ≥ r sin θ`, the run to the nearest bit and each product
     /// exact.
     pub fn reaches(&self, from: Vec3, target: &Volume) -> bool {
-        let bottom = target.base.pos;
+        let bottom = target.base.position;
         let top = i128::from((bottom.y + target.height).to_bits());
         let run = i128::from(from.ground_offset(bottom).length().to_bits());
         let side = |bound: SinCos, height: i128| {

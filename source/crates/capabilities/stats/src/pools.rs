@@ -77,7 +77,7 @@ impl SimComponent for Pools {
         let hz = world.resource::<TickRate>().hz().get();
         let life = world.get_resource::<PoolBook>().and_then(PoolBook::life);
         let no_life = life.is_none_or(|life| self.0[life.index()].is_none());
-        no_life && self.0.iter().flatten().all(|meter| meter.settled(hz))
+        no_life && self.0.iter().flatten().all(|meter| meter.is_settled(hz))
     }
 }
 

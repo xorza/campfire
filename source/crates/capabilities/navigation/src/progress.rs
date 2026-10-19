@@ -17,15 +17,15 @@ pub struct Progress {
 }
 
 impl Progress {
-    /// Notes that the walker stands at `pos` as this tick steers, with a step of `step`; the ticks
-    /// in a row it has moved less than half a step.
-    pub(crate) fn track(&mut self, pos: Vec3, step: Num) -> u32 {
+    /// Notes that the walker stands at `position` as this tick steers, with a step of `step`; the
+    /// ticks in a row it has moved less than half a step.
+    pub(crate) fn track(&mut self, position: Vec3, step: Num) -> u32 {
         let half = step / 2;
         self.stuck = match self.last_at {
-            Some(last) if last.within_ground(pos, half) => self.stuck.saturating_add(1),
+            Some(last) if last.within_ground(position, half) => self.stuck.saturating_add(1),
             _ => 0,
         };
-        self.last_at = Some(pos);
+        self.last_at = Some(position);
         self.stuck
     }
 

@@ -4,12 +4,12 @@ fn on_hit(ctx, caster, target, hit) {
     if hit.delivery.state.bounces_left == 0 {
         return;
     }
-    let pool = without(ctx.find_visible(caster, target.pos, ctx.params.bounce_radius, "enemies:avatar"), target);
+    let pool = without(ctx.find_visible(caster, target.position, ctx.params.bounce_radius, "enemies:avatar"), target);
     if pool.is_empty() {
-        pool = without(ctx.find_visible(caster, target.pos, ctx.params.bounce_radius, "enemies"), target);
+        pool = without(ctx.find_visible(caster, target.position, ctx.params.bounce_radius, "enemies"), target);
     }
     if !pool.is_empty() {
-        let next = ctx.launch(target.pos, ctx.pick(pool));
+        let next = ctx.launch(target.position, ctx.pick(pool));
         next.state.bounces_left = hit.delivery.state.bounces_left - 1;
     }
 }

@@ -25,7 +25,7 @@ pub type RuleFn = fn(&BookCx<'_>) -> Result<(), BookError>;
 /// What a match's books are built from, and the books and facts its modules declare, each built
 /// the first time a builder asks for it, its extensions added, so a builder reads the books of
 /// the modules it builds on, whatever their order (02-engine-core.md, Books built by their
-/// owners). A book that asks again for itself, through the books it asks for, is a logic error.
+/// modules). A book that asks again for itself, through the books it asks for, is a logic error.
 pub struct BookCx<'a> {
     source: BookSource<'a>,
     types: Vec<SourceType<'a>>,
@@ -646,7 +646,7 @@ mod tests {
         // The mode's `bolt` delivers, so it stands not; the avatar is no declared type.
         let standing: Vec<usize> = cx.standing().map(|unit| unit.unit_type.index()).collect();
         assert_eq!(standing, [1, 2, 3]);
-        assert!(cx.type_of(UnitType::new(3)).avatar());
+        assert!(cx.type_of(UnitType::new(3)).is_avatar());
         assert_eq!(cx.unit_type(hero_scope, "bolt"), Some(UnitType::new(2)));
         assert_eq!(
             cx.unit_type(TypeScope::Mode, "hero-x"),

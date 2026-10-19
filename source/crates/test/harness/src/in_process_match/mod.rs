@@ -21,9 +21,9 @@ use campfire_net::internals::TickHashes;
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
     ClientDir, Clock, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup, LocalPace,
-    MatchClock, Os, Pace, PendingOrders, PendingRestore, ServerBots, ServerDir, ServerPin,
-    ServerSetup, SessionDir, SessionOpening, SessionTimes, SimClient, SimServerPlugins,
-    SimServerWorld, SlotScript, UncheckedRestore,
+    MatchClock, Os, Pace, PendingOrders, PendingRestore, SeatScript, ServerBots, ServerDir,
+    ServerPin, ServerSetup, SessionDir, SessionOpening, SessionTimes, SimClient, SimServerPlugins,
+    SimServerWorld, UncheckedRestore,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
@@ -59,7 +59,7 @@ const BINDING: LinkBinding = LinkBinding(ChannelBinding::new([3; 32]));
 
 /// What an `InProcessMatch` runs: how many players join, and how.
 #[derive(Debug, Clone)]
-pub struct MatchSetup {
+pub struct InProcessSetup {
     /// The players, a client each, in the slots from 0: one or two in the lane mode, a slot a
     /// side, and at most `MAX_PLAYERS`.
     pub players: usize,
@@ -130,7 +130,7 @@ pub enum End {
     Client(usize),
 }
 
-impl MatchSetup {
+impl InProcessSetup {
     /// The most players a setup holds: the MOBA 3v3's six.
     pub const MAX_PLAYERS: usize = 6;
 
@@ -189,7 +189,7 @@ pub struct InProcessMatch {
     links_made: u64,
     /// How many spectators it added, which takes each one's key.
     spectators: usize,
-    setup: MatchSetup,
+    setup: InProcessSetup,
     packages: Arc<ModePackages>,
     /// The server's data directory, where it keeps its session, once a test gives it one.
     data: Option<PathBuf>,
@@ -220,7 +220,7 @@ impl InProcessMatch {
     ];
 
     /// A match of the test lane mode at its default rate, its clients connected and synced.
-    pub fn new(setup: MatchSetup) -> Self {
+    pub fn new(setup: InProcessSetup) -> Self {
         assert!(
             (1..=2).contains(&setup.players),
             "the lane mode takes 1 or 2 players"
@@ -230,12 +230,12 @@ impl InProcessMatch {
     }
 
     /// A match of `packages` at their default rate, its clients connected and synced.
-    pub fn of_mode(setup: MatchSetup, packages: ModePackages) -> Self {
+    pub fn of_mode(setup: InProcessSetup, packages: ModePackages) -> Self {
         let log = LogCheck::start();
         assert!(
-            setup.players <= MatchSetup::MAX_PLAYERS,
+            setup.players <= InProcessSetup::MAX_PLAYERS,
             "a setup holds at most {} players",
-            MatchSetup::MAX_PLAYERS
+            InProcessSetup::MAX_PLAYERS
         );
         assert!(
             setup.server_frames > 0,
@@ -265,7 +265,7 @@ impl InProcessMatch {
             step_cost: StepCost::default(),
             log,
         };
-        let MatchSetup { players, links, .. } = local.setup;
+        let InProcessSetup { players, links, .. } = local.setup;
         for client in 0..players {
             let player = match links {
                 LinkLayout::InOrder => client,
@@ -296,7 +296,7 @@ impl InProcessMatch {
 
     /// The server's app of `packages` at their default rate, its frames `setup.server_frames` a
     /// tick, before any link.
-    fn server_app(setup: &MatchSetup, packages: &ModePackages, pace: &Arc<Pace>) -> App {
+    fn server_app(setup: &InProcessSetup, packages: &ModePackages, pace: &Arc<Pace>) -> App {
         let tick_hz = packages.manifest().tick_hz.default();
         let tick = TickRate::new(tick_hz).length();
         let mut server = App::new();
@@ -441,7 +441,7 @@ impl InProcessMatch {
         let slots = (self.setup.players..)
             .zip(self.setup.bots)
             .map(|(slot, &text)| {
-                SlotScript::new(u32::try_from(slot).expect("a small count"), script(text))
+                SeatScript::new(u32::try_from(slot).expect("a small count"), script(text))
             });
         let takeover = self.setup.takeover.map(script);
         ServerBots::new(slots, takeover.as_ref(), &self.packages)
@@ -552,7 +552,7 @@ impl InProcessMatch {
             tick_hz: packages.manifest().tick_hz.default(),
             seed_chain: self.setup.seed_chain.clone(),
             inputs: InputRules::LAN,
-            slots: self.setup.players + self.setup.bots.len(),
+            seats: self.setup.players + self.setup.bots.len(),
         })
         .expect("the lane mode runs at its default rate");
         if let Some(data) = self.server.world().get_resource::<ServerDir>() {
@@ -660,7 +660,7 @@ impl InProcessMatch {
             self.server_frame();
             self.step_cost.server = self.step_cost.server.max(start.elapsed());
         }
-        if self.server.world().reload_wanted() {
+        if self.server.world().is_reload_wanted() {
             self.restart_server();
         }
     }
@@ -687,7 +687,7 @@ impl InProcessMatch {
         self.clients[client].update();
     }
 
-    pub const fn setup(&self) -> &MatchSetup {
+    pub const fn setup(&self) -> &InProcessSetup {
         &self.setup
     }
 
@@ -718,7 +718,7 @@ impl InProcessMatch {
     fn spawned_avatar(&self, client: usize) -> Option<StableId> {
         let world = self.server.world();
         let slot = world
-            .link_slot(self.links[client])
+            .link_seat(self.links[client])
             .expect("the match started, with the client's slot");
         world.avatar_of(slot).map(|avatar| avatar.id)
     }
@@ -953,7 +953,7 @@ pub(crate) mod bench {
     use lightyear::prelude::RollbackMode;
 
     use crate::in_process_match::link_model::LinkModel;
-    use crate::in_process_match::{CONNECT_FRAMES, End, InProcessMatch, MatchSetup, StepCost};
+    use crate::in_process_match::{CONNECT_FRAMES, End, InProcessMatch, InProcessSetup, StepCost};
 
     /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new
     /// order every 40 frames keeps the avatar walking and the server sending updates.
@@ -1019,7 +1019,7 @@ pub(crate) mod bench {
     impl InProcessMatch {
         /// A solo match whose client rolls back as `rollback` says, started, for `walk_steps`.
         pub(crate) fn walking(rollback: RollbackMode) -> Self {
-            let mut local = Self::new(MatchSetup::solo(rollback, 1, Self::SEED_CHAIN));
+            let mut local = Self::new(InProcessSetup::solo(rollback, 1, Self::SEED_CHAIN));
             local.start_match();
             local
         }
@@ -1030,7 +1030,7 @@ pub(crate) mod bench {
         /// first wave, each client holding its hero, for `walk_steps`.
         pub(crate) fn walking_3v3() -> Self {
             let players = ROLLBACKS_3V3.len();
-            let mut setup = MatchSetup::solo(RollbackMode::Check, 1, Self::SEED_CHAIN);
+            let mut setup = InProcessSetup::solo(RollbackMode::Check, 1, Self::SEED_CHAIN);
             setup.players = players;
             setup.rollbacks[..players].copy_from_slice(&ROLLBACKS_3V3);
             setup.bots = &PICKS_3V3[players..];
@@ -1053,8 +1053,8 @@ pub(crate) mod bench {
             let world = self.server.world();
             for client in 0..self.clients.len() {
                 let avatar = world.entity_of(self.avatar(client));
-                let pos = world.get::<Position>(avatar.expect("the avatar exists"));
-                places.push(pos.expect("an avatar has a place").get());
+                let position = world.get::<Position>(avatar.expect("the avatar exists"));
+                places.push(position.expect("an avatar has a place").get());
             }
         }
 
@@ -1103,7 +1103,7 @@ pub(crate) mod bench {
                 process::id(),
                 DATA_DIRS.fetch_add(1, Ordering::Relaxed)
             ));
-            let mut local = Self::new(MatchSetup::duo(LinkModel::PERFECT, Self::SEED_CHAIN));
+            let mut local = Self::new(InProcessSetup::duo(LinkModel::PERFECT, Self::SEED_CHAIN));
             local.keep_data(dir.clone());
             local.start_match();
             local.play_by_team(Self::SCENARIO_SCRIPTS);

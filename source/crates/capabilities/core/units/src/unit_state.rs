@@ -15,7 +15,7 @@ use crate::unit_state_book::UnitStateBook;
 
 /// The fields of a unit's script state whose `sync` is `S`'s: a value for each such field its type
 /// declares, in the order of their names. A unit whose type declares none has none, so each class
-/// is a component of its own kind, which its own clients receive (14-replication-audiences.md, One
+/// is a component of its own kind, which its own clients receive (10-replication-audiences.md, One
 /// kind for each type).
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

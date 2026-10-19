@@ -40,21 +40,21 @@ impl UnitsWorld for World {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::world::World;
-    use campfire_common::PlayerSlot;
+    use campfire_common::Seat;
 
     use crate::player_units::{AvatarData, AvatarFilter, Commanded};
 
     /// What the units module gives a test's world.
     pub trait UnitsWorldInternals {
-        /// The avatar of `slot`, as `PlayerUnits::avatar` finds it, for code that holds the
+        /// The avatar of `seat`, as `PlayerUnits::avatar` finds it, for code that holds the
         /// world shared, as a test does: its query is made for each read.
-        fn avatar_of(&self, slot: PlayerSlot) -> Option<Commanded>;
+        fn avatar_of(&self, seat: Seat) -> Option<Commanded>;
     }
 
     impl UnitsWorldInternals for World {
-        fn avatar_of(&self, slot: PlayerSlot) -> Option<Commanded> {
+        fn avatar_of(&self, seat: Seat) -> Option<Commanded> {
             let mut avatars = self.try_query_filtered::<AvatarData, AvatarFilter>()?;
-            Commanded::avatar_among(avatars.iter(self), slot)
+            Commanded::avatar_among(avatars.iter(self), seat)
         }
     }
 }

@@ -61,20 +61,20 @@ impl Metric {
     pub fn order(self, from: Placed, range: Num, to: Placed) -> Ordering {
         let (
             Placed {
-                pos: from,
+                position: from,
                 shape: from_shape,
             },
             Placed {
-                pos: to,
+                position: to,
                 shape: to_shape,
             },
         ) = (from, to);
         debug_assert!(range >= Num::ZERO);
-        let to_box = |body: &BodyBox, pos: Vec3, other: Vec3, radius: Num| {
+        let to_box = |body: &BodyBox, position: Vec3, other: Vec3, radius: Num| {
             debug_assert!(self == Self::Planar, "a box lies on a planar map");
             range
                 .checked_add(radius)
-                .map_or(Ordering::Less, |reach| body.nearest(pos, other, reach))
+                .map_or(Ordering::Less, |reach| body.nearest(position, other, reach))
         };
         match (from_shape, to_shape) {
             (Shape::Circle(from_radius), Shape::Circle(to_radius)) => range
@@ -95,17 +95,17 @@ impl Metric {
     /// How the straight path from `from` to `to` comes to `body`, against `reach`, as `reaches`
     /// counts it.
     pub(crate) fn approach(self, body: Placed, from: Vec3, to: Vec3, reach: Num) -> Approach {
-        let Placed { pos, shape } = body;
+        let Placed { position, shape } = body;
         match shape {
             Shape::Circle(radius) => Approach::of_circle(
                 self.offset(from, to),
-                self.offset(from, pos),
+                self.offset(from, position),
                 reach,
                 radius.get(),
             ),
             Shape::Box(body) => {
                 debug_assert!(self == Self::Planar, "a box lies on a planar map");
-                body.approach(pos, from, to, reach)
+                body.approach(position, from, to, reach)
             }
         }
     }

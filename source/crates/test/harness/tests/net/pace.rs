@@ -3,13 +3,13 @@
 //! clock as long as a session's tick runs two.
 
 use bevy_time::{Fixed, Time};
-use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
+use campfire_harness::{End, InProcessMatch, InProcessSetup, LinkModel};
 use campfire_net::{JoinState, PaceSpeed};
 use campfire_sim::TickRate;
 
 #[test]
 fn a_paused_match_runs_no_tick_and_at_speed_2_runs_two_ticks_a_frame() {
-    let mut local = InProcessMatch::new(MatchSetup::duo(
+    let mut local = InProcessMatch::new(InProcessSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));

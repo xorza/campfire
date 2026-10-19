@@ -10,7 +10,7 @@ use crate::client_path;
 
 /// A package's `client/units.toml`: how each unit type looks, `[units.<type>]`, and each look
 /// its maps' client objects name, `[objects.<look>]`, which a game may draw otherwise than its
-/// units (12-zero-hour.md, The multiplayer rule for client objects).
+/// units (09-zero-hour.md, The multiplayer rule for client objects).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientUnits {

@@ -83,7 +83,7 @@ impl Orders {
         (index, movers): (Res<'_, EntityIndex>, Movers<'_, '_>),
         mut orders: ResMut<'_, PendingOrders>,
     ) {
-        if pointer.over_ui() {
+        if pointer.is_over_ui() {
             return;
         }
         let Some(point) = pointer.ground() else {

@@ -3,7 +3,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_combat::DamagePass;
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_players::{HeldOut, PlayersWorld};
 use campfire_script::{MatchNames, UnknownName};
@@ -38,7 +38,7 @@ type LivingUnit = (
 /// A player that holds a living unit of the tag, and its team.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Holding {
-    slot: PlayerSlot,
+    seat: Seat,
     team: Team,
 }
 
@@ -84,7 +84,7 @@ impl Victory {
     /// the last unit of a tag).
     pub(crate) fn follow(
         world: &mut World,
-        mut fallen: Local<'_, Vec<PlayerSlot>>,
+        mut fallen: Local<'_, Vec<Seat>>,
         mut holding: Local<'_, Vec<Holding>>,
         mut doomed: Local<'_, Vec<StableId>>,
         mut units: Local<'_, QueryState<LivingUnit, Without<Dead>>>,
@@ -109,26 +109,26 @@ impl Victory {
         holding.clear();
         for (_, tags, owner, &team) in units.iter(world) {
             let held = Holding {
-                slot: owner.slot(),
+                seat: owner.seat(),
                 team,
             };
             if tags.tags.contains(counts) && !holding.contains(&held) {
                 holding.push(held);
             }
         }
-        for &slot in &*fallen {
-            if holding.iter().any(|held| held.slot == slot) {
+        for &seat in &*fallen {
+            if holding.iter().any(|held| held.seat == seat) {
                 continue;
             }
             let player = world
-                .player_entity(slot)
-                .expect("every slot has its entity");
+                .player_entity(seat)
+                .expect("every seat has its entity");
             world.entity_mut(player).insert(HeldOut);
             if defeat == Defeat::KillAll {
                 doomed.clear();
                 let of = units
                     .iter(world)
-                    .filter(|(.., owner, _)| owner.slot() == slot);
+                    .filter(|(.., owner, _)| owner.seat() == seat);
                 doomed.extend(of.map(|(&id, ..)| id));
                 for &unit in &*doomed {
                     DamagePass::kill(world, unit);

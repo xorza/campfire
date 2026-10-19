@@ -1,14 +1,14 @@
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Seat, Tick};
 use campfire_log::{JsonText, LogEvent, LogLine};
 use campfire_protocol::Applied;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-/// The server logged an input of `slot`, stamped `stamp`, as it was to log `next_tick`, and the
+/// The server logged an input of `seat`, stamped `stamp`, as it was to log `next_tick`, and the
 /// input never takes effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub(crate) struct InputNeverApplied {
-    pub slot: PlayerSlot,
+    pub seat: Seat,
     pub stamp: Tick,
     pub next_tick: Tick,
     #[serde(deserialize_with = "LogLine::json")]
@@ -42,7 +42,7 @@ impl LogEvent for InputNeverApplied {
 
     fn log(&self) {
         warn!(
-            slot = self.slot.get(),
+            seat = self.seat.get(),
             stamp = self.stamp.get(),
             next_tick = self.next_tick.get(),
             outcome = %JsonText(&self.outcome),
@@ -72,7 +72,7 @@ mod tests {
     fn the_event_reads_back_what_it_logs() {
         for outcome in [Unapplied::Late, Unapplied::Early] {
             round_trip(&InputNeverApplied {
-                slot: PlayerSlot::new(1),
+                seat: Seat::new(1),
                 stamp: Tick::new(20),
                 next_tick: Tick::new(25),
                 outcome,

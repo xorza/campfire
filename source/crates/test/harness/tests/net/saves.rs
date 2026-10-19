@@ -8,8 +8,8 @@ use std::iter;
 use std::num::NonZeroU32;
 
 use bevy_time::{Time, Virtual};
-use campfire_common::{PlayerSlot, Tick};
-use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
+use campfire_common::{Seat, Tick};
+use campfire_harness::{End, InProcessMatch, InProcessSetup, LinkModel};
 use campfire_mode::{SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
@@ -20,7 +20,7 @@ use campfire_protocol::{InputRules, JournalFrames, SeedChain, SessionLog};
 use campfire_runner::{Replay, Session, SessionWorld};
 use campfire_sim::{SimWorld, TickRate};
 use campfire_store::InputFile;
-use campfire_store::internals::Scratch;
+use campfire_store::internals::TestDir;
 use lightyear::core::tick::TickDuration;
 
 /// A chain of room for three checkpoints.
@@ -28,12 +28,12 @@ const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap(
 
 /// The scenario's match, its mode's `[saves] by` `save_by`, its server keeping its data in
 /// `scratch`, after 30 steps.
-fn playing(scratch: &Scratch, save_by: SaveBy) -> InProcessMatch {
+fn playing(test_dir: &TestDir, save_by: SaveBy) -> InProcessMatch {
     let saves = SavesData {
         by: save_by,
         autosave_ms: None,
     };
-    let mut local = started(scratch, saves);
+    let mut local = started(test_dir, saves);
     for _ in 0..30 {
         local.step();
     }
@@ -42,13 +42,13 @@ fn playing(scratch: &Scratch, save_by: SaveBy) -> InProcessMatch {
 
 /// The scenario's match, its mode's `[saves]` `saves`, its server keeping its data in `scratch`, as
 /// it starts.
-fn started(scratch: &Scratch, saves: SavesData) -> InProcessMatch {
-    let setup = MatchSetup {
+fn started(test_dir: &TestDir, saves: SavesData) -> InProcessMatch {
+    let setup = InProcessSetup {
         saves,
-        ..MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN)
+        ..InProcessSetup::duo(LinkModel::PERFECT, SEED_CHAIN)
     };
     let mut local = InProcessMatch::new(setup);
-    local.keep_data(scratch.path("data"));
+    local.keep_data(test_dir.path("data"));
     local.start_match();
     local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     local
@@ -64,14 +64,14 @@ fn log(local: &InProcessMatch) -> &SessionLog {
 }
 
 /// How many loads the journal of `local`'s session, kept in `scratch`, records.
-fn loads(scratch: &Scratch, local: &InProcessMatch) -> usize {
+fn loads(test_dir: &TestDir, local: &InProcessMatch) -> usize {
     let id = log(local).session_id().to_string();
-    let journal = scratch
+    let journal = test_dir
         .path("data")
         .join("sessions")
         .join(id)
         .join("journal");
-    let bytes = scratch.read(&journal);
+    let bytes = test_dir.read(&journal);
     let mut frames = JournalFrames::new(&bytes).unwrap();
     // A load's record is the journal's kind 7.
     iter::from_fn(|| frames.next())
@@ -88,8 +88,8 @@ fn playing_on(local: &InProcessMatch) -> bool {
 
 #[test]
 fn a_players_save_is_refused_when_the_mode_alone_saves() {
-    let scratch = Scratch::new();
-    let mut local = playing(&scratch, SaveBy::Mode);
+    let test_dir = TestDir::new();
+    let mut local = playing(&test_dir, SaveBy::Mode);
     command(&mut local, SaveCommand::Save);
     for _ in 0..10 {
         local.step();
@@ -105,8 +105,8 @@ fn a_players_save_is_refused_when_the_mode_alone_saves() {
 
 #[test]
 fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
-    let scratch = Scratch::new();
-    let mut local = playing(&scratch, SaveBy::Player);
+    let test_dir = TestDir::new();
+    let mut local = playing(&test_dir, SaveBy::Player);
 
     // The save: a checkpoint at the boundary after the tick that runs next, segment 1.
     command(&mut local, SaveCommand::Save);
@@ -143,7 +143,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     assert_eq!(world.resource::<TickDuration>().0, tick / 2);
     assert_eq!(world.resource::<Time<Virtual>>().max_delta(), tick / 2 * 9);
     assert_eq!(log(&local).checkpoints().collect::<Vec<_>>(), [&save]);
-    assert_eq!(loads(&scratch, &local), 1);
+    assert_eq!(loads(&test_dir, &local), 1);
 
     // Every client comes back and plays on from the save.
     for _ in 0..300 {
@@ -156,11 +156,11 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     assert!(local.next_tick(End::Server) > save.tick.get() + 30);
     // Each player's order after the save never applies.
     let mut discarded = local.log().take::<InputsDiscarded>();
-    discarded.sort_by_key(|event| event.slot);
-    let slots = [0, 1].map(PlayerSlot::new);
+    discarded.sort_by_key(|event| event.seat);
+    let seats = [0, 1].map(Seat::new);
     assert_eq!(
         discarded,
-        slots.map(|slot| InputsDiscarded { slot, count: 1 })
+        seats.map(|seat| InputsDiscarded { seat, count: 1 })
     );
 
     // The published log holds the segment before the save and the one after it, and verifies.
@@ -182,12 +182,12 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
 #[test]
 fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary() {
     // An autosave every second, every 30 ticks of the lane mode.
-    let scratch = Scratch::new();
+    let test_dir = TestDir::new();
     let saves = SavesData {
         by: SaveBy::Player,
         autosave_ms: NonZeroU32::new(1000),
     };
-    let mut local = started(&scratch, saves);
+    let mut local = started(&test_dir, saves);
     for _ in 0..40 {
         local.step();
     }
@@ -199,9 +199,9 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
 
     // A stop after tick 29, before the save began: the journal ends before its begin, and its
     // snapshot is gone.
-    let session = scratch.path("data").join("sessions").join(id.to_string());
+    let session = test_dir.path("data").join("sessions").join(id.to_string());
     let journal = session.join("journal");
-    let bytes = scratch.read(&journal);
+    let bytes = test_dir.read(&journal);
     let mut frames = JournalFrames::new(&bytes).unwrap();
     let begun = loop {
         let start = frames.whole();
@@ -210,9 +210,9 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
             break start;
         }
     };
-    scratch.write(&journal, &bytes[..begun]);
+    test_dir.write(&journal, &bytes[..begun]);
     let snapshot = session.join("snapshots").join(save.snapshot.to_string());
-    scratch.remove(&snapshot);
+    test_dir.remove(&snapshot);
 
     // The restore replays to tick 30 and begins the save there: the same record, its snapshot
     // written again.
@@ -220,5 +220,5 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
     assert_eq!(local.next_tick(End::Server), 30);
     local.server_mut().world_mut().settle_checkpoint();
     assert_eq!(log(&local).checkpoint_at(save.tick), Some(&save));
-    assert!(scratch.exists(&snapshot));
+    assert!(test_dir.exists(&snapshot));
 }

@@ -1,13 +1,13 @@
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_log::LogEvent;
 use serde::Deserialize;
 use tracing::info;
 
-/// A client's match started: the server gave it `slot`, and sim tick 0 is Lightyear's
+/// A client's match started: the server gave it `seat`, and sim tick 0 is Lightyear's
 /// `start_tick`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct MatchStarted {
-    pub slot: PlayerSlot,
+    pub seat: Seat,
     pub start_tick: u32,
 }
 
@@ -16,7 +16,7 @@ impl LogEvent for MatchStarted {
 
     fn log(&self) {
         info!(
-            slot = self.slot.get(),
+            seat = self.seat.get(),
             start_tick = self.start_tick,
             "{}",
             Self::MESSAGE
@@ -33,7 +33,7 @@ mod tests {
     #[test]
     fn the_event_reads_back_what_it_logs() {
         round_trip(&MatchStarted {
-            slot: PlayerSlot::new(1),
+            seat: Seat::new(1),
             start_tick: 5,
         });
     }

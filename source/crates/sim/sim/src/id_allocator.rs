@@ -15,7 +15,7 @@ pub struct IdAllocator {
 
 impl IdAllocator {
     /// Whether `id` was handed out, so the allocator will never hand it out again.
-    pub(crate) const fn issued(&self, id: StableId) -> bool {
+    pub(crate) const fn is_issued(&self, id: StableId) -> bool {
         id.get() < self.next
     }
 

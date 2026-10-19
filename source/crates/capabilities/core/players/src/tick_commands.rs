@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use bevy_ecs::system::{Local, Res, SystemParam};
-use campfire_common::PlayerSlot;
+use campfire_common::Seat;
 use campfire_declare::MatchFacts;
 use campfire_sim::{StableId, TickInputs};
 use campfire_units::Owner;
@@ -14,7 +14,7 @@ use crate::player_rows::PlayerRows;
 /// The orders of one capability among the tick's inputs, of action `A`, each decoded as it is read,
 /// in input order, into buffers each tick reuses. A body that is no such order is left out, and so
 /// is each order of a player out of play in a session whose players out of play see what a
-/// spectator sees: it would act on what its team does not see (14-replication-audiences.md, A
+/// spectator sees: it would act on what its team does not see (10-replication-audiences.md, A
 /// player out of play sees what its team sees, or what a spectator sees).
 #[derive(SystemParam, Debug)]
 pub struct TickCommands<'w, 's, A: CapabilityAction> {
@@ -33,7 +33,7 @@ pub struct TickCommands<'w, 's, A: CapabilityAction> {
 /// and its units.
 #[derive(Debug, Clone, Copy)]
 pub struct TickCommand<'a, A> {
-    pub slot: PlayerSlot,
+    pub seat: Seat,
     pub number: u32,
     pub action: A,
     pub units: &'a [StableId],
@@ -41,7 +41,7 @@ pub struct TickCommand<'a, A> {
 
 #[derive(Debug, Clone, Copy)]
 struct Sent {
-    slot: PlayerSlot,
+    seat: Seat,
     orders: u32,
 }
 
@@ -51,7 +51,7 @@ impl<A: CapabilityAction> TickCommands<'_, '_, A> {
         let spectating = self.facts.out == OutView::Spectators;
         self.sent.clear();
         for command in self.inputs.commands(A::CAPABILITY) {
-            if spectating && self.out.of_slot(command.slot).is_some() {
+            if spectating && self.out.of_seat(command.seat).is_some() {
                 continue;
             }
             self.units.clear();
@@ -59,8 +59,8 @@ impl<A: CapabilityAction> TickCommands<'_, '_, A> {
                 continue;
             };
             apply(TickCommand {
-                slot: command.slot,
-                number: number(&mut self.sent, command.slot),
+                seat: command.seat,
+                number: number(&mut self.sent, command.seat),
                 action,
                 units: &self.units,
             });
@@ -71,15 +71,15 @@ impl<A: CapabilityAction> TickCommands<'_, '_, A> {
 impl<A> TickCommand<'_, A> {
     /// Whether its player controls a unit of `owner`, which alone carries it out.
     pub fn controls(&self, owner: Owner) -> bool {
-        owner.slot() == self.slot
+        owner.seat() == self.seat
     }
 }
 
-/// The number of `slot`'s next order, counted in `sent`.
-fn number(sent: &mut Vec<Sent>, slot: PlayerSlot) -> u32 {
-    let at = sent.iter().position(|sent| sent.slot == slot);
+/// The number of `seat`'s next order, counted in `sent`.
+fn number(sent: &mut Vec<Sent>, seat: Seat) -> u32 {
+    let at = sent.iter().position(|sent| sent.seat == seat);
     let at = at.unwrap_or_else(|| {
-        sent.push(Sent { slot, orders: 0 });
+        sent.push(Sent { seat, orders: 0 });
         sent.len() - 1
     });
     let number = sent[at].orders;

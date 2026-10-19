@@ -6,7 +6,7 @@ use campfire_values::Scalar;
 use crate::error::OptionValueError;
 
 /// A host's pick of an option by its value, as `--option` writes it: `name=value`, the value an
-/// integer or a decimal (10-sessions.md, A pick is given by its value). The mode's options
+/// integer or a decimal (08-sessions.md, A pick is given by its value). The mode's options
 /// check it as a session opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OptionValue {

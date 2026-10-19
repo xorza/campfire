@@ -96,8 +96,8 @@ pub(crate) enum Failure {
     #[display("player 1's dozer stands in its command center's box, at ({}, {})", _0.x, _0.z)]
     DozerInBuilding(Vec3),
     /// The dozer stood in a wall in this tick, at this place.
-    #[display("the dozer stood in a wall in tick {tick}, at ({}, {})", pos.x, pos.z)]
-    DozerInWall { tick: u64, pos: Vec3 },
+    #[display("the dozer stood in a wall in tick {tick}, at ({}, {})", position.x, position.z)]
+    DozerInWall { tick: u64, position: Vec3 },
     /// The dozer's walk did not end within the check's limit of ticks.
     #[display("the dozer's walk did not end")]
     NeverArrived,

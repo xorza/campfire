@@ -2,7 +2,7 @@ use derive_more::Display;
 
 /// The kind of a name that scripts and data give, as the load checks it and its errors say it:
 /// the type whose values the names are gives it, through `Named`, with its text, its article and
-/// its scope (08-script-api.md, A name kind is its type's).
+/// its scope (06-script-api.md, A name kind is its type's).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[display("{text}")]
 pub struct NameKind {
@@ -50,7 +50,7 @@ impl NameKind {
 
     /// Whether a name of this kind means one thing only in a package, or a script: a name of it
     /// as text, without its scope, may name another package's.
-    pub const fn scoped(self) -> bool {
+    pub const fn is_scoped(self) -> bool {
         matches!(self.scope, NameScope::Package)
     }
 }

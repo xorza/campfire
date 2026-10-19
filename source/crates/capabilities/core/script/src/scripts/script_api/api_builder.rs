@@ -4,16 +4,16 @@ use campfire_values::{ScriptEnum, TagProperty};
 use rhai::{Dynamic, ImmutableString, Module, NativeCallContext};
 
 use crate::script_host::ScriptHost;
-use crate::scripts::api_owner::ScriptHandle;
+use crate::scripts::api_holder::ScriptHandle;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::ctx_fn::{CtxFn, GetFn, MethodFn};
 use crate::scripts::data_section::DataSection;
 use crate::scripts::data_table::DataTable;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::hook::{Hook, HookSpec};
+use crate::scripts::hook::{Hook, HookDecl};
+use crate::scripts::member_decl::MemberDecl;
 use crate::scripts::member_kind::{GETTER, MemberKind};
-use crate::scripts::member_spec::MemberSpec;
 use crate::scripts::planned_capability::PlannedCapability;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::ScriptApi;
@@ -58,14 +58,14 @@ impl<'a> ApiBuilder<'a> {
     }
 
     /// `spec`, of the binding module's capability unless it names another.
-    fn owned(&self, mut spec: MemberSpec) -> MemberSpec {
+    fn owned(&self, mut decl: MemberDecl) -> MemberDecl {
         assert!(
-            self.capability.is_none() || spec.capability != self.capability,
+            self.capability.is_none() || decl.capability != self.capability,
             "`{}` names the capability of the module that binds it",
-            spec.name
+            decl.name
         );
-        spec.capability = spec.capability.or(self.capability);
-        spec
+        decl.capability = decl.capability.or(self.capability);
+        decl
     }
 
     /// Registers `T` under its name in scripts.
@@ -106,54 +106,54 @@ impl<'a> ApiBuilder<'a> {
 
     /// Binds `f` as the form of `spec`, a value or a field's getter, which serves every role and
     /// takes no argument.
-    pub fn bind<M, H, O, K, F: GetFn<M, H, O, K>>(&mut self, spec: MemberSpec, f: F) -> &mut Self {
-        let spec = self.owned(spec);
+    pub fn bind<M, H, O, K, F: GetFn<M, H, O, K>>(&mut self, decl: MemberDecl, f: F) -> &mut Self {
+        let decl = self.owned(decl);
         assert!(
-            matches!(spec.kind, MemberKind::Value | MemberKind::Field),
+            matches!(decl.kind, MemberKind::Value | MemberKind::Field),
             "`{}` takes arguments, which `call` or `method` binds",
-            spec.name
+            decl.name
         );
         assert_eq!(
-            spec.roles,
+            decl.roles,
             RoleSet::ALL,
             "`{}` serves some roles only, which `call` checks",
-            spec.name
+            decl.name
         );
-        f.register(self.host.engine_mut(), &spec.kind.bound_name(spec.name));
+        f.register(self.host.engine_mut(), &decl.kind.bound_name(decl.name));
         let output = FormOutput {
             ty: F::output(),
             names: F::NAME_KIND,
         };
-        self.record_runs(spec, output, &[]);
+        self.record_runs(decl, output, &[]);
         self
     }
 
     /// Binds `f`, a form of `spec`, a call or a value of `ctx` that takes `ctx` first, for the
     /// roles of `spec`: a call in another role fails before `f` runs. The types of its arguments
     /// say what each names.
-    pub fn call<Args, R, F: CtxFn<Args, R>>(&mut self, spec: MemberSpec, f: F) -> &mut Self {
-        let spec = self.owned(spec).with_args(F::args());
+    pub fn call<Args, R, F: CtxFn<Args, R>>(&mut self, decl: MemberDecl, f: F) -> &mut Self {
+        let decl = self.owned(decl).with_args(F::args());
         assert!(
-            matches!(spec.kind, MemberKind::Call | MemberKind::Value),
+            matches!(decl.kind, MemberKind::Call | MemberKind::Value),
             "`{}` is no call or value of `ctx`",
-            spec.name
+            decl.name
         );
         assert!(
-            spec.has_form_of(F::ARITY),
+            decl.has_form_of(F::ARITY),
             "a form of `{}` takes the {} arguments its function takes",
-            spec.name,
+            decl.name,
             F::ARITY
         );
         f.register(
             self.host.engine_mut(),
-            &spec.kind.bound_name(spec.name),
-            spec.roles,
+            &decl.kind.bound_name(decl.name),
+            decl.roles,
         );
         let output = FormOutput {
             ty: F::output(),
             names: F::NAME_KIND,
         };
-        self.record_runs(spec, output, F::TYPES);
+        self.record_runs(decl, output, F::TYPES);
         self
     }
 
@@ -161,44 +161,44 @@ impl<'a> ApiBuilder<'a> {
     /// The types of its arguments say what each names.
     pub fn method<M, H, Args, R, F: MethodFn<M, H, Args, R>>(
         &mut self,
-        spec: MemberSpec,
+        decl: MemberDecl,
         f: F,
     ) -> &mut Self {
-        let spec = self.owned(spec).with_args(F::args());
+        let decl = self.owned(decl).with_args(F::args());
         assert!(
-            matches!(spec.kind, MemberKind::Method | MemberKind::Operator),
+            matches!(decl.kind, MemberKind::Method | MemberKind::Operator),
             "`{}` is no method or operator",
-            spec.name
+            decl.name
         );
         assert_eq!(
-            spec.roles,
+            decl.roles,
             RoleSet::ALL,
             "`{}`, a method, serves every role",
-            spec.name
+            decl.name
         );
-        if spec.kind == MemberKind::Method {
+        if decl.kind == MemberKind::Method {
             assert!(
-                spec.has_form_of(F::ARITY),
+                decl.has_form_of(F::ARITY),
                 "a form of `{}` takes the {} arguments its function takes",
-                spec.name,
+                decl.name,
                 F::ARITY
             );
         }
-        f.register(self.host.engine_mut(), &spec.kind.bound_name(spec.name));
+        f.register(self.host.engine_mut(), &decl.kind.bound_name(decl.name));
         let output = FormOutput {
             ty: F::output(),
             names: F::NAME_KIND,
         };
-        self.record_runs(spec, output, F::TYPES);
+        self.record_runs(decl, output, F::TYPES);
         self
     }
 
     /// Records `spec`, which runs, of a form that gives `output`.
-    fn record_runs(&mut self, spec: MemberSpec, output: FormOutput, types: &[&'static str]) {
+    fn record_runs(&mut self, decl: MemberDecl, output: FormOutput, types: &[&'static str]) {
         self.api.record(ApiMember {
-            spec,
+            decl,
             writable: false,
-            status: Status::Runs(spec.since),
+            status: Status::Runs(decl.since),
             output: Some(output),
             types: types.iter().map(|&ty| vec![ty]).collect(),
         });
@@ -207,11 +207,11 @@ impl<'a> ApiBuilder<'a> {
     /// Binds `f` as the setter of `spec`, a field of a handle `H` scripts may write with a `V`.
     pub fn bind_set<H: ScriptType, V: ScriptArg>(
         &mut self,
-        spec: MemberSpec,
+        decl: MemberDecl,
         f: impl Fn(&mut H, V) -> Checked<()> + 'static,
     ) -> &mut Self {
-        let spec = self.owned(spec);
-        debug_assert_eq!(spec.kind, MemberKind::Field, "only a field is written");
+        let decl = self.owned(decl);
+        debug_assert_eq!(decl.kind, MemberKind::Field, "only a field is written");
         const {
             assert!(
                 !V::NUMBER,
@@ -219,15 +219,15 @@ impl<'a> ApiBuilder<'a> {
             );
         }
         self.host.engine_mut().register_fn(
-            format!("{SETTER}{}", spec.name),
+            format!("{SETTER}{}", decl.name),
             move |call: NativeCallContext<'_>, handle: &mut H, value: V::Raw| {
                 f(handle, V::take(value, &ArgCtx::of_call(&call))?)
             },
         );
         self.api.record(ApiMember {
-            spec,
+            decl,
             writable: true,
-            status: Status::Runs(spec.since),
+            status: Status::Runs(decl.since),
             output: None,
             types: Vec::new(),
         });
@@ -235,10 +235,10 @@ impl<'a> ApiBuilder<'a> {
     }
 
     /// Records `spec` as planned: the design gives it, and no code runs it yet.
-    pub fn plan(&mut self, spec: MemberSpec) -> &mut Self {
-        let spec = self.owned(spec);
+    pub fn plan(&mut self, decl: MemberDecl) -> &mut Self {
+        let decl = self.owned(decl);
         self.api.record(ApiMember {
-            spec,
+            decl,
             writable: false,
             status: Status::Planned,
             output: None,
@@ -249,7 +249,7 @@ impl<'a> ApiBuilder<'a> {
 
     /// Records whether the release calls the hook `H`, as the code that calls it says, of the
     /// capability of the module that calls it and binds.
-    pub fn hook<H: HookSpec>(&mut self, status: Status) -> &mut Self {
+    pub fn hook<H: HookDecl>(&mut self, status: Status) -> &mut Self {
         self.api.record_hook(HookStatus {
             hook: Hook::of::<H>(),
             status,
@@ -260,7 +260,7 @@ impl<'a> ApiBuilder<'a> {
     }
 
     /// Records the hook `H` as planned with `planned`, a capability the release does not build.
-    pub fn plan_hook<H: HookSpec>(&mut self, planned: PlannedCapability) -> &mut Self {
+    pub fn plan_hook<H: HookDecl>(&mut self, planned: PlannedCapability) -> &mut Self {
         self.api.record_hook(HookStatus {
             hook: Hook::of::<H>(),
             status: Status::Planned,

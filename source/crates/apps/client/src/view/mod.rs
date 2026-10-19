@@ -36,7 +36,7 @@ use crate::view::client_data::ClientData;
 use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
-use crate::view::glide::{Follows, Glide, Spot, TickClock};
+use crate::view::glide::{Follows, FrameClock, Glide, Spot};
 use crate::view::ground_heights::GroundHeights;
 use crate::view::look::{Condition, Look, Pose, Shape, ShapeKind};
 use crate::view::match_colors::{MatchColors, Paint};
@@ -294,10 +294,10 @@ impl View {
         mut commands: Commands<'_, '_>,
     ) {
         let heights = data.lifts();
-        for (unit, &pos, team, walks, avatar, own, dead, received, body, &unit_type, facing) in
+        for (unit, &position, team, walks, avatar, own, dead, received, body, &unit_type, facing) in
             &units
         {
-            let at = ground(pos, heights);
+            let at = ground(position, heights);
             match looks.look(unit_type) {
                 // A look of no models draws nothing: its drawing has no shape to point at, ring
                 // or gauge, only the place its unit stands.
@@ -403,8 +403,8 @@ impl View {
         mut commands: Commands<'_, '_>,
     ) {
         let heights = data.lifts();
-        for (shot, &pos, &unit_type, received) in &shots {
-            let at = ground(pos, heights);
+        for (shot, &position, &unit_type, received) in &shots {
+            let at = ground(position, heights);
             let root = commands
                 .spawn((
                     DrawingOf(shot),
@@ -448,11 +448,11 @@ impl View {
         mut roots: Query<'_, '_, (&mut Heading, &mut Transform)>,
     ) {
         let heights = data.lifts();
-        for (&pos, drawing) in &shots {
+        for (&position, drawing) in &shots {
             let Ok((mut heading, mut transform)) = roots.get_mut(drawing.root()) else {
                 continue;
             };
-            let to = ground(pos, heights);
+            let to = ground(position, heights);
             if let Some(turn) = Heading::along(to - heading.from) {
                 transform.rotation = turn;
             }
@@ -548,10 +548,10 @@ impl View {
         mut roots: Query<'_, '_, &mut Glide>,
     ) {
         let heights = data.lifts();
-        for (&pos, facing, drawing) in &units {
+        for (&position, facing, drawing) in &units {
             if let Ok(mut glide) = roots.get_mut(drawing.root()) {
                 glide.tick(Spot {
-                    point: ground(pos, heights),
+                    point: ground(position, heights),
                     yaw: yaw(facing),
                 });
             }
@@ -566,14 +566,14 @@ impl View {
         mut roots: Query<'_, '_, (&Transform, &mut Glide)>,
     ) {
         let heights = data.lifts();
-        for (&pos, facing, drawing) in &units {
+        for (&position, facing, drawing) in &units {
             if let Ok((transform, mut glide)) = roots.get_mut(drawing.root()) {
                 let drawn = Spot {
                     point: transform.translation,
                     yaw: transform.rotation.to_euler(EulerRot::YXZ).0,
                 };
                 let to = Spot {
-                    point: ground(pos, heights),
+                    point: ground(position, heights),
                     yaw: yaw(facing),
                 };
                 glide.head(drawn, to, time.elapsed());
@@ -588,7 +588,7 @@ impl View {
         fixed: Res<'_, Time<Fixed>>,
         mut roots: Query<'_, '_, (&Glide, &mut Transform, Has<Turns>)>,
     ) {
-        let clock = TickClock {
+        let clock = FrameClock {
             timestep: fixed.timestep(),
             fraction: fixed.overstep_fraction(),
         };
@@ -684,8 +684,8 @@ fn yaw(facing: Option<&Facing>) -> f32 {
 
 /// A sim place in the renderer's floats: its height above the ground, which `heights` gives
 /// beneath it, or above 0 on a map with none or a spatial map's, as `ClientData::lifts` gives.
-fn ground(pos: Position, heights: Option<&GroundHeights>) -> Vec3 {
-    let point = pos.get();
+fn ground(position: Position, heights: Option<&GroundHeights>) -> Vec3 {
+    let point = position.get();
     let (x, z) = (point.x.float(), point.z.float());
     let beneath = heights.map_or(0.0, |heights| heights.at(x, z));
     Vec3::new(x, beneath + point.y.float(), z)

@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_script::{
-    CallError, CallParams, CallPart, CallStart, Commit, Frame, ParamScope, ScriptValue,
+    CallError, CallExtension, CallParams, CallStart, Commit, Frame, ParamScope, ScriptValue,
 };
 use campfire_sim::StableId;
 use campfire_values::{ActionId, ModifierId, NameId, Scalar};
@@ -30,7 +30,7 @@ pub struct StatsCall {
     adds: HeldModifierAdds,
 }
 
-impl CallPart for StatsCall {
+impl CallExtension for StatsCall {
     const COMMITS: Commit = Commit::AfterEffects;
 
     /// The book of params, which the load and the mode give, not a call.
@@ -44,7 +44,7 @@ impl CallPart for StatsCall {
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
         self.action = start.action;
         self.modifier = start.modifier;
-        let unshared = self.handles.drain(..).filter(ModifierHandle::unshared);
+        let unshared = self.handles.drain(..).filter(ModifierHandle::is_unshared);
         self.spare.extend(unshared);
         let reads = self.action.is_some() || self.modifier.is_some();
         let source = start
@@ -130,7 +130,7 @@ impl StatsCall {
     /// The stats' part of `frame`; stats adds it as it installs.
     pub fn of(frame: &Frame) -> &Self {
         frame
-            .part()
+            .extension()
             .expect("a match whose calls read params or apply modifiers has stats")
     }
 
@@ -142,7 +142,7 @@ impl StatsCall {
     /// The stats' part of `frame`, to change; stats adds it as it installs.
     pub fn of_mut(frame: &mut Frame) -> &mut Self {
         frame
-            .part_mut()
+            .extension_mut()
             .expect("a match whose calls take modifier handles has stats")
     }
 

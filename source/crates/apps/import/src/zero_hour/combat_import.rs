@@ -23,9 +23,9 @@ use crate::zero_hour::imported_type::{INFANTRY, ImportedType};
 use crate::zero_hour::weapon_drop::{self, WeaponDrop};
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
-/// Zero Hour's combat (04-capabilities/combat.md, Armor by damage kind; 12-zero-hour.md, Life is
-/// the original's; 12-zero-hour.md, A weapon converts when it hits one target at once;
-/// 12-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
+/// Zero Hour's combat (04-capabilities/combat.md, Armor by damage kind; 09-zero-hour.md, Life is
+/// the original's; 09-zero-hour.md, A weapon converts when it hits one target at once;
+/// 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
 /// slow weapons): the weapons of each unit type's starting weapon set that convert, as attack
 /// actions, once for the whole import, each in its type's slot kind `weapon`; every armor, the
 /// share of each damage kind it does not take whole; the weapons dropped, each once for each
@@ -51,7 +51,7 @@ struct ShellLook {
     object: DeclaredName,
 }
 
-/// An attack as the mode's data writes it, `[actions.weapon_<name>]` (12-zero-hour.md, A weapon
+/// An attack as the mode's data writes it, `[actions.weapon_<name>]` (09-zero-hour.md, A weapon
 /// converts when it hits one target at once): its numbers, its clip, the shell it fires, the
 /// damage of its radius, its scatter, the pitches it reaches, and the speed of a weapon of no
 /// shell whose damage lands after its shot.

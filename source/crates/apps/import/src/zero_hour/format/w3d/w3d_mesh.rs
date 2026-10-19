@@ -234,11 +234,11 @@ impl W3dMesh {
     }
 
     /// Whether the game draws it hidden until a state shows it.
-    pub(crate) const fn hidden(&self) -> bool {
+    pub(crate) const fn is_hidden(&self) -> bool {
         self.flags & HIDDEN != 0
     }
 
-    pub(crate) const fn two_sided(&self) -> bool {
+    pub(crate) const fn is_two_sided(&self) -> bool {
         self.flags & TWO_SIDED != 0
     }
 
@@ -510,14 +510,15 @@ impl Stage {
 impl Shader {
     /// Whether it draws its texture alone, of no light, color or opacity of the vertices
     /// (`ShaderClass::Apply`); with no texture, the game draws the vertices' light.
-    pub(crate) const fn unlit(self) -> bool {
+    pub(crate) const fn is_unlit(self) -> bool {
         self.texturing && self.primary_gradient == GRADIENT_DISABLE
     }
 
-    /// What its first stage draws of a stage that holds no texture (`TextureBaseClass::Apply_Null`),
-    /// which native Direct3D samples as the null vector, `(0, 0, 0, 0)`: with texturing off, the
-    /// vertices' light, as of any triangle; with it on, an alpha of 0, and a color of 0, but the
-    /// vertices' light under `GRADIENT_ADD`, which adds it to the texture's.
+    /// What its first stage draws of a stage that holds no texture
+    /// (`TextureBaseClass::Apply_Null`), which native Direct3D samples as the null vector, `(0, 0,
+    /// 0, 0)`: with texturing off, the vertices' light, as of any triangle; with it on, an alpha of
+    /// 0, and a color of 0, but the vertices' light under `GRADIENT_ADD`, which adds it to the
+    /// texture's.
     pub(crate) const fn null_texture(self) -> NullTexture {
         match (self.texturing, self.primary_gradient) {
             (false, _) => NullTexture::Light,
@@ -628,7 +629,8 @@ pub(crate) mod internals {
                         .iter()
                         .flat_map(|index| index.to_le_bytes())
                         .collect();
-                    // Its surface type, its normal and its distance, which the importer does not read.
+                    // Its surface type, its normal and its distance, which the importer does not
+                    // read.
                     [indices, vec![0; 20]].concat()
                 })
                 .collect();
@@ -804,7 +806,7 @@ mod tests {
     fn a_mesh_reads_as_written_and_its_lists_are_checked() {
         let mesh = skin();
         assert_eq!(W3dMesh::read(&mesh.chunk()[8..]).unwrap(), mesh);
-        assert!(mesh.two_sided() && !mesh.hidden());
+        assert!(mesh.is_two_sided() && !mesh.is_hidden());
         let stage = mesh.passes[0].stage.as_ref().unwrap();
         assert_eq!([stage.texture(0), stage.texture(1)], [Some(0), None]);
         // An empty container's mesh is named by its own name alone; a stage may hold no
@@ -820,12 +822,12 @@ mod tests {
         let mut decal = skin();
         decal.shaders[0].primary_gradient = GRADIENT_DISABLE;
         assert_eq!(W3dMesh::read(&decal.chunk()[8..]).unwrap(), decal);
-        assert!(decal.shaders[0].unlit() && !Shader::DEFAULT.unlit());
+        assert!(decal.shaders[0].is_unlit() && !Shader::DEFAULT.is_unlit());
         let bare = Shader {
             texturing: false,
             ..decal.shaders[0]
         };
-        assert!(!bare.unlit());
+        assert!(!bare.is_unlit());
 
         refused(|mesh| mesh.normals.truncate(2), W3dError::Counts);
         refused(|mesh| mesh.positions[1][2] = f32::NAN, W3dError::NotFinite);

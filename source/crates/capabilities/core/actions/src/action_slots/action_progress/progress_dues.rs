@@ -55,7 +55,7 @@ impl TimedProcess for ChannelSteps {
     type Books = ();
 
     fn due((): &(), progress: &ActionProgress) -> Option<Tick> {
-        progress.channel_due().then_some(Tick::ZERO)
+        progress.is_channel_due().then_some(Tick::ZERO)
     }
 }
 
@@ -301,7 +301,7 @@ mod tests {
         let loose = &mut LooseDues::default();
         let mut attacking = ActionProgress::default();
         attacking.set_attack_target(Some(cast), &mut loose.dues());
-        attacking.start_attack(0, Tick::new(2), &mut loose.dues());
+        attacking.schedule_attack(0, Tick::new(2), &mut loose.dues());
         let mut waiting = ActionProgress::default();
         waiting.order(0, ActionTarget::None, &mut loose.dues());
         let mut started = |resolves_at| {
@@ -311,7 +311,7 @@ mod tests {
                 origin: Vec3::ZERO,
                 charge: None,
             };
-            progress.start(
+            progress.schedule(
                 Tick::new(resolves_at),
                 ActionTarget::None,
                 start,

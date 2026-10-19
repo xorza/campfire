@@ -7,9 +7,9 @@ use thiserror::Error;
 /// Why a bot's due order goes unsent, to all of the units it commands or to some.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OrderUnsent {
-    /// It is for the avatar, and the slot has none.
+    /// It is for the avatar, and the seat has none.
     NoAvatar,
-    /// The slot owns no living unit of the type it names.
+    /// The seat owns no living unit of the type it names.
     NoUnit,
     /// A unit it commands holds no slot of the action it names.
     NoSlot,

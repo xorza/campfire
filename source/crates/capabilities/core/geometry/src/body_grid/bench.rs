@@ -28,9 +28,9 @@ pub(crate) fn body_grid(c: &mut Criterion) {
     let mut points = KernelScene::new(21);
     let near: Vec<(Vec3, Num)> = (0..COUNT)
         .map(|_| {
-            let pos = points.point(span);
+            let position = points.point(span);
             let reach = Num::from_int(1 + points.below(8).cast_signed()).unwrap();
-            (pos, reach)
+            (position, reach)
         })
         .collect();
     let mut grid = BodyGrid::default();

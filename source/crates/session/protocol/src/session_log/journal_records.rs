@@ -1,7 +1,7 @@
 //! The log's journal: the record of each thing the log takes, as it takes it, and the log
 //! rebuilt from them.
 
-use campfire_common::{PlayerSlot, Tick, Version};
+use campfire_common::{Seat, Tick, Version};
 
 use crate::control::Control;
 use crate::session_log::applied::Applied;
@@ -99,7 +99,7 @@ impl SessionLog {
             if log.result.is_some() {
                 return Err(JournalReplayError::AfterResult { record: index });
             }
-            if record.first() == Some(&JOURNAL_CHECKPOINT_BEGUN) && !log.at_boundary() {
+            if record.first() == Some(&JOURNAL_CHECKPOINT_BEGUN) && !log.is_at_boundary() {
                 return Err(JournalReplayError::CheckpointMidTick { record: index });
             }
             log.apply_journal(record, &mut inputs, &mut applied)
@@ -109,8 +109,8 @@ impl SessionLog {
     }
 
     /// Whether no entry was logged since the last tick was sealed: where a checkpoint may come.
-    pub(super) fn at_boundary(&self) -> bool {
-        self.entries.at_boundary()
+    pub(super) fn is_at_boundary(&self) -> bool {
+        self.entries.is_at_boundary()
     }
 
     /// Takes the journal record `record`, past the header, with `inputs` and `applied` as
@@ -210,7 +210,7 @@ impl SessionLog {
     /// where each chain whose head its player's current delegation signed stands durably: where
     /// the log holds it, as the journal was read back from the disk.
     pub(crate) fn resume_durable(&self, journal: &mut Journal) {
-        for (slot, held) in (0..).map(PlayerSlot::new).zip(self.control.iter()) {
+        for (seat, held) in (0..).map(Seat::new).zip(self.control.iter()) {
             let Control::Player { delegation, chain } = held.control else {
                 continue;
             };
@@ -223,7 +223,7 @@ impl SessionLog {
                 seq,
                 head: chain.head(),
             });
-            journal.durable_mut().set(slot, head);
+            journal.durable_mut().set(seat, head);
         }
     }
 

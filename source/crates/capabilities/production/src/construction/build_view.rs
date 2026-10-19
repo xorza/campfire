@@ -76,7 +76,7 @@ pub(crate) struct BuildView<'w, 's, S: TeamSight> {
     pub(super) changed: Query<'w, 's, Entity, (Changed<Builder>, Without<Dead>)>,
 }
 
-/// A builder as its build's place reads it: where it stands, and its player.
+/// A builder as its build's footprint reads it: where it stands, and its player.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct BuilderAt<'a> {
     from: Vec3,
@@ -86,16 +86,20 @@ pub(super) struct BuilderAt<'a> {
 /// Where a build's building stands: at the order's point, at the builder's height, its box
 /// turned by the order's angle, or the site's.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct BuildPlace {
-    pub pos: Vec3,
+pub(super) struct BuildFootprint {
+    pub position: Vec3,
     pub(super) body: Body,
 }
 
-impl BuildPlace {
+impl BuildFootprint {
     /// Whether `builder`, with a build's `range`, reaches the building's box, in `metric`: from
     /// the edge of the one body to the edge of the other.
     pub(super) fn reached_by(self, metric: Metric, builder: Placed, range: Num) -> bool {
-        metric.reaches(builder, range, Placed::new(self.pos, self.body.shape()))
+        metric.reaches(
+            builder,
+            range,
+            Placed::new(self.position, self.body.shape()),
+        )
     }
 }
 
@@ -112,15 +116,15 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         building: Building<'_>,
         by: BuilderAt<'_>,
         target: BuildTarget,
-    ) -> Option<BuildPlace> {
+    ) -> Option<BuildFootprint> {
         match target {
             BuildTarget::Point {
                 at: GroundPoint { x, z },
                 angle,
             } => {
                 let at = Vec3::new(x, by.from.y, z);
-                Some(BuildPlace {
-                    pos: at,
+                Some(BuildFootprint {
+                    position: at,
                     body: building.spec.form.at(angle),
                 })
             }
@@ -128,8 +132,8 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
                 let (&at, &body, &unit_type, site_owner, _) =
                     self.sites.get(self.index.get(site)?).ok()?;
                 let same = unit_type == building.spec.unit_type && site_owner == by.owner;
-                same.then_some(BuildPlace {
-                    pos: at.get(),
+                same.then_some(BuildFootprint {
+                    position: at.get(),
                     body,
                 })
             }
@@ -153,10 +157,10 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         let life = self.life.as_deref().and_then(PoolBook::life);
         let purse = Purse::of(pools.of(life), self.resources.of(owner));
         let modifiers = self.modifiers.of(owner);
-        let owner = owner.map(|owner| owner.slot());
+        let owner = owner.map(|owner| owner.seat());
         let aim = SlotAim {
             slot: order.slot,
-            target: ActionTarget::Point(placed.pos),
+            target: ActionTarget::Point(placed.position),
         };
         let no_target = |_| Relation::Friendly;
         let check = ActionCheck {
@@ -175,10 +179,10 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             .meet(owner, modifiers, self.requirements.of(checked.id));
         let room = self
             .placement
-            .passes(team, placed.pos, placed.body, building.spec);
+            .passes(team, placed.position, placed.body, building.spec);
         (met && room).then_some(Start {
             unit_type: building.spec.unit_type,
-            pos: placed.pos,
+            position: placed.position,
             angle,
             cost: checked.values.cost,
             cooldown: checked.values.cooldown,
@@ -262,7 +266,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             let Shape::Box(boxed) = placed.body.shape() else {
                 panic!("a building's body is a box");
             };
-            let to = boxed.nearest_point(placed.pos, from.get());
+            let to = boxed.nearest_point(placed.position, from.get());
             return if Destination::gives_up(destination, arrived, to) {
                 Step::End
             } else {

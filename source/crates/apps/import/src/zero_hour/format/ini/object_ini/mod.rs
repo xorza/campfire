@@ -44,7 +44,7 @@ pub(crate) struct IniObject {
 /// object a build clears, which is fluff, the client's too, unless it is a fence, and a wall a unit
 /// walks on top of, which the game spawns with the bridges; a structure, which routes block when it
 /// is not small; an object that counts for a multiplayer victory, which a structure of it keeps
-/// its player in the match by (12-zero-hour.md, Defeat by the last building that counts); and
+/// its player in the match by (09-zero-hour.md, Defeat by the last building that counts); and
 /// infantry, which a weapon may scatter more at.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ObjectKinds {
@@ -78,7 +78,7 @@ pub(crate) enum GeometryShape {
     Box,
 }
 
-/// Who draws an object a map places, as a multiplayer game spawns it (12-zero-hour.md, The
+/// Who draws an object a map places, as a multiplayer game spawns it (09-zero-hour.md, The
 /// multiplayer rule for client objects): a unit of the sim placed before every other, as the game
 /// spawns bridge-like objects in a pass of their own; the client's tree buffer; its prop buffer; or
 /// the sim, as a unit.

@@ -9,8 +9,8 @@ use bevy_ecs::world::EntityRef;
 use campfire_actions::ActionProgress;
 use campfire_capabilities::Order;
 use campfire_combat::Respawn;
-use campfire_common::{DeclaredName, PlayerSlot, Tick, Ticks};
-use campfire_harness::{ArchetypeWatch, End, HashTrail, InProcessMatch, LinkModel, MatchSetup};
+use campfire_common::{DeclaredName, Seat, Tick, Ticks};
+use campfire_harness::{ArchetypeWatch, End, HashTrail, InProcessMatch, InProcessSetup, LinkModel};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{MatchResult, ModeState, ModeWorld};
 use campfire_net::internals::SimServerWorldInternals;
@@ -51,7 +51,7 @@ const fn move_to(x: i64, z: i64) -> OrdersAction {
 
 #[derive(Debug, PartialEq, Eq)]
 struct Hero {
-    pos: Vec3,
+    position: Vec3,
     destination: Destination,
 }
 
@@ -68,7 +68,7 @@ fn hero_entity(app: &App) -> Entity {
 fn hero(app: &App) -> Hero {
     let hero = app.world().entity(hero_entity(app));
     Hero {
-        pos: hero.get::<Position>().unwrap().get(),
+        position: hero.get::<Position>().unwrap().get(),
         destination: *hero.get::<Destination>().unwrap(),
     }
 }
@@ -96,7 +96,7 @@ fn server_and_replay_agree_on_every_tick() {
         (RollbackMode::Check, 3, 2),
     ] {
         let case = format!("{rollback:?}, {server_frames} frames, shift {shift}");
-        let mut local = InProcessMatch::new(MatchSetup::solo(
+        let mut local = InProcessMatch::new(InProcessSetup::solo(
             rollback,
             server_frames,
             InProcessMatch::SEED_CHAIN,
@@ -120,7 +120,7 @@ fn server_and_replay_agree_on_every_tick() {
         watch.assert_kept();
 
         let arrived = Hero {
-            pos: Vec3::from((-2, 0, 5)),
+            position: Vec3::from((-2, 0, 5)),
             destination: Destination::default(),
         };
         assert_eq!(hero(local.server()), arrived, "{case}");
@@ -162,7 +162,7 @@ fn server_and_replay_agree_on_every_tick() {
 
 #[test]
 fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link() {
-    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(InProcessSetup::SOLO);
     local.start_match();
     // Six moves in one frame, past the session's 4 inputs a tick: the client stamps 4 now and 2
     // in the next tick, so the server refuses none, and the last move is where the hero ends.
@@ -181,13 +181,13 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
         frames += 1;
     }
     let arrived = Hero {
-        pos: Vec3::from((-2, 0, 5)),
+        position: Vec3::from((-2, 0, 5)),
         destination: Destination::default(),
     };
     assert_eq!(hero(local.server()), arrived);
     let link = local.link(0);
     // Both ends of a link take a QUIC link's minimum MTU from their spawn, so their fragments
-    // agree whatever IO links them (15-quic-transport.md, A link's minimum MTU is QUIC's datagram).
+    // agree whatever IO links them (11-quic-transport.md, A link's minimum MTU is QUIC's datagram).
     let server_link = local.server().world().get::<Link>(link).unwrap();
     assert_eq!(server_link.min_mtu(), LINK_MIN_MTU);
     let client_links: Vec<usize> = local
@@ -224,7 +224,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     assert_eq!(
         local.log().take::<InputMessageRefused>(),
         [InputMessageRefused {
-            slot: PlayerSlot::new(0),
+            seat: Seat::new(0),
             next_tick,
             error: InputError::BadSignature.to_string(),
         }]
@@ -233,7 +233,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
 
 #[test]
 fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_its_client() {
-    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(InProcessSetup::SOLO);
     local.start_match();
     // The client predicts on the ground and with the life pool the server's mode installs.
     let (server, client) = (local.server().world(), local.client(0).world());
@@ -282,7 +282,7 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
         local.step();
     }
     let at = |x: i16, z: i16| Hero {
-        pos: Vec3::from((x, 0, z)),
+        position: Vec3::from((x, 0, z)),
         destination: Destination::default(),
     };
     assert_eq!(hero(local.server()), at(4, 0));
@@ -317,9 +317,9 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
 
 #[test]
 fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
-    let mut local = InProcessMatch::new(MatchSetup {
+    let mut local = InProcessMatch::new(InProcessSetup {
         max_spectators: 1,
-        ..MatchSetup::SOLO
+        ..InProcessSetup::SOLO
     });
     local.start_match();
     let spectator = local.add_spectator();
@@ -392,7 +392,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
     assert_eq!(end.result(), MatchResult::Won(Team::new(0)));
     local.step();
     assert_eq!(local.client(0).world().match_end(), Some(end));
-    // A spectator holds the match's entity, and its end with it (14-replication-audiences.md, The
+    // A spectator holds the match's entity, and its end with it (10-replication-audiences.md, The
     // match and each player are entities).
     assert_eq!(local.client(spectator).world().match_end(), Some(end));
 
@@ -405,7 +405,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
         local.step();
     }
     assert_eq!(hero(local.server()), still);
-    assert_eq!(hero(local.client(0)).pos, still.pos);
+    assert_eq!(hero(local.client(0)).position, still.position);
     // A step runs one tick of the server's.
     let after = local.server().world().resource::<SimTick>().start();
     assert_eq!(after, tick.after(Ticks::new(steps)));
@@ -429,7 +429,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
 
 #[test]
 fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
-    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(InProcessSetup::SOLO);
     local.start_match();
     // The hero walks off the lane, where nothing meets it: 16.5 m at 0.25 m a tick, so it still
     // walks when both modifiers end, 30 and 15 ticks after the client learns each.
@@ -472,7 +472,7 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
 
 #[test]
 fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
-    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(InProcessSetup::SOLO);
     local.start_match();
     // The hero walks off the lane, where nothing meets it, as in the stun's test. The server
     // dashes it 6 m along −x, a fifth of a meter a tick, 30 ticks: it learns the dash some
@@ -486,8 +486,8 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
     let dashing = |app: &App| app.world().get::<ForcedMove>(hero_entity(app)).is_some();
     let entity = hero_entity(local.server());
     let world = local.server_mut().world_mut();
-    let pos = world.get::<Position>(entity).unwrap().get();
-    let to = Vec3::new(pos.x - Num::int(6), pos.y, pos.z);
+    let position = world.get::<Position>(entity).unwrap().get();
+    let to = Vec3::new(position.x - Num::int(6), position.y, position.z);
     let step = Num::ONE / 5;
     world.entity_mut(entity).insert(ForcedMove::Dash {
         to: DashTo::Point(to),
@@ -514,7 +514,7 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
 
 #[test]
 fn the_client_takes_the_relations_a_script_sets() {
-    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(InProcessSetup::SOLO);
     local.start_match();
     // The client holds the relations from its first replication, on the match's entity.
     let relations = |app: &App| {
@@ -551,7 +551,7 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
     let resources = packages.data().section_or_default::<ResourcesData>();
     let resources: Names<ResourceId> = resources.0.iter().map(DeclaredName::as_str).collect();
     let gold = resources.named("gold").unwrap();
-    let mut setup = MatchSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
+    let mut setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
     setup.players = 2;
     let mut local = InProcessMatch::of_mode(setup, packages);
     local.start_match();
@@ -559,7 +559,7 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
     // one whose resources it lacks.
     let gold_of = |app: &App, slot| {
         let world = app.world();
-        let entity = world.player_entity(PlayerSlot::new(slot))?;
+        let entity = world.player_entity(Seat::new(slot))?;
         Some(
             world
                 .get::<PlayerResources>(entity)
@@ -610,7 +610,7 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
 
 #[test]
 fn each_players_client_rolls_back_as_the_setup_gives_for_that_player() {
-    let mut setup = MatchSetup::duo(LinkModel::PERFECT, InProcessMatch::SEED_CHAIN);
+    let mut setup = InProcessSetup::duo(LinkModel::PERFECT, InProcessMatch::SEED_CHAIN);
     setup.rollbacks[1] = RollbackMode::Always;
     let local = InProcessMatch::new(setup);
     let mode = |client: usize| {
@@ -667,13 +667,13 @@ impl Handoff {
             .get()
     }
 
-    fn slot(&self, client: usize) -> PlayerSlot {
+    fn slot(&self, client: usize) -> Seat {
         let world = self.local.server().world();
-        world.link_slot(self.local.link(client)).unwrap()
+        world.link_seat(self.local.link(client)).unwrap()
     }
 
     /// Gives the hero to `owner` on the server, or takes its owner.
-    fn set_owner(&mut self, owner: Option<PlayerSlot>) {
+    fn set_owner(&mut self, owner: Option<Seat>) {
         let entity = self.entity_in(self.local.server());
         let mut unit = self.local.server_mut().world_mut().entity_mut(entity);
         match owner {
@@ -710,7 +710,7 @@ impl Handoff {
 
 #[test]
 fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_alone() {
-    let mut local = InProcessMatch::new(MatchSetup::duo(
+    let mut local = InProcessMatch::new(InProcessSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
@@ -725,7 +725,7 @@ fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_al
     );
     let (first, second) = (game.slot(0), game.slot(1));
 
-    // The hero walks under its first owner, and the server gives it to the second player's slot
+    // The hero walks under its first owner, and the server gives it to the second player's seat
     // on its way, as soon as it left its spawn: the second client takes it predicted, with its
     // state as the server last sent it, and rolls back once to bring it to its own tick; the
     // first takes it unpredicted. The second player's hero stands at its spawn, (0, 2), and sees
@@ -752,7 +752,7 @@ fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_al
     assert_eq!((game.local.rollbacks(0), game.local.rollbacks(1)), (0, 1));
 
     // A unit with no owner is the server's alone: no client predicts it. Given back to the first
-    // player's slot, the first client predicts it again.
+    // player's seat, the first client predicts it again.
     game.set_owner(None);
     game.step_until(|game| (game.held(0), game.held(1)) == (Held::Unpredicted, Held::Unpredicted));
     game.set_owner(Some(first));
@@ -764,7 +764,7 @@ fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_al
     game.local.cut_link(1);
     game.step_first_until(|game| {
         let server = game.local.server().world();
-        server.link_slot(game.local.link(1)).is_none()
+        server.link_seat(game.local.link(1)).is_none()
     });
     game.set_owner(Some(second));
     game.step_first_until(|game| game.held(0) == Held::Unpredicted);

@@ -18,7 +18,7 @@ impl Section for PassiveData {
 }
 
 impl PassiveData {
-    /// The rule of the passives: a modifier is the passive of one owner of its package at most,
+    /// The rule of the passives: a modifier is the passive of one holder of its package at most,
     /// of its unit types by `passive` and its actions by `passive_modifier`, as two would share
     /// its hold.
     pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {
@@ -38,15 +38,15 @@ impl PassiveData {
                 Some((at, action.passive_modifier.as_ref()?))
             });
             let mut held: BTreeMap<&DeclaredName, BookPlace> = BTreeMap::new();
-            for (owner, modifier) in types.chain(actions) {
+            for (holder, modifier) in types.chain(actions) {
                 if let Some(first) = held.get(modifier) {
                     let problem = AppliedError::SharedPassive {
                         modifier: modifier.clone(),
                         first: first.clone(),
                     };
-                    return Err(BookError::rule(package, owner, problem));
+                    return Err(BookError::rule(package, holder, problem));
                 }
-                held.insert(modifier, owner);
+                held.insert(modifier, holder);
             }
         }
         Ok(())

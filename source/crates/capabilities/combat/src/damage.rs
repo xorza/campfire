@@ -35,7 +35,7 @@ pub enum DamageCause {
 impl Damage {
     /// Whether a restored damage holds what the pass reads: an action the book holds, if it names
     /// one, and a kind the mode declares, which `calc_damage` reads by its name.
-    pub(crate) fn known(&self, world: &World) -> bool {
+    pub(crate) fn is_known(&self, world: &World) -> bool {
         let book = world.resource::<ActionBook>();
         let names = world.get_resource::<MatchNames>();
         self.action.is_none_or(|action| book.get(action).is_some())
@@ -46,7 +46,7 @@ impl Damage {
 impl DamageCause {
     /// Whether an attack dealt it, an extra one included: `leech` heals by its `attack` stat
     /// from it, by its `other` stat from the rest.
-    pub(crate) const fn attack(self) -> bool {
+    pub(crate) const fn is_attack(self) -> bool {
         self.weapon_rank().is_some()
     }
 

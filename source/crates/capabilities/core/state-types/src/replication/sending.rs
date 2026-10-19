@@ -23,7 +23,7 @@ pub trait Sending<C: ?Sized> {
 pub struct SentOnce;
 
 /// Sent as its entity spawns and on each insert after: the type is immutable, so an insert is its
-/// one change, which a client must see, as a new owner (14-replication-audiences.md, An owner
+/// one change, which a client must see, as a new owner (10-replication-audiences.md, An owner
 /// changes by an insert alone).
 #[derive(Debug)]
 pub struct SentOnInsert;

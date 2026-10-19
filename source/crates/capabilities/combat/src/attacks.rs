@@ -115,7 +115,7 @@ impl Attacks {
             ) {
                 (Reached::Hit(target), None) => queue.push_damage(damage(target), now),
                 (Reached::End, Some(splash)) => {
-                    let point = targets.map().point(hit.pos);
+                    let point = targets.map().point(hit.position);
                     splashed.clear();
                     near.current().visit_near(point, splash.radius, |body| {
                         let Some(unit) = targets.living_at(body.key) else {
@@ -245,7 +245,7 @@ impl Attacks {
                     if let (Some(turret), Some(&facing), Some(&angle)) =
                         (turret, facing, turret_angle)
                     {
-                        let aim = TurretAngle::toward(facing, position.get(), unit.pos);
+                        let aim = TurretAngle::toward(facing, position.get(), unit.position);
                         if !aim.is_some_and(|aim| angle.within(aim, turret.tolerance)) {
                             continue;
                         }
@@ -257,7 +257,7 @@ impl Attacks {
                     let purse = Purse::of(pools.of(life), resources.of(owner));
                     let relation = |other| targets.relation(team, other);
                     let from = StartFrom {
-                        pos: position.get(),
+                        position: position.get(),
                         body,
                         targets: &targets,
                     };
@@ -285,7 +285,7 @@ impl Attacks {
                         .filter(|started| started.reached && pitched)
                         .map(|started| now.after(started.checked.values.windup));
                     if let Some(resolves_at) = started {
-                        progress.start_attack(slot, resolves_at, &mut indexes.of(id, entity));
+                        progress.schedule_attack(slot, resolves_at, &mut indexes.of(id, entity));
                     }
                 }
             }
@@ -496,7 +496,7 @@ impl Attacks {
                 charges: values.charges,
                 toggle: None,
             });
-            progress.stop(dues);
+            progress.end(dues);
             if F::PREDICTS {
                 continue;
             }
@@ -509,9 +509,9 @@ impl Attacks {
                     .as_ref()
                     .zip(aimed)
                     .and_then(|(scatter, aimed)| {
-                        let (pos, tags, _) = aimed;
+                        let (position, tags, _) = aimed;
                         let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
-                        scatter.point(pos.get(), tags, || {
+                        scatter.point(position.get(), tags, || {
                             let mut draws = rng.open(SCATTER_STREAM, source);
                             [draws.fraction(), draws.fraction()]
                         })
@@ -542,8 +542,8 @@ impl Attacks {
                 };
                 // A slow weapon's hit lands later, as far from its target as it shot.
                 let aimed = index.get(target).and_then(|target| aims.get(target).ok());
-                let delay = aimed.and_then(|(pos, _, aimed_body)| {
-                    let at = Body::center(aimed_body, pos.get(), &map);
+                let delay = aimed.and_then(|(position, _, aimed_body)| {
+                    let at = Body::center(aimed_body, position.get(), &map);
                     let distance = (at - Body::center(body, from.get(), &map)).length();
                     weapon.delay(distance, clock.rate().hz().get())
                 });
