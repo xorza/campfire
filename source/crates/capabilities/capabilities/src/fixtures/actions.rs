@@ -10,7 +10,7 @@ use campfire_declare::{Book, ByType};
 use campfire_production::Production;
 use campfire_projectiles::ProjectileSpec;
 use campfire_script::{Filter, MatchNames, ScriptId, UnknownName};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_stats::{ModifierBook, Stats};
 use campfire_units::ScriptBook;
 use campfire_values::{
@@ -107,7 +107,7 @@ impl ActionsFixtures for Actions {
         script: Option<ScriptId>,
         ranks: u8,
     ) -> Result<ActionId, ActionError> {
-        let rate = *world.resource::<TickRate>();
+        let rate = *world.resource::<MatchRate>();
         let names = WorldActionNames::new(world);
         let parts = ActionParts::of(data, package, ranks, rate, &names)?;
         let id = world.resource_scope(|world, mut actions: Mut<'_, ActionBook>| {

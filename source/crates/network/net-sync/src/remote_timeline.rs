@@ -3,15 +3,16 @@ use crate::link_estimator::LinkEstimator;
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
+use campfire_math::TickRate;
 use campfire_net_connection::Connected;
 use campfire_net_core::NetTick;
 use campfire_net_core::TickInstant;
-use campfire_net_core::TickRate;
 use campfire_net_core::TickSpan;
 use campfire_net_link::Linked;
 use campfire_net_timeline::Clock;
 use campfire_net_timeline::NetworkTimeline;
 use campfire_net_timeline::Timeline;
+use campfire_net_timeline::TimelineRate;
 use campfire_net_timeline::TimelineSetup;
 use campfire_net_transport::PacketReceived;
 use core::num::NonZeroU32;
@@ -160,7 +161,7 @@ impl RemoteTimeline {
     /// once the link has a latency estimate.
     pub(crate) fn update_from_packet(
         trigger: On<'_, '_, PacketReceived>,
-        tick_rate: Res<'_, TickRate>,
+        tick_rate: Res<'_, TimelineRate>,
         mut query: Query<'_, '_, (&mut Self, &LinkEstimator)>,
     ) {
         if let Ok((mut t, estimator)) = query.get_mut(trigger.entity) {
@@ -189,7 +190,7 @@ impl RemoteTimeline {
                 );
                 return;
             };
-            t.update(trigger.remote_tick, estimate, *tick_rate);
+            t.update(trigger.remote_tick, estimate, tick_rate.0);
         }
     }
 
@@ -198,12 +199,12 @@ impl RemoteTimeline {
     /// Real time passes during a rollback too, so the advance never skips a frame.
     pub(crate) fn advance(
         clock: Res<'_, Clock>,
-        tick_rate: Res<'_, TickRate>,
+        tick_rate: Res<'_, TimelineRate>,
         mut query: Query<'_, '_, &mut Self, With<Linked>>,
     ) {
         let delta = clock.delta();
         query.iter_mut().for_each(|mut t| {
-            t.apply_duration(delta, *tick_rate);
+            t.apply_duration(delta, tick_rate.0);
         });
     }
 
@@ -267,7 +268,11 @@ mod tests {
     use campfire_net_connection::RemoteId;
     use campfire_net_core::PeerId;
 
-    const TICK: TickRate = TickRate::new(core::num::NonZeroU16::new(100).unwrap());
+    const TICK: TickRate = TickRate::hertz(NonZeroU32::new(100).unwrap());
+
+    fn span(text: &str) -> TickSpan {
+        TickSpan::try_from(text.parse::<campfire_math::Num>().unwrap()).unwrap()
+    }
 
     /// A 20 ms round trip is a 1-tick delay: the remote is at least one tick past the tick its
     /// packet carried.
@@ -302,7 +307,8 @@ mod tests {
     /// A later estimate moves the offset by the jitter's gain: the timeline is at 101, so 110 + 1
     /// is a raw offset of 10. The gain is 1/10 at 1 ms or less, so 1; 1/50 at 10 ms or more, so
     /// 0.2; and at 5.5 ms, halfway, (5 · 4.5 + 4.5) / (50 · 9) = 0.06, so 0.6. A second update
-    /// with the same raw offset moves the offset by the gain of the rest: 1 + 9/10 = 1.9.
+    /// with the same raw offset moves the offset by the gain of the rest: 1 + 9/10 = 1.9. Each
+    /// rounds to the nearest 2^-24 tick, as its literal does: 0.6 to 10,066,330 steps.
     #[test]
     fn a_later_update_smooths_the_offset_by_the_jitter() {
         let smoothed = |jitter, updates| {
@@ -315,13 +321,10 @@ mod tests {
         };
         assert_eq!(smoothed(Duration::ZERO, 1), TickSpan::from(1));
         assert_eq!(smoothed(Duration::from_millis(1), 1), TickSpan::from(1));
-        assert_eq!(
-            smoothed(Duration::from_micros(5_500), 1),
-            TickSpan::lit("0.6")
-        );
-        assert_eq!(smoothed(Duration::from_millis(10), 1), TickSpan::lit("0.2"));
-        assert_eq!(smoothed(Duration::from_secs(1), 1), TickSpan::lit("0.2"));
-        assert_eq!(smoothed(Duration::ZERO, 2), TickSpan::lit("1.9"));
+        assert_eq!(smoothed(Duration::from_micros(5_500), 1), span("0.6"));
+        assert_eq!(smoothed(Duration::from_millis(10), 1), span("0.2"));
+        assert_eq!(smoothed(Duration::from_secs(1), 1), span("0.2"));
+        assert_eq!(smoothed(Duration::ZERO, 2), span("1.9"));
     }
 
     /// A connection resets the estimate: the next packet is a first estimate again.

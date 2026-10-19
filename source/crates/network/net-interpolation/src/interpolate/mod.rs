@@ -10,14 +10,15 @@ use bevy_app::{App, Update};
 use bevy_ecs::entity::EntityLocation;
 use bevy_ecs::prelude::*;
 use bevy_utils::prelude::DebugName;
+use campfire_math::TickRate;
 use campfire_net_core::NetTick;
-use campfire_net_core::TickRate;
 use campfire_net_core::Ticked;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::DeferredEntityCommands;
 use campfire_net_replication::HistoryState;
 use campfire_net_replication::Interpolated;
 use campfire_net_timeline::NetworkTimeline;
+use campfire_net_timeline::TimelineRate;
 use std::borrow::Cow;
 use tracing::trace;
 
@@ -30,7 +31,7 @@ pub(crate) fn install_component_interpolation<C: HistoryComponent>(
     interpolation: InterpolationFn<C>,
 ) {
     let system = move |timeline: Res<'_, InterpolationTimeline>,
-                       tick_rate: Option<Res<'_, TickRate>>,
+                       tick_rate: Option<Res<'_, TimelineRate>>,
                        holders: Res<'_, InterpolationHolders>,
                        mut query: Query<
         '_,
@@ -40,7 +41,7 @@ pub(crate) fn install_component_interpolation<C: HistoryComponent>(
     >| {
         let interpolation_tick = timeline.now().tick();
         let interpolation_overstep = timeline.overstep().to_f32();
-        let tick_rate = tick_rate.as_deref().copied();
+        let tick_rate = tick_rate.map(|rate| rate.0);
         let held = holders.delayed.apply(rule_id);
         let interpolation = interpolation.component();
         for (location, live, history) in &mut query {

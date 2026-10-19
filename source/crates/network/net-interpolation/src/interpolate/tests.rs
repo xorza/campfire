@@ -255,7 +255,7 @@ impl InterpolationTestAppBuilder {
         add_interpolation_test_systems(&mut app);
 
         if let Some(tick_rate) = self.tick_rate {
-            app.insert_resource(tick_rate);
+            app.insert_resource(TimelineRate(tick_rate));
         }
 
         let mut timeline = InterpolationTimeline::default();
@@ -465,7 +465,7 @@ fn a_linear_interpolate_registers_an_ease_rule() {
 fn a_contextual_interpolation_gets_the_sample_interval() {
     let mut app = setup_app(NetTick(15), 40);
     app.world_mut()
-        .insert_resource(TickRate::try_from(20).unwrap());
+        .insert_resource(TimelineRate(TickRate::try_from(20).unwrap()));
     insert_rule::<TestComp, ()>(&mut app, InterpolationFns::with_cx(cx_lerp), 100);
     add_interpolation_test_systems(&mut app);
 

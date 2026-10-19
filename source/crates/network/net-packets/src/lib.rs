@@ -5,7 +5,6 @@
 mod bandwidth_limit;
 mod bandwidth_limiter;
 mod carrier;
-mod channel_binding;
 mod close_packet_session;
 mod connection_id;
 mod datagram_arena;
@@ -38,7 +37,6 @@ mod transmit;
 
 pub use crate::bandwidth_limit::BandwidthLimit;
 pub use crate::carrier::Carrier;
-pub use crate::channel_binding::ChannelBinding;
 pub use crate::close_packet_session::ClosePacketSession;
 pub use crate::connection_id::ConnectionId;
 pub use crate::datagram_arena::datagram_arena;

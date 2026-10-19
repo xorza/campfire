@@ -5,7 +5,7 @@ use std::sync::Arc;
 use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
 use campfire_script::{Filter, StateSchema, SyncTo, TagNames, UnknownName};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_units::StatId;
 use campfire_values::{FilterData, ModifierId, Names, Number, Param, Stat};
 
@@ -91,7 +91,7 @@ struct ParamPlaces<'a> {
 pub struct SpecNames<'a, S, M> {
     pub stat: S,
     pub tags: &'a TagNames,
-    pub rate: TickRate,
+    pub rate: MatchRate,
     pub modifier: M,
 }
 
@@ -187,7 +187,7 @@ impl ModifierSpec {
 
 impl SpecTime {
     /// Its ticks at `rate`, a param's read by `param`, which its way checked counts in ticks.
-    pub(crate) fn ticks(&self, rate: TickRate, param: impl Fn(ParamPlace) -> Num) -> Ticks {
+    pub(crate) fn ticks(&self, rate: MatchRate, param: impl Fn(ParamPlace) -> Num) -> Ticks {
         match self {
             Self::Fixed(ticks) => *ticks,
             Self::Param(place) => {
@@ -232,7 +232,7 @@ impl ParamPlaces<'_> {
     }
 
     /// `number` of milliseconds of the modifier, a fixed one in ticks at `rate`.
-    fn time(&mut self, number: &Number, rate: TickRate) -> Result<SpecTime, ModifierProblem> {
+    fn time(&mut self, number: &Number, rate: MatchRate) -> Result<SpecTime, ModifierProblem> {
         match self.number(number)? {
             SpecNumber::Value(ms) => Ok(SpecTime::Fixed(
                 ModifierData::ticks(ms, rate).ok_or(ModifierProblem::Time)?,

@@ -3,7 +3,7 @@ use campfire_declare::{SourceKind, SourcePackage, UnitDefaults};
 use campfire_math::Num;
 use campfire_mode::{MapData, ModeData, TeamManifest};
 use campfire_script::ScriptUses;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_units::ScriptBook;
 use campfire_values::Speed;
 
@@ -26,7 +26,7 @@ impl TestPackage<'_> {
     /// The books of its match at `rate`, of `teams`, each built by the module that declares it,
     /// as a match's are; its stats refresh in the order the mode declares them, as no stat reads
     /// another.
-    pub(crate) fn books(self, rate: TickRate, teams: &[TeamManifest]) -> Books {
+    pub(crate) fn books(self, rate: MatchRate, teams: &[TeamManifest]) -> Books {
         let readers = Release::sections();
         let table = |text: &str| Toml::parse::<TomlTable>(text).unwrap();
         let data = table(self.mode)

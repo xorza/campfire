@@ -1,6 +1,6 @@
 use crate::link_estimate::LinkEstimate;
 use crate::remote_timeline::RemoteTimeline;
-use campfire_net_core::TickRate;
+use campfire_math::TickRate;
 
 /// What one synchronization sample measures a controlled clock against.
 #[derive(Debug, Clone, Copy)]

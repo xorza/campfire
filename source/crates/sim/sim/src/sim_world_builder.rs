@@ -7,6 +7,7 @@ use bevy_ecs::world::World;
 use campfire_common::SegmentSeed;
 
 use crate::id_allocator::IdAllocator;
+use crate::match_rate::MatchRate;
 use crate::own_resources::OwnResources;
 use crate::sim_rng::SimRng;
 use crate::sim_tick::SimTick;
@@ -17,7 +18,6 @@ use crate::state_registry::StateRegistry;
 use crate::state_registry::copy_queries::CopyQueries;
 use crate::state_registry::state_registry_builder::StateRegistryBuilder;
 use crate::tick_inputs::TickInputs;
-use crate::tick_rate::TickRate;
 
 /// A sim's world as it is built: the sim's resources in place, and the tick's schedule and the
 /// state registry that the installs fill. `build` puts both in the world, which then holds the
@@ -53,7 +53,7 @@ impl SimWorldBuilder<'_> {
     /// Bevy's world and schedules.
     pub fn own_resources<V: OwnResources + ?Sized>(v: &mut V) {
         v.own::<SimTick>();
-        v.own::<TickRate>();
+        v.own::<MatchRate>();
         v.own::<SimRng>();
         v.own::<IdAllocator>();
         v.own::<EntityIndex>();
@@ -68,7 +68,7 @@ impl SimWorldBuilder<'_> {
 
 impl<'w> SimWorldBuilder<'w> {
     /// Starts the build of a sim in `world`, a new world, at `rate`, drawing from `seed`.
-    pub fn new(world: &'w mut World, seed: SegmentSeed, rate: TickRate) -> Self {
+    pub fn new(world: &'w mut World, seed: SegmentSeed, rate: MatchRate) -> Self {
         SimUpdate::prepare(world, seed, rate);
         SimWorldBuilder {
             world,
@@ -290,7 +290,7 @@ mod tests {
         }
     }
 
-    const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
+    const RATE: MatchRate = MatchRate::new(NonZeroU32::new(30).unwrap());
 
     /// What the end of an open build puts in, before its first tick runs.
     #[derive(Resource, Debug)]

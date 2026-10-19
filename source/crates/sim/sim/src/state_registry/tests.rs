@@ -13,10 +13,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use super::*;
 use crate::host_rule::{Either, OnAny};
+use crate::match_rate::MatchRate;
 use crate::sim_tick::SimTick;
 use crate::sim_world::SimWorld;
 use crate::sim_world_builder::SimWorldBuilder;
-use crate::tick_rate::TickRate;
 use campfire_common::SegmentSeed;
 
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -651,7 +651,7 @@ fn a_type_registered_once_its_world_tracks_its_changes_is_refused() {
     SimWorldBuilder::new(
         &mut world,
         SegmentSeed::ZERO,
-        TickRate::new(NonZeroU32::new(30).unwrap()),
+        MatchRate::new(NonZeroU32::new(30).unwrap()),
     )
     .build();
     world.track(&mut StateDelta::default());

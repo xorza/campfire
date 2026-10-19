@@ -76,8 +76,8 @@ mod tests {
     use campfire_common::SegmentSeed;
 
     use super::*;
+    use crate::match_rate::MatchRate;
     use crate::sim_update::{SimSet, SimUpdate};
-    use crate::tick_rate::TickRate;
 
     #[derive(Component, Debug)]
     struct Mark;
@@ -110,7 +110,7 @@ mod tests {
     /// an app that runs that many frames a tick does.
     fn host(updates: u32) -> Seen {
         let mut world = World::new();
-        let rate = TickRate::new(NonZeroU32::new(30).unwrap());
+        let rate = MatchRate::new(NonZeroU32::new(30).unwrap());
         SimUpdate::prepare(&mut world, SegmentSeed::new([1; 32]), rate);
         world.init_resource::<Seen>();
         let mut schedule = SimUpdate::schedule();

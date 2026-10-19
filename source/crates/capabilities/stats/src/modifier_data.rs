@@ -4,7 +4,7 @@ use std::num::NonZeroU32;
 use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable, StateDecl};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_values::{FilterData, Number, PackagePath, Param, Stat};
 use serde::Deserialize;
 
@@ -77,7 +77,7 @@ impl ModifierData {
 
     /// `ms` milliseconds of one of its times, up to the next whole one, in ticks at `rate`;
     /// `None` for a negative time or one too large to count.
-    pub fn ticks(ms: Num, rate: TickRate) -> Option<Ticks> {
+    pub fn ticks(ms: Num, rate: MatchRate) -> Option<Ticks> {
         let ms = u64::try_from(ms.ceil()).ok()?;
         rate.duration(ms)
     }

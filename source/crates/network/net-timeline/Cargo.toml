@@ -9,10 +9,11 @@ kind = "glue"
 
 [features]
 # The clock's test fixtures, for the tests of every layer above
-internals = []
+internals = ["campfire-math/internals"]
 
 [dependencies]
-campfire-net-core = { workspace = true, features = ["ecs", "reflect"] }
+campfire-math.workspace = true
+campfire-net-core = { workspace = true, features = ["reflect"] }
 
 tracing.workspace = true
 

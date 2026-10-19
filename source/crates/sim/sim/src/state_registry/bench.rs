@@ -14,13 +14,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::host_rule::OnAny;
 use crate::id_allocator::IdAllocator;
+use crate::match_rate::MatchRate;
 use crate::sim_state::SimComponent;
 use crate::sim_update::SimUpdate;
 use crate::stable_id::StableId;
 use crate::stable_id::entity_index::EntityIndex;
 use crate::state_registry::StateRegistry;
 use crate::state_registry::state_delta::StateDelta;
-use crate::tick_rate::TickRate;
 
 /// The units of a kernel case, as an RTS battle holds them.
 const UNITS: i64 = 1000;
@@ -127,7 +127,7 @@ impl SimComponent for Stats {
 /// one in 50 with mana, cooldowns and a row of stats, as a hero or a tower has.
 fn units_world() -> World {
     let mut world = World::new();
-    let rate = TickRate::new(NonZeroU32::new(20).unwrap());
+    let rate = MatchRate::new(NonZeroU32::new(20).unwrap());
     SimUpdate::prepare(&mut world, SegmentSeed::ZERO, rate);
     for i in 0..UNITS {
         let at = Num::from_int(i).unwrap();

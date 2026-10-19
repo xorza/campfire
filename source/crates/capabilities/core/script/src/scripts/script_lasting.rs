@@ -1,5 +1,5 @@
 use campfire_common::Ticks;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_values::EngineEnum;
 
 use crate::scripts::arg_ctx::ArgCtx;
@@ -16,7 +16,7 @@ pub struct ScriptLasting(Ticks);
 
 impl ScriptLasting {
     /// `ms` at `rate`, or why it is refused.
-    pub fn of(rate: TickRate, ms: i64) -> Result<Self, ApiError> {
+    pub fn of(rate: MatchRate, ms: i64) -> Result<Self, ApiError> {
         if ms == 0 {
             return Err(ApiError::ZeroTime);
         }

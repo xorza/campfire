@@ -1,7 +1,7 @@
 use crate::clock_plugin::ClockPlugin;
 use crate::local_timeline_plugin::LocalTimelinePlugin;
 use bevy_app::{PluginGroup, PluginGroupBuilder};
-use campfire_net_core::TickRate;
+use campfire_math::TickRate;
 
 /// The app's network clock and its local timeline at `tick_rate`, on Bevy's `TimePlugin`, which
 /// the app adds.
@@ -24,7 +24,7 @@ impl PluginGroup for TimelinePlugins {
 pub(crate) mod internals {
     use bevy_app::{PluginGroup, PluginGroupBuilder};
     use bevy_time::TimePlugin;
-    use campfire_net_core::TickRate;
+    use campfire_math::TickRate;
 
     use crate::timeline_plugins::TimelinePlugins;
 

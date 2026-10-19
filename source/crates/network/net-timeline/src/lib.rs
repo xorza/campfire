@@ -19,6 +19,7 @@ mod rollback;
 mod set_tick_rate;
 mod timeline;
 mod timeline_plugins;
+mod timeline_rate;
 mod timeline_setup;
 mod timeline_systems;
 
@@ -32,6 +33,7 @@ pub use crate::rollback::Rollback;
 pub use crate::set_tick_rate::SetTickRate;
 pub use crate::timeline::Timeline;
 pub use crate::timeline_plugins::TimelinePlugins;
+pub use crate::timeline_rate::TimelineRate;
 pub use crate::timeline_setup::TimelineSetup;
 pub use crate::timeline_systems::TimelineSystems;
 

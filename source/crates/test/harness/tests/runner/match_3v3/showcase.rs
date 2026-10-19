@@ -11,7 +11,7 @@ use campfire_harness::{MatchUnits, Moba3v3, ScriptedMode};
 use campfire_items::{Inventory, ItemStack};
 use campfire_math::{Num, Vec3};
 use campfire_progression::Points;
-use campfire_sim::{Position, SimWorld, TickRate};
+use campfire_sim::{MatchRate, Position, SimWorld};
 use campfire_stats::{Level, ModePoolsData, PoolMeters, Stats};
 use campfire_units::{Lifespan, PoolId};
 use campfire_values::{
@@ -341,7 +341,7 @@ pub(crate) fn assert_casts(
         .map(|&(_, player, slot, _)| (player, slot))
         .collect();
     assert_eq!(seen, wanted);
-    let rate = *world.resource::<TickRate>();
+    let rate = *world.resource::<MatchRate>();
     let ticks = |ms: i64| rate.ticks(u64::try_from(ms).unwrap()).unwrap().get();
     for (start, &(index, .., walks)) in starts.iter().zip(&expected) {
         let Start { tick, player, slot } = *start;

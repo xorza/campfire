@@ -1,5 +1,5 @@
 use bevy_app::{PluginGroup, PluginGroupBuilder};
-use campfire_net_core::TickRate;
+use campfire_math::TickRate;
 
 use crate::layers::{self, DEFAULT_TICK_RATE};
 

@@ -1,7 +1,7 @@
 use campfire_common::Ticks;
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, NamedScripts, PerType, ScriptParams};
 use campfire_script::{Ctx, Hook, HookDecl, ScriptId, ScriptRole, Unit};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_stats::{ModifierAppliers, Way};
 use campfire_units::ScriptBook;
 use campfire_values::TimeTooLarge;
@@ -35,7 +35,7 @@ impl Ai {
         data: &AiData,
         script: ScriptId,
         scripts: &ScriptBook,
-        rate: TickRate,
+        rate: MatchRate,
     ) -> Result<Self, AiError> {
         let thinks = scripts
             .defines(Some(script), ScriptRole::Ai)

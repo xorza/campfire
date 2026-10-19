@@ -5,7 +5,7 @@ use campfire_common::DeclaredName;
 use campfire_declare::{BookCx, BookError, BookPlace, Fact, NamedScripts, ScriptParams, Section};
 use campfire_math::Num;
 use campfire_script::{ParamProblem, ScriptRole, ScriptUses, UnknownName};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_values::{Named, PackageIndex, Param};
 
 use crate::error::EdgeError;
@@ -29,7 +29,7 @@ struct ParamRead<'a> {
     modifier: &'a ModifierData,
     param: &'a DeclaredName,
     number: bool,
-    rate: TickRate,
+    rate: MatchRate,
 }
 
 impl ModifierWays {

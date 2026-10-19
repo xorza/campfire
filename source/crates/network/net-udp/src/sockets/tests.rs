@@ -1,6 +1,7 @@
 use super::*;
 use bytes::BytesMut;
 use campfire_net_core::Instant;
+use campfire_net_emulator::internals::per_mille;
 use campfire_net_emulator::{DuplexModel, EmulatedNetwork, LinkModel, WireClock};
 use campfire_net_packets::PacketSessionSetup;
 use campfire_net_packets::internals::{CLIENT, PlainHost};
@@ -21,11 +22,11 @@ const FRAME: Duration = Duration::from_millis(10);
 const PATIENCE: Duration = Duration::from_millis(800);
 
 fn identity() -> ServerIdentity {
-    ServerIdentity::raw_key(ServerSecret::new(Zeroizing::new([7; 32])))
+    ServerIdentity::raw_key(ServerSecret::new(Secret::new([7; 32])))
 }
 
 fn pinned() -> ServerTrust {
-    ServerTrust::pinned(identity().server_key().unwrap())
+    ServerTrust::pinned(identity().tls_key().unwrap())
 }
 
 fn roomy() -> AdmissionSetup {
@@ -142,8 +143,8 @@ fn the_handshake_links_under_loss_reorder_and_duplicates() {
     let model = LinkModel::perfect()
         .with_latency(Duration::from_millis(20))
         .with_jitter(Duration::from_millis(20))
-        .with_fixed_loss(0.1)
-        .with_duplicate(0.1);
+        .with_fixed_loss(per_mille(100))
+        .with_duplicate(per_mille(100));
     for seed in 0..16 {
         let mut sim = Sim::with_models(
             &pinned(),

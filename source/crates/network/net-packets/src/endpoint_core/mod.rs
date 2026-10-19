@@ -12,7 +12,6 @@ use campfire_net_emulator::LinkConditioner;
 use campfire_net_payload::{AppCode, PacketSessionQueues, UnlinkReason};
 
 use crate::carrier::Carrier;
-use crate::channel_binding::ChannelBinding;
 use crate::connection_id::ConnectionId;
 use crate::datagram_io::Datagram;
 use crate::datagram_io::Outbound;
@@ -23,6 +22,7 @@ use crate::packet_session::{PacketSession, PathOutcome, Received};
 use crate::packet_session_setup::PacketSessionSetup;
 use crate::stateless_reset;
 use crate::transmit::{Path, Transmit};
+use campfire_common::ChannelBinding;
 
 /// A packet session's slot in its endpoint's table, and its id, which no later packet session in
 /// the slot shares.

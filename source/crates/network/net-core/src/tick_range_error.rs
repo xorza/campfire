@@ -1,7 +1,8 @@
 use core::fmt::{Display, Formatter};
 
-/// A tick value lies outside the range of the tick type it is converted to: a negative delta as
-/// an instant, or a count of 2^31 ticks or more as a signed delta.
+/// A tick value lies outside the range of the tick type it is converted to: a negative span as an
+/// instant, a count of 2^31 ticks or more as a signed span, or a value outside `[0, 1)` as an
+/// overstep.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TickRangeError;
 

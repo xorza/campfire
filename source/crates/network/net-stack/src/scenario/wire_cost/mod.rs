@@ -4,10 +4,10 @@
 
 use bevy::prelude::*;
 
+use campfire_math::TickRate;
 use campfire_net_channels::{Channel, Channels};
 use campfire_net_connection::Connected;
 use campfire_net_core::LinkDirection;
-use campfire_net_core::TickRate;
 use campfire_net_emulator::DuplexModel;
 use campfire_net_endpoint::Endpoint;
 use campfire_net_messages::MessageSender;
@@ -20,7 +20,7 @@ use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::LinkEstimator;
 use campfire_net_transport::Transport;
 use campfire_net_transport::internals::{Channel1, ChannelOrderedReliable};
-use core::num::NonZeroU16;
+use core::num::NonZeroU32;
 use core::ops::Sub;
 use core::time::Duration;
 
@@ -31,7 +31,7 @@ mod tests;
 
 /// The tick of every case: 60 Hz, to the nanosecond.
 /// The rate the wire costs are measured at, 60 Hz.
-pub(crate) const TICK_RATE: TickRate = TickRate::new(NonZeroU16::new(60).unwrap());
+pub(crate) const TICK_RATE: TickRate = TickRate::hertz(NonZeroU32::new(60).unwrap());
 /// Its tick, 16,666,667 ns, which is also the server's frame interval.
 pub(crate) const TICK: Duration = TICK_RATE.period();
 

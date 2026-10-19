@@ -3,8 +3,8 @@ use rustls::crypto::{WebPkiSupportedAlgorithms, ring, verify_tls13_signature_wit
 use rustls::pki_types::{CertificateDer, ServerName, SubjectPublicKeyInfoDer, UnixTime};
 use rustls::{CertificateError, DigitallySignedStruct, Error, SignatureScheme};
 
-use crate::server_key::ServerKey;
 use crate::spki::Spki;
+use campfire_common::TlsKey;
 
 /// A client's check of the server: the raw key the client pinned and no other, with no certificate,
 /// chain, name or date to read (13-net-stack/udp.md, A server's identity and a client's trust
@@ -17,7 +17,7 @@ pub(crate) struct PinnedKeyVerifier {
 }
 
 impl PinnedKeyVerifier {
-    pub(crate) fn new(pin: &ServerKey) -> Self {
+    pub(crate) fn new(pin: &TlsKey) -> Self {
         Self {
             spki: Spki::of(pin),
             algorithms: ring::default_provider().signature_verification_algorithms,

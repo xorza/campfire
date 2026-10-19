@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
-use campfire_net_core::TickRate;
+use campfire_math::TickRate;
 use campfire_net_prediction::internals::PredictionStack;
 use campfire_net_replication::RoomPlugin;
 use campfire_net_stepper::Stack;

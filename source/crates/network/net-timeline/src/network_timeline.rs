@@ -1,10 +1,10 @@
 use crate::timeline::Timeline;
 use crate::timeline_setup::TimelineSetup;
 use bevy_ecs::component::{Component, Mutable};
+use campfire_math::TickRate;
 use campfire_net_core::NetTick;
 use campfire_net_core::Overstep;
 use campfire_net_core::TickInstant;
-use campfire_net_core::TickRate;
 use campfire_net_core::TickSpan;
 use core::ops::DerefMut;
 use core::time::Duration;

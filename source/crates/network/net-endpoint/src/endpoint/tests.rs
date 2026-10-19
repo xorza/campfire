@@ -4,15 +4,17 @@ use bevy_ecs::prelude::{Resource, With};
 use bevy_ecs::system::ResMut;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use bytes::BytesMut;
+use campfire_common::ChannelBinding;
 use campfire_net_core::Instant;
+use campfire_net_emulator::internals::per_mille;
 use campfire_net_emulator::{
     DuplexModel, EmulatedIo, EmulatedNetwork, LinkConditioning, LinkModel, WireClock,
 };
 use campfire_net_link::{LinkPlugin, Unlinked};
 use campfire_net_packets::EmulatedWires;
 use campfire_net_packets::{
-    ChannelBinding, ClientEstablish, ConnectionId, Datagram, EndpointSetup, Establish, Established,
-    Establishing, Protection, ServerEstablish,
+    ClientEstablish, ConnectionId, Datagram, EndpointSetup, Establish, Established, Establishing,
+    Protection, ServerEstablish,
 };
 use campfire_net_payload::{OutgoingPayload, PayloadFate, PayloadKind, PayloadToken};
 use campfire_net_timeline::ClockPlugin;
@@ -272,7 +274,7 @@ fn each_payload_has_one_fate_and_a_seed_repeats_exactly() {
     let run = || {
         let model = LinkModel::perfect()
             .with_latency(Duration::from_millis(15))
-            .with_fixed_loss(0.2);
+            .with_fixed_loss(per_mille(200));
         let mut harness = Harness::new(DuplexModel {
             seeds: [7, 7],
             ..DuplexModel::symmetric(model)
@@ -468,7 +470,7 @@ fn a_real_clock_runs_the_pass_on_a_thread() {
 }
 
 /// The binding every packet session of [`Bound`] carries.
-const BINDING: ChannelBinding = ChannelBinding([7; 32]);
+const BINDING: ChannelBinding = ChannelBinding::new([7; 32]);
 
 /// Plain packet sessions that each carry [`BINDING`], as a sealed establishment's carry their TLS
 /// packet session's: a client's opens at its connect, and a server takes each peer by its first

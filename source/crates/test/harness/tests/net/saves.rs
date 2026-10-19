@@ -18,7 +18,7 @@ use campfire_net::{
 };
 use campfire_protocol::{InputRules, JournalFrames, SeedChain, SessionLog};
 use campfire_runner::{Replay, Session, SessionWorld};
-use campfire_sim::{SimWorld, TickRate};
+use campfire_sim::{MatchRate, SimWorld};
 use campfire_store::InputFile;
 use campfire_store::internals::TestDir;
 use lightyear::core::tick::TickDuration;
@@ -138,7 +138,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     assert_eq!(world.state_hash(), save.state_hash);
     // At speed 2 a tick lasts half the session's, and a frame runs the LAN's max input delay of
     // 10 ticks less one at most.
-    let tick = TickRate::new(local.packages().manifest().tick_hz.default()).length();
+    let tick = MatchRate::new(local.packages().manifest().tick_hz.default()).length();
     assert_eq!(InputRules::LAN.max_delay.get(), 10);
     assert_eq!(world.resource::<TickDuration>().0, tick / 2);
     assert_eq!(world.resource::<Time<Virtual>>().max_delta(), tick / 2 * 9);

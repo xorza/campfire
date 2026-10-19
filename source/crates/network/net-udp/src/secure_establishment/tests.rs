@@ -1,4 +1,5 @@
 use bytes::{Bytes, BytesMut};
+use campfire_common::Secret;
 use campfire_net_core::Instant;
 use campfire_net_core::Random;
 use campfire_net_packets::{
@@ -14,7 +15,6 @@ use rustls::crypto::{self, ring};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, SignatureScheme};
 use std::sync::Arc;
-use zeroize::Zeroizing;
 
 use crate::admission_setup::AdmissionSetup;
 use crate::certificate_chain::CertificateChain;
@@ -46,11 +46,11 @@ fn address(last: u8, port: u16) -> SocketAddr {
 }
 
 fn identity() -> ServerIdentity {
-    ServerIdentity::raw_key(ServerSecret::new(Zeroizing::new([7; 32])))
+    ServerIdentity::raw_key(ServerSecret::new(Secret::new([7; 32])))
 }
 
 fn pinned() -> ServerTrust {
-    ServerTrust::pinned(identity().server_key().unwrap())
+    ServerTrust::pinned(identity().tls_key().unwrap())
 }
 
 fn roomy() -> AdmissionSetup {
@@ -124,7 +124,7 @@ impl Exchange {
         let mut server = ServerSide::new(
             identity.tls_config(ALPN),
             identity.reset_key(),
-            &[3; 32],
+            &Secret::new([3; 32]),
             admission,
             PATIENCE,
             Random::seeded(2),
@@ -274,9 +274,9 @@ fn a_token_of_the_last_handshake_skips_the_retry_once() {
 /// server key, its alert drops the server's handshake, and neither holds a packet session.
 #[test]
 fn a_wrong_pin_refuses_the_server_by_access_denied() {
-    let other = ServerIdentity::raw_key(ServerSecret::new(Zeroizing::new([8; 32])));
+    let other = ServerIdentity::raw_key(ServerSecret::new(Secret::new([8; 32])));
     let mut exchange = Exchange::new(
-        &ServerTrust::pinned(other.server_key().unwrap()),
+        &ServerTrust::pinned(other.tls_key().unwrap()),
         &identity(),
         roomy(),
     );
@@ -284,17 +284,14 @@ fn a_wrong_pin_refuses_the_server_by_access_denied() {
     let [client, server] = exchange.run(at(0));
     assert!(client.is_empty() && server.is_empty());
     assert_eq!(exchange.sent[0].last(), Some(&Kind::Alert));
-    assert_eq!(
-        exchange.client_out.failed,
-        Some(UnlinkReason::WrongServerKey)
-    );
+    assert_eq!(exchange.client_out.failed, Some(UnlinkReason::WrongTlsKey));
     assert_eq!(exchange.server.next_deadline(), None);
 }
 
-/// A certificate no root signed is refused as a wrong server key by a WebPKI client, which sends
+/// A certificate no root signed is refused as a wrong TLS key by a WebPKI client, which sends
 /// `unknown_ca`. A chain needs a certificate and its own key, and names why it refuses another.
 #[test]
-fn a_certificate_no_root_signed_is_refused_as_a_wrong_server_key() {
+fn a_certificate_no_root_signed_is_refused_as_a_wrong_tls_key() {
     let chain =
         |certificates: Vec<Vec<u8>>, key: &[u8]| CertificateChain::new(certificates, key.to_vec());
     assert!(matches!(
@@ -310,20 +307,17 @@ fn a_certificate_no_root_signed_is_refused_as_a_wrong_server_key() {
         Err(CertificateError::Key(_))
     ));
     let identity = ServerIdentity::certificate(
-        ServerSecret::new(Zeroizing::new([7; 32])),
+        ServerSecret::new(Secret::new([7; 32])),
         chain(vec![SELF_SIGNED.to_vec()], SELF_SIGNED_KEY).unwrap(),
     );
-    assert_eq!(identity.server_key(), None);
+    assert_eq!(identity.tls_key(), None);
     let trust = ServerTrust::web_pki("localhost").unwrap();
     assert_eq!(trust.pinned_key(), None);
     let mut exchange = Exchange::new(&trust, &identity, roomy());
     exchange.connect(at(0));
     let [client, _] = exchange.run(at(0));
     assert!(client.is_empty());
-    assert_eq!(
-        exchange.client_out.failed,
-        Some(UnlinkReason::WrongServerKey)
-    );
+    assert_eq!(exchange.client_out.failed, Some(UnlinkReason::WrongTlsKey));
     assert_eq!(
         ServerTrust::web_pki("not a name!").unwrap_err().name,
         "not a name!"
@@ -440,7 +434,7 @@ fn lost_handshake_packets_go_again_at_their_timers() {
 #[test]
 fn a_certificate_chain_links_a_client_whose_verifier_takes_it() {
     let identity = ServerIdentity::certificate(
-        ServerSecret::new(Zeroizing::new([7; 32])),
+        ServerSecret::new(Secret::new([7; 32])),
         CertificateChain::new(vec![SELF_SIGNED.to_vec()], SELF_SIGNED_KEY.to_vec()).unwrap(),
     );
     let tls = ServerTrust::tls_config_with(Arc::new(AnyCertificate), ALPN);

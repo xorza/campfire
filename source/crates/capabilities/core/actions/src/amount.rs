@@ -1,7 +1,7 @@
 use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_script::{Frame, UnknownName};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_values::Number;
 
 use crate::effect_names::EffectNames;
@@ -44,7 +44,7 @@ impl Amount {
 
     /// Its value in `frame` as a duration in milliseconds, in ticks of `rate`: whole, as the load
     /// checks every duration, so its floor is exact.
-    pub fn duration(self, frame: &Frame, rate: TickRate) -> Ticks {
+    pub fn duration(self, frame: &Frame, rate: MatchRate) -> Ticks {
         let ms = self.number(frame).floor();
         let ms = u64::try_from(ms).expect("a duration's book holds it not negative");
         rate.duration(ms)

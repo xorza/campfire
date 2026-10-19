@@ -8,9 +8,9 @@ use campfire_net_channels::{ChannelMode, ChannelSetup};
 use campfire_net_connection::Connected;
 use campfire_net_core::LinkDirections;
 use campfire_net_core::PositiveTickSpan;
-use campfire_net_core::TickRate;
 use campfire_net_messages::LinkMessages;
 use campfire_net_messages::{AppEventExt, EventSender, RemoteEvent};
+use campfire_net_timeline::TimelineRate;
 use campfire_net_transport::AppChannelExt;
 use core::time::Duration;
 use tracing::debug;
@@ -41,7 +41,7 @@ impl HelloPlugin {
     fn send_sender_hello(
         trigger: On<'_, '_, Add<(Connected, ReplicationSender)>>,
         replication_timer: Res<'_, ReplicationTimer>,
-        tick_rate: Res<'_, TickRate>,
+        tick_rate: Res<'_, TimelineRate>,
         mut query: Query<
             '_,
             '_,
@@ -50,7 +50,7 @@ impl HelloPlugin {
         >,
     ) {
         let send_interval = replication_timer.timer.duration();
-        let send_interval = PositiveTickSpan::from_duration(send_interval, *tick_rate);
+        let send_interval = PositiveTickSpan::from_duration(send_interval, tick_rate.0);
         if let Ok((link, mut event_sender)) = query.get_mut(trigger.entity) {
             let hello = SenderHello {
                 send_interval,
@@ -106,7 +106,7 @@ mod tests {
 
         world.trigger(RemoteEvent {
             event: SenderHello {
-                send_interval: PositiveTickSpan::lit("1"),
+                send_interval: PositiveTickSpan::from_ticks(1),
                 link: remote,
             },
             from: peer,

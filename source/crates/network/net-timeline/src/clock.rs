@@ -140,8 +140,7 @@ mod tests {
     use bevy_time::TimePlugin;
 
     use crate::timeline_plugins::TimelinePlugins;
-    use campfire_net_core::TickRate;
-    use core::num::NonZeroU16;
+    use campfire_math::TickRate;
 
     fn app(source: ClockSource, strategy: TimeUpdateStrategy) -> App {
         let mut app = App::new();
@@ -149,7 +148,7 @@ mod tests {
         app.add_plugins((
             TimePlugin,
             TimelinePlugins {
-                tick_rate: TickRate::new(NonZeroU16::new(100).unwrap()),
+                tick_rate: TickRate::try_from(100).unwrap(),
             },
         ));
         app.insert_resource(strategy);

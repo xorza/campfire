@@ -19,9 +19,12 @@ internals = [
     "campfire-net-channels/internals",
     "campfire-net-timeline/internals",
     "campfire-net-payload/internals",
+    "dep:campfire-math",
+    "campfire-math/internals",
 ]
 
 [dependencies]
+campfire-math = { workspace = true, optional = true }
 campfire-common.workspace = true
 campfire-net-channels.workspace = true
 campfire-net-timeline.workspace = true

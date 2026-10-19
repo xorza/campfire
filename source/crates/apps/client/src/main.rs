@@ -33,7 +33,7 @@ use campfire_net::{Hosting, KeyFile, Os, Pace, SimClient, WatchRequest, exit_cod
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
 use campfire_protocol::Signer;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_store::SecretFile;
 use campfire_values::{Team, TeamSet};
 use lightyear::prelude::Connect;
@@ -127,7 +127,7 @@ fn main() -> ExitCode {
         Err(code) => return code,
     };
     let pin = connection.pin();
-    let tick = TickRate::new(pin.tick_hz).length();
+    let tick = MatchRate::new(pin.tick_hz).length();
     let sim_client = SimClient {
         main,
         session_key: Os::SYSTEM.entropy.keypair(),

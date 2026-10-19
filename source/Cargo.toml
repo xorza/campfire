@@ -265,7 +265,6 @@ clap = { version = "=4.6.7", default-features = false, features = [
 ] }
 criterion = { version = "=0.8.2", default-features = false, features = ["cargo_bench_support"] }
 derive_more = { version = "=2.1.1", default-features = false, features = ["display"] }
-fixed = "=1.31.0"
 fluent-bundle = "=0.16.0"
 fluent-syntax = "=0.12.0"
 getrandom = "=0.3.4"

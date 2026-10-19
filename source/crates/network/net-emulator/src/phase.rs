@@ -1,10 +1,11 @@
+use campfire_math::Num;
 use core::time::Duration;
 
 use crate::link_model::LinkModel;
 use crate::phase_mode::PhaseMode;
 
 /// From `start` on the wire clock, a direction follows `model` in `mode`, until the next phase.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Phase {
     pub start: Duration,
     pub model: LinkModel,
@@ -16,7 +17,7 @@ impl Phase {
     pub fn outage(start: Duration) -> Self {
         Self {
             start,
-            model: LinkModel::perfect().with_fixed_loss(1.0),
+            model: LinkModel::perfect().with_fixed_loss(Num::ONE),
             mode: PhaseMode::Pass,
         }
     }

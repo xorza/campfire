@@ -6,12 +6,12 @@ use campfire_net_core::Instant;
 use campfire_net_payload::{PacketSessionQueues, PayloadFate, UnlinkReason};
 use campfire_store::Worker;
 
-use crate::channel_binding::ChannelBinding;
 use crate::datagram_io::DatagramIo;
 use crate::datagram_io::Outbound;
 use crate::endpoint_core::{EndpointTime, News, PeerKey};
 use crate::endpoint_pieces::EndpointPieces;
 use crate::endpoint_runtime::{EndpointRuntime, PassScratch};
+use campfire_common::ChannelBinding;
 
 /// The carrier of a client's one packet session: the host's own.
 pub const CLIENT: u32 = 0;

@@ -16,9 +16,9 @@ fn the_seed_alone_decides_losses_and_jitter() {
     let model = LinkModel::default()
         .with_latency(Duration::from_millis(100))
         .with_jitter(Duration::from_millis(20))
-        .with_fixed_loss(0.5);
-    // From a separate model of the same draws: per packet, one `fraction` for the state
-    // transition (probability 0), one `fraction < 0.5` for the loss, and for a delivered packet
+        .with_fixed_loss(Num::HALF);
+    // From a separate model of the same draws: per packet, one `chance` for the state
+    // transition (probability 0), one `chance` of 1/2 for the loss, and for a delivered packet
     // `100 ms + below(40 ms) - 20 ms`, to the nanosecond.
     let ns = |nanos| Some(Duration::from_nanos(nanos));
     assert_eq!(
@@ -96,13 +96,13 @@ fn a_reordered_packet_skips_the_latency_and_a_duplicate_has_its_own_delivery() {
             .map(|delivery| delivery.at.elapsed()),
         Some(Duration::from_millis(100))
     );
-    let reordered = delayed.clone().with_reorder(1.0);
+    let reordered = delayed.clone().with_reorder(Num::ONE);
     assert_eq!(
         run.admit(&reordered, 100, Instant::ZERO)
             .map(|delivery| delivery.at),
         Some(Instant::ZERO)
     );
-    let duplicated = delayed.with_duplicate(1.0);
+    let duplicated = delayed.with_duplicate(Num::ONE);
     assert_eq!(
         run.admit(&duplicated, 100, Instant::ZERO)
             .and_then(|delivery| delivery.copy_at)
@@ -119,7 +119,7 @@ fn a_duplicate_pays_its_bytes_behind_the_original() {
     let model = LinkModel::perfect()
         .with_latency(Duration::from_millis(100))
         .with_rate(RateLimit::new(1000, 1500))
-        .with_duplicate(1.0);
+        .with_duplicate(Num::ONE);
     let mut run = LinkModelRun::new(0);
     let delivery = run.admit(&model, 1000, Instant::ZERO).unwrap();
     assert_eq!(delivery.at.elapsed(), Duration::from_millis(1100));

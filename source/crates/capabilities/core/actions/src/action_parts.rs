@@ -1,5 +1,5 @@
 use campfire_script::UnknownName;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_values::{ModifierId, PackageIndex};
 
 use crate::action::{Aim, Passive};
@@ -32,7 +32,7 @@ impl ActionParts {
         data: &ActionData,
         package: PackageIndex,
         ranks: u8,
-        rate: TickRate,
+        rate: MatchRate,
         names: &impl ActionNames,
     ) -> Result<Self, ActionError> {
         let passive = data.passive_modifier.as_ref().map(|name| {

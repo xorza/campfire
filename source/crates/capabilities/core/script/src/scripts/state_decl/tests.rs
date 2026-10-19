@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use campfire_codec::Toml;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 
 use super::*;
 use crate::script_host::error::ScriptError;
@@ -155,7 +155,7 @@ fn a_list_of_scalars_holds_items_of_its_type_alone() {
     assert_eq!(take(StateType::BoolList, &list(vec![word])), None);
     assert_eq!(take(StateType::IntList, &one), None);
     // Each list starts empty, and reads back as the list it holds.
-    let view = View::new(TickRate::new(NonZeroU32::new(30).unwrap()), |_| {});
+    let view = View::new(MatchRate::new(NonZeroU32::new(30).unwrap()), |_| {});
     let back = StateValue::IntList(Arc::from([1, 2])).to_value(&view);
     let items: Vec<_> = back
         .into_list()

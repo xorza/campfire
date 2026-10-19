@@ -3,7 +3,7 @@ use std::num::NonZeroI64;
 use campfire_actions::SlotKind;
 use campfire_declare::PerType;
 use campfire_math::{Num, Rounding};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_units::TurnStep;
 
 use crate::turret::turret_data::TurretData;
@@ -27,7 +27,7 @@ pub struct Turret {
 impl Turret {
     /// The turret of `data`, its attacks those of the slot kind `slot`, its turns a tick at
     /// `rate`, each rounded once and at least a bit, so a turret always turns.
-    pub fn of(data: &TurretData, slot: SlotKind, rate: TickRate) -> Self {
+    pub fn of(data: &TurretData, slot: SlotKind, rate: MatchRate) -> Self {
         let hz = NonZeroI64::from(rate.hz()).get();
         let step = |divisor: i64| {
             let step = data

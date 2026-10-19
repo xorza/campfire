@@ -18,7 +18,7 @@ fn data(turn_rate: i64, tolerance: i64) -> TurretData {
 #[test]
 fn a_turret_turns_its_rate_a_tick_and_back_at_half_of_it() {
     // 180° a second at 30 ticks a second: 6° a tick toward a target, 3° back to rest.
-    let rate = TickRate::new(NonZeroU32::new(30).unwrap());
+    let rate = MatchRate::new(NonZeroU32::new(30).unwrap());
     let turret = Turret::of(&data(180, 2), SlotKind::new(0), rate);
     assert_eq!(
         [turret.turn, turret.rest].map(TurnStep::get),

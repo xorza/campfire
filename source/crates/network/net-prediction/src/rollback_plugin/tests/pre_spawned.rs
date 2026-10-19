@@ -682,7 +682,7 @@ fn a_local_despawn_before_a_match_ends_on_the_match() {
     setup.link.server_to_client = LinkModel::perfect().with_latency(2 * setup.tick_rate.period());
     let mut stepper = Stepper::new(PredictionStack, setup);
     let sync_setup = SyncSetup {
-        max_error_margin: PositiveTickSpan::lit("0.5"),
+        max_error_margin: PositiveTickSpan::try_from(campfire_math::Num::HALF).unwrap(),
         ..SyncSetup::default()
     };
     stepper

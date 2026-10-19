@@ -1,6 +1,7 @@
 //! `atomic/link/link_model_run/admit/…`: one packet through [`LinkModelRun::admit`] under each
 //! kind of model.
 
+use campfire_math::Num;
 use campfire_measure::Kind;
 use campfire_measure::Scale;
 use campfire_net_core::Instant;
@@ -8,7 +9,7 @@ use core::time::Duration;
 use criterion::{BenchmarkId, Criterion};
 use std::hint::black_box;
 
-use crate::link_model::LinkModel;
+use crate::link_model::{LinkModel, per_mille};
 use crate::link_model_run::LinkModelRun;
 use crate::rate_limit::RateLimit;
 
@@ -25,7 +26,7 @@ pub(crate) fn atomic(criterion: &mut Criterion) {
             LinkModel::default()
                 .with_latency(Duration::from_millis(40))
                 .with_jitter(Duration::from_millis(8))
-                .with_simple_gilbert_loss(0.005, 8.0),
+                .with_simple_gilbert_loss(per_mille(5), Num::int(8)),
         ),
         (
             "rate_limited",

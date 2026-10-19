@@ -1,5 +1,6 @@
-use campfire_math::SplitMix64;
+use campfire_math::{Num, Rounding, SplitMix64};
 use campfire_net_core::LinkDirection;
+use campfire_net_emulator::internals::per_mille;
 use campfire_net_emulator::{LinkModel, Phase, RateLimit};
 use core::time::Duration;
 
@@ -8,8 +9,8 @@ use core::time::Duration;
 pub(crate) struct Faults {
     pub(crate) latency: Option<Latency>,
     pub(crate) loss: Option<Loss>,
-    pub(crate) duplicate: Option<f32>,
-    pub(crate) reorder: Option<f32>,
+    pub(crate) duplicate: Option<Num>,
+    pub(crate) reorder: Option<Num>,
     pub(crate) rate: Option<RateLimit>,
     pub(crate) outage: Option<Outage>,
 }
@@ -17,8 +18,8 @@ pub(crate) struct Faults {
 /// The Simple Gilbert model's mean loss and mean burst length.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Loss {
-    pub(crate) mean: f32,
-    pub(crate) burst: f32,
+    pub(crate) mean: Num,
+    pub(crate) burst: Num,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -47,11 +48,11 @@ impl Faults {
             jitter: millis(&mut rng, 0, 30),
         });
         let loss = flags[1].then(|| Loss {
-            mean: upto(&mut rng, 0.1),
-            burst: 1.0 + upto(&mut rng, 7.0),
+            mean: upto(&mut rng, per_mille(100)),
+            burst: Num::ONE + upto(&mut rng, Num::int(7)),
         });
-        let duplicate = flags[2].then(|| upto(&mut rng, 0.05));
-        let reorder = flags[3].then(|| upto(&mut rng, 0.1));
+        let duplicate = flags[2].then(|| upto(&mut rng, per_mille(50)));
+        let reorder = flags[3].then(|| upto(&mut rng, per_mille(100)));
         let rate = flags[4].then(|| {
             let bytes_per_second = 30_000 + u32::try_from(rng.below(170_000)).unwrap();
             RateLimit::new(bytes_per_second, bytes_per_second)
@@ -118,9 +119,11 @@ impl Faults {
     }
 }
 
-/// A value in `[0, max]`, in 10,000 even steps.
-fn upto(rng: &mut SplitMix64, max: f32) -> f32 {
-    rng.below(10_001) as f32 / 10_000.0 * max
+/// A value in `[0, max]`, in 10,000 even steps, each to the nearest 2^-24.
+fn upto(rng: &mut SplitMix64, max: Num) -> Num {
+    let step = i64::try_from(rng.below(10_001)).unwrap();
+    max.checked_mul_div_int(step, 10_000, Rounding::NearestEven)
+        .expect("a share of a probability fits")
 }
 
 fn millis(rng: &mut SplitMix64, low: u64, high: u64) -> Duration {

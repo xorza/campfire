@@ -12,7 +12,7 @@ use campfire_protocol::{
     LogReplay, PlayerPacket, RecordSink, ResultError, SeatStart, SeedError, ServerInput,
     ServerSeeds, SessionLog, SessionResult, Signer, SnapshotFingerprint,
 };
-use campfire_sim::{SimWorld, TickRate};
+use campfire_sim::{MatchRate, SimWorld};
 
 use crate::match_build::MatchBuild;
 use crate::seat_rules::SeatRules;
@@ -98,7 +98,7 @@ impl Session {
                 .map_err(|error| StartError::SeatRule { change, error })?;
         }
         let players = u32::try_from(header.seats.len()).expect("the log counts seats in u32");
-        let rate = TickRate::new(header.terms.tick_hz);
+        let rate = MatchRate::new(header.terms.tick_hz);
         let spec = MatchBuild::spec(packages, seed, rate, players).out(visibility.out());
         MatchBuild::build(world, spec, packages, players, picks);
         let saves = packages.data().saves;

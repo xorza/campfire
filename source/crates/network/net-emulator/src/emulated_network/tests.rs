@@ -1,5 +1,6 @@
 use super::*;
 use crate::link_model::LinkModel;
+use campfire_math::Num;
 
 /// One emulated link, its wire time moved by hand.
 struct Harness {
@@ -219,7 +220,7 @@ fn a_read_over_many_ends_bounds_them_together() {
 #[test]
 fn a_duplicated_packet_arrives_twice() {
     let harness = Harness::new(DuplexModel::symmetric(
-        LinkModel::perfect().with_duplicate(1.0),
+        LinkModel::perfect().with_duplicate(Num::ONE),
     ));
     harness.send_from_client(Bytes::from_static(b"a"));
     assert_eq!(
@@ -245,7 +246,7 @@ fn the_edge_preset_sends_at_its_rate_after_its_latency() {
 fn counts_follow_each_packets_fate() {
     const MTU: usize = 1_200;
     let harness = Harness::new(
-        DuplexModel::symmetric(LinkModel::perfect().with_duplicate(1.0)).with_mtu(MTU),
+        DuplexModel::symmetric(LinkModel::perfect().with_duplicate(Num::ONE)).with_mtu(MTU),
     );
     harness.send_from_client(Bytes::from_static(b"a"));
     harness.send_from_client(Bytes::from(vec![0_u8; MTU + 1]));

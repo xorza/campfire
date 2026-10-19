@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::{ByType, PerType};
 use campfire_math::Num;
-use campfire_sim::{SimComponent, TickRate};
+use campfire_sim::{MatchRate, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
 use serde::{Deserialize, Serialize};
 
@@ -74,7 +74,7 @@ impl SimComponent for Life {
     // A life in a match whose types have none, as a mode that names no life pool gives none, has
     // no pool's stats to follow; what its meter carries, regen adds, as `Pools` holds.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let hz = world.resource::<TickRate>().hz().get();
+        let hz = world.resource::<MatchRate>().hz().get();
         world
             .get_resource::<ByType<Self>>()
             .is_some_and(|lives| !lives.is_empty())

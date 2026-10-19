@@ -28,12 +28,12 @@ How the stack answers "what time is it".
   driven clock cannot drive a socket's waits.
 - **Ticks stay on Bevy's clocks.** `Time<Fixed>` and `Time<Virtual>` drive ticks and timelines,
   so a game speed changes ticks and leaves the network clock real.
-- **The tick length is a rate in hertz, and the timestep is its period.** The rate is
-  `TickRate(NonZeroU16)`. The timeline plugin alone writes `Time<Fixed>`'s timestep, the period
-  rounded once to the nanosecond, and a conversion between ticks and time computes the exact
-  rational and rounds once. Practice: Netcode for Entities' `SimulationTickRate`, an integer in
-  hertz. Refused: a `Duration` per tick beside the timestep, a second truth whose rounding made 3
-  ticks at 60 Hz 50_000_001 ns.
+- **The tick length is a rate, and the timestep is its period.** The rate is `math`'s `TickRate`,
+  ticks over whole seconds, which the timelines read as `TimelineRate`. The timeline plugin alone
+  writes `Time<Fixed>`'s timestep, the period rounded once to the nanosecond, and a conversion
+  between ticks and time computes the exact rational and rounds once. Practice: Netcode for
+  Entities' `SimulationTickRate`, an integer in hertz. Refused: a `Duration` per tick beside the
+  timestep, a second truth whose rounding made 3 ticks at 60 Hz 50_000_001 ns.
 - **A rollback replays each tick at the period it ran with.** Prediction keeps the period of each
   tick in the rollback window, and the rewind takes each one off the fixed time. Refused: one
   timestep for the whole window, which a `SetTickRate` inside it breaks.

@@ -1,3 +1,4 @@
+use campfire_common::Secret;
 use ring::hkdf;
 use zeroize::Zeroizing;
 
@@ -25,14 +26,14 @@ impl DerivedSecret {
     }
 
     /// This secret of the server whose secret is `secret`.
-    pub(crate) fn of(self, secret: &ServerSecret) -> Zeroizing<[u8; 32]> {
+    pub(crate) fn of(self, secret: &ServerSecret) -> Secret<32> {
         let key = hkdf::Salt::new(hkdf::HKDF_SHA256, &[]).extract(secret.as_bytes().as_slice());
         let mut derived = Zeroizing::new([0; 32]);
         key.expand(&[self.label()], hkdf::HKDF_SHA256)
             .expect("32 bytes are one block of HKDF-SHA256")
             .fill(derived.as_mut_slice())
             .expect("the output is the length expand was given");
-        derived
+        Secret::new(*derived)
     }
 }
 
@@ -48,7 +49,7 @@ mod tests {
     /// not change.
     #[test]
     fn each_secret_is_an_independent_hkdfs() {
-        let secret = ServerSecret::new(Zeroizing::new(array::from_fn(|index| {
+        let secret = ServerSecret::new(Secret::new(array::from_fn(|index| {
             u8::try_from(index).unwrap()
         })));
         let tls_seed = [
@@ -61,7 +62,7 @@ mod tests {
             0x99, 0x02, 0x94, 0xc7, 0x7f, 0x79, 0x64, 0x3a, 0xcd, 0xdc, 0x29, 0xb7, 0x95, 0xfb,
             0x5d, 0x31, 0xd1, 0xab,
         ];
-        assert_eq!(*DerivedSecret::TlsSeed.of(&secret), tls_seed);
-        assert_eq!(*DerivedSecret::ResetKey.of(&secret), reset_key);
+        assert_eq!(DerivedSecret::TlsSeed.of(&secret).as_bytes(), &tls_seed);
+        assert_eq!(DerivedSecret::ResetKey.of(&secret).as_bytes(), &reset_key);
     }
 }

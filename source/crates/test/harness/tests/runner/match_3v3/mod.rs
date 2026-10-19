@@ -24,7 +24,7 @@ use campfire_progression::Points;
 use campfire_runner::SessionWorld;
 use campfire_script::{ScriptFailures, ScriptHost, StateValue};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
+use campfire_sim::{EntityIndex, MatchRate, Position, SimWorld, StableId};
 use campfire_stats::{Level, Stats};
 use campfire_units::{Dead, Deaths, Life, Owner};
 use campfire_values::{PackageIndex, Rank, Scalar, Team, UnitType};
@@ -167,7 +167,7 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
     let game = fixed.game();
     // A timer fires in the tick its time ends in. The pick's, set in tick 0, ends in the tick
     // before its count of ticks; the first wave's, set then, its own count later.
-    let rate = *game.resource::<TickRate>();
+    let rate = *game.resource::<MatchRate>();
     let timer = |name| rate.ticks(param_ms(moba, name)).unwrap().get();
     let pick_end = timer("pick_ms") - 1;
     let first_wave = pick_end + timer("first_wave_ms");

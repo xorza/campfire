@@ -1,14 +1,14 @@
 use bevy_ecs::system::{Res, SystemParam};
 use campfire_common::Tick;
 
+use crate::match_rate::MatchRate;
 use crate::sim_tick::SimTick;
-use crate::tick_rate::TickRate;
 
 /// The sim's clock as a system reads it: the tick under way, and the rate ticks run at.
 #[derive(SystemParam, Debug)]
 pub struct TickClock<'w> {
     tick: Res<'w, SimTick>,
-    rate: Res<'w, TickRate>,
+    rate: Res<'w, MatchRate>,
 }
 
 impl TickClock<'_> {
@@ -22,7 +22,7 @@ impl TickClock<'_> {
         self.tick.end()
     }
 
-    pub fn rate(&self) -> TickRate {
+    pub fn rate(&self) -> MatchRate {
         *self.rate
     }
 }
@@ -41,7 +41,7 @@ mod tests {
         // Tick 5 runs from 5 to 6, at 30 a second.
         let mut world = World::new();
         world.insert_resource(SimTick::new(Tick::new(5)));
-        world.insert_resource(TickRate::new(NonZeroU32::new(30).unwrap()));
+        world.insert_resource(MatchRate::new(NonZeroU32::new(30).unwrap()));
         let read = world.run_system_once(|clock: TickClock<'_>| {
             (clock.start(), clock.end(), clock.rate().hz().get())
         });

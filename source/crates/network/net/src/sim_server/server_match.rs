@@ -7,7 +7,7 @@ use campfire_common::Seat;
 use campfire_package::ModePackages;
 use campfire_protocol::{ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_runner::{CheckedTerms, Session, SessionSource};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_visibility::Visibility;
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::LocalTimeline;
@@ -190,7 +190,7 @@ impl ServerMatch {
     /// keeps their `visibility`, the one copy of it, which each data filter takes its audience
     /// from as the match's entities spawn.
     fn take_terms(world: &mut World, terms: &SessionTerms, visibility: Visibility) {
-        let session = TickRate::new(terms.tick_hz).length();
+        let session = MatchRate::new(terms.tick_hz).length();
         let tick = world.resource::<TickDuration>().0;
         assert!(
             PaceSpeed::ALL

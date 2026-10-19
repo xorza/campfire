@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use bytes::Bytes;
+use campfire_common::Secret;
 use campfire_net_core::Instant;
 use campfire_net_core::Random;
 use campfire_net_packets::{
@@ -102,14 +103,14 @@ impl ServerSide {
     pub(crate) fn new(
         tls: Arc<rustls::ServerConfig>,
         reset_key: ResetKey,
-        token_secret: &[u8; 32],
+        token_secret: &Secret<32>,
         admission: AdmissionSetup,
         patience: Duration,
         random: Random,
     ) -> Self {
         Self {
             tls,
-            token_key: TokenKey::new(token_secret),
+            token_key: TokenKey::new(token_secret.as_bytes()),
             used: UsedTokens::default(),
             reset_key,
             admission_setup: admission,

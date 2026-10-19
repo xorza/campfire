@@ -113,8 +113,10 @@ mod tests {
     use campfire_net_sync::RemoteTimeline;
     use campfire_net_timeline::NetworkTimeline;
 
+    use campfire_math::TickRate;
+
     use campfire_net_core::NetTick;
-    use campfire_net_core::TickRate;
+    use campfire_net_timeline::TimelineRate;
 
     use crate::interpolation_timeline_plugin::InterpolationTimelinePlugin;
     use crate::synced_interpolation_timeline::SyncedInterpolationTimeline;
@@ -196,7 +198,7 @@ mod tests {
         let mut virtual_time = Time::<Virtual>::default();
         virtual_time.set_relative_speed(0.0);
         app.insert_resource(virtual_time);
-        app.insert_resource(TickRate::try_from(64).unwrap());
+        app.insert_resource(TimelineRate(TickRate::try_from(64).unwrap()));
         app.add_systems(PreUpdate, InterpolationTimelinePlugin::advance_timeline);
 
         app.init_resource::<InterpolationTimeline>();

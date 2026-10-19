@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_script::StateValue;
-use campfire_sim::{StableId, TickRate};
+use campfire_sim::{MatchRate, StableId};
 use campfire_values::{ActionId, ModifierId, Rank};
 
 use crate::applier::Applier;
@@ -30,7 +30,7 @@ pub struct Application<S = Vec<StatShare>, T = Vec<StateValue>> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ApplyAt<'a> {
     pub(crate) now: Tick,
-    pub(crate) rate: TickRate,
+    pub(crate) rate: MatchRate,
     pub(crate) params: &'a ParamBook,
 }
 

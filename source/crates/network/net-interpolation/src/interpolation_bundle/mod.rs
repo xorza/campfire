@@ -34,13 +34,13 @@ use bevy_ecs::world::FilteredEntityRef;
 use bevy_time::{Fixed, Time};
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::NetTick;
-use campfire_net_core::TickRate;
 use campfire_net_replication::ComponentTypeId;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::HistoryState;
 use campfire_net_replication::Interpolated;
 use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::NetworkTimeline;
+use campfire_net_timeline::TimelineRate;
 use std::borrow::Cow;
 use tracing::trace;
 
@@ -304,7 +304,7 @@ macro_rules! impl_interpolation_bundle {
                 interpolation: InterpolationFn<Self>,
             ) {
                 let system = move |timeline: Res<'_, InterpolationTimeline>,
-                                   tick_rate: Option<Res<'_, TickRate>>,
+                                   tick_rate: Option<Res<'_, TimelineRate>>,
                                    holders: Res<'_, InterpolationHolders>,
                                    mut query: Query<
                     '_,
@@ -318,7 +318,7 @@ macro_rules! impl_interpolation_bundle {
                 >| {
                     let interpolation_tick = timeline.now().tick();
                     let interpolation_overstep = timeline.overstep().to_f32();
-                    let tick_rate = tick_rate.as_deref().copied();
+                    let tick_rate = tick_rate.map(|rate| rate.0);
                     let held = holders.delayed.apply(rule_id);
                     let interpolation = interpolation
                         .typed::<dyn Fn((&$C0, $(&$C,)+), (&$C0, $(&$C,)+), InterpolationSampleCx)

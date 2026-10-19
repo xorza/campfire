@@ -25,7 +25,7 @@ use campfire_protocol::{SignedReceipt, Signer, Verifier};
 use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicEndpoint, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{
-    SimTick, SimUpdate, StableId, StateRewritten, TickInput, TickInputs, TickRate, Unpredicted,
+    MatchRate, SimTick, SimUpdate, StableId, StateRewritten, TickInput, TickInputs, Unpredicted,
 };
 use campfire_units::{Avatar, Dead, Fallen, Owner, UnitsWorld};
 use campfire_values::{Team, TeamSet};
@@ -183,7 +183,7 @@ impl Plugin for SimClient {
             self.check().is_ok(),
             "a client's packages run at its server's pinned rate, which its caller checks"
         );
-        let rate = TickRate::new(self.server.tick_hz);
+        let rate = MatchRate::new(self.server.tick_hz);
         app.add_plugins(ClientPlugins {
             tick_duration: rate.length(),
         });

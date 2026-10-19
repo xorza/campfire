@@ -3209,13 +3209,11 @@ dependencies = [
 name = "campfire-net-core"
 version = "0.1.0"
 dependencies = [
- "bevy_ecs 0.20.0",
  "bevy_platform 0.20.0",
  "bevy_reflect 0.20.0",
  "campfire-common",
  "campfire-math",
  "campfire-net-bytes",
- "fixed",
  "getrandom 0.3.4",
  "serde",
 ]
@@ -3249,6 +3247,7 @@ dependencies = [
  "bevy_ecs 0.20.0",
  "bevy_time 0.20.0",
  "bytes",
+ "campfire-common",
  "campfire-net-core",
  "campfire-net-emulator",
  "campfire-net-endpoint",
@@ -3277,6 +3276,7 @@ dependencies = [
  "bevy_utils 0.20.0",
  "bytes",
  "campfire-codec",
+ "campfire-math",
  "campfire-net-connection",
  "campfire-net-core",
  "campfire-net-despawn",
@@ -3316,6 +3316,7 @@ dependencies = [
  "bytes",
  "campfire-codec",
  "campfire-common",
+ "campfire-math",
  "campfire-measure",
  "campfire-net-bytes",
  "campfire-net-channels",
@@ -3339,6 +3340,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_platform 0.20.0",
  "bytes",
+ "campfire-common",
  "campfire-math",
  "campfire-net-bytes",
  "campfire-net-core",
@@ -3390,6 +3392,7 @@ dependencies = [
  "bevy_utils 0.20.0",
  "bytes",
  "campfire-codec",
+ "campfire-math",
  "campfire-net-connection",
  "campfire-net-core",
  "campfire-net-despawn",
@@ -3419,6 +3422,7 @@ dependencies = [
  "bytes",
  "campfire-codec",
  "campfire-common",
+ "campfire-math",
  "campfire-measure",
  "campfire-net-bytes",
  "campfire-net-channels",
@@ -3479,6 +3483,8 @@ dependencies = [
  "bevy_app 0.20.0",
  "bevy_ecs 0.20.0",
  "bevy_time 0.20.0",
+ "campfire-common",
+ "campfire-math",
  "campfire-net-connection",
  "campfire-net-core",
  "campfire-net-emulator",
@@ -3489,7 +3495,6 @@ dependencies = [
  "campfire-net-timeline",
  "campfire-net-udp",
  "tracing",
- "zeroize",
 ]
 
 [[package]]
@@ -3502,6 +3507,7 @@ dependencies = [
  "bevy_reflect 0.20.0",
  "bevy_time 0.20.0",
  "bevy_utils 0.20.0",
+ "campfire-math",
  "campfire-net-connection",
  "campfire-net-core",
  "campfire-net-link",
@@ -3521,6 +3527,7 @@ dependencies = [
  "bevy_platform 0.20.0",
  "bevy_reflect 0.20.0",
  "bevy_time 0.20.0",
+ "campfire-math",
  "campfire-net-core",
  "campfire-net-timeline",
  "tracing",
@@ -3537,6 +3544,7 @@ dependencies = [
  "bevy_utils 0.20.0",
  "bytes",
  "campfire-common",
+ "campfire-math",
  "campfire-measure",
  "campfire-net-channels",
  "campfire-net-connection",

@@ -6,7 +6,7 @@ use campfire_declare::PerType;
 use campfire_geometry::Radius;
 use campfire_math::{Num, Rounding};
 use campfire_script::{Filters, TagNames, UnknownName};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 
 use crate::projectile_data::{CurveData, ProjectileData, ProjectileHits};
 
@@ -39,7 +39,11 @@ pub(crate) struct CurveSpec {
 impl ProjectileSpec {
     /// The spec of `data`: its speed a tick at `rate`, and what it hits among the tags of
     /// `tags`; an error for a filter of a tag `tags` lacks.
-    pub fn of(data: &ProjectileData, tags: &TagNames, rate: TickRate) -> Result<Self, UnknownName> {
+    pub fn of(
+        data: &ProjectileData,
+        tags: &TagNames,
+        rate: MatchRate,
+    ) -> Result<Self, UnknownName> {
         let hits = match &data.hits {
             ProjectileHits::Nothing => Filters::default(),
             ProjectileHits::Units(filters) => Filters::resolve(filters, tags)?,

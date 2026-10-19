@@ -14,10 +14,10 @@ use campfire_net_connection::Disconnected;
 use campfire_net_connection::HostClient;
 use campfire_net_connection::NetworkTopology;
 use campfire_net_connection::NetworkingState;
-use campfire_net_core::TickRate;
 use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::LocalTimelineShift;
 use campfire_net_timeline::NetworkTimeline;
+use campfire_net_timeline::TimelineRate;
 use tracing::trace;
 
 /// The speed `update_virtual_time` composed: the application's base, and the speed it wrote.
@@ -105,7 +105,7 @@ impl LocalTimelineSyncPlugin {
         reason = "a Bevy system takes each resource it reads"
     )]
     fn sync_timelines(
-        tick_rate: Res<'_, TickRate>,
+        tick_rate: Res<'_, TimelineRate>,
         fixed_time: Res<'_, Time<Fixed>>,
         networking: Res<'_, NetworkingState>,
         setup: Res<'_, InputTimelineSetup>,
@@ -139,14 +139,14 @@ impl LocalTimelineSyncPlugin {
                 let Some(estimate) = estimator.estimate() else {
                     return;
                 };
-                sync.set_link_input_delay(&setup, Some(estimate), *tick_rate);
+                sync.set_link_input_delay(&setup, Some(estimate), tick_rate.0);
                 let remote_estimate = remote.current_estimate();
                 let before_speed = sync.relative_speed();
                 let sample = SyncSample {
                     remote,
                     setup: &*setup,
                     estimate,
-                    tick_rate: *tick_rate,
+                    tick_rate: tick_rate.0,
                 };
                 if let Some(tick_span) = sync.sync(local_now, &sample) {
                     trace!(
@@ -187,7 +187,7 @@ impl LocalTimelineSyncPlugin {
             // remote-clock correction: it is synchronized at once, at the input delay of a link
             // with no latency.
             NetworkTopology::HostClient { .. } if !is_synced => {
-                sync.apply_link_input_delay(&setup, None, *tick_rate);
+                sync.apply_link_input_delay(&setup, None, tick_rate.0);
                 sync.set_synced(true);
             }
             _ => {}
@@ -235,6 +235,7 @@ mod tests {
     use crate::input_delay_setup::InputDelaySetup;
     use crate::sync_setup::SyncSetup;
     use bevy_ecs::system::RunSystemOnce;
+    use campfire_math::TickRate;
 
     /// The pass that sees a host client's topology change resets the controller, and syncs the
     /// host client at once at the input delay of a link with no latency: the fixed 3 ticks here,
@@ -242,7 +243,7 @@ mod tests {
     #[test]
     fn a_host_client_keeps_its_input_delay_through_the_topology_change() {
         let mut app = App::new();
-        app.insert_resource(TickRate::try_from(100).unwrap());
+        app.insert_resource(TimelineRate(TickRate::try_from(100).unwrap()));
         app.init_resource::<Time<Fixed>>();
         app.init_resource::<LocalTimeline>();
         app.init_resource::<LocalTimelineSync>();

@@ -18,6 +18,7 @@ internals = [
 ]
 
 [dependencies]
+campfire-common.workspace = true
 campfire-store = { workspace = true, optional = true }
 campfire-net-core.workspace = true
 campfire-net-bytes.workspace = true

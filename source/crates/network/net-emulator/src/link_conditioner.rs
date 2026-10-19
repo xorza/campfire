@@ -61,6 +61,7 @@ impl<P: Clone> LinkConditioner<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use campfire_math::Num;
     use core::time::Duration;
 
     #[test]
@@ -68,7 +69,7 @@ mod tests {
         let mut conditioner = LinkConditioner::new(
             LinkModel::perfect()
                 .with_latency(Duration::from_millis(30))
-                .with_duplicate(1.0),
+                .with_duplicate(Num::ONE),
         );
         conditioner.condition_packet(7_u32, 100, Instant::ZERO);
         let due = Instant::from_elapsed(Duration::from_millis(30));

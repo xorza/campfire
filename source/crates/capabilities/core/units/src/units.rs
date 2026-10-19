@@ -12,7 +12,7 @@ use campfire_script::{
     CoreApi, Ctx, Listing, MatchNames, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures,
     ScriptHost, ScriptId, ScriptList, ScriptPrints, StatePlace, StateSchema, View, ViewApi,
 };
-use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, TickRate};
+use campfire_sim::{Breach, Capability, MatchRate, Position, SimEdge, SimSet};
 use campfire_values::{Relations, Team, UnitTags, UnitType};
 
 use crate::arrived_short::ArrivedShort;
@@ -287,7 +287,7 @@ impl Units {
     fn runtime<D: Declarations>(d: &mut D) {
         d.cache::<ViewReader>();
         d.non_send::<View>(|world, _| {
-            Some(View::new(*world.resource::<TickRate>(), ViewReader::read))
+            Some(View::new(*world.resource::<MatchRate>(), ViewReader::read))
         });
         d.non_send::<Ctx>(|world, role| {
             role.scripts()

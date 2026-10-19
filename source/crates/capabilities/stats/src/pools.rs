@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_math::Num;
-use campfire_sim::{SimComponent, TickRate};
+use campfire_sim::{MatchRate, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
 use campfire_units::{Meter, PoolId, UnitEntity};
 use campfire_values::NameId;
@@ -74,7 +74,7 @@ impl SimComponent for Pools {
     // life its rules read. What a meter carries, regen adds: more than the match's rate leaves
     // would regenerate past a pool's rate.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let hz = world.resource::<TickRate>().hz().get();
+        let hz = world.resource::<MatchRate>().hz().get();
         let life = world.get_resource::<PoolBook>().and_then(PoolBook::life);
         let no_life = life.is_none_or(|life| self.0[life.index()].is_none());
         no_life && self.0.iter().flatten().all(|meter| meter.is_settled(hz))

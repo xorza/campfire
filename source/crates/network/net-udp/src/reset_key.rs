@@ -15,7 +15,7 @@ impl ResetKey {
     /// The reset key of the server whose secret is `secret`.
     pub(crate) fn derive(secret: &ServerSecret) -> Self {
         let key = DerivedSecret::ResetKey.of(secret);
-        Self(hmac::Key::new(hmac::HMAC_SHA256, key.as_slice()))
+        Self(hmac::Key::new(hmac::HMAC_SHA256, key.as_bytes()))
     }
 
     /// The reset token of the packet session whose connection ID is `id`: the first 16 bytes of its
@@ -31,14 +31,14 @@ impl ResetKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zeroize::Zeroizing;
+    use campfire_common::Secret;
 
     /// A token is the first 16 bytes of HMAC-SHA256 of the ID's 8 bytes, under the key the secret
     /// derives: Python's `hmac.new(reset_key, bytes([0] * 7 + [7]), sha256)` for ID 7 and the
     /// secret 0x00 to 0x1f. The same secret gives the same token, and another ID another.
     #[test]
     fn a_token_is_the_hmac_of_its_id_under_the_derived_key() {
-        let secret = ServerSecret::new(Zeroizing::new(core::array::from_fn(|index| {
+        let secret = ServerSecret::new(Secret::new(core::array::from_fn(|index| {
             u8::try_from(index).unwrap()
         })));
         let key = ResetKey::derive(&secret);

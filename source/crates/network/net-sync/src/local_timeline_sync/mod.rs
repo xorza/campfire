@@ -8,11 +8,12 @@ use crate::link_estimate::LinkEstimate;
 use crate::link_estimator::LinkEstimator;
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
+use campfire_math::TickRate;
 use campfire_net_connection::NetworkTopology;
 use campfire_net_connection::NetworkingState;
 use campfire_net_core::TickInstant;
-use campfire_net_core::TickRate;
 use campfire_net_core::TickSpan;
+use campfire_net_timeline::TimelineRate;
 use tracing::trace;
 
 /// Runtime state for synchronizing the application-global
@@ -90,13 +91,13 @@ impl LocalTimelineSync {
     /// Recompute input delay when the global configuration resource is inserted or replaced.
     pub(crate) fn recompute_input_delay_on_setup_update(
         _trigger: On<'_, '_, Insert<InputTimelineSetup>>,
-        tick_rate: Res<'_, TickRate>,
+        tick_rate: Res<'_, TimelineRate>,
         networking: Res<'_, NetworkingState>,
         links: Query<'_, '_, &LinkEstimator>,
         setup: Res<'_, InputTimelineSetup>,
         mut timeline: ResMut<'_, Self>,
     ) {
-        if !timeline.recompute_input_delay(&setup, &networking.topology, &links, *tick_rate) {
+        if !timeline.recompute_input_delay(&setup, &networking.topology, &links, tick_rate.0) {
             // Configuration is commonly installed before a Client or HostClient connects. The
             // configured minimum is topology-independent; the first resync replaces it with the
             // latency-aware delay once the Link is ready.

@@ -9,7 +9,6 @@ use campfire_net_connection::Disconnected;
 use campfire_net_connection::HostClient;
 use campfire_net_connection::NetworkTopology;
 use campfire_net_connection::NetworkingState;
-use campfire_net_core::TickRate;
 use campfire_net_messages::RemoteEvent;
 use campfire_net_replication::SenderHello;
 use campfire_net_sync::LinkEstimator;
@@ -18,6 +17,7 @@ use campfire_net_sync::SyncSample;
 use campfire_net_sync::SyncSystems;
 use campfire_net_sync::TimelineSync;
 use campfire_net_timeline::NetworkTimeline;
+use campfire_net_timeline::TimelineRate;
 use campfire_net_timeline::TimelineSystems;
 use tracing::{debug, trace};
 
@@ -61,11 +61,11 @@ impl InterpolationTimelinePlugin {
     /// Cache the replication interval advertised by the client's one replication source.
     fn receive_sender_hello(
         trigger: On<'_, '_, RemoteEvent<SenderHello>>,
-        tick_rate: Res<'_, TickRate>,
+        tick_rate: Res<'_, TimelineRate>,
         networking: Res<'_, NetworkingState>,
         mut interpolation_timeline: ResMut<'_, InterpolationTimeline>,
     ) {
-        let duration = trigger.event.send_interval.to_duration(*tick_rate);
+        let duration = trigger.event.send_interval.to_duration(tick_rate.0);
         if !networking.peer_map.contains_key(&trigger.from) {
             return;
         }
@@ -78,7 +78,7 @@ impl InterpolationTimelinePlugin {
     /// A client follows its sole server; a host client shares the server's world and is ready
     /// at once.
     fn sync_timeline(
-        tick_rate: Res<'_, TickRate>,
+        tick_rate: Res<'_, TimelineRate>,
         networking: Res<'_, NetworkingState>,
         setup: Res<'_, InterpolationSetup>,
         mut timeline: ResMut<'_, InterpolationTimeline>,
@@ -113,7 +113,7 @@ impl InterpolationTimelinePlugin {
                         remote,
                         setup: &setup,
                         estimate,
-                        tick_rate: *tick_rate,
+                        tick_rate: tick_rate.0,
                     },
                 );
                 trace!(
@@ -141,7 +141,7 @@ impl InterpolationTimelinePlugin {
     /// rollback too.
     pub(crate) fn advance_timeline(
         time: Res<'_, Time<Virtual>>,
-        tick_rate: Res<'_, TickRate>,
+        tick_rate: Res<'_, TimelineRate>,
         mut timeline: ResMut<'_, InterpolationTimeline>,
     ) {
         // A paused `Time<Virtual>` has a zero delta; avoid dividing by its zero relative speed
@@ -156,7 +156,7 @@ impl InterpolationTimelinePlugin {
             .div_f32(time.relative_speed())
             .mul_f32(timeline.relative_speed());
         trace!("Interpolation timeline advance by {new_delta:?}");
-        timeline.apply_duration(new_delta, *tick_rate);
+        timeline.apply_duration(new_delta, tick_rate.0);
     }
 }
 

@@ -169,7 +169,7 @@ pub mod internals {
     use campfire_common::DeclaredName;
     use campfire_declare::ByType;
     use campfire_script::UnknownName;
-    use campfire_sim::TickRate;
+    use campfire_sim::MatchRate;
     use campfire_stats::Stats;
     use campfire_units::{UnitTypeBook, Units};
     use campfire_values::{ModifierId, Named, PackageIndex, UnitType};
@@ -188,7 +188,7 @@ pub mod internals {
             package: PackageIndex,
             data: &AreaData,
         ) {
-            let rate = *world.resource::<TickRate>();
+            let rate = *world.resource::<MatchRate>();
             Units::change_types(world, |_, types| types.give_tag(unit_type, Self::TAG.tag()));
             let modifier = |name: &DeclaredName| {
                 Stats::modifier(world, package, name.as_str())

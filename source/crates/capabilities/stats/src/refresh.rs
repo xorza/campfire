@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, Removals, StableId, TickRate, Unpredicted};
+use campfire_sim::{EntityIndex, MatchRate, Removals, StableId, Unpredicted};
 use campfire_units::{Dead, Life, MoveStep, PoolId, StatusTags, TagEffect, TurnStep};
 use campfire_values::{NameId, UnitTags, UnitType};
 
@@ -46,7 +46,7 @@ impl Refresh {
         books: StatBooks<'_>,
         index: Res<'_, EntityIndex>,
         params: Res<'_, ParamBook>,
-        rate: Res<'_, TickRate>,
+        rate: Res<'_, MatchRate>,
         mut carriers: ResMut<'_, LiveCarriers>,
         mut units: ParamSet<
             '_,
@@ -194,7 +194,7 @@ impl Refresh {
         scratch: &RefreshScratch,
         (book, pool_book): (&StatBook, &PoolBook),
         life: Option<PoolId>,
-        rate: TickRate,
+        rate: MatchRate,
         effects: &mut Query<'_, '_, (Option<&mut MoveStep>, Option<&mut TurnStep>, UnitPools)>,
     ) {
         let count = usize::from(book.len());
@@ -220,7 +220,7 @@ impl Refresh {
     /// Adds each living unit's regen to its pools: each pool's `regen` stat a second, the tick
     /// rate's share a tick, the remainder carried so a second gains exactly the regen.
     pub(crate) fn regenerate(
-        (pool_book, rate): (Res<'_, PoolBook>, Res<'_, TickRate>),
+        (pool_book, rate): (Res<'_, PoolBook>, Res<'_, MatchRate>),
         mut units: Query<
             '_,
             '_,

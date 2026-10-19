@@ -1,7 +1,7 @@
 use crate::link_estimate::LinkEstimate;
 use crate::sync_setup::SyncSetup;
 use bevy_reflect::Reflect;
-use campfire_net_core::TickRate;
+use campfire_math::TickRate;
 use core::time::Duration;
 
 #[derive(Debug, Clone, Copy, Reflect)]

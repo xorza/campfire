@@ -7,11 +7,11 @@ use campfire_common::{EnumAll, SegmentSeed};
 use campfire_schedule::StrictSchedule;
 
 use crate::id_allocator::IdAllocator;
+use crate::match_rate::MatchRate;
 use crate::sim_rng::SimRng;
 use crate::sim_tick::SimTick;
 use crate::stable_id::entity_index::EntityIndex;
 use crate::tick_inputs::TickInputs;
-use crate::tick_rate::TickRate;
 
 /// The schedule that runs one sim tick. The server and client run it from Lightyear's fixed
 /// update; the verifier runs it in a bare `World`.
@@ -88,7 +88,7 @@ impl SimUpdate {
     /// Inserts what the schedule needs into a new world: the tick at 0, the tick `rate`, the
     /// random sequences of `seed`, the id allocator, the entity index and empty tick inputs. A
     /// restore then replaces the state among them.
-    pub(crate) fn prepare(world: &mut World, seed: SegmentSeed, rate: TickRate) {
+    pub(crate) fn prepare(world: &mut World, seed: SegmentSeed, rate: MatchRate) {
         world.insert_resource(SimTick::default());
         world.insert_resource(rate);
         world.insert_resource(SimRng::new(seed));

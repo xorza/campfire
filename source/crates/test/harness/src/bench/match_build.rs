@@ -8,7 +8,7 @@ use campfire_mode::OptionPicks;
 use campfire_package_disk::PackageDir;
 use campfire_runner::MatchBuild;
 use campfire_script::ScriptHost;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_test_packages::TestMode;
 use criterion::Criterion;
 
@@ -39,7 +39,7 @@ pub(crate) fn build(c: &mut Criterion) {
     let mut group = Kind::Integration.group(c, "match_build", Scale::Frame);
     group.bench_function("3v3", |b| {
         let packages = moba.packages();
-        let rate = TickRate::new(packages.manifest().tick_hz.default());
+        let rate = MatchRate::new(packages.manifest().tick_hz.default());
         let picks = OptionPicks::defaults(&packages.data().options);
         b.iter_custom(|builds| {
             let mut spent = Duration::ZERO;

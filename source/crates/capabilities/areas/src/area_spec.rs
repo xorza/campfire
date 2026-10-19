@@ -2,7 +2,7 @@ use campfire_common::{DeclaredName, Ticks};
 use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_script::{Filter, TagNames, UnknownName};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_values::{ModifierId, TimeTooLarge};
 
 use crate::area_data::AreaData;
@@ -35,7 +35,7 @@ impl AreaSpec {
     pub fn of(
         data: &AreaData,
         tags: &TagNames,
-        rate: TickRate,
+        rate: MatchRate,
         modifier: impl Fn(&DeclaredName) -> Result<ModifierId, UnknownName>,
     ) -> Result<Self, AreaError> {
         let inside = |name: &Option<DeclaredName>| name.as_ref().map(&modifier).transpose();

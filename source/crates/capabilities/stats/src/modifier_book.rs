@@ -7,7 +7,7 @@ use campfire_math::Num;
 use campfire_script::{
     HookSet, MatchNames, ParamProblem, ScriptId, ScriptRole, StateValue, TagNames, UnknownName,
 };
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_units::{ModifierNames, ScriptBook, StatId, StatusTags, UnitTypes};
 use campfire_values::{
     ActionId, ModifierId, NameId, Named, Names, PackageIndex, Rank, Stat, TagSet,
@@ -63,7 +63,7 @@ pub struct ModifierLoad<'a, S> {
     pub scripts: &'a ScriptBook,
     pub tags: &'a TagNames,
     pub stat: S,
-    pub rate: TickRate,
+    pub rate: MatchRate,
 }
 
 /// A modifier of a package to load: its name, its data, and its compiled script exactly when its
@@ -221,7 +221,7 @@ impl ModifierBook {
         action: Option<ActionId>,
         rank: Rank,
         params: &ParamBook,
-        rate: TickRate,
+        rate: MatchRate,
     ) -> Result<(), ParamProblem> {
         if !params.modifiers().holds_rank(id.index(), rank) {
             return Err(ParamProblem::Short);
@@ -244,7 +244,7 @@ impl ModifierBook {
         action: Option<ActionId>,
         rank: Rank,
         params: &ParamBook,
-        rate: TickRate,
+        rate: MatchRate,
     ) -> bool {
         self.entry(id).is_some()
             && action.is_none_or(|action| params.has_action(action))

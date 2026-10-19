@@ -23,7 +23,7 @@ use campfire_declare::{
 use campfire_math::Num;
 use campfire_players::Player;
 use campfire_script::{ApiVersion, Status};
-use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
+use campfire_sim::{Capability, MatchRate, SimEdge, SimSet, SimTick, SimWorld, StableId};
 use campfire_units::{
     BodyUnit, Dead, DeclaredTags, Due, ModifierNames, Owner, PoolId, PoolNames, SpawnCallbacks,
     StatNames, UnitGrid, UnitSteps, UnitsSet,
@@ -438,7 +438,7 @@ impl Stats {
         }
         let at = ApplyAt {
             now: world.resource::<SimTick>().start(),
-            rate: *world.resource::<TickRate>(),
+            rate: *world.resource::<MatchRate>(),
             params: world.resource::<ParamBook>(),
         };
         let source = add
@@ -495,7 +495,7 @@ impl Stats {
             world.resource::<ModifierBook>(),
             world.resource::<ParamBook>(),
         );
-        book.has_way(id, action, rank, params, *world.resource::<TickRate>())
+        book.has_way(id, action, rank, params, *world.resource::<MatchRate>())
     }
 }
 
@@ -510,7 +510,7 @@ pub mod internals {
     use campfire_math::Num;
     use campfire_script::ScriptId;
     use campfire_sim::internals::SimWorldInternals;
-    use campfire_sim::{SimWorld, StableId, TickRate};
+    use campfire_sim::{MatchRate, SimWorld, StableId};
     use campfire_units::{Life, ScriptBook, StatId, UnitTypeBook, Units};
     use campfire_values::{
         ActionId, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet, UnitType,
@@ -634,7 +634,7 @@ pub mod internals {
                     scripts,
                     tags,
                     stat: |stat: &Stat| Ok(places[stat]),
-                    rate: *world.resource::<TickRate>(),
+                    rate: *world.resource::<MatchRate>(),
                 };
                 let modifier = PackageModifier {
                     name: &name,

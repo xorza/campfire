@@ -6,7 +6,7 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_declare::CapabilitySet;
 use campfire_schedule::StrictSchedule;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 
 use crate::hosting::Hosting;
 use crate::sim_server::SimServer;
@@ -29,7 +29,7 @@ impl PluginGroup for SimServerPlugins {
             .add(TimePlugin)
             .add(StatesPlugin)
             .add(SimServer {
-                tick: TickRate::new(self.tick_hz).length(),
+                tick: MatchRate::new(self.tick_hz).length(),
                 capabilities: self.capabilities,
                 hosting: self.hosting,
             })

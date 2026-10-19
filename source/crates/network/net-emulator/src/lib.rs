@@ -37,3 +37,8 @@ pub use crate::phase_mode::PhaseMode;
 pub use crate::rate_limit::RateLimit;
 pub use crate::side::Side;
 pub use crate::wire_clock::WireClock;
+
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::link_model::internals::per_mille;
+}

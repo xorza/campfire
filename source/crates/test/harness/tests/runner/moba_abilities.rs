@@ -24,7 +24,7 @@ use campfire_orders::OrdersAction;
 use campfire_package::{ModePackages, PackageFiles};
 use campfire_package_disk::PackageDir;
 use campfire_projectiles::Projectile;
-use campfire_sim::{Position, SimWorld, StableId, TickRate};
+use campfire_sim::{MatchRate, Position, SimWorld, StableId};
 use campfire_stats::{PoolMeters, Pools, Stats};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{Body, ForcedMove, Life, MoveStep, Owner, SeenBy};
@@ -33,7 +33,7 @@ use campfire_values::{
 };
 
 /// The MOBA's 30 ticks a second.
-const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
+const RATE: MatchRate = MatchRate::new(NonZeroU32::new(30).unwrap());
 
 const HEROES: [&str; 6] = ["cinder", "gale", "husk", "kensho", "rime", "veil"];
 
@@ -789,12 +789,12 @@ fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_dela
     // it erupts 625 ms later, each rounded up to whole ticks. At 30 a second: 7.5 ticks to 8, and
     // 18.75 to 19, in tick 27. At 20, the 3v3's rate: 5 ticks, and 12.5 to 13, in tick 18.
     for (hz, erupts) in [(30, 27), (20, 18)] {
-        erupt_at(TickRate::new(NonZeroU32::new(hz).unwrap()), erupts);
+        erupt_at(MatchRate::new(NonZeroU32::new(hz).unwrap()), erupts);
     }
 }
 
 /// Cinder's Eruption at `rate`, which erupts in tick `erupts`.
-fn erupt_at(rate: TickRate, erupts: u64) {
+fn erupt_at(rate: MatchRate, erupts: u64) {
     let arena = arena();
     let mut game = arena.start(rate, 1);
     let eruption = arena.action(&game, "hero-cinder", "eruption");

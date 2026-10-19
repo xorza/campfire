@@ -5,11 +5,12 @@ use core::time::Duration;
 use std::sync::Arc;
 
 use bytes::Bytes;
+use campfire_common::ChannelBinding;
 use campfire_net_core::Instant;
 use campfire_net_core::Random;
 use campfire_net_packets::{
-    ChannelBinding, ClientEstablish, ConnectionId, Datagram, Establish, Established, Establishing,
-    Outbound, Protection,
+    ClientEstablish, ConnectionId, Datagram, Establish, Established, Establishing, Outbound,
+    Protection,
 };
 use campfire_net_payload::UnlinkReason;
 use rustls::pki_types::ServerName;

@@ -16,9 +16,11 @@ internals = [
     "dep:campfire-net-stepper",
     "campfire-net-timeline/internals",
     "campfire-net-messages/internals",
+    "campfire-math/internals",
 ]
 
 [dependencies]
+campfire-math.workspace = true
 campfire-net-timeline.workspace = true
 campfire-net-core.workspace = true
 campfire-net-despawn.workspace = true

@@ -203,7 +203,7 @@ mod tests {
     use std::num::NonZeroU32;
 
     use bevy_ecs::world::World;
-    use campfire_sim::TickRate;
+    use campfire_sim::MatchRate;
 
     use super::*;
     use crate::scripts::script_text::ScriptText;
@@ -215,7 +215,7 @@ mod tests {
         let mut names = MatchNames::default();
         names.set_table(Arc::new(Names::<ResourceId>::from(["gold"])));
         world.insert_resource(names);
-        let view = View::new(TickRate::new(NonZeroU32::new(30).unwrap()), |_| {});
+        let view = View::new(MatchRate::new(NonZeroU32::new(30).unwrap()), |_| {});
         // Before its first read the view holds no name; the read derives them, scripts' strings
         // among them.
         assert_eq!(view.names().count::<ResourceId>(), 0);

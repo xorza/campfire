@@ -30,7 +30,7 @@ use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, InputRules, SeedChain, ServerInput, Signer};
 use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_runner::Session;
-use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
+use campfire_sim::{EntityIndex, MatchRate, SimTick, SimWorld, StableId};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::internals::UnitsWorldInternals;
 use campfire_units::{Body, MoveStep, Owner};
@@ -298,7 +298,7 @@ impl InProcessMatch {
     /// tick, before any link.
     fn server_app(setup: &InProcessSetup, packages: &ModePackages, pace: &Arc<Pace>) -> App {
         let tick_hz = packages.manifest().tick_hz.default();
-        let tick = TickRate::new(tick_hz).length();
+        let tick = MatchRate::new(tick_hz).length();
         let mut server = App::new();
         server.add_plugins(SimServerPlugins {
             tick_hz,
@@ -356,7 +356,7 @@ impl InProcessMatch {
         let (client_io, server_io) = CrossbeamIo::new_pair();
         let stream = 2 * self.links_made;
         self.links_made += 1;
-        let tick = TickRate::new(self.packages.manifest().tick_hz.default()).length();
+        let tick = MatchRate::new(self.packages.manifest().tick_hz.default()).length();
         let address = format!("127.0.0.1:{}", self.links_made)
             .parse()
             .expect("an address");
@@ -673,7 +673,7 @@ impl InProcessMatch {
                 self.client_frame(client);
             }
         }
-        let tick = TickRate::new(self.packages.manifest().tick_hz.default()).length();
+        let tick = MatchRate::new(self.packages.manifest().tick_hz.default()).length();
         let frame = tick / self.setup.server_frames;
         let stalled = TimeUpdateStrategy::ManualDuration(tick * ticks);
         self.server.insert_resource(stalled);
@@ -889,7 +889,7 @@ impl ClientApp {
             },
             data: None,
         };
-        let tick = TickRate::new(tick_hz).length();
+        let tick = MatchRate::new(tick_hz).length();
         let mut client = App::new();
         client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
         client.add_plugins(sim_client);

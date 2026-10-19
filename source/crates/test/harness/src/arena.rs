@@ -10,7 +10,7 @@ use campfire_runner::MatchBuild;
 use campfire_runner::internals::ArenaSetup;
 use campfire_script::{ScriptFailure, ScriptFailures};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{SimWorld, StableId, TickRate};
+use campfire_sim::{MatchRate, SimWorld, StableId};
 use campfire_stats::{ModePoolsData, Stats};
 use campfire_test_packages::PackageTree;
 use campfire_units::{MapBook, PoolId};
@@ -42,14 +42,14 @@ impl Arena {
 
     /// The arena's match at `rate`, for `players` players, which fails its test on any warning it
     /// logs, and keeps every script failure since it began.
-    pub fn start(&self, rate: TickRate, players: u32) -> Match {
+    pub fn start(&self, rate: MatchRate, players: u32) -> Match {
         self.start_with(rate, players, VisionBook(None))
     }
 
     /// The arena's match `start` gives, with the map's vision grid and its brush, for `teams`
     /// teams, as the mode's books build them: from its first Vision stage, each team sees what
     /// its units and its reveals show it.
-    pub fn start_seeing(&self, rate: TickRate, players: u32, teams: usize) -> Match {
+    pub fn start_seeing(&self, rate: MatchRate, players: u32, teams: usize) -> Match {
         let map = self.packages.map().sections();
         let ground = MapBook::of(map, None).unwrap();
         let vision = VisionBook::of(&ground, map, teams).unwrap();
@@ -58,7 +58,7 @@ impl Arena {
     }
 
     /// The arena's match at `rate`, for `players` players, its map's vision `vision`.
-    fn start_with(&self, rate: TickRate, players: u32, vision: VisionBook) -> Match {
+    fn start_with(&self, rate: MatchRate, players: u32, vision: VisionBook) -> Match {
         let mut game = MatchBuild::arena(ArenaSetup {
             packages: &self.packages,
             rate,

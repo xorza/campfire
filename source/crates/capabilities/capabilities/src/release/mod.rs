@@ -369,7 +369,7 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_mode::{MapData, Mode, ModeData, ModeInputs, ModeSetup};
     use campfire_script::{Hook, ScriptApi, ScriptHost, ScriptUses};
-    use campfire_sim::TickRate;
+    use campfire_sim::MatchRate;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
         Capability, EntityIndex, SimResource, SimWorld, SimWorldBuilder, SnapshotError, StableId,
@@ -424,7 +424,7 @@ pub(crate) mod internals {
         /// starts from: each built from a mode of no data, on a planar map of the world's bounds,
         /// with no team, stat or script; but the unit types, the engine's tags alone, open as
         /// `UnitTypes::open_in` puts them.
-        pub fn empty_books(rate: TickRate) -> Books {
+        pub fn empty_books(rate: MatchRate) -> Books {
             let data = ModeData::named(MessageId::new("mode").unwrap());
             let (units, content) = (BTreeMap::new(), Sections::default());
             let mode = SourcePackage {

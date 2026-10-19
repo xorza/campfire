@@ -8,8 +8,8 @@ use rustls::{ConfigBuilder, RootCertStore, WantsVerifier};
 
 use crate::invalid_server_name::InvalidServerName;
 use crate::pinned_key_verifier::PinnedKeyVerifier;
-use crate::server_key::ServerKey;
 use crate::tls_provider;
+use campfire_common::TlsKey;
 
 /// The name a pinned client sends, which its verifier never reads.
 const PINNED_NAME: &str = "campfire";
@@ -21,13 +21,13 @@ pub struct ServerTrust(Trust);
 
 #[derive(Debug, Clone)]
 enum Trust {
-    Pinned(ServerKey),
+    Pinned(TlsKey),
     WebPki(String),
 }
 
 impl ServerTrust {
     /// The raw key `key` and no other, as a client gets it from a listing or a lobby.
-    pub const fn pinned(key: ServerKey) -> Self {
+    pub const fn pinned(key: TlsKey) -> Self {
         Self(Trust::Pinned(key))
     }
 
@@ -41,7 +41,7 @@ impl ServerTrust {
     }
 
     /// The raw key the client pinned; `None` for a client that checks a certificate.
-    pub const fn pinned_key(&self) -> Option<ServerKey> {
+    pub const fn pinned_key(&self) -> Option<TlsKey> {
         match &self.0 {
             Trust::Pinned(key) => Some(*key),
             Trust::WebPki(_) => None,

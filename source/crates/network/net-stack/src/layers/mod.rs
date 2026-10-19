@@ -3,8 +3,8 @@
 //! (14-workspace-alignment.md, A plugin group lists every layer).
 
 use bevy_app::PluginGroupBuilder;
+use campfire_math::TickRate;
 use campfire_net_connection::{ConnectionPlugins, ServerConnectionPlugins};
-use campfire_net_core::TickRate;
 #[cfg(any(feature = "sim", feature = "udp"))]
 use campfire_net_endpoint::EndpointPlugin;
 use campfire_net_interpolation::{
@@ -25,12 +25,12 @@ use campfire_net_timeline::TimelinePlugins;
 use campfire_net_transport::TransportPlugin;
 #[cfg(feature = "udp")]
 use campfire_net_udp::UdpIo;
-use core::num::NonZeroU16;
+use core::num::NonZeroU32;
 
 use crate::protocol_check_plugin::ProtocolCheckPlugin;
 
 /// The default tick rate, 60 Hz.
-pub(crate) const DEFAULT_TICK_RATE: TickRate = TickRate::new(NonZeroU16::new(60).unwrap());
+pub(crate) const DEFAULT_TICK_RATE: TickRate = TickRate::hertz(NonZeroU32::new(60).unwrap());
 
 /// The layers both sides run, at `tick_rate`. The markers of prediction and interpolation are
 /// part of Replicon's protocol, so each side registers them before the app's protocol.

@@ -1,4 +1,4 @@
-use crate::server_key::ServerKey;
+use campfire_common::TlsKey;
 
 /// The `SubjectPublicKeyInfo` of an Ed25519 key before its 32 bytes ([RFC 8410] §4): the
 /// algorithm `id-Ed25519` and the bit string's header.
@@ -20,7 +20,7 @@ const SPKI_LEN: usize = SPKI_PREFIX.len() + 32;
 pub(crate) struct Spki([u8; SPKI_LEN]);
 
 impl Spki {
-    pub(crate) const fn of(key: &ServerKey) -> Self {
+    pub(crate) const fn of(key: &TlsKey) -> Self {
         let key = key.as_bytes();
         let mut spki = [0; SPKI_LEN];
         let mut index = 0;
@@ -59,6 +59,6 @@ mod tests {
             0xc8, 0x50, 0x86, 0xaa, 0x30, 0xb6, 0xb6, 0xcb, 0x0c, 0x5c, 0x38, 0xad, 0x70, 0x31,
             0x66, 0xe1,
         ];
-        assert_eq!(Spki::of(&ServerKey::new(key)).as_bytes(), &der);
+        assert_eq!(Spki::of(&TlsKey::new(key)).as_bytes(), &der);
     }
 }

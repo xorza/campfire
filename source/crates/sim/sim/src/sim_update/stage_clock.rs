@@ -76,9 +76,9 @@ mod tests {
     use campfire_common::SegmentSeed;
 
     use super::*;
+    use crate::match_rate::MatchRate;
     use crate::sim_update::{SimEdge, SimUpdate};
     use crate::sim_world_builder::SimWorldBuilder;
-    use crate::tick_rate::TickRate;
 
     /// When each test system ran, with the stage whose time holds it, or none for one before the
     /// first stage.
@@ -91,7 +91,7 @@ mod tests {
         let note = |stage: Option<SimSet>| {
             move |mut ran: ResMut<'_, Ran>| ran.0.push((stage, Instant::now()))
         };
-        let rate = TickRate::new(NonZeroU32::new(30).unwrap());
+        let rate = MatchRate::new(NonZeroU32::new(30).unwrap());
         SimWorldBuilder::new(&mut world, SegmentSeed::new([7; 32]), rate).build();
         world.init_resource::<Ran>();
         world.resource_mut::<Schedules>().add_systems(

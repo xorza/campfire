@@ -1,6 +1,6 @@
 //! Fixed-point numbers, 3D vectors, exact vectors of the ground plane, trig, exact integer
-//! roots, directions, the counter-based RNG, and 256-bit lanes, each operation one 128-bit step
-//! rounded once.
+//! roots, directions, the counter-based RNG, 256-bit lanes, and the tick rate with its
+//! conversions between ticks and time, each operation one 128-bit step rounded once.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
@@ -14,6 +14,7 @@ mod rng;
 mod root;
 mod rounding;
 mod simd;
+mod tick_rate;
 mod vec3;
 mod wide_division;
 
@@ -29,6 +30,7 @@ pub use crate::rounding::Rounding;
 pub use crate::simd::i64x4::I64x4;
 pub use crate::simd::mask64x4::Mask64x4;
 pub use crate::simd::u64x4::U64x4;
+pub use crate::tick_rate::TickRate;
 pub use crate::vec3::Vec3;
 
 #[cfg(feature = "internals")]

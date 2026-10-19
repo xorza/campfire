@@ -295,7 +295,7 @@ pub mod internals {
     use campfire_players::ResourceAmount;
     use campfire_script::{Filter, MatchNames};
     use campfire_sim::internals::SimWorldInternals;
-    use campfire_sim::{StableId, TickRate};
+    use campfire_sim::{MatchRate, StableId};
     use campfire_stats::{PoolBook, StatBook, StatRule, Stats};
     use campfire_units::{Life, PoolId, UnitTypeCore, Units};
     use campfire_units::{PoolCost, StatId};
@@ -417,7 +417,7 @@ pub mod internals {
                     data,
                 },
                 action: book.get(action).expect("the book loaded the action"),
-                rate: *world.resource::<TickRate>(),
+                rate: *world.resource::<MatchRate>(),
                 stats: world.get_resource::<StatBook>(),
                 kinds: world.resource::<MatchNames>().table::<DamageKind>(),
                 tags: world.resource::<MatchNames>().tags(),
@@ -531,7 +531,7 @@ pub mod internals {
         /// the stats it reads: the rate that makes its period at the match's rate, then its
         /// damage, at the first two places of the match's stat book.
         pub fn give(self, world: &mut World, unit_type: UnitType) {
-            let hz = world.resource::<TickRate>().hz().get();
+            let hz = world.resource::<MatchRate>().hz().get();
             let weapon = TestWeapon {
                 projectile: self.projectile,
                 splash: self.splash,

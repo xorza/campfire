@@ -14,7 +14,7 @@ use campfire_common::{ChannelBinding, Seat, TlsKey};
 use campfire_mode::OptionValue;
 use campfire_package::ModePackages;
 use campfire_quic::{LinkBinding, QuicEndpoint};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_store::Worker;
 use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
@@ -308,7 +308,7 @@ impl Runs {
             ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
             LocalPace {
                 pace: Arc::clone(&self.pace),
-                tick: TickRate::new(self.tick_hz).length(),
+                tick: MatchRate::new(self.tick_hz).length(),
             },
         ));
         app.insert_resource(dir);

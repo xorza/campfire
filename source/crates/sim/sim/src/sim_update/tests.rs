@@ -25,7 +25,7 @@ use crate::state_registry::StateRegistry;
 use crate::tick_inputs::TickInput;
 
 /// 30 ticks a second: the rate these tests run at, which no game sets.
-const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
+const RATE: MatchRate = MatchRate::new(NonZeroU32::new(30).unwrap());
 
 const SEED: SegmentSeed = SegmentSeed::new([7; 32]);
 const OTHER_SEED: SegmentSeed = SegmentSeed::new([8; 32]);

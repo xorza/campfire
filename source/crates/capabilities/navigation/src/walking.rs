@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, If, Local, ParamSet, Query, Res, ResMut};
 use campfire_deliveries::DashDelivering;
-use campfire_sim::{Keyed, Ordered, Position, StableId, TickRate, Unpredicted};
+use campfire_sim::{Keyed, MatchRate, Ordered, Position, StableId, Unpredicted};
 use campfire_units::{Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep};
 use campfire_values::{Block, Motion, UnitTags};
 
@@ -41,7 +41,7 @@ impl Walking {
     /// walk this tick, waits for its route, or has none ahead, does not either: none of them
     /// takes a place in the order.
     pub(super) fn steer(
-        rate: Res<'_, TickRate>,
+        rate: Res<'_, MatchRate>,
         If((grid, mut planner)): If<(Res<'_, PathingGrid>, ResMut<'_, RoutePlanner>)>,
         statics: Res<'_, BodyIndex>,
         bodies: Query<

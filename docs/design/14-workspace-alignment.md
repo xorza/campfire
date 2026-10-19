@@ -57,7 +57,7 @@ Six causes explain nearly every finding. Each section of the decisions removes o
 - **The registry hash is a domain hash.** The protocol registry hashes through `DomainHasher` under a `campfire/<name>/v<n>` tag, as 05 decides for every hash; `StableHasher` and `net-core`'s `blake3` go, and the stack's maps name one map type (B4, B8, C12).
 - **The UDP labels keep the published key.** The TLS seed's label is `campfire/tls/v1`, `quic`'s, and the reset key's `campfire/udp-reset/v1`, so a server's key file gives the same `TlsKey` after the move to UDP. Refused: a new TLS label, which changes each listing's pin once (C8).
 - **One type of the server's TLS key.** `common`'s `TlsKey` replaces `net-udp`'s `ServerKey`, as Campfire's "server key" is the session's signing key; the server secret and the token secret hold their bytes in `common`'s `Secret<32>` (C7, C8).
-- **One tick rate type, two resources.** `common` holds the plain `TickRate`. The sim reads the match's rate, which only the terms set, and the timelines read their own, which `SetTickRate` sets, so a sped-up local match keeps its sim's rate. This amends 12's "One tick rate" (C1).
+- **One tick rate type, two resources.** `math` holds the plain `TickRate`. The sim reads the match's rate, `MatchRate`, which only the terms set, and the timelines read their own, `TimelineRate`, which `SetTickRate` sets, so a sped-up local match keeps its sim's rate. Neither resource is named `TickRate`, which keeps one meaning (A type name that both sides declare keeps one meaning). This amends 12's "One tick rate" (C1).
 
 ### The stack's boundaries
 

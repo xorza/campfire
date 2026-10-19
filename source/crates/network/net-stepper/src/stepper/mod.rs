@@ -6,11 +6,12 @@ use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query};
 use bevy_ecs::world::{EntityRef, EntityWorldMut, World};
 use bevy_time::{Real, Time, TimePlugin, TimeUpdateStrategy};
+use campfire_common::Secret;
+use campfire_math::TickRate;
 use campfire_net_connection::{
     Client, Connect, Connected, Connecting, Disconnect, Disconnected, Start,
 };
 use campfire_net_core::NetTick;
-use campfire_net_core::TickRate;
 use campfire_net_emulator::{
     DuplexModel, EmulatedLinkId, EmulatedNetwork, EmulatedPair, WireClock,
 };
@@ -26,7 +27,6 @@ use core::time::Duration;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tracing::error_span;
-use zeroize::Zeroizing;
 
 use crate::app_id::AppId;
 use crate::app_schedule::AppSchedule;
@@ -227,7 +227,7 @@ impl<S: Stack> Stepper<S> {
             ClientKind::Udp => {
                 let trust = ServerTrust::pinned(
                     Self::udp_identity()
-                        .server_key()
+                        .tls_key()
                         .expect("the stepper's server presents a raw key"),
                 );
                 let seed = self.seed.wrapping_add(u64::try_from(client_id).unwrap());
@@ -251,7 +251,7 @@ impl<S: Stack> Stepper<S> {
 
     /// The identity of the server's UDP endpoint: a raw key, the same at each run.
     fn udp_identity() -> ServerIdentity {
-        ServerIdentity::raw_key(ServerSecret::new(Zeroizing::new(UDP_SECRET)))
+        ServerIdentity::raw_key(ServerSecret::new(Secret::new(UDP_SECRET)))
     }
 
     fn udp_setup(packet_session: PacketSessionSetup) -> UdpSetup {

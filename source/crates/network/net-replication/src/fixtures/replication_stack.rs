@@ -1,7 +1,7 @@
 use bevy_app::App;
 use bevy_ecs::world::{EntityWorldMut, World};
 use bevy_state::app::StatesPlugin;
-use campfire_net_core::TickRate;
+use campfire_math::TickRate;
 use campfire_net_messages::internals::MessagesStack;
 use campfire_net_stepper::Stack;
 

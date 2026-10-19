@@ -1,7 +1,7 @@
 use bevy_app::App;
 use bevy_ecs::world::{EntityWorldMut, World};
+use campfire_math::TickRate;
 use campfire_net_connection::{ConnectionPlugins, ServerConnectionPlugins};
-use campfire_net_core::TickRate;
 use campfire_net_endpoint::EndpointPlugin;
 use campfire_net_link::{LinkPlugin, ServerLinkPlugin};
 use campfire_net_packets::EmulatedWires;

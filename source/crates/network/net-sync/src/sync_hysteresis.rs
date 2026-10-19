@@ -1,6 +1,7 @@
 use crate::sync_adjustment::SyncAdjustment;
 use crate::sync_setup::SyncSetup;
 use bevy_reflect::Reflect;
+use campfire_math::Rounding;
 use campfire_net_core::TickSpan;
 
 /// Mutable hysteresis shared by timeline synchronization controllers.
@@ -55,8 +56,17 @@ impl SyncHysteresis {
             return SyncAdjustment::Nominal;
         }
         let base_factor = setup.speedup_factor - 1.0;
-        // At most 1, and the band's bounds keep the divisor above 0.
-        let error_ratio: f32 = (error.value / setup.max_error_margin.value).to_num();
+        // At most 1, so its 24 bits fit an `f32` exactly, and the band's bounds keep the divisor
+        // above 0.
+        let error_ratio = error
+            .value()
+            .checked_div(setup.max_error_margin.value(), Rounding::NearestEven)
+            .expect("the band keeps the largest error above 0");
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "a ratio of at most 1 has 24 bits"
+        )]
+        let error_ratio = error_ratio.to_bits() as f32 / 16_777_216.0;
         // Apply progressively stronger adjustment as error increases
         let adjustment = 1.0 + (base_factor * error_ratio * 2.0);
         // Slow down if we are ahead

@@ -13,12 +13,11 @@ use crate::bind_error::BindError;
 use crate::secure_establishment::client_side::ClientSide;
 use crate::secure_establishment::server_side::ServerSide;
 use crate::server_identity::ServerIdentity;
-use crate::server_key::ServerKey;
 use crate::server_trust::ServerTrust;
 use crate::udp_io::UdpIo;
 use crate::udp_port::UdpPort;
 use crate::udp_setup::UdpSetup;
-use zeroize::Zeroizing;
+use campfire_common::{Secret, TlsKey};
 
 /// A server's socket, bound, and what its endpoint takes: it serves once its admission is known,
 /// so no server's endpoint exists without one.
@@ -53,8 +52,8 @@ impl ServerSocket {
     }
 
     /// The raw key the server presents, which its clients pin; `None` for a certificate.
-    pub const fn server_key(&self) -> Option<ServerKey> {
-        self.identity.server_key()
+    pub const fn tls_key(&self) -> Option<TlsKey> {
+        self.identity.tls_key()
     }
 
     /// The parts of the server's endpoint, which admits each address within `admission`.
@@ -66,8 +65,7 @@ impl ServerSocket {
             setup,
         } = self;
         let mut random = Random::os();
-        let mut token_secret = Zeroizing::new([0; 32]);
-        random.fill(token_secret.as_mut_slice());
+        let token_secret = Secret::new(random.array());
         let establishment = ServerSide::new(
             tls,
             identity.reset_key(),
@@ -150,7 +148,7 @@ impl EmulatedServer {
     /// admits each address within `admission`.
     pub fn serve(self, admission: AdmissionSetup) -> EndpointPieces<EmulatedWires> {
         let mut random = Random::seeded(self.seed);
-        let token_secret = random.array();
+        let token_secret = Secret::new(random.array());
         let establishment = ServerSide::new(
             self.identity.tls_config(&self.setup.alpn),
             self.identity.reset_key(),

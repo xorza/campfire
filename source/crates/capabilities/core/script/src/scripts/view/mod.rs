@@ -6,7 +6,7 @@ use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_geometry::{Bounds, Metric, Shape};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{StableId, TickRate};
+use campfire_sim::{MatchRate, StableId};
 use campfire_values::{Relation, Tag, Team};
 
 use crate::scripts::error::{ApiError, Checked};
@@ -54,7 +54,7 @@ pub struct View(Rc<ViewFields>);
 /// The fields of the view.
 #[derive(Debug)]
 struct ViewFields {
-    rate: TickRate,
+    rate: MatchRate,
     names: RefCell<ViewNames>,
     /// The revision of the match's `MatchNames` that `names` derive from; none before the first.
     names_at: Cell<Option<u64>>,
@@ -69,7 +69,7 @@ struct ViewFields {
 impl View {
     /// The view of a match at `rate`, whose units `read` reads into its rows, with no names
     /// until the load and the mode give them.
-    pub fn new(rate: TickRate, read: fn(&mut World)) -> Self {
+    pub fn new(rate: MatchRate, read: fn(&mut World)) -> Self {
         Self(Rc::new(ViewFields {
             rate,
             names: RefCell::default(),
@@ -139,7 +139,7 @@ impl View {
     }
 
     /// The match's tick rate.
-    pub fn rate(&self) -> TickRate {
+    pub fn rate(&self) -> MatchRate {
         self.0.rate
     }
 

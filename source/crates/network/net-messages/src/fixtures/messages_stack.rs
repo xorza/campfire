@@ -1,6 +1,6 @@
 use bevy_app::App;
 use bevy_ecs::world::{EntityWorldMut, World};
-use campfire_net_core::TickRate;
+use campfire_math::TickRate;
 use campfire_net_stepper::Stack;
 use campfire_net_transport::internals::TransportStack;
 

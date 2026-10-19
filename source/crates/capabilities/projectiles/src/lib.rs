@@ -281,7 +281,7 @@ pub mod internals {
     use campfire_actions::ShotDamage;
     use campfire_declare::ByType;
     use campfire_math::{Num, Vec3};
-    use campfire_sim::{EntityIndex, Position, StableId, TickRate};
+    use campfire_sim::{EntityIndex, MatchRate, Position, StableId};
     use campfire_units::{MapBook, UnitTypeBook, Units};
     use campfire_values::{ActionId, DamageKind, Rank, UnitType};
 
@@ -295,7 +295,7 @@ pub mod internals {
         /// Makes `unit_type` a projectile type of `data`, tagged `projectile`, its speed a tick at
         /// the match's rate: its `hits` filter names tags of the match's.
         pub fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
-            let rate = *world.resource::<TickRate>();
+            let rate = *world.resource::<MatchRate>();
             Units::change_types(world, |_, types| types.give_tag(unit_type, Self::TAG.tag()));
             let tags = world.resource::<UnitTypeBook>().tags();
             let spec = ProjectileSpec::of(data, tags, rate)

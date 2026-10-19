@@ -1,11 +1,13 @@
 use bevy_ecs::prelude::{Entity, On, ResMut, Resource};
 use bevy_ecs::relationship::RelationshipTarget;
 use bevy_replicon::shared::backend::connected_client::NetworkIdMap;
+use campfire_math::Num;
 use campfire_net_connection::Connected;
 use campfire_net_connection::Disconnected;
 use campfire_net_connection::DisconnectedReason;
 use campfire_net_connection::NetworkingState;
 use campfire_net_core::LinkDirection;
+use campfire_net_emulator::internals::per_mille;
 use campfire_net_emulator::{Phase, RateLimit};
 use campfire_net_link::{Link, Server, Unlink};
 use campfire_net_payload::{
@@ -96,11 +98,11 @@ fn every_fault() -> Faults {
             jitter: Duration::from_millis(15),
         }),
         loss: Some(Loss {
-            mean: 0.05,
-            burst: 3.0,
+            mean: per_mille(50),
+            burst: Num::int(3),
         }),
-        duplicate: Some(0.02),
-        reorder: Some(0.05),
+        duplicate: Some(per_mille(20)),
+        reorder: Some(per_mille(50)),
         rate: Some(RateLimit::new(100_000, 100_000)),
         outage: Some(Outage {
             start: Duration::from_millis(500),

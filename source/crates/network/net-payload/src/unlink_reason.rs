@@ -27,7 +27,7 @@ pub enum UnlinkReason {
     Refused,
     /// The client refused the server's identity: a raw key it did not pin, or a certificate that
     /// failed its check.
-    WrongServerKey,
+    WrongTlsKey,
     /// The peer's app closed the link with its code.
     ClosedByPeer(AppCode),
     /// The transport protocol failed with this error code, the peer's or this end's.
@@ -52,7 +52,7 @@ impl fmt::Display for UnlinkReason {
             Self::TimedOut => f.write_str("the peer timed out"),
             Self::Reset => f.write_str("the peer reset the connection"),
             Self::Refused => f.write_str("the server refused the connection"),
-            Self::WrongServerKey => f.write_str("the client refused the server's identity"),
+            Self::WrongTlsKey => f.write_str("the client refused the server's identity"),
             Self::ClosedByPeer(code) => write!(f, "the peer closed with code {}", code.get()),
             Self::Transport { code } => write!(f, "transport error {code:#x}"),
             Self::NotOpened => f.write_str("the connection could not open"),

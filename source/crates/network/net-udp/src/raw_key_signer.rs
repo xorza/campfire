@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use campfire_common::{Secret, TlsKey};
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use rustls::crypto::ring as provider;
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
@@ -7,7 +8,6 @@ use rustls::sign::{CertifiedKey, SigningKey};
 use zeroize::Zeroizing;
 
 use crate::derived_secret::DerivedSecret;
-use crate::server_key::ServerKey;
 use crate::server_secret::ServerSecret;
 use crate::spki::Spki;
 
@@ -25,7 +25,7 @@ const PKCS8_LEN: usize = PKCS8_PREFIX.len() + 32;
 #[derive(Debug)]
 pub(crate) struct RawKeySigner {
     signing: Arc<dyn SigningKey>,
-    public: ServerKey,
+    public: TlsKey,
 }
 
 impl RawKeySigner {
@@ -34,10 +34,10 @@ impl RawKeySigner {
         Self::from_seed(&DerivedSecret::TlsSeed.of(secret))
     }
 
-    pub(crate) fn from_seed(seed: &Zeroizing<[u8; 32]>) -> Self {
-        let pair = Ed25519KeyPair::from_seed_unchecked(seed.as_slice())
+    pub(crate) fn from_seed(seed: &Secret<32>) -> Self {
+        let pair = Ed25519KeyPair::from_seed_unchecked(seed.as_bytes())
             .expect("any 32 bytes are an Ed25519 seed");
-        let public = ServerKey::new(
+        let public = TlsKey::new(
             pair.public_key()
                 .as_ref()
                 .try_into()
@@ -50,7 +50,7 @@ impl RawKeySigner {
     }
 
     /// The public key, which a client pins.
-    pub(crate) const fn public(&self) -> ServerKey {
+    pub(crate) const fn public(&self) -> TlsKey {
         self.public
     }
 
@@ -64,10 +64,10 @@ impl RawKeySigner {
         )
     }
 
-    fn pkcs8(seed: &Zeroizing<[u8; 32]>) -> Zeroizing<[u8; PKCS8_LEN]> {
+    fn pkcs8(seed: &Secret<32>) -> Zeroizing<[u8; PKCS8_LEN]> {
         let mut pkcs8 = Zeroizing::new([0; PKCS8_LEN]);
         pkcs8[..PKCS8_PREFIX.len()].copy_from_slice(&PKCS8_PREFIX);
-        pkcs8[PKCS8_PREFIX.len()..].copy_from_slice(seed.as_slice());
+        pkcs8[PKCS8_PREFIX.len()..].copy_from_slice(seed.as_bytes());
         pkcs8
     }
 }
@@ -81,7 +81,7 @@ mod tests {
     /// §10.1's.
     #[test]
     fn a_seeds_encodings_are_rfc_8410s() {
-        let seed = Zeroizing::new([
+        let seed = Secret::new([
             0xd4, 0xee, 0x72, 0xdb, 0xf9, 0x13, 0x58, 0x4a, 0xd5, 0xb6, 0xd8, 0xf1, 0xf7, 0x69,
             0xf8, 0xad, 0x3a, 0xfe, 0x7c, 0x28, 0xcb, 0xf1, 0xd4, 0xfb, 0xe0, 0x97, 0xa8, 0x8f,
             0x44, 0x75, 0x58, 0x42,
@@ -98,15 +98,12 @@ mod tests {
             0x3b, 0x96, 0xc8, 0x50, 0x86, 0xaa, 0x30, 0xb6, 0xb6, 0xcb, 0x0c, 0x5c, 0x38, 0xad,
             0x70, 0x31, 0x66, 0xe1,
         ];
-        assert_eq!(
-            RawKeySigner::from_seed(&seed).public(),
-            ServerKey::new(public)
-        );
+        assert_eq!(RawKeySigner::from_seed(&seed).public(), TlsKey::new(public));
     }
 
     #[test]
     fn a_secret_gives_one_raw_key_and_two_give_two() {
-        let derive = |byte| RawKeySigner::derive(&ServerSecret::new(Zeroizing::new([byte; 32])));
+        let derive = |byte| RawKeySigner::derive(&ServerSecret::new(Secret::new([byte; 32])));
         assert_eq!(derive(1).public(), derive(1).public());
         assert_ne!(derive(1).public(), derive(2).public());
     }

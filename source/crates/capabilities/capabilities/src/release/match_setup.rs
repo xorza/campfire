@@ -1,6 +1,6 @@
 use campfire_common::SegmentSeed;
 use campfire_declare::{CapabilitySet, Role};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_visibility::OutView;
 
 /// What a match is built of: its tick rate and seed, its capabilities, its role, and what its
@@ -9,7 +9,7 @@ use campfire_visibility::OutView;
 #[must_use = "a spec builds nothing until a match is built of it"]
 pub struct MatchSetup {
     pub(crate) seed: SegmentSeed,
-    pub(crate) rate: TickRate,
+    pub(crate) rate: MatchRate,
     pub(crate) set: CapabilitySet,
     pub(crate) role: Role,
     pub(crate) out: OutView,
@@ -27,7 +27,7 @@ impl MatchSetup {
     /// spec says otherwise. A client's predicts: each of its sim's queries skips the units the
     /// client holds as the server sent them, `Unpredicted`, unless it names them, as the marker's
     /// filter is in place before any system's query is made.
-    pub const fn new(seed: SegmentSeed, rate: TickRate, role: Role) -> Self {
+    pub const fn new(seed: SegmentSeed, rate: MatchRate, role: Role) -> Self {
         Self {
             seed,
             rate,
@@ -42,7 +42,7 @@ impl MatchSetup {
     }
 
     /// The rate the match ticks at.
-    pub const fn rate(&self) -> TickRate {
+    pub const fn rate(&self) -> MatchRate {
         self.rate
     }
 

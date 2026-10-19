@@ -20,13 +20,13 @@ use campfire_common::{SegmentSeed, Tick};
 use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Rng, RngStream, Rounding, Vec3};
 use campfire_sim::{
-    EntityIndex, IdAllocator, OnAny, SimComponent, SimRng, SimSet, SimTick, SimUpdate, SimWorld,
-    SimWorldBuilder, StableId, StateRegistry, TickRate,
+    EntityIndex, IdAllocator, MatchRate, OnAny, SimComponent, SimRng, SimSet, SimTick, SimUpdate,
+    SimWorld, SimWorldBuilder, StableId, StateRegistry,
 };
 use serde::{Deserialize, Serialize};
 
 /// 30 ticks a second: the rate these tests run at, which no game sets.
-const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
+const RATE: MatchRate = MatchRate::new(NonZeroU32::new(30).unwrap());
 
 const CASES: usize = 4000;
 

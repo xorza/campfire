@@ -1,13 +1,13 @@
-use campfire_net_core::TickRate;
+use campfire_math::TickRate;
 use campfire_net_emulator::DuplexModel;
 use campfire_net_packets::PacketSessionSetup;
-use core::num::NonZeroU16;
+use core::num::NonZeroU32;
 use core::time::Duration;
 
 use crate::client_kind::ClientKind;
 
 /// The tick rate of a stepper by default, 100 Hz, whose 10 ms period is also its frame interval.
-const TICK_RATE: TickRate = TickRate::new(NonZeroU16::new(100).unwrap());
+const TICK_RATE: TickRate = TickRate::hertz(NonZeroU32::new(100).unwrap());
 
 /// What `Stepper::new` does once its apps exist.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

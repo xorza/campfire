@@ -13,6 +13,7 @@ mod command;
 mod due_index;
 mod host_rule;
 mod id_allocator;
+mod match_rate;
 mod ordered;
 mod own_resources;
 mod position;
@@ -31,7 +32,6 @@ mod state_registry;
 mod state_rewritten;
 mod tick_clock;
 mod tick_inputs;
-mod tick_rate;
 mod timed_process;
 mod unpredicted;
 
@@ -40,6 +40,7 @@ pub use crate::command::Command;
 pub use crate::due_index::{DueIndex, DueUnit};
 pub use crate::host_rule::{Either, HostRule, KindMarker, OnAny};
 pub use crate::id_allocator::IdAllocator;
+pub use crate::match_rate::MatchRate;
 pub use crate::ordered::{Keyed, Ordered};
 pub use crate::own_resources::OwnResources;
 pub use crate::position::Position;
@@ -63,7 +64,6 @@ pub use crate::state_registry::{StateRegistry, StateTypeHash, StateTypeHashMeani
 pub use crate::state_rewritten::StateRewritten;
 pub use crate::tick_clock::TickClock;
 pub use crate::tick_inputs::{PlayerCommand, TickInput, TickInputs};
-pub use crate::tick_rate::TickRate;
 pub use crate::timed_process::{TimedKept, TimedProcess, TimedRuns};
 pub use crate::unpredicted::Unpredicted;
 

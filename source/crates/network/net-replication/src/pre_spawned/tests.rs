@@ -1,5 +1,5 @@
 use super::*;
-use campfire_net_core::TickRate;
+use campfire_math::TickRate;
 
 use crate::fixtures::protocol::CompA;
 use crate::pre_spawned_plugin::PreSpawnedPlugin;

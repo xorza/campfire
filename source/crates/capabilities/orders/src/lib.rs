@@ -149,7 +149,7 @@ pub mod internals {
     use campfire_declare::ByType;
     use campfire_script::{ScriptFailures, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
-    use campfire_sim::{StableId, TickRate};
+    use campfire_sim::{MatchRate, StableId};
     use campfire_units::{ScriptBook, UnitTypeCore, Units};
     use campfire_values::{PackagePath, Scalar, UnitType};
 
@@ -167,7 +167,7 @@ pub mod internals {
             data: &AiData,
             script: ScriptId,
         ) -> Result<(), AiError> {
-            let rate = *world.resource::<TickRate>();
+            let rate = *world.resource::<MatchRate>();
             let ai = Ai::of(data, script, world.resource::<ScriptBook>(), rate)?;
             world.resource_mut::<ByType<Ai>>().set(unit_type, ai);
             Ok(())

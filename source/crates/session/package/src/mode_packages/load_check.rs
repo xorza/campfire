@@ -11,7 +11,7 @@ use campfire_script::{
     ApiHolder, ApiVersion, CtxMisuse, DataTable, EnumRecord, EnumString, Filter, Hook, MemberKind,
     MemberUse, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status, UnknownName,
 };
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::{Capability, MatchRate};
 use campfire_values::{
     ActionId, FilterData, MessageId, ModifierId, Named, PackageIndex, PackagePath, Param, Tag, Team,
 };
@@ -62,7 +62,7 @@ impl<'a> LoadCheck<'a> {
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
         Self::sections_owned(packages, &Release::sections())?;
         let engine = Release::engine_tags();
-        let rate = TickRate::new(manifest.tick_hz.fastest());
+        let rate = MatchRate::new(manifest.tick_hz.fastest());
         let input = packages.book_input(rate, &engine);
         // The modules' rules of their data come first, so a script that names what a broken rule
         // leaves out shows the rule.

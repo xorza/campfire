@@ -6,7 +6,7 @@ use campfire_common::DeclaredName;
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{MatchNames, ParamProblem};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_units::StatId;
 use campfire_values::{ActionId, ModifierId, NameId, Names, Param, Rank, Stat};
 
@@ -108,7 +108,7 @@ impl ParamBook {
         action: Option<ActionId>,
         rank: Rank,
         param: ApplierParam,
-        rate: Option<TickRate>,
+        rate: Option<MatchRate>,
     ) -> Result<(), ParamProblem> {
         let action = action.ok_or(ParamProblem::Missing)?;
         let (table, run) = (self.actions(), action.index());

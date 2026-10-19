@@ -5,7 +5,7 @@ use campfire_declare::Role;
 use campfire_mode::{ModeSetup, OptionPicks};
 use campfire_package::ModePackages;
 use campfire_script::ScriptPools;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 
 /// A match of a mode, built from its read packages.
 #[derive(Debug)]
@@ -18,7 +18,7 @@ impl MatchBuild {
     pub(crate) fn spec(
         packages: &ModePackages,
         seed: SegmentSeed,
-        rate: TickRate,
+        rate: MatchRate,
         players: u32,
     ) -> MatchSetup {
         let manifest = packages.manifest();
@@ -62,7 +62,7 @@ impl MatchBuild {
     /// snapshot. Its seed is zero, as the seed is not state.
     pub fn restore_target(
         packages: &ModePackages,
-        rate: TickRate,
+        rate: MatchRate,
         players: u32,
         picks: &OptionPicks,
     ) -> Match {
@@ -91,7 +91,7 @@ pub(crate) mod internals {
     use campfire_mode::OptionPicks;
     use campfire_package::ModePackages;
     use campfire_players::Players;
-    use campfire_sim::TickRate;
+    use campfire_sim::MatchRate;
     use campfire_vision::VisionBook;
 
     use crate::match_build::MatchBuild;
@@ -101,7 +101,7 @@ pub(crate) mod internals {
     #[derive(Debug)]
     pub struct ArenaSetup<'a> {
         pub packages: &'a ModePackages,
-        pub rate: TickRate,
+        pub rate: MatchRate,
         pub players: u32,
         pub vision: VisionBook,
     }
@@ -150,8 +150,8 @@ pub(crate) mod internals {
         }
 
         /// The default tick rate of the mode `packages` holds.
-        const fn rate(packages: &ModePackages) -> TickRate {
-            TickRate::new(packages.manifest().tick_hz.default())
+        const fn rate(packages: &ModePackages) -> MatchRate {
+            MatchRate::new(packages.manifest().tick_hz.default())
         }
     }
 }

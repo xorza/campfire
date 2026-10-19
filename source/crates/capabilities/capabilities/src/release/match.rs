@@ -82,7 +82,7 @@ pub(crate) mod internals {
     use campfire_log::internals::LogCheck;
     use campfire_players::Players;
     use campfire_script::ScriptPools;
-    use campfire_sim::{Capability, TickRate};
+    use campfire_sim::{Capability, MatchRate};
     use campfire_units::PoolId;
     use serde::Serialize;
     use serde::de::DeserializeOwned;
@@ -109,13 +109,13 @@ pub(crate) mod internals {
 
     impl Match {
         /// The MOBA's 30 ticks a second.
-        pub const TEST_RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
+        pub const TEST_RATE: MatchRate = MatchRate::new(NonZeroU32::new(30).unwrap());
 
         /// A test's server match at `rate` of the capabilities `declared`, running scripts
         /// within `budgets`, or none; with combat, its life pool the first. It has no mode
         /// to start it, so it starts with the match's entity, as a start spawns it. It fails the
         /// test on any warning it logs.
-        pub fn test(declared: &[Capability], rate: TickRate, pools: Option<ScriptPools>) -> Self {
+        pub fn test(declared: &[Capability], rate: MatchRate, pools: Option<ScriptPools>) -> Self {
             let mut started = Self::test_unstarted(declared, rate, pools);
             Players::start_without_mode(&mut started, [], 0);
             started
@@ -124,7 +124,7 @@ pub(crate) mod internals {
         /// The match `test` gives, with no entity yet, for a mode to start.
         pub fn test_unstarted(
             declared: &[Capability],
-            rate: TickRate,
+            rate: MatchRate,
             pools: Option<ScriptPools>,
         ) -> Self {
             let set = Release::capability_set(declared).expect("a test declares a valid set");

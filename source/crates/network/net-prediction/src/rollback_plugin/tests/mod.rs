@@ -2,6 +2,7 @@ use super::*;
 use crate::fixtures::prediction_stack::PredictionStack;
 use crate::prediction_registration_ext::PredictionRegistrationExt;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
+use campfire_math::TickRate;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_core::Ticked;
 use campfire_net_interpolation::internals::CompFull;

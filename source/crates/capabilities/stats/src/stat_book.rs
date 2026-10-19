@@ -6,7 +6,7 @@ use bevy_ecs::resource::Resource;
 use campfire_declare::{Book, BookCx, BookError, BookPlace};
 use campfire_math::{Num, Rounding};
 use campfire_script::{MatchNames, UnknownName};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_units::{MoveStep, StatId, StatNames, TurnStep, UnitSteps};
 use campfire_values::{EngineStat, NameId, Named, Names, PackageIndex, Stat, UnitType};
 
@@ -192,7 +192,7 @@ impl StatBook {
     /// How far a unit with `values` walks a tick at `rate`: its `move_speed`, from 0 to the
     /// manifest's `max_move_speed`, divided by the tick rate, rounded once; `None` when the mode
     /// declares no move speed.
-    pub fn step(&self, values: &[Num], rate: TickRate) -> Option<Num> {
+    pub fn step(&self, values: &[Num], rate: MatchRate) -> Option<Num> {
         let speed = self
             .engine(values, EngineStat::MoveSpeed)?
             .clamp(Num::ZERO, self.max_move_speed);
@@ -207,7 +207,7 @@ impl StatBook {
     /// How far a unit with `values` turns a tick at `rate`, in degrees: its `turn_rate`, at
     /// least 0, divided by the tick rate, rounded once; `None` when the mode declares no turn
     /// rate.
-    pub fn turn_step(&self, values: &[Num], rate: TickRate) -> Option<Num> {
+    pub fn turn_step(&self, values: &[Num], rate: MatchRate) -> Option<Num> {
         let turn = self.engine(values, EngineStat::TurnRate)?.max(Num::ZERO);
         let hz = NonZeroI64::from(rate.hz()).get();
         Some(

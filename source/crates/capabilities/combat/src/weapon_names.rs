@@ -5,7 +5,7 @@ use campfire_common::{DeclaredName, Ticks};
 use campfire_declare::BookError;
 use campfire_math::Num;
 use campfire_script::{TagNames, UnknownName};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_stats::StatBook;
 use campfire_units::StatId;
 use campfire_values::{
@@ -22,7 +22,7 @@ use crate::weapon::{ClipRule, Pitch, Rate, Scatter, ScatterTag, Weapon, WeaponDa
 pub(crate) struct WeaponNames<'c> {
     pub(crate) loaded: LoadedAction<'c>,
     pub(crate) action: &'c Action,
-    pub(crate) rate: TickRate,
+    pub(crate) rate: MatchRate,
     pub(crate) stats: Option<&'c StatBook>,
     pub(crate) kinds: Option<&'c Names<DamageKind>>,
     pub(crate) tags: &'c TagNames,

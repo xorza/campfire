@@ -30,7 +30,7 @@ impl Plugin for ClientSyncPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use campfire_net_core::TickRate;
+    use campfire_math::TickRate;
 
     use bevy_time::{TimePlugin, TimeUpdateStrategy};
     use core::time::Duration;
@@ -77,7 +77,7 @@ mod tests {
             .id();
         assert_eq!(
             app.world().get::<RemoteTimeline>(e).unwrap().now,
-            TickInstant::zero()
+            TickInstant::ZERO
         );
         app.init_resource::<SeenAtReceive>();
         app.add_systems(
@@ -91,11 +91,11 @@ mod tests {
         app.update();
         assert_eq!(
             app.world().get::<RemoteTimeline>(e).unwrap().now,
-            TickInstant::lit("1.0")
+            TickInstant::from(NetTick(1))
         );
         assert_eq!(
             app.world().resource::<SeenAtReceive>().0,
-            Some(TickInstant::lit("1.0"))
+            Some(TickInstant::from(NetTick(1)))
         );
     }
 }

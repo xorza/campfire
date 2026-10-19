@@ -15,9 +15,12 @@ internals = [
     "campfire-net-timeline/internals",
     "campfire-net-sync/internals",
     "campfire-net-replication/internals",
+    "dep:campfire-math",
+    "campfire-math/internals",
 ]
 
 [dependencies]
+campfire-math = { workspace = true, optional = true }
 campfire-net-timeline.workspace = true
 campfire-net-core.workspace = true
 campfire-net-despawn.workspace = true

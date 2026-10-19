@@ -6,7 +6,7 @@ use campfire_common::{MapName, PackageFingerprint};
 use campfire_declare::{ScriptAt, SourceKind, SourcePackage};
 use campfire_mode::{MapData, ModeData};
 use campfire_script::{ModeScripts, ScriptApi, ScriptHost, ScriptId, ScriptUses};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::{Capability, MatchRate};
 use campfire_units::{HeightGrid, ScriptBook};
 use campfire_values::{EngineTag, PackageIndex, PackagePath};
 
@@ -116,7 +116,7 @@ impl ModePackages {
     /// The books of a match of its packages at `rate`, a rate within the manifest's range. The
     /// load built them at the fastest rate the range allows, where every time counts the most
     /// ticks, so they build at every rate a session may choose.
-    pub fn books(&self, rate: TickRate) -> Books {
+    pub fn books(&self, rate: MatchRate) -> Books {
         assert!(
             self.manifest.tick_hz.contains(rate.hz()),
             "a session's rate is within the manifest's range"
@@ -129,7 +129,7 @@ impl ModePackages {
     /// The books of a match of its packages at the fastest rate, as the load built them, for what
     /// reads their names alone, as a bot's script does.
     pub fn name_books(&self) -> Books {
-        self.books(TickRate::new(self.manifest.tick_hz.fastest()))
+        self.books(MatchRate::new(self.manifest.tick_hz.fastest()))
     }
 
     /// Every script of its packages, in the order a match compiles them, which numbers each at
@@ -180,7 +180,7 @@ impl ModePackages {
     /// What its books are built from at `rate`.
     pub(crate) fn book_input<'a>(
         &'a self,
-        rate: TickRate,
+        rate: MatchRate,
         engine_tags: &'a [EngineTag],
     ) -> BookInput<'a> {
         BookInput {
@@ -474,7 +474,7 @@ fn maps_of(index: &FileIndex) -> Result<Vec<MapName>, LoadProblem> {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_capabilities::Release;
-    use campfire_sim::TickRate;
+    use campfire_sim::MatchRate;
 
     use crate::mode_packages::ModePackages;
 
@@ -483,7 +483,7 @@ pub(crate) mod internals {
         /// after the engine's.
         pub fn tag_names(&self) -> Vec<String> {
             let engine_tags = Release::engine_tags();
-            let rate = TickRate::new(self.manifest.tick_hz.fastest());
+            let rate = MatchRate::new(self.manifest.tick_hz.fastest());
             let types = Release::unit_types(&self.book_input(rate, &engine_tags));
             let types = types.expect("the load declared every tag");
             let names = types.tags().names().texts().skip(engine_tags.len());

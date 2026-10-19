@@ -48,8 +48,8 @@ use campfire_script::{
     StateValue, SyncTo, SyncedStateDecl,
 };
 use campfire_sim::{
-    Capability, EntityIndex, IdAllocator, SeatEvent, SeatEventKind, SimComponent, SimResource,
-    SimTick, StableId, TickRate,
+    Capability, EntityIndex, IdAllocator, MatchRate, SeatEvent, SeatEventKind, SimComponent,
+    SimResource, SimTick, StableId,
 };
 use campfire_stats::{
     Application, Hold, Level, ModePoolsData, ModeStatsData, ModifierClocks, ModifierData,
@@ -70,7 +70,7 @@ use campfire_visibility::ModeVisibility;
 use campfire_vision::{GridData, VisionBook};
 
 /// 10 ticks a second: 100 ms is a tick.
-const RATE: TickRate = TickRate::new(NonZeroU32::new(10).unwrap());
+const RATE: MatchRate = MatchRate::new(NonZeroU32::new(10).unwrap());
 
 /// A mode that records what its hooks see in its state, and acts on its players' inputs.
 /// The MOBA test content's damage kinds, and the stats its `calc_damage` reads.

@@ -1,5 +1,5 @@
 use campfire_common::Ticks;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_values::EngineEnum;
 
 use crate::scripts::arg_ctx::ArgCtx;
@@ -15,7 +15,7 @@ pub struct ScriptTicks(Ticks);
 
 impl ScriptTicks {
     /// `ms` at `rate`, or why it is refused.
-    pub fn of(rate: TickRate, ms: i64) -> Result<Self, ApiError> {
+    pub fn of(rate: MatchRate, ms: i64) -> Result<Self, ApiError> {
         let ms = u64::try_from(ms).map_err(|_| ApiError::NegativeTime)?;
         rate.duration(ms).map(Self).ok_or(ApiError::TimeTooLarge)
     }

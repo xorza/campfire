@@ -30,7 +30,7 @@ use campfire_progression::TrackError;
 use campfire_projectiles::{ProjectileDeliveryError, ProjectileError};
 use campfire_script::{CtxMisuse, ParamProblem, Status, SyncTo};
 use campfire_script::{Filter, internals::Undefined};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::{Capability, MatchRate};
 use campfire_stats::{
     AppliedError, ModifierDataError, ModifierProblem, PurgeEffectData, StatGraphError,
     UnitStartError, Way,
@@ -476,7 +476,7 @@ fn the_books_build_at_every_rate_the_manifest_allows() {
     // The 3v3 allows 20 to 60 ticks a second; the load built its books at 60.
     let packages = three_v_three();
     for hz in [20, 30, 60] {
-        let rate = TickRate::new(NonZeroU32::new(hz).unwrap());
+        let rate = MatchRate::new(NonZeroU32::new(hz).unwrap());
         packages.books(rate);
     }
 }
@@ -485,7 +485,7 @@ fn the_books_build_at_every_rate_the_manifest_allows() {
 #[should_panic(expected = "a session's rate is within the manifest's range")]
 fn the_books_refuse_a_rate_past_the_manifests_range() {
     let packages = three_v_three();
-    let rate = TickRate::new(NonZeroU32::new(61).unwrap());
+    let rate = MatchRate::new(NonZeroU32::new(61).unwrap());
     packages.books(rate);
 }
 

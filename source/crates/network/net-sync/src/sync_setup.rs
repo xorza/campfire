@@ -1,5 +1,6 @@
 use bevy_reflect::Reflect;
-use campfire_net_core::{PositiveTickSpan, TickRate};
+use campfire_math::TickRate;
+use campfire_net_core::PositiveTickSpan;
 use core::time::Duration;
 
 /// Immutable settings shared by local-clock and interpolation synchronization controllers.
@@ -46,9 +47,9 @@ impl Default for SyncSetup {
     fn default() -> Self {
         Self {
             jitter_multiple: 4,
-            jitter_margin: PositiveTickSpan::lit("1"),
-            error_margin: PositiveTickSpan::lit("1"),
-            max_error_margin: PositiveTickSpan::lit("10"),
+            jitter_margin: PositiveTickSpan::from_ticks(1),
+            error_margin: PositiveTickSpan::from_ticks(1),
+            max_error_margin: PositiveTickSpan::from_ticks(10),
             consecutive_errors_threshold: 3,
             speedup_factor: 1.05,
         }

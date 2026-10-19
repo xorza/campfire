@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use campfire_common::Ticks;
 use campfire_declare::Book;
 use campfire_script::MatchNames;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_units::StatId;
 use campfire_values::Stat;
 
@@ -25,7 +25,7 @@ impl CombatBook {
     /// gives. A window past what ticks can count covers the whole match.
     pub fn new<E>(
         rules: &ModeCombatData,
-        rate: TickRate,
+        rate: MatchRate,
         stat: impl Fn(&Stat) -> Result<StatId, E>,
     ) -> Result<Self, E> {
         let leech = rules.leech.as_ref();
@@ -70,7 +70,7 @@ mod tests {
     fn a_book_binds_its_stats_and_counts_its_window_in_ticks() {
         // At 30 ticks a second, 1,000 ms is 30 ticks and 1,010 ms rounds up to 31; `vamp` at
         // stat 2 and `heal` at stat 5, and a stat the book lacks is the error.
-        let rate = TickRate::new(NonZeroU32::new(30).unwrap());
+        let rate = MatchRate::new(NonZeroU32::new(30).unwrap());
         let stat = |held: &Stat| match held.name() {
             "vamp" => Ok(StatId::new(2)),
             "heal" => Ok(StatId::new(5)),

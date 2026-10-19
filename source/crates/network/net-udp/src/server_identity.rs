@@ -7,9 +7,9 @@ use rustls::version::TLS13;
 use crate::certificate_chain::CertificateChain;
 use crate::raw_key_signer::RawKeySigner;
 use crate::reset_key::ResetKey;
-use crate::server_key::ServerKey;
 use crate::server_secret::ServerSecret;
 use crate::tls_provider;
+use campfire_common::TlsKey;
 
 /// What a server presents to TLS, and the secret its reset key derives from (13-net-stack/udp.md, A
 /// server's identity and a client's trust match).
@@ -45,7 +45,7 @@ impl ServerIdentity {
     }
 
     /// The raw key a client pins; `None` for a server that presents a certificate.
-    pub const fn server_key(&self) -> Option<ServerKey> {
+    pub const fn tls_key(&self) -> Option<TlsKey> {
         match &self.presented {
             Presented::RawKey(signer) => Some(signer.public()),
             Presented::Certificate(_) => None,

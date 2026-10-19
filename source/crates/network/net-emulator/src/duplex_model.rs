@@ -1,6 +1,7 @@
+use campfire_math::Num;
 use core::time::Duration;
 
-use crate::link_model::LinkModel;
+use crate::link_model::{LinkModel, per_mille};
 use crate::rate_limit::RateLimit;
 
 /// The models of both directions of an `EmulatedIo` link (13-net-stack/testing.md, Presets are
@@ -9,7 +10,7 @@ use crate::rate_limit::RateLimit;
 /// The presets other than [`perfect`](Self::perfect) take the Network Link Conditioner's values as
 /// third parties report them (countingup, NSHipster), downlink as server to client; each queue
 /// holds one second at its link's rate. They are plausible test profiles, not measurements.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DuplexModel {
     pub client_to_server: LinkModel,
     pub server_to_client: LinkModel,
@@ -39,20 +40,32 @@ impl DuplexModel {
 
     /// LTE: 50 Mbit/s each way, 65 ms up and 50 ms down, no loss.
     pub fn lte() -> Self {
-        Self::preset(OneWay::new(6_250_000, 65), OneWay::new(6_250_000, 50), 0.0)
+        Self::preset(
+            OneWay::new(6_250_000, 65),
+            OneWay::new(6_250_000, 50),
+            Num::ZERO,
+        )
     }
 
     /// EDGE: 200 kbit/s and 440 ms up, 240 kbit/s and 400 ms down, no loss.
     pub fn edge() -> Self {
-        Self::preset(OneWay::new(25_000, 440), OneWay::new(30_000, 400), 0.0)
+        Self::preset(
+            OneWay::new(25_000, 440),
+            OneWay::new(30_000, 400),
+            Num::ZERO,
+        )
     }
 
     /// Very Bad Network: 1 Mbit/s and 500 ms each way, 10 % loss each way.
     pub fn very_bad() -> Self {
-        Self::preset(OneWay::new(125_000, 500), OneWay::new(125_000, 500), 0.1)
+        Self::preset(
+            OneWay::new(125_000, 500),
+            OneWay::new(125_000, 500),
+            per_mille(100),
+        )
     }
 
-    fn preset(up: OneWay, down: OneWay, loss: f32) -> Self {
+    fn preset(up: OneWay, down: OneWay, loss: Num) -> Self {
         let one_way = |direction: OneWay| {
             LinkModel::perfect()
                 .with_latency(Duration::from_millis(direction.millis))

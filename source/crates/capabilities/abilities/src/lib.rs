@@ -19,7 +19,7 @@ use campfire_common::{EnumAll, Ticks};
 use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_deliveries::Deliverers;
 use campfire_script::{ApiVersion, ScriptValue, Status, View};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::{Capability, MatchRate};
 use campfire_units::Due;
 
 mod abilities_api;
@@ -139,7 +139,7 @@ impl Abilities {
     }
 
     /// A second at `rate`, the time a toggle pays its cost each.
-    const fn second(rate: TickRate) -> Ticks {
+    const fn second(rate: MatchRate) -> Ticks {
         rate.ticks(1000)
             .expect("a second counts in ticks at every rate")
     }

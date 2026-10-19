@@ -1,12 +1,13 @@
 use crate::local_timeline::LocalTimeline;
 use crate::set_tick_rate::SetTickRate;
+use crate::timeline_rate::TimelineRate;
 use crate::timeline_systems::TimelineSystems;
 use bevy_app::{App, FixedFirst, FixedLast, FixedMainScheduleOrder, Plugin};
 use bevy_ecs::prelude::On;
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleLabel};
 use bevy_ecs::system::ResMut;
 use bevy_time::{Fixed, Time};
-use campfire_net_core::TickRate;
+use campfire_math::TickRate;
 
 /// Runs after `FixedLast` in each `FixedMain`, a rollback replay's included, where the local tick
 /// ends: a schedule of its own, as no system of `FixedLast` is ordered after all the others.
@@ -22,10 +23,10 @@ impl LocalTimelinePlugin {
     /// The one writer of the timestep, which it derives from the rate.
     fn update_tick_rate(
         trigger: On<'_, '_, SetTickRate>,
-        mut tick_rate: ResMut<'_, TickRate>,
+        mut tick_rate: ResMut<'_, TimelineRate>,
         mut time: ResMut<'_, Time<Fixed>>,
     ) {
-        *tick_rate = trigger.0;
+        *tick_rate = TimelineRate(trigger.0);
         time.set_timestep(trigger.0.period());
     }
 }
@@ -33,7 +34,7 @@ impl LocalTimelinePlugin {
 impl Plugin for LocalTimelinePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LocalTimeline>();
-        app.insert_resource(self.tick_rate);
+        app.insert_resource(TimelineRate(self.tick_rate));
         app.world_mut()
             .resource_mut::<Time<Fixed>>()
             .set_timestep(self.tick_rate.period());
@@ -56,11 +57,11 @@ mod tests {
     use bevy_app::{FixedMain, FixedUpdate};
     use bevy_ecs::prelude::Resource;
     use bevy_ecs::system::Res;
-    use bevy_time::TimePlugin;
+    use bevy_time::{TimePlugin, TimeUpdateStrategy, Virtual};
     use campfire_net_core::NetTick;
 
-    fn rate(hz: u16) -> TickRate {
-        TickRate::new(core::num::NonZeroU16::new(hz).unwrap())
+    fn rate(hz: u32) -> TickRate {
+        TickRate::try_from(hz).unwrap()
     }
 
     /// The event moves the rate from 64 Hz to 50 Hz, and the timestep with it, to 20 ms.
@@ -79,11 +80,35 @@ mod tests {
         );
         app.world_mut().trigger(SetTickRate(rate(50)));
 
-        assert_eq!(*app.world().resource::<TickRate>(), rate(50));
+        assert_eq!(app.world().resource::<TimelineRate>().0, rate(50));
         assert_eq!(
             app.world().resource::<Time<Fixed>>().timestep(),
             core::time::Duration::from_millis(20)
         );
+    }
+
+    /// Half of 21 Hz, 21 ticks every 2 s: a tick lasts 95,238,095 ns, so 2 s of 100 ms frames run
+    /// 21 ticks, the 21st at 1,999,999,995 ns, and the 22nd waits for 2,095,238,090 ns.
+    #[test]
+    fn half_of_21_hz_runs_21_ticks_in_2_seconds() {
+        let half = TickRate::new(
+            core::num::NonZeroU32::new(21).unwrap(),
+            core::num::NonZeroU32::new(2).unwrap(),
+        );
+        let mut app = App::new();
+        app.add_plugins((TimePlugin, LocalTimelinePlugin { tick_rate: half }));
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(
+            core::time::Duration::from_millis(100),
+        ));
+        while app.world().resource::<Time<Virtual>>().elapsed() < core::time::Duration::from_secs(2)
+        {
+            app.update();
+        }
+        assert_eq!(
+            app.world().resource::<Time<Virtual>>().elapsed(),
+            core::time::Duration::from_secs(2)
+        );
+        assert_eq!(app.world().resource::<LocalTimeline>().tick(), NetTick(21));
     }
 
     #[derive(Resource, Default)]

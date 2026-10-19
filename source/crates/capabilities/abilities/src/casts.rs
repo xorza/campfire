@@ -18,7 +18,7 @@ use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorld};
 use campfire_script::{
     Answered, CallError, CallStart, Ctx, ScriptBatch, ScriptId, ScriptValue, ScriptsWorld, Unit,
 };
-use campfire_sim::{DueUnit, Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
+use campfire_sim::{DueUnit, Keyed, MatchRate, Ordered, Position, SimTick, StableId, TickClock};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};
 use campfire_units::{
     ArrivedShort, Body, Dead, Destination, Due, ForcedMove, Life, Owner, PoolPayer,
@@ -401,7 +401,7 @@ impl Casts {
             }
         });
         let world = batch.world();
-        let second = Abilities::second(*world.resource::<TickRate>());
+        let second = Abilities::second(*world.resource::<MatchRate>());
         ProgressDues::with(world, caster, entity, |world, dues| {
             let [mut unit] = world.entity_mut([entity]);
             let (slots, mut progress) = unit

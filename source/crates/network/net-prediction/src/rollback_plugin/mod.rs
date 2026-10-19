@@ -63,7 +63,6 @@ use bevy_time::{Fixed, Time};
 use bevy_utils::prelude::DebugName;
 use campfire_net_connection::NetworkingState;
 use campfire_net_core::NetTick;
-use campfire_net_core::TickRate;
 use campfire_net_interpolation::FrameInterpolationSystems;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::ConfirmedTickMap;
@@ -77,6 +76,7 @@ use campfire_net_replication::ReplicationSystems;
 use campfire_net_sync::{InputTimelineSetup, SyncedLocalTimeline};
 use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::Rollback;
+use campfire_net_timeline::TimelineRate;
 use core::fmt::Debug;
 use tracing::{debug, debug_span, trace};
 
@@ -436,7 +436,7 @@ impl RollbackPlugin {
         // its overstep isn't lost.
         *world.resource_mut::<Time<Fixed>>() = current_fixed_time;
         // A replayed `SetTickRate` changed the rate after the restored timestep was read.
-        let period = world.resource::<TickRate>().period();
+        let period = world.resource::<TimelineRate>().0.period();
         world.resource_mut::<Time<Fixed>>().set_timestep(period);
 
         *world.resource_mut::<Time>() = time_resource;

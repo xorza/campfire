@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use campfire_common::{DeclaredName, Ticks};
 use campfire_players::ResourceAmount;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_units::PoolCost;
 use campfire_values::{Rank, TimeTooLarge};
 
@@ -86,7 +86,7 @@ impl RankValues {
     pub(crate) fn all(
         data: &ActionData,
         ranks: u8,
-        rate: TickRate,
+        rate: MatchRate,
         target: impl Fn(&DeclaredName) -> Option<CostTarget>,
     ) -> Result<LoadedRanks, ActionProblem> {
         if !data.check_ranks(usize::from(ranks)) {
@@ -181,7 +181,7 @@ mod tests {
             "mana" => PoolId::new(0).map(CostTarget::Pool),
             _ => None,
         };
-        let rate = TickRate::new(NonZeroU32::new(30).unwrap());
+        let rate = MatchRate::new(NonZeroU32::new(30).unwrap());
         let loaded = RankValues::all(&data, 2, rate, target).unwrap();
         let cost = |resource, amount| ResourceAmount { resource, amount };
         let runs: Vec<&[ResourceAmount]> = (loaded.values.iter())

@@ -1,5 +1,5 @@
+use campfire_math::{Num, TickRate};
 use campfire_net_core::NetTick;
-use campfire_net_core::TickRate;
 
 /// Context passed to interpolation functions that need more than a normalized fraction.
 ///
@@ -54,7 +54,11 @@ impl InterpolationSampleCx {
 
 fn sample_delta_secs(start_tick: NetTick, end_tick: NetTick, tick_rate: TickRate) -> Option<f32> {
     let ticks = end_tick - start_tick;
-    (ticks > 0).then_some(ticks as f32 / f32::from(tick_rate.hz().get()))
+    (ticks > 0).then(|| {
+        tick_rate
+            .duration_of(Num::int(i64::from(ticks)))
+            .as_secs_f32()
+    })
 }
 
 /// How far `current` plus `overstep` ticks is from `start` to `end`, clamped to `[0, 1]`: `None`

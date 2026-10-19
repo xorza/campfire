@@ -9,11 +9,11 @@ use campfire_net_payload::UnlinkReason;
 const IDENTITY_ALERTS: [u8; 7] = [42, 43, 44, 45, 46, 48, 49];
 
 /// How a handshake that failed with `alert`, sent or received, ends the client's link: a refused
-/// identity is `WrongServerKey`, and any other alert the transport error of its code, 0x100 + the
+/// identity is `WrongTlsKey`, and any other alert the transport error of its code, 0x100 + the
 /// alert, as QUIC numbers it (RFC 9001 §4.8).
 pub(crate) fn unlink_reason(alert: u8) -> UnlinkReason {
     if IDENTITY_ALERTS.contains(&alert) {
-        UnlinkReason::WrongServerKey
+        UnlinkReason::WrongTlsKey
     } else {
         UnlinkReason::Transport {
             code: 0x100 + u64::from(alert),
@@ -28,9 +28,9 @@ mod tests {
     /// A raw key's `access_denied` and a certificate's `unknown_ca` are a refused identity;
     /// `illegal_parameter` and `no_application_protocol` (120) are the transport's errors.
     #[test]
-    fn a_refused_identity_is_a_wrong_server_key_and_any_other_alert_its_code() {
-        assert_eq!(unlink_reason(49), UnlinkReason::WrongServerKey);
-        assert_eq!(unlink_reason(48), UnlinkReason::WrongServerKey);
+    fn a_refused_identity_is_a_wrong_tls_key_and_any_other_alert_its_code() {
+        assert_eq!(unlink_reason(49), UnlinkReason::WrongTlsKey);
+        assert_eq!(unlink_reason(48), UnlinkReason::WrongTlsKey);
         assert_eq!(
             unlink_reason(47),
             UnlinkReason::Transport { code: 0x100 + 47 }

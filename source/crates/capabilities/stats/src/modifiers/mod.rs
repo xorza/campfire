@@ -8,7 +8,7 @@ use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::StateValue;
 use campfire_sim::{
-    DueIndex, SimComponent, StableId, TickRate, TimedKept, TimedProcess, TimedRuns,
+    DueIndex, MatchRate, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns,
 };
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
@@ -553,7 +553,7 @@ impl Carried<'_> {
     /// Whether its modifier, its ability's params and each live param it reads are ones the books
     /// hold, its way gives every param its modifier and its aura's read, as an application
     /// checks at `rate`, and it has a value for each of its modifier's stat changes.
-    pub(crate) fn fits(&self, book: &ModifierBook, params: &ParamBook, rate: TickRate) -> bool {
+    pub(crate) fn fits(&self, book: &ModifierBook, params: &ParamBook, rate: MatchRate) -> bool {
         let Instance {
             id, action, rank, ..
         } = *self.instance;
@@ -601,7 +601,7 @@ impl SimComponent for Modifiers {
             world.resource::<ModifierBook>(),
             world.resource::<ParamBook>(),
         );
-        let rate = *world.resource::<TickRate>();
+        let rate = *world.resource::<MatchRate>();
         let clocks = world
             .get::<ModifierClocks>(entity)
             .is_some_and(|clocks| clocks.len() == self.instances.len());

@@ -3,7 +3,7 @@ use std::cell::{Cell, OnceCell};
 use std::{fmt, mem};
 
 use campfire_script::ScriptId;
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::{Capability, MatchRate};
 use campfire_values::{NameId, Names, PackageIndex, PackagePath, TypeScope, UnitType};
 
 use crate::book::Book;
@@ -121,7 +121,7 @@ impl<'a> BookCx<'a> {
         &self.source
     }
 
-    pub const fn rate(&self) -> TickRate {
+    pub const fn rate(&self) -> MatchRate {
         self.source.rate
     }
 
@@ -486,7 +486,7 @@ mod tests {
     fn with_cx<T>(run: impl FnOnce(BookCx<'_>) -> T) -> T {
         let none = Sections::default();
         let source = BookSource {
-            rate: TickRate::new(NonZeroU32::MIN),
+            rate: MatchRate::new(NonZeroU32::MIN),
             set: CapabilitySet::CORE,
             engine_tags: &[],
             mode: &none,
@@ -600,7 +600,7 @@ mod tests {
             PackagePath::parse("scripts/b.rhai").unwrap(),
         ];
         let source = BookSource {
-            rate: TickRate::new(NonZeroU32::MIN),
+            rate: MatchRate::new(NonZeroU32::MIN),
             set: CapabilitySet::CORE,
             engine_tags: &[],
             mode: &none,

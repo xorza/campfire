@@ -2,7 +2,7 @@ use std::any::Any;
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 use campfire_values::{EngineTag, PackageIndex, PackagePath, TypeScope, UnitType};
 
 use crate::capability_set::CapabilitySet;
@@ -16,7 +16,7 @@ use crate::unit_type_data::UnitTypeData;
 /// them, and what the load gives beside them, by type.
 #[derive(Debug)]
 pub struct BookSource<'a> {
-    pub rate: TickRate,
+    pub rate: MatchRate,
     pub set: CapabilitySet,
     pub engine_tags: &'a [EngineTag],
     pub mode: &'a Sections,

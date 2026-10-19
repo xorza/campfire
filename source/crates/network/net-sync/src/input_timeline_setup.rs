@@ -49,7 +49,7 @@ impl Default for InputTimelineSetup {
     fn default() -> Self {
         Self {
             sync: SyncSetup {
-                jitter_margin: PositiveTickSpan::lit("0"),
+                jitter_margin: PositiveTickSpan::from_ticks(0),
                 ..SyncSetup::default()
             },
             input_delay_setup: InputDelaySetup::no_input_delay(),

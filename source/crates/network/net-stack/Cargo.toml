@@ -32,9 +32,11 @@ internals = [
     "campfire-net-udp/internals",
     "campfire-net-timeline/internals",
     "campfire-net-payload/internals",
+    "campfire-math/internals",
 ]
 
 [dependencies]
+campfire-math.workspace = true
 campfire-net-timeline.workspace = true
 campfire-net-core.workspace = true
 campfire-net-link.workspace = true

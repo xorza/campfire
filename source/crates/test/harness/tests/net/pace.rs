@@ -5,7 +5,7 @@
 use bevy_time::{Fixed, Time};
 use campfire_harness::{End, InProcessMatch, InProcessSetup, LinkModel};
 use campfire_net::{JoinState, PaceSpeed};
-use campfire_sim::TickRate;
+use campfire_sim::MatchRate;
 
 #[test]
 fn a_paused_match_runs_no_tick_and_at_speed_2_runs_two_ticks_a_frame() {
@@ -40,7 +40,7 @@ fn a_paused_match_runs_no_tick_and_at_speed_2_runs_two_ticks_a_frame() {
 
     // At speed 2, a tick lasts half the session's: a frame, a session's tick long, runs two, the
     // first with the time the fixed clock held over too, as many more as half ticks it holds.
-    let tick = TickRate::new(local.packages().manifest().tick_hz.default()).length();
+    let tick = MatchRate::new(local.packages().manifest().tick_hz.default()).length();
     let held = local.server().world().resource::<Time<Fixed>>().overstep();
     local.pace().set_speed(PaceSpeed::Double);
     let start = local.next_tick(End::Server);

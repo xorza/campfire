@@ -18,7 +18,7 @@ use campfire_capabilities::Order;
 use campfire_common::Tick;
 use campfire_items::{Inventory, ItemStack, ItemsAction, Shopping};
 use campfire_net::PendingOrders;
-use campfire_sim::{SimTick, TickRate, Unpredicted};
+use campfire_sim::{MatchRate, SimTick, Unpredicted};
 
 use crate::input_map::{InputMap, Row};
 use crate::item_names::ItemTexts;
@@ -97,7 +97,7 @@ impl InventoryBar {
     fn show(
         own: OwnPlayer<'_, '_>,
         carriers: Carriers<'_, '_>,
-        (names, tick, rate): (Res<'_, ItemTexts>, Res<'_, SimTick>, Res<'_, TickRate>),
+        (names, tick, rate): (Res<'_, ItemTexts>, Res<'_, SimTick>, Res<'_, MatchRate>),
         input: Res<'_, InputMap>,
         (slots, mut texts): (Query<'_, '_, (Entity, &BarSlot)>, Query<'_, '_, &mut Text>),
         mut line: Local<'_, String>,

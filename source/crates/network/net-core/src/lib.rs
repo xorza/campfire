@@ -15,7 +15,6 @@ mod registry_hasher;
 mod registry_seal;
 mod tick_buffer;
 mod tick_range_error;
-mod tick_rate;
 mod tick_time;
 mod ticked;
 mod type_mapper;
@@ -31,7 +30,6 @@ pub use crate::registry_hasher::{RegistryHash, RegistryHashMeaning, RegistryHash
 pub use crate::registry_seal::RegistrySeal;
 pub use crate::tick_buffer::{Drain, IntoIter, Iter, TickBuffer};
 pub use crate::tick_range_error::TickRangeError;
-pub use crate::tick_rate::TickRate;
 pub use crate::tick_time::PositiveTickSpan;
 pub use crate::tick_time::TickInstant;
 pub use crate::tick_time::TickSpan;
