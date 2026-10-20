@@ -1,7 +1,8 @@
 # Port mapping
 
 How `net-port-map` gets a player-hosted server's port forwarded by the home router in front
-of it. It takes a bound port and knows nothing of the protocol on it.
+of it. It takes a bound port and knows nothing of the protocol on it. The facts behind it are
+in [UDP research](../../research/udp.md#port-mapping).
 
 - **A server maps its own port,** on a thread of its own. `PortMap` starts once the server's
   socket is bound, and holds no lock the frame takes. Its drop wakes the thread, which deletes the

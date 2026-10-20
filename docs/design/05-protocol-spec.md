@@ -48,11 +48,41 @@ What a third party needs to read and verify session logs, and to build a storefr
 
 - **The connection binds identities to the transport.** The game traffic inside it is not the protocol's.
 
-1. The server presents a raw Ed25519 key to TLS, with no certificate, derived from its own key ([QUIC transport](11-quic-transport.md)); the TLS key in its signed listing proves the client reached the server its key names.
-2. The client connects over QUIC and takes only the TLS key it pinned; a server answers a new address with a Retry first.
+1. The server presents a raw Ed25519 key to TLS, with no certificate, derived from its own key ([UDP](13-net-stack/udp.md#trust)); the TLS key in its signed listing proves the client reached the server its key names.
+2. The client connects over the stack's sealed UDP, below, and takes only the TLS key it pinned; a server answers a new address with a Retry first.
 3. The server offers the session's terms, its grace period and restore window, and a random challenge, for at most 10 s; a link still silent then closes with `Unanswered`, so a connection that only keeps itself alive holds no link. The client checks the terms against the listing and its own release and packages, delegates a fresh session key, and replies with a session-key signature over `"campfire/connect/v2" ‖ challenge ‖ channel binding`, the `tls-exporter` value of [RFC 9266](https://www.rfc-editor.org/rfc/rfc9266), so a reply relayed from another TLS session is useless. A refused join is told by a word on the reliable channel and the close code `JoinRefused`. Players take seats in the order their replies are accepted, one seat for each main key; the newest login wins its seat ([Sessions](08-sessions.md)). A spectator answers as a player does, holds no seat, and the log holds nothing of it.
 4. A home server asks its router to forward its port, by PCP, NAT-PMP or UPnP-IGD; LAN servers announce their signed listing over mDNS.
-5. Against floods, cheap checks come first: QUIC address validation, limits per address, and a packet's size before its signature.
+5. Against floods, cheap checks come first: the Retry, limits per address, and a packet's size before its signature.
+
+### The sealed UDP
+
+Each integer is big-endian. A datagram's first bit is 1 on a handshake packet and 0 on a packet session's, and each field has one encoding: a reader drops a datagram that holds any other.
+
+- **TLS.** TLS 1.3 with RFC 9001's key schedule, as QUIC version 1 derives its packet keys, and the one cipher suite `TLS_CHACHA20_POLY1305_SHA256`; the ALPN `campfire`; a pinned client's server name `campfire`; no resumption and no 0-RTT. TLS's `quic_transport_parameters` extension carries the client's version, the byte 1, and the server's 91 bytes: the version 1, the packet session's 8-byte connection ID, its 16-byte reset token, and two 33-byte address tokens for the client's next connections.
+- **Handshake packets.** A header of 10 bytes: the type, `0x80 | type << 4`; the version, 1; and the 8-byte handshake ID the client draws at random, which every packet of its handshake repeats. The first key epoch goes in `Initial` packets in the clear, the handshake epoch in `Handshake` packets; a crypto frame is a `u32` offset in its epoch's stream, a `u16` length and the data. A flight goes again until the peer's next flight arrives, first after 999 ms, then at twice the last wait.
+
+| Type | Packet | Body after the header |
+| --- | --- | --- |
+| 0 | `Initial` | `u8` 0, or 1 and an address token of 33 bytes; a crypto frame. A client pads each of its `Initial`s with zeros to 1,200 bytes, and a server drops a shorter one |
+| 1 | `Retry` | The address token of 33 bytes that the client's next `Initial` carries |
+| 2 | `Handshake` | A `u16` packet number; a crypto frame sealed with the handshake epoch's key, the number its nonce, the header and the number its associated data, its 16-byte tag last |
+| 3 | `Refuse` | None: the server takes no handshake from the address now |
+| 4 | `Alert` | The TLS alert, one byte |
+
+- **An address token is the server's.** A client keeps the 33 bytes as it got them and reads none of them.
+- **Packet session packets.** A client's datagram starts with the connection ID, whose first bit is 0; a server's starts with the header. The header is 3 bytes, or 10 with acknowledgements: the flags; the low 16 bits of the packet number; then, with acknowledgements, the low 16 bits of the largest number accepted, a `u32` of a bit for each of the 32 numbers below it, the nearest in the lowest bit, and a `u8` of the largest's ACK delay in units of 0.25 ms. The flags hold, from the high bit: 0; the type in 3 bits; the payload's kind in 2 bits, 0 on every type but `Payload`; whether acknowledgements follow, on each `AckOnly` and on a `Payload` only; and a reserved 0.
+
+| Type | Packet | Body |
+| --- | --- | --- |
+| 0 | `Payload` | The game traffic, of the kind the flags name |
+| 1 | `AckOnly` | None |
+| 2 | `Ping` | None: the keep-alive and the probe of a timeout |
+| 3 | `PathChallenge` | 8 random bytes, which a new path echoes |
+| 4 | `PathResponse` | The 8 bytes of the challenge |
+| 5 | `Close` | The `u64` code of the close: 0 ended with no reason, 1 dropped, as the app exited; Campfire's from 16: `Left`, `Superseded`, `InputRefused`, `ChainRewritten`, `SessionRefused`, `Unanswered`, `JoinRefused` |
+
+- **The seal.** Each packet session packet is sealed with ChaCha20-Poly1305 under the TLS handshake's 1-RTT keys, each direction its own: the nonce from the whole packet number, which a reader expands from its low 16 bits as RFC 9000's appendix A does; the header, not the connection ID, as the associated data; the 16-byte tag after the body.
+- **A stateless reset.** A server that holds no packet session of a datagram's connection ID answers with at most 64 bytes, shorter than that datagram and none to one of 21 bytes or less: a first bit of 0, random bytes, and the reset token of the ID last. A client that receives a datagram of at least 21 bytes whose last 16 are its packet session's reset token ends that packet session.
 
 ## Session log
 

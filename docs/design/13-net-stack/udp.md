@@ -1,7 +1,7 @@
 # UDP
 
 How `net-udp` makes a sealed packet session over a network, and `net-socket` carries it on the OS's
-socket: its handshake, its trust, and how a server guards itself. The packet session that it seals is in [packet session](packet-session.md).
+socket: its handshake, its trust, and how a server guards itself. The packet session that it seals is in [packet session](packet-session.md), its byte layouts in [the protocol spec](../05-protocol-spec.md#the-sealed-udp), and the facts behind it in [UDP research](../../research/udp.md).
 
 ## Handshake
 
@@ -33,7 +33,7 @@ socket: its handshake, its trust, and how a server guards itself. The packet ses
   where a server makes a key and its client pins it; the OS's root store through
   `rustls-platform-verifier`, which needs a Java component on Android.
 - **One server secret derives the raw key and the reset key,** by HKDF-SHA256 with the labels
-  `campfire/udp/tls/v1` and `campfire/udp/reset/v1`, so one file holds the identity and the pin
+  `campfire/tls/v1` and `campfire/udp-reset/v1`, so one file holds the identity and the pin
   cannot be lost while the identity stays.
 - **The app authenticates over the link.** No client key in TLS. Each end of a link holds RFC 9266's
   `tls-exporter` binding as `ChannelBinding`, which an app's login signs, so a party that relays a

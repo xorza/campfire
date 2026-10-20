@@ -10,11 +10,8 @@ audit Any usage
 seats->slots
 why own shaders
 extransion traits audit
-all dependencies declared in workspace cargo.toml
-disable default features for deps
-migrate the drive
 
 bevy math?
- rotation: [f32; 4],
-    translation: [f32; 3],
-    bounds: Vec<[[f32; 3]; 2]>,
+rotation: [f32; 4],
+translation: [f32; 3],
+bounds: Vec<[[f32; 3]; 2]>,

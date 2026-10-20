@@ -1,6 +1,6 @@
 # Campfire — QUIC transport
 
-The server and the client link over QUIC alone, through `quic`, an IO layer on `quinn-proto` under Lightyear's `Link`. QUIC alone, not WebTransport: WebTransport is HTTP/3 over QUIC, and its one gain is that a browser reaches it, which Campfire dropped ([Code](../../AGENTS.md#code)). The facts behind each decision are in [the research](../research/quic.md).
+The server and the client link over QUIC alone, through `quic`, an IO layer on `quinn-proto` under Lightyear's `Link`. QUIC alone, not WebTransport: WebTransport is HTTP/3 over QUIC, and its one gain is that a browser reaches it, which Campfire dropped ([Code](../../AGENTS.md#code)). The facts behind each decision that stands are in [UDP research](../research/udp.md).
 
 ## The stack
 
