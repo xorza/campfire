@@ -8,7 +8,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
 - `docs/research/` — what the design is taken from: measurements and sources read, facts only.
 - `PLAN.md` — the one plan: every open step, in the order it is done, in batches of one commit each, and the foundations ([Workflow](#workflow)). It lists open items only.
 - `.notes/ISSUES.md` — the issue log: every open problem ([Issue log](#issue-log)).
-- `source/` — engine and game code, and `drive/`, the driver of every check, a submodule ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, the MOBA test content among them; `source/packages/<game>/` an imported game's rules package.
+- `source/` — engine and game code ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, the MOBA test content among them; `source/packages/<game>/` an imported game's rules package.
 - `../GeneralsX/` — beside this repository, not in it: [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS: the reference for Zero Hour's formats and rules. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/09-zero-hour.md#decisions)).
 
 When code and design disagree, fix one of them, and state which one.
@@ -67,7 +67,7 @@ The issue log is `.notes/ISSUES.md`, every open problem of the project.
 
 ## Checks
 
-Every check, test and bench runs through `cargo drive`, from `source/` ([The driver](docs/design/02-engine-core.md#the-driver)): the `drive` submodule, the same driver in every project, whose lanes and the workspace's own commands are in `source/Cargo.toml`'s `[workspace.metadata.drive]`. Never `cargo clippy`, `cargo test`, `cargo nextest`, `cargo doc` or `cargo bench` by hand: each shape of a cargo command keeps a cache of its own. No command takes `-p` or a crate list, and none runs with its own `CARGO_TARGET_DIR`, `RUSTFLAGS` or `CARGO_PROFILE_*` but the profiling build of [Benches](docs/design/02-engine-core.md#benches).
+Every check, test and bench runs through `cargo drive`, from `source/` ([The driver](docs/design/02-engine-core.md#the-driver)): `cargo-drive`, the same driver in every project, whose lanes and the workspace's own commands are in `source/Cargo.toml`'s `[workspace.metadata.drive]`. It is installed with `cargo install --locked --git https://github.com/xorza/drive`; the table's `version` names the driver the workspace needs, and an older or newer one refuses to run. Never `cargo clippy`, `cargo test`, `cargo nextest`, `cargo doc` or `cargo bench` by hand: each shape of a cargo command keeps a cache of its own. No command takes `-p` or a crate list, and none runs with its own `CARGO_TARGET_DIR`, `RUSTFLAGS` or `CARGO_PROFILE_*` but the profiling build of [Benches](docs/design/02-engine-core.md#benches).
 
 | Command | Runs |
 | --- | --- |

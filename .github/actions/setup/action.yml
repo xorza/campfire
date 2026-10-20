@@ -29,11 +29,10 @@ runs:
             rustup toolchain uninstall "$toolchain"
           fi
         done
-    # The driver, a workspace of its own, builds into a target folder of its own.
+    # The installed `cargo-drive` comes back with `~/.cargo/bin`, which the cache keeps.
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         workspaces: |
           source -> target
-          source/drive -> target
         shared-key: build
         save-if: ${{ github.ref == 'refs/heads/master' }}

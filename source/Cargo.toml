@@ -97,8 +97,10 @@ default-members = [
     "crates/test/rules",
 ]
 
-# The driver's lanes and the workspace's own commands, which `cargo drive` runs (drive/src/main.rs).
+# The driver's lanes and the workspace's own commands, which `cargo drive` runs; `version` names
+# the driver the workspace needs, and a driver it does not name refuses to run.
 [workspace.metadata.drive]
+version = "0.2"
 # Every bench built, so a bench that no longer builds fails the gate (02-engine-core.md, The gate
 # builds every bench).
 gate-benches = true
