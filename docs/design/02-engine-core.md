@@ -129,7 +129,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 
 ## Names
 
-The vocabulary the code, the data, the scripts and the documents share, each word with one meaning; the audit that found where they drifted is [Vocabulary](../research/vocabulary.md).
+The vocabulary the code, the data, the scripts and the documents share, each word with one meaning; `cargo drive run vocabulary` lists the names the code declares.
 
 - **An owner is a player.** `owner` is the seat that owns a unit, as the replication's audiences name it; the module that declares a thing is its module, or its `capability`, and the struct that holds a worker its holder. Refused: `owner` for a player, a module, a place in data and a file only its user opens at once.
 - **A seat is a player's, a slot a unit's.** `Seat` numbers a session's players, as a lobby seats them, and `slot` alone is a unit's action or item slot, as a MOBA binds its abilities to slots. Refused: `slot` for both, `PlayerSlot` beside `ActionSlot`.

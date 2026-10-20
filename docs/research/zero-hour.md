@@ -23,10 +23,6 @@ The Steam install keeps Zero Hour in its root and base Generals in `ZH_Generals/
 | `.wnd` window layouts | 80 | 8.1 MiB | |
 | `.mp3` music | 56 | 183 MiB | |
 
-## Archives
-
-`BIGF`, a `u32` little-endian archive size, a `u32` big-endian file count and a `u32` big-endian header size; then one entry per file, a `u32` big-endian offset and size and a NUL-terminated path. Paths use `\` and mixed case, so a lookup folds case.
-
 ## INI
 
 - **Size.** Zero Hour's 135 files: 17.9 MiB, 12.9 MiB without comments and blank lines. The largest without comments: `ParticleSystem.ini` 1.4 MiB, `Object/FactionBuilding.ini` 1.1 MiB, each general's object file about 0.5 MiB.
@@ -48,7 +44,7 @@ The Steam install keeps Zero Hour in its root and base Generals in `ZH_Generals/
 
 ## Sizes and ranges
 
-In the original's world units; the map's cells are 10 of them ([Maps](#maps)).
+In the original's world units; the map's cells are 10 of them (`MAP_XY_FACTOR`).
 
 A body's size is a box's half-diagonal, or a cylinder's or a sphere's radius.
 
@@ -67,12 +63,9 @@ Geometry is `BOX` on 710 objects, `CYLINDER` on 394, `SPHERE` on 73, and none on
 ## Maps
 
 - **Which maps.** The game lists each `.map` under `Maps\` in a folder of its own name, `Maps\<name>\<name>.map` (`MapCache::loadMapsFromDisk`, `Core/GameEngine/Source/GameClient/MapUtil.cpp`); all 150 are.
-- **Packing** (`Core/Libraries/Source/Compression/CompressionManager.cpp`). A four-byte tag, the `u32` little-endian unpacked size, then the stream: `EAR\0` EA's RefPack (`Core/Libraries/Source/Compression/EAC/refdecode.cpp`) on 145 maps, `ZL5\0` a zlib stream on 1, and no tag on 4, which are `CkMp` as they are. The game also reads `ZL1` to `ZL9`, `NOX`, `EAB` and `EAH`, which no shipped map uses.
+- **Packing** (`Core/Libraries/Source/Compression/CompressionManager.cpp`). EA's RefPack on 145 maps, zlib on 1, and none on 4. The game also reads `ZL1` to `ZL9`, `NOX`, `EAB` and `EAH`, which no shipped map uses.
 - **Versions.** `HeightMapData` 4 and `ObjectsList` 3, of `Object` chunks 3, on every map; `BlendTileData` 6 on 3 maps, 7 on 31 and 8 on 116. Version 6 stores no cliff bits, which the game makes from the heights: a cell is a cliff when its corners span more than 9.8 units. Version 7 stored rows of `(width + 1) / 8` bytes of them, short by a byte for most widths.
-- **Chunks** (`GeneralsMD/Code/GameEngine/Source/Common/System/DataChunk.cpp`). `CkMp`, a table of chunk names, each a length byte, the name and a `u32` id; then chunks, each a `u32` id, a `u16` version and an `i32` size, little-endian. A dictionary is a `u16` count of entries, each a key id and type in one `i32`, then a bool, `i32`, `f32`, string or wide string.
 - **Top chunks.** `HeightMapData`, `BlendTileData`, `WorldInfo`, `SidesList`, `ObjectsList`, `PolygonTriggers`, `GlobalLighting`, `WaypointsList`.
-- **Heightmap** (`WorldHeightMap::ParseHeightMapData`). Width, height, border, the playable boundaries, then one byte of height per cell. A cell is `MAP_XY_FACTOR` = 10 units wide, and a height step `MAP_HEIGHT_SCALE` = 0.625 units (`Core/GameEngine/Include/Common/MapObject.h`); both are exact in binary.
-- **Objects** (`WorldHeightMap::ParseObjectData`). Each a position of three `f32`, an angle `f32`, flags `i32`, a template name and a dictionary of properties: owner, initial health, `uniqueID`, waypoint ids among them.
 - **Two maps measured:**
 
 | Map | Cells | Border | Objects, kinds | Unpacked |
@@ -92,11 +85,9 @@ Geometry is `BOX` on 710 objects, `CYLINDER` on 394, `SPHERE` on 73, and none on
 
 ## Terrain
 
-`BlendTileData` (`WorldHeightMap::ParseBlendTileData`) holds, for every cell, a tile, a blend tile, a third blend tile and a cliff UV index, each an `i16`, and a bit for each cell's cliff state. Then the texture classes, each its first tile, its count, its width in tiles and its name, which `Terrain.ini` maps to a TGA of `Terrain.big`, cut into tiles; the edge classes; and the blended tiles, each the tile it blends and its direction: horizontal, vertical, either diagonal, inverted, long diagonal, and a custom edge class. A blended tile of a custom edge class draws nothing: `WorldHeightMap::getAlphaUVData` sets its four corners' alpha to 0, and the edge texture the game builds from the edge classes (`AlphaEdgeTextureClass::update`) no renderer binds, as nothing calls `getEdgeTerrainTexture`.
+In `BlendTileData` (`WorldHeightMap::ParseBlendTileData`), a blended tile of a custom edge class draws nothing: `WorldHeightMap::getAlphaUVData` sets its four corners' alpha to 0, and the edge texture the game builds from the edge classes (`AlphaEdgeTextureClass::update`) no renderer binds, as nothing calls `getEdgeTerrainTexture`.
 
 ## Models
-
-W3D is chunks (`Generals/Code/Libraries/Source/WWVegas/WW3D2/w3d_file.h`): a `u32` type and a `u32` size, whose top bit marks a chunk of chunks.
 
 | File | Count |
 | --- | --- |
@@ -136,7 +127,7 @@ Read from the released source and the install's `INIZH.big` on 15 October 2026.
 - **Pathfinder cells** (`Core/GameEngine/Source/GameLogic/AI/AIPathfind.cpp`). A cell is 10 units (`PATHFIND_CELL_SIZE`), one map cell. `classifyMapCell` makes a cell a cliff when the terrain calls its top-left corner a cliff cell (`TerrainLogic::isCliffCell`), and water when any of its corners is under water; objects make obstacle cells later. `classifyMap` then turns each clear cell beside a cliff, of the eight round it, into a cliff, and marks each clear cell beside the grown cliffs as pinched. A locomotor enters a cell only by a surface its type takes (`Pathfinder::validLocomotorSurfacesForCellType`): a clear cell `GROUND` or `AIR`, water `WATER` or `AIR`, a cliff `CLIFF` or `AIR`, rubble `RUBBLE` or `AIR`, an obstacle or an impassable cell `AIR` alone.
 - **A skirmish's start** (`placeNetworkBuildingsForPlayer`, `GeneralsMD/Code/GameEngine/Source/GameLogic/System/GameLogic.cpp`). Each player's `PlayerTemplate` gives a `StartingBuilding` and up to ten `StartingUnit` (`PlayerTemplate.cpp`). The building stands at the waypoint `Player_<n>_Start`, `n` the start position counted from 1, turned by its template's `PlacementViewAngle` in degrees. Each starting unit is placed by `PartitionManager::findPositionAround` round the waypoint `Player_<n>_Rally` if the map has one, else round the building's point moved `−y` by half the building's bounding sphere, between 0.7 and 1.3 times that sphere's radius from it.
 - **America's start** (`PlayerTemplate.ini`, `Object/FactionBuilding.ini`, `Object/AmericaVehicle.ini`, `Locomotor.ini`). `FactionAmerica` starts with `AmericaCommandCenter` and `AmericaVehicleDozer`. The command center is a box of half extents 60 and 70, 49 high, `PlacementViewAngle = -135`. The dozer is a box of half extents 15 and 10, 15 high, so its bounding circle is 18.03; its locomotor `AmericaVehicleDozerLocomotor` drives on `GROUND` at 30 a second, turns 90° a second, accelerates at 30 and brakes at 50, turns at no less than 25 a second, and can move backwards.
-- **Tournament Desert.** Two start waypoints, `Player_1_Start` and `Player_2_Start`; its bounds, as the import writes them, from −350 to 2,340 on x and −3,040 to 350 on z. Its heightmap's playable boundary is 204 × 270 cells within its border of 35. 46,543 of its 91,800 cells are cliffs; grown by one ring, 48,689, which merge row by row into 286 rectangles. 32 of its placed objects are structures that are not small: 4 overlap a grown cliff cell, and 4 pairs overlap each other. Its widest placed walker's bounding circle is 11.7.
+- **Tournament Desert.** Two start waypoints, `Player_1_Start` and `Player_2_Start`; its bounds, as the import writes them, from −350 to 2,340 on x and −3,040 to 350 on z. Its heightmap's playable boundary is 204 × 270 cells within its border of 35. 46,543 of its 91,800 cells are cliffs; grown by one ring, 48,689. 32 of its placed objects are structures that are not small: 4 overlap a grown cliff cell, and 4 pairs overlap each other. Its widest placed walker's bounding circle is 11.7.
 - **All 116 maps of `MapsZH.big`.** With cliffs grown by one ring, 2,089 structures that are not small overlap a cliff cell, on 95 maps; 1,474 pairs of them overlap each other, on 81 maps; 2,175 waypoints lie nearer a cliff cell than their map's widest placed walker's bounding circle, on 54 maps. No `Player_<n>_Start` waypoint does. Measured on 15 October 2026 by a script that reads the maps and the INI as the import does, each structure's box turned by its angle.
 
 ## Production
@@ -149,7 +140,6 @@ Read from the released source and the install's `INIZH.big` on 15 October 2026.
 - **Factories** (`ProductionUpdate`, `DefaultProductionExitUpdate`, `GeneralsMD/Code/GameEngine/Source/GameLogic/Object/Update/ProductionUpdate.cpp`). A factory's queue holds `MaxQueueEntries`, 9 by default. A trained unit appears at the factory's `UnitCreatePoint`, in the factory's frame, and moves to its `NaturalRallyPoint`, or to the rally point the player set: `X:-18 Y:35` and `X:60 Y:35` for the command center, `X:0 Y:0` and `X:55 Y:0` for the barracks. The cost is paid as the unit is queued, and a cancel returns it.
 - **Construction** (`DozerAIUpdate`, `GeneralsMD/Code/GameEngine/Source/GameLogic/Object/Update/AIUpdate/DozerAIUpdate.cpp`). `construct` checks the player can make the object and the place is legal (terrain, a clear path, no overlap, revealed by the shroud), withdraws the whole cost, spawns the object at once, under construction, at 0 % and 1 hit point, turned at the angle the player placed it at, flattens the terrain under it, and only then gives the dozer its task. The dozer drives to the free spot nearest a point half the building's major radius from its center toward the dozer (`findGoodBuildOrRepairPosition`); there each frame adds `100 / frames` to the construction percent and `max / frames` to the health, `frames` the build time. A cancel of a construction returns the whole cost (`onDozerCancelConstruct`, `Core/GameEngine/Source/GameLogic/System/GameLogicDispatch.cpp`). The cursor's building shows at its template's `PlacementViewAngle`, −135° for America's buildings, until the player drags an angle (`InGameUI::placeBuildAvailable`).
 - **Starting money** (`multiplayer.ini`, `MultiplayerSettings::addStartingMoneyChoice`). The choices are 5,000, 10,000, 20,000 and 50,000; 10,000 is marked `Default`, and the game asserts that exactly one is. `GameLogic::startNewGame` gives every player the starting cash, whether its map has a start for it or not.
-- **The string table** (`GameTextManager::parseCSF`, `Core/GameEngine/Source/GameClient/GameText.cpp`). `Data\<language>\generals.csf`: a header of the tag `CSF `, its version, the counts of labels and strings, and two more integers; then each label, the tag `LBL `, its count of strings, its name's length and bytes; each string the tag `STR ` or `STRW`, its length in UTF-16 units and those units each inverted bit by bit, and for `STRW` a length and the bytes of its speech file. The game keeps a label's first string, up to its first NUL, as `stripSpaces` leaves it: a run of spaces as one, and no space at its start, at its end, or beside a newline or a tab. Labels are found ignoring case (`compareLUT`). An `&` in a button's text marks its hotkey.
 
 ## Combat
 
@@ -169,17 +159,6 @@ Read from the released source and the install's `INIZH.big` on 15 October 2026.
 ## Randomness
 
 The logic draws from one generator: six `u32` words, each draw an add-with-carry pass over them and an increment, seeded by `InitRandom(seed)` (`Core/GameEngine/Source/Common/RandomValue.cpp`). The client and the audio draw from their own.
-
-## Options for the importer's output
-
-| Output | From | How | Crates |
-| --- | --- | --- | --- |
-| Models, `.glb` | W3D | glTF's JSON through `serde_json`, which the workspace has, and the binary container, a header and two chunks, written by hand | None new; [`gltf-json`](https://docs.rs/crate/gltf/latest) would give the JSON types |
-| Textures, KTX2 | DDS | The DXT blocks and their mips copied into a KTX2 container as BC1, BC2 and BC3, with no new compression | None for the container, a header, a level index and a format descriptor; [`ruzstd`](https://docs.rs/ruzstd) for zstd, whose encoder has its fastest level done |
-| Textures, PNG | TGA | Pixels into PNG | `png` |
-| Sounds | WAV, MP3 | Not measured yet | |
-
-Each is pure Rust, with no float math in what it writes, so one version and one setting should give the same bytes on every OS; the import's check on two OSes confirms it.
 
 ## Open
 
