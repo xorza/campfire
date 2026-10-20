@@ -10,14 +10,14 @@ kind = "glue"
 [dependencies]
 campfire-net-payload = { workspace = true, features = ["reflect"] }
 
-tracing.workspace = true
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 bevy_app.workspace = true
 bevy_ecs = { workspace = true, features = ["std"] }
-bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
+bevy_reflect = { workspace = true, features = ["smallvec", "std"] }
 
 [dev-dependencies]
-bytes.workspace = true
+bytes = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true

@@ -20,12 +20,12 @@ campfire-package.workspace = true
 campfire-store.workspace = true
 campfire-values.workspace = true
 
-thiserror.workspace = true
+thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }
 campfire-package-disk = { workspace = true, features = ["internals"] }
-serde.workspace = true
+serde = { workspace = true, features = ["derive", "rc", "std"] }
 
 [lints]
 workspace = true

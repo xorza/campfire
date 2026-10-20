@@ -12,10 +12,10 @@ campfire-store.workspace = true
 campfire-common.workspace = true
 campfire-net-core.workspace = true
 
-netdev.workspace = true
+netdev = { workspace = true, features = ["gateway"] }
 polling.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 ureq.workspace = true
 xmltree.workspace = true
 

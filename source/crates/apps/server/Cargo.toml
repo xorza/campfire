@@ -27,10 +27,17 @@ campfire-store.workspace = true
 campfire-visibility.workspace = true
 
 bevy_app.workspace = true
-bevy_ecs.workspace = true
-clap.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
+clap = { workspace = true, features = [
+    "derive",
+    "error-context",
+    "help",
+    "std",
+    "suggestions",
+    "usage",
+] }
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
 campfire-math = { workspace = true, features = ["internals"] }

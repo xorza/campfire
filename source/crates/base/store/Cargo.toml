@@ -11,17 +11,26 @@ kind = "proxy"
 internals = ["dep:tempfile"]
 
 [dependencies]
-socket2.workspace = true
+socket2 = { workspace = true, features = ["all"] }
 tempfile = { workspace = true, optional = true }
-thiserror.workspace = true
-zeroize.workspace = true
+thiserror = { workspace = true, features = ["std"] }
+zeroize = { workspace = true, features = ["alloc"] }
 
 [target.'cfg(unix)'.dependencies]
-libc.workspace = true
+libc = { workspace = true, features = ["std"] }
 signal-hook.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows.workspace = true
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "std",
+] }
 
 [dev-dependencies]
 campfire-store = { workspace = true, features = ["internals"] }

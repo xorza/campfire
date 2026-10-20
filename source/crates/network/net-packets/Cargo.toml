@@ -25,8 +25,8 @@ campfire-net-bytes.workspace = true
 campfire-net-emulator.workspace = true
 campfire-net-payload.workspace = true
 
-bytes.workspace = true
-thiserror.workspace = true
+bytes = { workspace = true, features = ["std"] }
+thiserror = { workspace = true, features = ["std"] }
 
 bevy_platform = { workspace = true, features = ["std"] }
 

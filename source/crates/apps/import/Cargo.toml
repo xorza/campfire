@@ -48,13 +48,20 @@ campfire-store.workspace = true
 campfire-units.workspace = true
 campfire-values.workspace = true
 
-bevy_math.workspace = true
-clap.workspace = true
-derive_more.workspace = true
-miniz_oxide.workspace = true
-serde.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
+bevy_math = { workspace = true, features = ["serialize", "std"] }
+clap = { workspace = true, features = [
+    "derive",
+    "error-context",
+    "help",
+    "std",
+    "suggestions",
+    "usage",
+] }
+derive_more = { workspace = true, features = ["display"] }
+miniz_oxide = { workspace = true, features = ["with-alloc"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
 campfire-declare = { workspace = true, features = ["internals"] }

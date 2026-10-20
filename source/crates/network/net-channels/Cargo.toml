@@ -23,12 +23,16 @@ campfire-net-core.workspace = true
 campfire-net-payload.workspace = true
 campfire-net-bytes.workspace = true
 
-bytes.workspace = true
+bytes = { workspace = true, features = ["std"] }
 campfire-measure = { workspace = true, optional = true }
-criterion = { workspace = true, optional = true }
-lz4_flex = { workspace = true, optional = true }
-thiserror.workspace = true
-tracing.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
+lz4_flex = { workspace = true, features = [
+    "checked-decode",
+    "safe-decode",
+    "safe-encode",
+], optional = true }
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 bevy_platform = { workspace = true, features = ["std"] }
 

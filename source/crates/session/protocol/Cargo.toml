@@ -19,17 +19,17 @@ campfire-codec.workspace = true
 campfire-common.workspace = true
 
 campfire-measure = { workspace = true, optional = true }
-criterion = { workspace = true, optional = true }
+criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
 getrandom.workspace = true
-nostr.workspace = true
-secp256k1 = { workspace = true, features = ["serde"] }
-serde.workspace = true
-thiserror.workspace = true
-zeroize.workspace = true
+nostr = { workspace = true, features = ["std"] }
+secp256k1 = { workspace = true, features = ["serde", "std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
+zeroize = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
 # The tests compute each hash by hand, BLAKE3 of its exact bytes, as the protocol spells them.
-blake3.workspace = true
+blake3 = { workspace = true, features = ["std"] }
 campfire-protocol = { workspace = true, features = ["internals"] }
 # A test reads and writes the pinned log files.
 campfire-store = { workspace = true, features = ["internals"] }

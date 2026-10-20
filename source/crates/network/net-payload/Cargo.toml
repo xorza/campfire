@@ -14,10 +14,10 @@ internals = []
 reflect = ["dep:bevy_reflect"]
 
 [dependencies]
-bytes.workspace = true
-serde.workspace = true
+bytes = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
 
-bevy_reflect = { workspace = true, features = ["std", "smallvec"], optional = true }
+bevy_reflect = { workspace = true, features = ["smallvec", "std"], optional = true }
 
 [dev-dependencies]
 campfire-net-payload = { workspace = true, features = ["internals"] }

@@ -16,7 +16,7 @@ internals = [
 campfire-common.workspace = true
 campfire-sim.workspace = true
 
-bevy_ecs.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-state-types = { workspace = true, features = ["internals"] }

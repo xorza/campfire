@@ -22,10 +22,24 @@ campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-store = { workspace = true, optional = true }
 
-clap = { workspace = true, optional = true }
-serde.workspace = true
-tracing.workspace = true
-tracing-subscriber = { workspace = true, optional = true }
+clap = { workspace = true, features = [
+    "derive",
+    "error-context",
+    "help",
+    "std",
+    "suggestions",
+    "usage",
+], optional = true }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
+tracing-subscriber = { workspace = true, features = [
+    "ansi",
+    "env-filter",
+    "fmt",
+    "json",
+    "std",
+    "tracing-log",
+], optional = true }
 
 [dev-dependencies]
 campfire-log = { workspace = true, features = ["internals"] }

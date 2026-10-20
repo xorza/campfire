@@ -15,9 +15,9 @@ internals = ["dep:campfire-measure", "dep:criterion", "campfire-math/internals"]
 campfire-net-core.workspace = true
 campfire-math.workspace = true
 
-bytes.workspace = true
+bytes = { workspace = true, features = ["std"] }
 campfire-measure = { workspace = true, optional = true }
-criterion = { workspace = true, optional = true }
+criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
 
 bevy_platform = { workspace = true, features = ["std"] }
 

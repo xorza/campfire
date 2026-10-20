@@ -30,8 +30,8 @@ campfire-state-types.workspace = true
 campfire-units.workspace = true
 campfire-values.workspace = true
 
-bevy_ecs.workspace = true
-serde.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
 
 [dev-dependencies]
 campfire-deliveries = { workspace = true, features = ["internals"] }

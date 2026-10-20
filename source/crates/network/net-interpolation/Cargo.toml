@@ -30,17 +30,17 @@ campfire-net-messages.workspace = true
 campfire-net-sync.workspace = true
 campfire-net-replication.workspace = true
 
-bytes.workspace = true
-serde.workspace = true
-tracing.workspace = true
-variadics_please.workspace = true
+bytes = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
+variadics_please = { workspace = true, features = ["alloc"] }
 
 bevy_app.workspace = true
 bevy_curve = { workspace = true, features = ["std"] }
 bevy_derive.workspace = true
 bevy_ecs = { workspace = true, features = ["std"] }
 bevy_platform = { workspace = true, features = ["std"] }
-bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
+bevy_reflect = { workspace = true, features = ["smallvec", "std"] }
 bevy_replicon = { workspace = true, features = ["client", "server"] }
 bevy_time.workspace = true
 bevy_transform = { workspace = true, features = ["bevy-support"] }

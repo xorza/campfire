@@ -16,16 +16,16 @@ internals = [
 [dependencies]
 campfire-common.workspace = true
 
-blake3.workspace = true
+blake3 = { workspace = true, features = ["std"] }
 campfire-measure = { workspace = true, optional = true }
-criterion = { workspace = true, optional = true }
-serde.workspace = true
-thiserror.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }
 campfire-math = { workspace = true, features = ["internals"] }
-proptest.workspace = true
+proptest = { workspace = true, features = ["std"] }
 
 [lib]
 bench = false

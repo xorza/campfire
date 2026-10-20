@@ -24,9 +24,9 @@ campfire-net-payload.workspace = true
 campfire-net-udp.workspace = true
 
 polling.workspace = true
-quinn-udp.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
+quinn-udp = { workspace = true, features = ["tracing"] }
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
 campfire-net-socket = { workspace = true, features = ["internals"] }

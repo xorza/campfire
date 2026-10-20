@@ -11,7 +11,7 @@ kind = "proxy"
 internals = []
 
 [dependencies]
-bevy_ecs.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-schedule = { workspace = true, features = ["internals"] }

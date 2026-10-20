@@ -88,14 +88,14 @@ campfire-visibility.workspace = true
 campfire-vision.workspace = true
 
 bevy_app.workspace = true
-bevy_ecs.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
 bevy_replicon = { workspace = true, features = ["client", "server"] }
 bevy_state.workspace = true
 bevy_time.workspace = true
-secp256k1.workspace = true
-serde.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
+secp256k1 = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
 campfire-math = { workspace = true, features = ["internals"] }

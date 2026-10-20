@@ -24,12 +24,12 @@ campfire-math.workspace = true
 campfire-schedule.workspace = true
 
 arrayvec.workspace = true
-bevy_ecs.workspace = true
-blake3.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
+blake3 = { workspace = true, features = ["std"] }
 campfire-measure = { workspace = true, optional = true }
-criterion = { workspace = true, optional = true }
-serde.workspace = true
-thiserror.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-log = { workspace = true, features = ["internals"] }

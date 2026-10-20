@@ -32,11 +32,11 @@ campfire-sim.workspace = true
 campfire-units.workspace = true
 campfire-values.workspace = true
 
-derive_more.workspace = true
+derive_more = { workspace = true, features = ["display"] }
 fluent-bundle.workspace = true
 fluent-syntax.workspace = true
-serde.workspace = true
-thiserror.workspace = true
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
 unic-langid.workspace = true
 
 [dev-dependencies]

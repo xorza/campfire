@@ -20,7 +20,7 @@ campfire-net-packets.workspace = true
 campfire-net-udp.workspace = true
 campfire-schedule.workspace = true
 
-tracing.workspace = true
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 bevy_app.workspace = true
 bevy_ecs = { workspace = true, features = ["std"] }

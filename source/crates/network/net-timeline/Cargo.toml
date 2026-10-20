@@ -15,12 +15,12 @@ internals = ["campfire-math/internals"]
 campfire-math.workspace = true
 campfire-net-core = { workspace = true, features = ["reflect"] }
 
-tracing.workspace = true
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 bevy_app = { workspace = true, features = ["bevy_reflect"] }
 bevy_ecs = { workspace = true, features = ["std"] }
 bevy_platform = { workspace = true, features = ["std"] }
-bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
+bevy_reflect = { workspace = true, features = ["smallvec", "std"] }
 bevy_time.workspace = true
 
 [dev-dependencies]

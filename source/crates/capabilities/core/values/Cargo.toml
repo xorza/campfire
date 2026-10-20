@@ -20,10 +20,10 @@ campfire-math.workspace = true
 campfire-sim.workspace = true
 campfire-state-types.workspace = true
 
-bevy_ecs.workspace = true
-derive_more.workspace = true
-serde.workspace = true
-thiserror.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
+derive_more = { workspace = true, features = ["display"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }

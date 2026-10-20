@@ -18,9 +18,9 @@ campfire-common.workspace = true
 campfire-math.workspace = true
 campfire-values.workspace = true
 
-bevy_math.workspace = true
-serde.workspace = true
-thiserror.workspace = true
+bevy_math = { workspace = true, features = ["serialize", "std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-client-files = { workspace = true, features = ["internals"] }

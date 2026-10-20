@@ -9,11 +9,11 @@ kind = "problem"
 
 [dependencies]
 campfire-common-derive.workspace = true
-blake3.workspace = true
-derive_more.workspace = true
-serde.workspace = true
+blake3 = { workspace = true, features = ["std"] }
+derive_more = { workspace = true, features = ["display"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
 sha2.workspace = true
-zeroize.workspace = true
+zeroize = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }

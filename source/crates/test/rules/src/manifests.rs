@@ -238,6 +238,58 @@ fn each_crate_takes_the_workspaces_lints() {
     assert_eq!(own, Vec::<String>::new());
 }
 
+/// Each dependency's version is the workspace table's, and its features its user's: a member names
+/// each dependency by `workspace = true` alone, with the features it needs, and the table gives an
+/// external dependency its version, no default feature and no feature of its own
+/// (02-engine-core.md, One version of each dependency, and features where they are used).
+#[test]
+fn a_version_is_the_workspaces_and_a_feature_its_users() {
+    let own: Vec<String> = crates()
+        .iter()
+        .flat_map(|krate| {
+            let manifest = &krate.manifest;
+            manifest
+                .dependencies()
+                .chain(manifest.dev_dependencies())
+                .filter(|(_, dependency)| !dependency.inherited)
+                .map(|(name, _)| format!("{} {name}", krate.name))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert_eq!(own, Vec::<String>::new());
+    let manifest = WorkspaceManifest::parse(&read(source().join("Cargo.toml").to_str().unwrap()));
+    assert_eq!(manifest.shared_features(), Vec::<&str>::new());
+    // A version, a path or `default-features` of a member's own is not inherited; a feature and
+    // `optional` are. The table's dependency with its defaults on, or a feature, shares it.
+    let member = Manifest::parse(concat!(
+        "[package]\nname = \"x\"\n\n[dependencies]\n",
+        "a = \"1\"\nb = { workspace = true, default-features = false }\n",
+        "c = { workspace = true, path = \"c\" }\n",
+        "d = { workspace = true, features = [\"e\"], optional = true }\ne.workspace = true\n",
+    ));
+    let inherited: Vec<(&str, bool)> = member
+        .dependencies()
+        .map(|(name, dependency)| (name, dependency.inherited))
+        .collect();
+    assert_eq!(
+        inherited,
+        [
+            ("a", false),
+            ("b", false),
+            ("c", false),
+            ("d", true),
+            ("e", true)
+        ]
+    );
+    let table = WorkspaceManifest::parse(concat!(
+        "[workspace.dependencies]\n",
+        "a = \"=1\"\nb = { version = \"=1\", default-features = false }\n",
+        "c = { version = \"=1\", default-features = false, features = [\"x\"] }\n",
+        "d = { path = \"d\" }\n",
+    ));
+    assert_eq!(table.shared_features(), ["a", "c"]);
+}
+
 #[test]
 fn each_crates_dir_is_its_package_name_without_the_prefix() {
     let crates = crates();
@@ -641,9 +693,11 @@ fn unifying_internals(crates: &[Crate]) -> BTreeSet<&str> {
             .filter(|(_, dependency)| !dependency.optional)
             .map(|(name, dependency)| (name, dependency.turns_internals_on()))
     }
+    // An outside crate's feature of the same name, as rhai's, is not the workspace's.
+    let members: BTreeSet<&str> = crates.iter().map(|krate| krate.name.as_str()).collect();
     let mut found: BTreeSet<&str> = crates
         .iter()
-        .filter(|krate| required(krate).any(|(_, turns)| turns))
+        .filter(|krate| required(krate).any(|(name, turns)| turns && members.contains(name)))
         .map(|krate| krate.name.as_str())
         .collect();
     loop {
@@ -770,7 +824,7 @@ fn the_default_members_are_the_build_that_ships() {
     assert_eq!(manifest.default_members(), expected);
     assert!(unifying.contains("campfire-harness"));
     // A crate that turns `internals` on by a required dependency unifies it, and so does one that
-    // depends on it; an optional one, or a dev-dependency, does not.
+    // depends on it; an optional one, a dev-dependency, or an outside crate's, does not.
     let krate = |name: &str, dependencies: &str| Crate {
         dir_name: name.to_owned(),
         path: name.to_owned(),
@@ -793,6 +847,11 @@ fn the_default_members_are_the_build_that_ships() {
         krate(
             "e",
             "b.workspace = true\n\n[dev-dependencies]\nb = { workspace = true, features = [\"internals\"] }\n",
+        ),
+        // An outside crate's feature of the same name, as rhai's, is not the workspace's.
+        krate(
+            "f",
+            "rhai = { workspace = true, features = [\"internals\"] }\n",
         ),
     ];
     assert_eq!(unifying_internals(&sample), BTreeSet::from(["a", "c"]));

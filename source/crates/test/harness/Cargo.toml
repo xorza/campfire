@@ -43,9 +43,9 @@ campfire-units = { workspace = true, features = ["internals"] }
 campfire-values = { workspace = true, features = ["internals"] }
 campfire-vision = { workspace = true, features = ["internals"] }
 
-bevy_ecs.workspace = true
-criterion.workspace = true
-secp256k1.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
+criterion = { workspace = true, features = ["cargo_bench_support"] }
+secp256k1 = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-areas = { workspace = true, features = ["internals"] }

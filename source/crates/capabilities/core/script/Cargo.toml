@@ -26,13 +26,13 @@ campfire-math.workspace = true
 campfire-sim.workspace = true
 campfire-values.workspace = true
 
-bevy_ecs.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
 campfire-measure = { workspace = true, optional = true }
-criterion = { workspace = true, optional = true }
-derive_more.workspace = true
-rhai.workspace = true
-serde.workspace = true
-thiserror.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
+derive_more = { workspace = true, features = ["display"] }
+rhai = { workspace = true, features = ["internals", "no_closure", "no_float", "no_time", "std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-script = { workspace = true, features = ["internals"] }

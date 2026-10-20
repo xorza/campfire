@@ -18,12 +18,12 @@ internals = [
 [dependencies]
 campfire-math = { workspace = true, optional = true }
 
-bytes.workspace = true
+bytes = { workspace = true, features = ["std"] }
 campfire-measure = { workspace = true, optional = true }
-criterion = { workspace = true, optional = true }
-smallvec.workspace = true
-thiserror.workspace = true
-variadics_please.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
+smallvec = { workspace = true, features = ["union"] }
+thiserror = { workspace = true, features = ["std"] }
+variadics_please = { workspace = true, features = ["alloc"] }
 
 
 [dev-dependencies]

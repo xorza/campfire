@@ -29,10 +29,17 @@ campfire-runner.workspace = true
 campfire-sim.workspace = true
 campfire-store.workspace = true
 
-clap.workspace = true
-serde.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
+clap = { workspace = true, features = [
+    "derive",
+    "error-context",
+    "help",
+    "std",
+    "suggestions",
+    "usage",
+] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
 campfire-verifier = { workspace = true, features = ["internals"] }

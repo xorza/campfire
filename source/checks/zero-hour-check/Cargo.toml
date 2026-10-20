@@ -37,11 +37,18 @@ campfire-store = { workspace = true, features = ["internals"] }
 campfire-units = { workspace = true, features = ["internals"] }
 campfire-values.workspace = true
 
-clap.workspace = true
-derive_more.workspace = true
-serde.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
+clap = { workspace = true, features = [
+    "derive",
+    "error-context",
+    "help",
+    "std",
+    "suggestions",
+    "usage",
+] }
+derive_more = { workspace = true, features = ["display"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 [lints]
 workspace = true

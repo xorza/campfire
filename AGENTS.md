@@ -82,7 +82,7 @@ Every check, test and bench runs through `cargo drive`, from `source/` ([The dri
 
 A step runs again only when one of its inputs changed since it passed, and the tests only for the crates a change reaches. `CAMPFIRE_BLESS=1` before `cargo drive test` writes the tests' pinned files again, `CAMPFIRE_BLESS=1 cargo drive test <test>` those of one test; before `cargo drive run zero-hour`, the check's golden file.
 
-Each step prints one line; a failed step names its log, `target/drive/log/<step>.log`. Read the log, rather than run cargo again or pipe the driver through `grep` or `head`.
+Each step prints one line; a failed step names its log, `target/drive/log/<step>.log`, which holds no passing test. A run ends on one verdict line: `ok`, or `FAIL` with the failed steps and the first error, and `target/drive/last-<command>.txt`, which holds all the run printed; above it, each failed step shows its first lines again. So `| tail -1` is enough: on a failure, read the file it names, rather than run the command again or grep the logs.
 
 ## Code
 

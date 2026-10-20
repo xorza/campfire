@@ -25,12 +25,12 @@ campfire-net-connection.workspace = true
 campfire-net-stepper = { workspace = true, optional = true }
 campfire-net-transport.workspace = true
 
-tracing.workspace = true
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 bevy_app.workspace = true
 bevy_derive.workspace = true
 bevy_ecs = { workspace = true, features = ["std"] }
-bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
+bevy_reflect = { workspace = true, features = ["smallvec", "std"] }
 bevy_time.workspace = true
 bevy_utils = { workspace = true, features = ["debug"] }
 

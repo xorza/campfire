@@ -30,15 +30,15 @@ campfire-net-sync.workspace = true
 campfire-net-replication.workspace = true
 campfire-net-interpolation.workspace = true
 
-bytes.workspace = true
-serde = { workspace = true, optional = true }
-tracing.workspace = true
+bytes = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"], optional = true }
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 bevy_app.workspace = true
 bevy_curve = { workspace = true, features = ["std"] }
 bevy_diagnostic.workspace = true
 bevy_ecs = { workspace = true, features = ["std"] }
-bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
+bevy_reflect = { workspace = true, features = ["smallvec", "std"] }
 bevy_replicon = { workspace = true, features = ["client", "server"] }
 bevy_time.workspace = true
 bevy_utils = { workspace = true, features = ["debug"] }
@@ -48,7 +48,7 @@ campfire-codec = { workspace = true, features = ["internals"] }
 campfire-net-emulator = { workspace = true, features = ["internals"] }
 campfire-net-prediction = { workspace = true, features = ["internals"] }
 
-serde.workspace = true
+serde = { workspace = true, features = ["derive", "rc", "std"] }
 
 bevy.workspace = true
 bevy_state.workspace = true

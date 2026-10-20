@@ -25,14 +25,14 @@ campfire-net-emulator.workspace = true
 campfire-net-packets.workspace = true
 campfire-net-payload.workspace = true
 
-bytes.workspace = true
+bytes = { workspace = true, features = ["std"] }
 campfire-measure = { workspace = true, optional = true }
-criterion = { workspace = true, optional = true }
-ring.workspace = true
-rustls.workspace = true
-thiserror.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
+ring = { workspace = true, features = ["alloc", "dev_urandom_fallback"] }
+rustls = { workspace = true, features = ["ring", "std"] }
+thiserror = { workspace = true, features = ["std"] }
 webpki-roots.workspace = true
-zeroize.workspace = true
+zeroize = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
 campfire-net-bytes = { workspace = true, features = ["internals"] }

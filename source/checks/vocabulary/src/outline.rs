@@ -3,7 +3,7 @@ use std::fmt::{self, Write};
 use proc_macro2::Ident;
 use syn::{
     Attribute, Field, Fields, ForeignItem, Generics, ImplItem, Item, ItemEnum, ItemImpl, ItemTrait,
-    ReturnType, Signature, StaticMutability, TraitItem, Visibility,
+    ReturnType, Safety, Signature, StaticMutability, TraitItem, Visibility,
 };
 
 use crate::index::{Entry, Index, Section};
@@ -237,8 +237,8 @@ impl<'a> Outline<'a> {
             header.push_str("unsafe ");
         }
         header.push_str("impl ");
-        if let Some((bang, path, _)) = &item.trait_ {
-            if bang.is_some() {
+        if let Some((path, _)) = &item.trait_ {
+            if item.modifiers.polarity.is_some() {
                 header.push('!');
             }
             write!(header, "{} for ", token_text::of(path)).expect("a String takes every write");
@@ -320,7 +320,7 @@ impl<'a> Outline<'a> {
                 } else {
                     ""
                 },
-                if item.auto_token.is_some() {
+                if item.modifiers.auto_token.is_some() {
                     "auto "
                 } else {
                     ""
@@ -569,8 +569,10 @@ fn signature(sig: &Signature) -> String {
     if sig.asyncness.is_some() {
         text.push_str("async ");
     }
-    if sig.unsafety.is_some() {
-        text.push_str("unsafe ");
+    match sig.safety {
+        Safety::Unsafe(_) => text.push_str("unsafe "),
+        Safety::Safe(_) => text.push_str("safe "),
+        Safety::Default => {}
     }
     if let Some(abi) = &sig.abi {
         write!(text, "{} ", token_text::of(abi)).expect("a String takes every write");

@@ -54,8 +54,8 @@ campfire-net-packets = { workspace = true, optional = true }
 campfire-net-socket = { workspace = true, optional = true }
 campfire-net-payload.workspace = true
 
-serde.workspace = true
-tracing.workspace = true
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 bevy = { workspace = true, features = ["bevy_state"], optional = true }
 bevy_app.workspace = true

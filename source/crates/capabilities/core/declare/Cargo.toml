@@ -28,9 +28,9 @@ campfire-state-types.workspace = true
 campfire-values.workspace = true
 campfire-visibility.workspace = true
 
-bevy_ecs.workspace = true
-serde.workspace = true
-thiserror.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-declare = { workspace = true, features = ["internals"] }

@@ -120,6 +120,9 @@ pub(crate) struct Dependency {
     pub(crate) optional: bool,
     /// The features of its own it turns on.
     pub(crate) features: Vec<String>,
+    /// Whether it takes all but its features and `optional` from the workspace's table: no version,
+    /// path or `default-features` of its own.
+    pub(crate) inherited: bool,
 }
 
 impl Dependency {
@@ -138,6 +141,12 @@ enum DependencyForm {
         optional: bool,
         #[serde(default)]
         features: Vec<String>,
+        #[serde(default)]
+        workspace: bool,
+        version: Option<String>,
+        path: Option<String>,
+        #[serde(rename = "default-features")]
+        default_features: Option<bool>,
     },
 }
 
@@ -145,7 +154,21 @@ impl From<DependencyForm> for Dependency {
     fn from(form: DependencyForm) -> Self {
         match form {
             DependencyForm::Version(_) => Self::default(),
-            DependencyForm::Table { optional, features } => Self { optional, features },
+            DependencyForm::Table {
+                optional,
+                features,
+                workspace,
+                version,
+                path,
+                default_features,
+            } => Self {
+                optional,
+                features,
+                inherited: workspace
+                    && version.is_none()
+                    && path.is_none()
+                    && default_features.is_none(),
+            },
         }
     }
 }
@@ -246,6 +269,48 @@ pub(crate) struct WorkspaceManifest {
 struct Workspace {
     #[serde(default)]
     default_members: Vec<String>,
+    #[serde(default)]
+    dependencies: BTreeMap<String, WorkspaceDependency>,
+}
+
+/// A dependency of the workspace's table, as its members inherit it, by a version alone or as a
+/// table.
+#[derive(Debug, Default, Deserialize)]
+#[serde(from = "WorkspaceDependencyForm")]
+struct WorkspaceDependency {
+    path: Option<String>,
+    default_features: Option<bool>,
+    features: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum WorkspaceDependencyForm {
+    Version(#[expect(dead_code, reason = "a version alone takes the defaults")] String),
+    Table {
+        path: Option<String>,
+        #[serde(rename = "default-features")]
+        default_features: Option<bool>,
+        #[serde(default)]
+        features: Vec<String>,
+    },
+}
+
+impl From<WorkspaceDependencyForm> for WorkspaceDependency {
+    fn from(form: WorkspaceDependencyForm) -> Self {
+        match form {
+            WorkspaceDependencyForm::Version(_) => Self::default(),
+            WorkspaceDependencyForm::Table {
+                path,
+                default_features,
+                features,
+            } => Self {
+                path,
+                default_features,
+                features,
+            },
+        }
+    }
 }
 
 impl WorkspaceManifest {
@@ -257,6 +322,21 @@ impl WorkspaceManifest {
     /// The paths of its default members, in its order.
     pub(crate) fn default_members(&self) -> &[String] {
         &self.workspace.default_members
+    }
+
+    /// The names of the external dependencies of its table, by no path, that take a default
+    /// feature or turn a feature on, which its members should each name.
+    pub(crate) fn shared_features(&self) -> Vec<&str> {
+        self.workspace
+            .dependencies
+            .iter()
+            .filter(|(_, dependency)| {
+                dependency.path.is_none()
+                    && (dependency.default_features != Some(false)
+                        || !dependency.features.is_empty())
+            })
+            .map(|(name, _)| name.as_str())
+            .collect()
     }
 }
 

@@ -13,12 +13,19 @@ campfire-common.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-store.workspace = true
 
-clap.workspace = true
+clap = { workspace = true, features = [
+    "derive",
+    "error-context",
+    "help",
+    "std",
+    "suggestions",
+    "usage",
+] }
 proc-macro2.workspace = true
 quote.workspace = true
-syn.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
+syn = { workspace = true, features = ["derive", "full", "parsing", "printing", "proc-macro"] }
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
 campfire-store = { workspace = true, features = ["internals"] }

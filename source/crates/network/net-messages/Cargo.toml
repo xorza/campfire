@@ -35,17 +35,17 @@ campfire-net-stepper = { workspace = true, optional = true }
 campfire-net-transport.workspace = true
 campfire-net-payload.workspace = true
 
-bytes.workspace = true
+bytes = { workspace = true, features = ["std"] }
 campfire-measure = { workspace = true, optional = true }
-criterion = { workspace = true, optional = true }
-serde.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 
 bevy_app.workspace = true
 bevy_derive.workspace = true
-bevy_ecs = { workspace = true, features = ["std", "serialize"] }
-bevy_reflect = { workspace = true, features = ["std", "smallvec"] }
+bevy_ecs = { workspace = true, features = ["serialize", "std"] }
+bevy_reflect = { workspace = true, features = ["smallvec", "std"] }
 bevy_replicon = { workspace = true, features = ["client", "server"] }
 bevy_utils = { workspace = true, features = ["debug"] }
 
