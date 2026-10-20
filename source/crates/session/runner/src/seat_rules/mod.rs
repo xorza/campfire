@@ -30,6 +30,7 @@ impl SeatRules {
             late_join,
             bot_takeover,
             leaver,
+            control: _,
         } = self.0;
         match change {
             SeatChangeKind::Joined { from: Taken::Open } if !late_join => {

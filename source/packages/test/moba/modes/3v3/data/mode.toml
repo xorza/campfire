@@ -127,11 +127,12 @@ levels = [6, 11, 16]
 name = "spell"
 
 # A player may join after the start, in an open seat or in place of a bot; a player who leaves
-# leaves their hero to a bot until they come back.
+# leaves their hero to a bot until they come back. A player controls their hero alone.
 [players]
 late_join = true
 bot_takeover = true
 leaver = "bot"
+control = "avatar"
 
 # Each player chooses a hero no other player has, and two spells.
 [choices.hero]

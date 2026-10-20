@@ -17,7 +17,9 @@ use campfire_common::{DeclaredName, MapName};
 use campfire_declarations::{BookPlace, NamesListError, TypePlace};
 use campfire_geometry::Metric;
 use campfire_math::Num;
-use campfire_mode::{ChoiceId, MarkerTag, ModeDataError, ModeError, TimerId};
+use campfire_mode::{
+    ChoiceId, MarkerTag, ModeData, ModeDataError, ModeError, PlayerControl, TimerId,
+};
 use campfire_navigation::{MapProblem, NavigationDataError};
 use campfire_orders::AiError;
 use campfire_package::{
@@ -4095,6 +4097,32 @@ fn a_box_lies_only_on_a_planar_map() {
     // The raised map alone loads: the points it raised are its only change.
     let alone = load(&edited([(MAP, Edit::Create(&raised))]));
     assert!(alone.is_ok(), "{:?}", alone.err());
+}
+
+#[test]
+fn a_player_controls_an_avatar_only_in_a_mode_of_avatars() {
+    // The 3v3, of heroes, says its players control them alone; the ruled mode, of no avatar,
+    // loads with the default control of units, and fails with control of an avatar.
+    assert_eq!(
+        three_v_three().data().players.control,
+        PlayerControl::Avatar
+    );
+    let ruled = |players| {
+        let mut tree = PackageTree::of(TestMode::Ruled);
+        tree.edit("modes/ruled/data/mode.toml", Edit::Append(players));
+        tree.load()
+    };
+    let units = ruled("\n[players]\ncontrol = \"units\"\n").unwrap();
+    assert_eq!(units.data().players.control, PlayerControl::Units);
+    let error = ruled("\n[players]\ncontrol = \"avatar\"\n").unwrap_err();
+    assert!(
+        rule_at(
+            &error.problem,
+            &Place::Section(ModeData::PLAYERS),
+            &ModeDataError::AvatarControlWithoutAvatars
+        ),
+        "{error:?}"
+    );
 }
 
 #[test]

@@ -186,6 +186,7 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
         late_join: false,
         bot_takeover: false,
         leaver: AfterLeave::Bot,
+        ..PlayersData::DEFAULT
     };
     setup.times = SessionTimes {
         grace: Duration::from_secs(1),
@@ -305,6 +306,7 @@ fn a_plan_bot_plays_its_script_until_its_slot_changes_hands() {
         late_join: true,
         bot_takeover: true,
         leaver: AfterLeave::Bot,
+        ..PlayersData::DEFAULT
     };
     let saves = SavesData {
         by: SaveBy::Player,

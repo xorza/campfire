@@ -688,6 +688,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `late_join` | core | since 1.0 |
 | `bot_takeover` | core | since 1.0 |
 | `leaver` | core | since 1.0 |
+| `control` | core | since 1.0 |
 
 ### The mode's `[saves]`
 

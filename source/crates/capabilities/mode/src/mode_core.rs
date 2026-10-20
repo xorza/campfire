@@ -1,7 +1,7 @@
 use campfire_actions::{LoadoutRanks, SlotClaims, SlotError, SlotKind, SlotKinds};
 use campfire_common::DeclaredName;
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, Declarations, InstallCx, Module, NoSystems,
+    BookCx, BookError, BookPlace, ByType, Declarations, InstallCx, Module, NoSystems, SourceKind,
 };
 use campfire_navigation::{ModeNavigationData, NavigationBook, WalkCheck, Walker, WalkerKinds};
 use campfire_script::{Audience, UnknownName};
@@ -17,6 +17,7 @@ use crate::match_end::MatchEnd;
 use crate::mode_data::ModeData;
 use crate::mode_map::ModeMap;
 use crate::mode_units::ModeUnits;
+use crate::player_control::PlayerControl;
 use crate::victory::VictoryBook;
 use crate::victory_data::VictoryData;
 
@@ -54,8 +55,8 @@ impl Module for ModeCore {
 
 impl ModeCore {
     /// The rules of the mode's own data: a bot takes a leaver's place only where players join
-    /// late, no field of its state goes to an owner or a team, and no option shares a param's
-    /// name.
+    /// late, a player controls an avatar only where the mode has one, no field of its state goes
+    /// to an owner or a team, and no option shares a param's name.
     fn data_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         let data = cx
             .given::<ModeData>()
@@ -68,6 +69,12 @@ impl ModeCore {
         if data.players.bot_takeover && !data.players.late_join {
             let at = BookPlace::Section(ModeData::PLAYERS);
             return fail(at, ModeDataError::BotTakeoverWithoutLateJoin);
+        }
+        let avatars =
+            || (cx.packages()).any(|(_, package)| matches!(package.kind, SourceKind::Avatar(_)));
+        if data.players.control == PlayerControl::Avatar && !avatars() {
+            let at = BookPlace::Section(ModeData::PLAYERS);
+            return fail(at, ModeDataError::AvatarControlWithoutAvatars);
         }
         let owned = data
             .state

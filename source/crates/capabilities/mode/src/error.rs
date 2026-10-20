@@ -11,6 +11,9 @@ pub enum ModeDataError {
     /// A bot takes a leaver's place in a mode no player joins late.
     #[error("bot_takeover without late_join")]
     BotTakeoverWithoutLateJoin,
+    /// A player controls its avatar in a mode of no avatar.
+    #[error("avatar control in a mode of no avatar")]
+    AvatarControlWithoutAvatars,
     /// A field of the mode's state goes to an owner or a team, which the mode's state has none
     /// of.
     #[error("a field of the mode's state goes to an owner or a team")]

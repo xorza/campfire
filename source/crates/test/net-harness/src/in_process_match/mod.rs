@@ -16,7 +16,7 @@ use campfire_capabilities::{Directive, Order};
 use campfire_codec::Toml;
 use campfire_common::TlsKey;
 use campfire_log::internals::LogCheck;
-use campfire_mode::{PlayersData, SaveBy, SavesData};
+use campfire_mode::{ModeData, PlayersData, SaveBy, SavesData};
 use campfire_net::internals::TickHashes;
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
@@ -449,15 +449,18 @@ impl InProcessMatch {
         session.log().server_inputs().collect()
     }
 
-    /// The test lane mode, its `[players]` as `rules` says, and its `[saves]` as `saves` says.
+    /// The test lane mode, its `[players]` as `rules` says in place of its own, and its
+    /// `[saves]` as `saves` says.
     pub fn lane_mode(rules: PlayersData, saves: SavesData) -> ModePackages {
+        const DATA: &str = "modes/lane/data/mode.toml";
         let added = format!(
             "\n[players]\n{}\n[saves]\n{}",
             Toml::write(&rules),
             Toml::write(&saves)
         );
         PackageTree::of(TestMode::Lane)
-            .edit("modes/lane/data/mode.toml", Edit::Append(&added))
+            .edit(DATA, Edit::Remove(ModeData::PLAYERS))
+            .edit(DATA, Edit::Append(&added))
             .packages()
     }
 

@@ -7,6 +7,7 @@ fn the_rules_allow_each_change_the_modes_players_allow() {
             late_join,
             bot_takeover,
             leaver,
+            ..PlayersData::DEFAULT
         })
     };
     let joined = |from| SeatChangeKind::Joined { from };

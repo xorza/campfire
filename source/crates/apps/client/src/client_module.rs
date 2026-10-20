@@ -219,7 +219,9 @@ impl ClientModule {
                 app.add_plugins(HudPlugin);
             }
             Self::Selecting => {
-                app.add_plugins(SelectingPlugin);
+                app.add_plugins(SelectingPlugin {
+                    control: packages.data().players.control,
+                });
             }
             Self::Orders => {
                 app.add_plugins(OrdersPlugin);

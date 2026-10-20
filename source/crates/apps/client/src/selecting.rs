@@ -15,6 +15,7 @@ use bevy::picking::Pickable;
 use bevy::state::app::AppExtStates;
 use bevy::state::condition::in_state;
 use bevy::ui::{BackgroundColor, BorderColor, Node, PositionType, UiRect, Val};
+use campfire_mode::PlayerControl;
 use campfire_sim::{EntityIndex, StableId};
 
 use crate::input_mode::InputMode;
@@ -24,13 +25,17 @@ use crate::press;
 use crate::selection::{Selection, SelectionSystems};
 use crate::view::ViewSystems;
 
-/// Selects the player's own units with the left button (02-engine-core.md, A selection of the
-/// player's own units): a click on one selects it alone, and a drag selects each whose ground point
-/// shows within the rectangle it draws; a click or a drag that meets none of them leaves the
-/// selection as it is, and a press while the player places a build is the preview's. Each frame, a
-/// unit the client no longer holds leaves the selection, and an empty selection takes the avatar.
+/// Keeps the selection of the player's own units (02-engine-core.md, A selection of the player's
+/// own units): each frame, a unit the client no longer holds leaves it, and an empty selection
+/// takes the avatar. In a mode of `PlayerControl::Units` (02-engine-core.md, The mode says what a
+/// player selects), the left button selects: a click on one of them selects it alone, and a drag
+/// selects each whose ground point shows within the rectangle it draws; a click or a drag that
+/// meets none of them leaves the selection as it is, and a press while the player places a build
+/// is the preview's.
 #[derive(Debug)]
-pub(crate) struct SelectingPlugin;
+pub(crate) struct SelectingPlugin {
+    pub(crate) control: PlayerControl,
+}
 
 /// The left button, held down over the match: the point of the window it went down at, where the
 /// cursor is now, and whether it moved far enough to drag.
@@ -56,13 +61,19 @@ const BOX_FILL: Color = Color::srgba(0.3, 0.95, 0.4, 0.12);
 impl Plugin for SelectingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Selection>();
-        app.init_resource::<Held>();
         app.init_state::<InputMode>();
+        app.add_systems(
+            Update,
+            Self::keep.in_set(SelectionSystems).after(ViewSystems),
+        );
+        if self.control == PlayerControl::Avatar {
+            return;
+        }
+        app.init_resource::<Held>();
         app.add_systems(Startup, Self::add_box);
         app.add_systems(
             Update,
             (
-                Self::keep,
                 Self::press.run_if(
                     input_just_pressed(MouseButton::Left).and_then(in_state(InputMode::Select)),
                 ),
@@ -72,7 +83,7 @@ impl Plugin for SelectingPlugin {
             )
                 .chain()
                 .in_set(SelectionSystems)
-                .after(ViewSystems),
+                .after(Self::keep),
         );
     }
 }
@@ -185,7 +196,22 @@ impl Press {
 
 #[cfg(test)]
 mod tests {
+    use bevy::state::app::StatesPlugin;
+
     use super::*;
+
+    #[test]
+    fn the_left_button_selects_only_in_a_mode_of_units() {
+        // Each mode keeps a selection; only one of units holds a press of the left button.
+        let held = |control| {
+            let mut app = App::new();
+            app.add_plugins((StatesPlugin, SelectingPlugin { control }));
+            assert!(app.world().contains_resource::<Selection>());
+            app.world().contains_resource::<Held>()
+        };
+        let controls = [PlayerControl::Units, PlayerControl::Avatar];
+        assert_eq!(controls.map(held), [true, false]);
+    }
 
     #[test]
     fn a_press_drags_once_the_cursor_goes_past_four_pixels_and_drags_until_it_ends() {

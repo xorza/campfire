@@ -52,6 +52,10 @@ name = "ultimate"
 ranks = 3
 levels = [3, 4, 5]
 
+# A player controls their hero alone.
+[players]
+control = "avatar"
+
 # Each player plays a hero no other player has.
 [choices.hero]
 name = "choice-hero"

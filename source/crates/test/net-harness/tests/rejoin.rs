@@ -331,6 +331,7 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
         late_join,
         bot_takeover,
         leaver,
+        ..PlayersData::DEFAULT
     };
     // Reserved: a new player finds no slot, and the leaver takes theirs back, on a new chain.
     let (mut local, seat) = left_past_grace(rules(AfterLeave::Reserve, false, false));
