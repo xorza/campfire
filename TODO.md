@@ -5,6 +5,5 @@ rhai dependency
 session log human readable
 why network depends on script
 what is deny_unknown_fields
-consolidate threading usage
 seats->slots
 extransion traits audit
