@@ -1,5 +1,5 @@
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, NamesListError, Section, Sections,
+    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, NamesListError, Section, Sections,
 };
 use campfire_geometry::{Grid, Polygon};
 use campfire_math::{Num, Vec3};
@@ -155,7 +155,7 @@ impl Walker {
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let bodies = cx.book::<ByType<BodyForm>>()?;
         let steps = cx.book::<ByType<MoveStep>>()?;
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
             if steps.get(unit.unit_type).is_none() {
                 continue;
@@ -166,6 +166,6 @@ impl Walker {
             })?;
             book.set(unit.unit_type, walker);
         }
-        Ok(book)
+        Ok(book.build())
     }
 }

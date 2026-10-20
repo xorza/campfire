@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use bevy_ecs::world::World;
 use campfire_declarations::Role;
 use campfire_script::Ctx;
@@ -11,7 +9,7 @@ use crate::modifier_hooks::ModifierHooks;
 /// shares the scripts, while it runs.
 #[derive(Debug, Default, Clone)]
 pub struct ModifierEvents {
-    hooks: Option<Rc<ModifierHooks>>,
+    hooks: Option<ModifierHooks>,
 }
 
 impl ModifierEvents {
@@ -20,12 +18,12 @@ impl ModifierEvents {
     pub(crate) fn install(world: &World, role: &Role) -> Self {
         let hooks = role
             .scripts()
-            .then(|| Rc::new(ModifierHooks::new(world.non_send::<Ctx>().clone())));
+            .then(|| ModifierHooks::new(world.non_send::<Ctx>().clone()));
         Self { hooks }
     }
 
     /// The hooks of `world`'s match, none when it runs no script.
-    pub fn of(world: &World) -> Option<Rc<ModifierHooks>> {
+    pub fn of(world: &World) -> Option<ModifierHooks> {
         world.non_send::<Self>().hooks.clone()
     }
 }

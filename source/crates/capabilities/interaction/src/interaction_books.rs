@@ -1,5 +1,7 @@
+use std::mem;
+
 use campfire_actions::{ActionBook, ActionSlots, SlotKind, SlotKindBook};
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, ByTypeBuilder};
 use campfire_script::{Filter, UnknownName};
 use campfire_units::UnitTypes;
 use campfire_values::{ActionId, Named};
@@ -17,14 +19,16 @@ impl Interaction {
         slots: &mut ByType<ActionSlots>,
     ) -> Result<(), BookError> {
         let uses = cx.book::<ByType<UseSlot>>()?;
+        let mut built = mem::take(slots).reopen();
         for unit in cx.standing() {
             let Some(uses) = uses.get(unit.unit_type) else {
                 continue;
             };
-            let held = slots.take(unit.unit_type);
+            let held = built.take(unit.unit_type);
             let held = held.unwrap_or_else(|| ActionSlots::new([]));
-            slots.set(unit.unit_type, uses.extend_slots(held));
+            built.set(unit.unit_type, uses.extend_slots(held));
         }
+        *slots = built.build();
         Ok(())
     }
 }
@@ -35,7 +39,7 @@ impl UseSpec {
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let actions = cx.book::<ActionBook>()?;
         let tags = cx.fact::<UnitTypes>()?.tags();
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<UseData>() else {
                 continue;
@@ -51,7 +55,7 @@ impl UseSpec {
             let spec = spec().map_err(|name| BookError::unknown(unit.package, at(), name))?;
             book.set(unit.unit_type, spec);
         }
-        Ok(book)
+        Ok(book.build())
     }
 }
 
@@ -60,7 +64,7 @@ impl UseSlot {
     /// does not declare.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let kinds = &cx.book::<SlotKindBook>()?.0;
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<UsesData>() else {
                 continue;
@@ -72,6 +76,6 @@ impl UseSlot {
             })?;
             book.set(unit.unit_type, Self::new(kind));
         }
-        Ok(book)
+        Ok(book.build())
     }
 }

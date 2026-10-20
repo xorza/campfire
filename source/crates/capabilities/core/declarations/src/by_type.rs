@@ -9,14 +9,16 @@ use crate::per_type::PerType;
 
 /// A value for some of the match's unit types, by type: a capability's package data about each
 /// type that has it, such as its AI or a part its units spawn with. A clone shares the values,
-/// so a reader keeps the book itself, not a copy of what it holds.
+/// so a reader keeps the book itself, not a copy of what it holds; `ByTypeBuilder` builds it.
 #[derive(Resource, Debug, PartialEq, Eq)]
 pub struct ByType<T: Send + Sync + 'static> {
-    #[expect(
-        clippy::rc_buffer,
-        reason = "the book grows in place as it is built, and its clones share it after"
-    )]
-    entries: Arc<Vec<Option<T>>>,
+    entries: Arc<[Option<T>]>,
+}
+
+/// A `ByType` as it is built: each type's value set once, in any order.
+#[derive(Debug)]
+pub struct ByTypeBuilder<T: Send + Sync + 'static> {
+    entries: Vec<Option<T>>,
 }
 
 impl<T: Send + Sync + 'static> ByType<T> {
@@ -40,11 +42,30 @@ impl<T: Send + Sync + 'static> ByType<T> {
         self.values().next().is_none()
     }
 
-    /// Takes `unit_type`'s value out, as an extension of the book changes it before the book is
-    /// shared.
+    /// The book as it is built again, its values moved out, as an extension of the book changes
+    /// it before the book is shared.
+    pub fn reopen(mut self) -> ByTypeBuilder<T> {
+        let entries = Arc::get_mut(&mut self.entries).expect("a book changes before it is shared");
+        ByTypeBuilder {
+            entries: entries.iter_mut().map(Option::take).collect(),
+        }
+    }
+}
+
+impl<T: Send + Sync + 'static> ByTypeBuilder<T> {
+    /// Gives `unit_type` its `value`, which it has none of yet.
+    pub fn set(&mut self, unit_type: UnitType, value: T) {
+        let index = unit_type.index();
+        if self.entries.len() <= index {
+            self.entries.resize_with(index + 1, || None);
+        }
+        assert!(self.entries[index].is_none(), "a unit type has one value");
+        self.entries[index] = Some(value);
+    }
+
+    /// Takes `unit_type`'s value out.
     pub fn take(&mut self, unit_type: UnitType) -> Option<T> {
-        let entries = Arc::get_mut(&mut self.entries).expect("a book is built before it is shared");
-        entries.get_mut(unit_type.index())?.take()
+        self.entries.get_mut(unit_type.index())?.take()
     }
 
     /// Gives `unit_type` `value`, when it is some, as `set` does.
@@ -54,16 +75,11 @@ impl<T: Send + Sync + 'static> ByType<T> {
         }
     }
 
-    /// Gives `unit_type` its `value`, which it has none of yet, as the book is built: no clone
-    /// shares it yet.
-    pub fn set(&mut self, unit_type: UnitType, value: T) {
-        let index = unit_type.index();
-        let entries = Arc::get_mut(&mut self.entries).expect("a book is built before it is shared");
-        if entries.len() <= index {
-            entries.resize_with(index + 1, || None);
+    /// The book of the values set.
+    pub fn build(self) -> ByType<T> {
+        ByType {
+            entries: Arc::from(self.entries),
         }
-        assert!(entries[index].is_none(), "a unit type has one value");
-        entries[index] = Some(value);
     }
 }
 
@@ -78,7 +94,15 @@ impl<T: Send + Sync + 'static> Clone for ByType<T> {
 impl<T: Send + Sync + 'static> Default for ByType<T> {
     fn default() -> Self {
         Self {
-            entries: Arc::default(),
+            entries: Arc::new([]),
+        }
+    }
+}
+
+impl<T: Send + Sync + 'static> Default for ByTypeBuilder<T> {
+    fn default() -> Self {
+        Self {
+            entries: Vec::new(),
         }
     }
 }
@@ -89,28 +113,52 @@ impl<T: PerType> Book for ByType<T> {
     fn share(&self, _: &mut MatchNames) {}
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::mem;
+
+    use campfire_values::UnitType;
+
+    use crate::by_type::ByType;
+
+    impl<T: Send + Sync + 'static> ByType<T> {
+        /// Gives `unit_type` its `value` in a built book, which no clone shares yet, as a test
+        /// gives a type it adds its value: the book is built again.
+        pub fn set(&mut self, unit_type: UnitType, value: T) {
+            let mut built = mem::take(self).reopen();
+            built.set(unit_type, value);
+            *self = built.build();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn a_type_has_its_value_or_none() {
-        let mut table = ByType::default();
-        table.set(UnitType::new(2), 'c');
-        table.set(UnitType::new(0), 'a');
+        let mut built = ByTypeBuilder::default();
+        built.set(UnitType::new(2), 'c');
+        built.set(UnitType::new(0), 'a');
         // None gives a type no value, within the table or past its end.
-        table.set_some(UnitType::new(1), None);
-        table.set_some(UnitType::new(4), None);
+        built.set_some(UnitType::new(1), None);
+        built.set_some(UnitType::new(4), None);
+        let table = built.build();
         let read = [0, 1, 2, 3, 4].map(|index| table.get(UnitType::new(index)).copied());
         assert_eq!(read, [Some('a'), None, Some('c'), None, None]);
         assert_eq!(table.values().collect::<Vec<_>>(), [&'a', &'c']);
-        table.set_some(UnitType::new(1), Some('b'));
-        assert_eq!(table.values().collect::<Vec<_>>(), [&'a', &'b', &'c']);
+        // An extension reopens the book before it is shared, and changes a value.
+        let mut reopened = table.reopen();
+        assert_eq!(reopened.take(UnitType::new(2)), Some('c'));
+        reopened.set(UnitType::new(2), 'd');
+        let table = reopened.build();
+        assert_eq!(table.values().collect::<Vec<_>>(), [&'a', &'d']);
         // A clone reads the same values from the same storage.
         let kept = table.clone();
         assert!(std::ptr::eq(
-            kept.get(UnitType::new(1)).unwrap(),
-            table.get(UnitType::new(1)).unwrap()
+            kept.get(UnitType::new(0)).unwrap(),
+            table.get(UnitType::new(0)).unwrap()
         ));
     }
 }

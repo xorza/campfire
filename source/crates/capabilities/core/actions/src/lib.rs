@@ -113,7 +113,7 @@ pub use crate::action_target::ActionTarget;
 pub use crate::actions_column::{ActionsColumn, SlotRow};
 pub use crate::actions_data::ActionsData;
 pub use crate::amount::Amount;
-pub use crate::by_action::ByAction;
+pub use crate::by_action::{ByAction, ByActionBuilder};
 pub use crate::cast_spends::CastSpends;
 pub use crate::channel_call::{ChannelCall, ChannelStep};
 pub use crate::checked_action::CheckedAction;

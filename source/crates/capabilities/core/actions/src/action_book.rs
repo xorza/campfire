@@ -13,16 +13,19 @@ use crate::action_parts::ActionParts;
 
 /// The actions a match loaded, times in ticks and scripts compiled. Package data, not state: a
 /// restore loads it from the packages, as a new match does. A clone shares the actions, as the
-/// script view reads them.
-#[derive(Resource, Debug, Clone, Default)]
+/// script view reads them; `ActionBookBuilder` loads it.
+#[derive(Resource, Debug, Clone)]
 pub struct ActionBook {
-    #[expect(
-        clippy::rc_buffer,
-        reason = "the load grows the book through `Arc::make_mut`; the clones after it share it"
-    )]
-    actions: Arc<Vec<Action>>,
+    actions: Arc<[Action]>,
     /// Each action's name in its package.
     names: Arc<Names<ActionId>>,
+}
+
+/// An `ActionBook` as the load fills it, action by action.
+#[derive(Debug, Default)]
+pub(crate) struct ActionBookBuilder {
+    actions: Vec<Action>,
+    names: Names<ActionId>,
 }
 
 /// An action of a package to load: its package, its name there, its data, its compiled script
@@ -36,16 +39,10 @@ pub struct PackageAction<'d> {
     pub parts: ActionParts,
 }
 
-impl ActionBook {
-    /// Whether `other` is this book as one load made it, not a book of another load: the actions
-    /// a row filled from it holds.
-    pub(crate) fn same(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.actions, &other.actions) && Arc::ptr_eq(&self.names, &other.names)
-    }
-
+impl ActionBookBuilder {
     /// Loads `action`, whose parts the load resolved, as the next action of the book: its hooks
     /// those `scripts` defines for its script, which its data names exactly when it has one.
-    pub fn load(&mut self, scripts: &ScriptBook, action: PackageAction<'_>) -> ActionId {
+    pub(crate) fn load(&mut self, scripts: &ScriptBook, action: PackageAction<'_>) -> ActionId {
         let PackageAction {
             package,
             name,
@@ -66,8 +63,8 @@ impl ActionBook {
             "an action has a script exactly when its data names one"
         );
         let hooks = scripts.defines(script, ScriptRole::Action);
-        let id = Arc::make_mut(&mut self.names).add((package, name));
-        Arc::make_mut(&mut self.actions).push(Action {
+        let id = self.names.add((package, name));
+        self.actions.push(Action {
             package,
             kind: data.kind(),
             passive,
@@ -80,6 +77,28 @@ impl ActionBook {
             delivery,
         });
         id
+    }
+
+    /// The book of the actions loaded.
+    pub(crate) fn build(self) -> ActionBook {
+        ActionBook {
+            actions: Arc::from(self.actions),
+            names: Arc::new(self.names),
+        }
+    }
+}
+
+impl Default for ActionBook {
+    fn default() -> Self {
+        ActionBookBuilder::default().build()
+    }
+}
+
+impl ActionBook {
+    /// Whether `other` is this book as one load made it, not a book of another load: the actions
+    /// a row filled from it holds.
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.actions, &other.actions) && Arc::ptr_eq(&self.names, &other.names)
     }
 
     /// Each action's name in its package.
@@ -124,23 +143,41 @@ impl Book for ActionBook {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use std::sync::Arc;
-
+    use campfire_units::ScriptBook;
     use campfire_values::ActionId;
 
     use crate::action::Action;
-    use crate::action_book::ActionBook;
+    use crate::action_book::{ActionBook, ActionBookBuilder, PackageAction};
 
     impl ActionBook {
+        /// The book's actions again as a load fills them, as a test adds an action after the
+        /// book is built: a clone keeps the actions it shared.
+        fn reopen(&self) -> ActionBookBuilder {
+            ActionBookBuilder {
+                actions: self.actions.to_vec(),
+                names: (*self.names).clone(),
+            }
+        }
+
+        /// Loads `action` as the next action of a built book, as `ActionBookBuilder::load` does.
+        pub fn load(&mut self, scripts: &ScriptBook, action: PackageAction<'_>) -> ActionId {
+            let mut book = self.reopen();
+            let id = book.load(scripts, action);
+            *self = book.build();
+            id
+        }
+
         /// Adds `action`, named `name` in its package, or for its place after `name` when an
         /// action before it has that name, as a test adds several of one kind; its id.
         pub fn push(&mut self, name: &str, action: Action) -> ActionId {
-            let names = Arc::make_mut(&mut self.names);
+            let mut book = self.reopen();
+            let names = &mut book.names;
             let id = names.try_add((action.package, name)).unwrap_or_else(|_| {
                 let placed = format!("{name} {}", names.len());
                 names.add((action.package, placed.as_str()))
             });
-            Arc::make_mut(&mut self.actions).push(action);
+            book.actions.push(action);
+            *self = book.build();
             id
         }
     }

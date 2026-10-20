@@ -1,7 +1,9 @@
-use campfire_actions::{ActionKind, ActionsData, ByAction, LoadedAction, Targeting, TypeSlotsData};
+use campfire_actions::{
+    ActionKind, ActionsData, ByAction, ByActionBuilder, LoadedAction, Targeting, TypeSlotsData,
+};
 use campfire_common::DeclaredName;
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, Section, SourceType, UnitTypeData,
+    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section, SourceType, UnitTypeData,
 };
 use campfire_math::Num;
 use campfire_players::ResourceBook;
@@ -234,7 +236,7 @@ impl BuildBook {
 impl TrainSpec {
     /// What each train makes: a unit type of its package; an error for one it does not have.
     pub fn book(cx: &BookCx<'_>) -> Result<ByAction<Self>, BookError> {
-        let mut book = ByAction::default();
+        let mut book = ByActionBuilder::default();
         for action in LoadedAction::all(cx)? {
             let Some(data) = action.section::<TrainData>() else {
                 continue;
@@ -246,7 +248,7 @@ impl TrainSpec {
             })?;
             book.set(action.action, Self { unit_type });
         }
-        Ok(book)
+        Ok(book.build())
     }
 }
 
@@ -255,7 +257,7 @@ impl GatherSpec {
     /// resource the mode does not declare.
     pub fn book(cx: &BookCx<'_>) -> Result<ByAction<Self>, BookError> {
         let resources = cx.book_if::<ResourceBook>()?;
-        let mut book = ByAction::default();
+        let mut book = ByActionBuilder::default();
         for action in LoadedAction::all(cx)? {
             let Some(data) = action.section::<GatherData>() else {
                 continue;
@@ -270,7 +272,7 @@ impl GatherSpec {
                 },
             );
         }
-        Ok(book)
+        Ok(book.build())
     }
 }
 
@@ -316,13 +318,14 @@ impl NodeBook {
     /// an error for a resource the mode does not declare.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let resources = cx.book_if::<ResourceBook>()?;
-        let mut book = Self::default();
+        let mut nodes = ByTypeBuilder::default();
+        let mut drop_offs = ByTypeBuilder::default();
         for unit in cx.standing() {
             let unknown =
                 |name| BookError::unknown(unit.package, BookPlace::UnitType(unit.place()), name);
             if let Some(node) = unit.data.section::<NodeData>() {
                 let resource = Production::resource(resources, &node.resource).map_err(unknown)?;
-                book.nodes.set(unit.unit_type, resource);
+                nodes.set(unit.unit_type, resource);
             }
             if let Some(drop_off) = unit.data.section::<DropOffData>() {
                 let taken = drop_off
@@ -330,23 +333,29 @@ impl NodeBook {
                     .iter()
                     .map(|name| Production::resource(resources, name));
                 let taken = taken.collect::<Result<ResourceSet, UnknownName>>();
-                book.drop_offs.set(unit.unit_type, taken.map_err(unknown)?);
+                drop_offs.set(unit.unit_type, taken.map_err(unknown)?);
             }
         }
-        Ok(book)
+        Ok(Self {
+            nodes: nodes.build(),
+            drop_offs: drop_offs.build(),
+        })
     }
 }
 
 impl SupplyCostBook {
     /// What each train costs in supply, as the supply of its unit type gives it.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
-        let mut supplies = ByType::default();
+        let mut supplies = ByTypeBuilder::default();
         for unit in cx.standing() {
             if let Some(&supply) = unit.data.section::<SupplyData>() {
                 supplies.set(unit.unit_type, supply);
             }
         }
-        Ok(Self::new(supplies, cx.book::<ByAction<TrainSpec>>()?))
+        Ok(Self::new(
+            supplies.build(),
+            cx.book::<ByAction<TrainSpec>>()?,
+        ))
     }
 }
 
@@ -360,51 +369,51 @@ impl SupplyBook {
 impl ProductionData {
     /// The queue of each unit type that stands and produces.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
             if let Some(&production) = unit.data.section::<Self>() {
                 book.set(unit.unit_type, production);
             }
         }
-        Ok(book)
+        Ok(book.build())
     }
 }
 
 impl Node {
     /// What each node type that stands holds as its unit spawns.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
             if let Some(node) = unit.data.section::<NodeData>() {
                 book.set(unit.unit_type, Self::new(node.amount.get()));
             }
         }
-        Ok(book)
+        Ok(book.build())
     }
 }
 
 impl Builder {
     /// A builder of each unit type that stands and places a build in its slots.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
             if Production::slots(cx, unit, ActionKind::Build) {
                 book.set(unit.unit_type, Self::default());
             }
         }
-        Ok(book)
+        Ok(book.build())
     }
 }
 
 impl Gatherer {
     /// A gatherer of each unit type that stands and places a gather in its slots.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
             if Production::slots(cx, unit, ActionKind::Gather) {
                 book.set(unit.unit_type, Self::default());
             }
         }
-        Ok(book)
+        Ok(book.build())
     }
 }

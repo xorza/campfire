@@ -3404,6 +3404,7 @@ dependencies = [
  "campfire-values",
  "campfire-visibility",
  "serde",
+ "smallvec",
  "thiserror 2.0.21",
 ]
 

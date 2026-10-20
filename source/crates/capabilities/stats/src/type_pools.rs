@@ -1,5 +1,5 @@
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, Fact, NamesListError, SourceType,
+    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Fact, NamesListError, SourceType,
 };
 use campfire_math::Num;
 use campfire_script::UnknownName;
@@ -48,7 +48,8 @@ impl TypePools {
         let names = &cx.fact::<PoolNames>()?.0;
         let data = cx.mode_section::<ModePoolsData>();
         let life = cx.fact_if::<LifePool>()?.and_then(|life| life.0);
-        let mut built = Self::default();
+        let mut lives = ByTypeBuilder::default();
+        let mut type_pools = ByTypeBuilder::default();
         for unit in cx.standing() {
             let Some(pools) = unit.data.section::<TypePoolsData>() else {
                 continue;
@@ -69,12 +70,15 @@ impl TypePools {
                     maxes.push((pool, meter.max()));
                 }
             }
-            built.lives.set_some(unit.unit_type, full_life);
+            lives.set_some(unit.unit_type, full_life);
             let pools =
                 (!maxes.is_empty()).then(|| Pools::new(maxes).expect("each maximum is positive"));
-            built.pools.set_some(unit.unit_type, pools);
+            type_pools.set_some(unit.unit_type, pools);
         }
-        Ok(built)
+        Ok(Self {
+            lives: lives.build(),
+            pools: type_pools.build(),
+        })
     }
 
     /// The life each unit type of the life pool starts with.

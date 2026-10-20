@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use campfire_actions::ActionSlots;
 use campfire_common::{DeclaredName, Seat};
-use campfire_declarations::ByType;
+use campfire_declarations::{ByType, ByTypeBuilder};
 use campfire_script::Teams;
 use campfire_units::{BodyForm, ScriptBook};
 use campfire_values::{Names, Relations, Team, UnitType};
@@ -91,7 +91,7 @@ impl ModeSpec {
         let seats = setup.teams.iter().map(|team| team.seats);
         let teams = Teams::new(teams, seats, setup.players)
             .expect("the session checked its players against the teams' slots");
-        let mut spawned = ByType::default();
+        let mut spawned = ByTypeBuilder::default();
         for &unit_type in &units.unit_types {
             spawned.set(unit_type, ());
         }
@@ -102,7 +102,7 @@ impl ModeSpec {
             choices: ChoiceSpecs::new(&setup.data.choices),
             timers: Arc::new(setup.data.timers.iter().map(DeclaredName::as_str).collect()),
             loadout_ranks,
-            spawned,
+            spawned: spawned.build(),
             bodies: bodies.clone(),
             slots: slots.clone(),
             placed,

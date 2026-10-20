@@ -21,7 +21,7 @@ use campfire_combat::{
 };
 use campfire_common::{DeclaredName, Seat, Ticks};
 use campfire_declarations::internals::BookLoad;
-use campfire_declarations::{ByType, Sections};
+use campfire_declarations::{ByType, ByTypeBuilder, Sections};
 use campfire_geometry::{Bounds, Grid, Metric};
 use campfire_items::Inventory;
 use campfire_math::{Num, Vec3};
@@ -331,13 +331,13 @@ impl TestType {
 
     /// Loads the parts of `types` into `game`, each book as the install loads it.
     fn load(game: &mut Match, types: &[Self]) {
-        let mut lives = ByType::default();
-        let mut deaths = ByType::default();
-        let mut steps = ByType::default();
-        let mut bodies = ByType::default();
-        let mut tracks = ByType::default();
-        let mut slots = ByType::default();
-        let mut passives = ByType::default();
+        let mut lives = ByTypeBuilder::default();
+        let mut deaths = ByTypeBuilder::default();
+        let mut steps = ByTypeBuilder::default();
+        let mut bodies = ByTypeBuilder::default();
+        let mut tracks = ByTypeBuilder::default();
+        let mut slots = ByTypeBuilder::default();
+        let mut passives = ByTypeBuilder::default();
         for unit in types {
             let unit_type = unit.unit_type;
             lives.set(unit_type, Life::full(Num::int(10)));
@@ -348,13 +348,13 @@ impl TestType {
             slots.set_some(unit_type, unit.slots());
             passives.set_some(unit_type, unit.passive.map(TypePassive));
         }
-        lives.load_into(game);
-        deaths.load_into(game);
-        steps.load_into(game);
-        bodies.load_into(game);
-        tracks.load_into(game);
-        slots.load_into(game);
-        passives.load_into(game);
+        lives.build().load_into(game);
+        deaths.build().load_into(game);
+        steps.build().load_into(game);
+        bodies.build().load_into(game);
+        tracks.build().load_into(game);
+        slots.build().load_into(game);
+        passives.build().load_into(game);
     }
 }
 
@@ -737,7 +737,7 @@ fn start_match(script: &str, limits: ScriptLimits, files: &ModeFiles) -> Result<
 /// loads it, and gives back what `Mode::load` takes beside them.
 fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> ModeLoad {
     // The grunt and both heroes walk with the grunt's body: one kind.
-    let mut walkers = ByType::default();
+    let mut walkers = ByTypeBuilder::default();
     for unit in types {
         if unit.step.is_some() {
             walkers.set(unit.unit_type, Walker::of_form(unit.body).unwrap());
@@ -803,7 +803,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
         let resources = resources.0.iter().map(DeclaredName::as_str);
         names.set_table(Arc::new(resources.collect::<Names<ResourceId>>()));
     }
-    let kinds: WalkerKinds = walkers.values().copied().collect();
+    let kinds: WalkerKinds = walkers.build().values().copied().collect();
     assert_eq!(kinds, WalkerKinds::from([Walker::of_form(None).unwrap()]));
     ModeLoad {
         map,

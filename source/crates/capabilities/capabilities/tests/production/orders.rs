@@ -1,3 +1,4 @@
+use campfire_declarations::ByTypeBuilder;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
 use campfire_units::{GroundPoint, Layer, MapBook, SeenBy};
@@ -101,9 +102,9 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     };
     game.resource_mut::<MapBook>().bounds = bounds;
     Navigation::load_pathing(&mut game, Grid::new(Num::ONE, bounds).unwrap(), [walker]);
-    let mut walkers = ByType::default();
+    let mut walkers = ByTypeBuilder::default();
     walkers.set(shop.grunt, walker);
-    game.insert_resource(walkers);
+    game.insert_resource(walkers.build());
     let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
     let player = Seat::new(0);
     let producer = Production::allocate_id(&mut game);

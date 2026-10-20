@@ -305,7 +305,7 @@ impl Cache for Holdings {
 mod tests {
     use bevy_ecs::system::SystemState;
     use campfire_actions::ByAction;
-    use campfire_declarations::ByType;
+    use campfire_declarations::ByTypeBuilder;
 
     use super::*;
     use crate::mode_supply_data::ModeSupplyData;
@@ -325,7 +325,7 @@ mod tests {
     fn a_unit_that_takes_a_freed_index_before_the_follow_replaces_the_share_the_index_held() {
         // Depots give 4 and are held; a mode of a most of 10.
         let depot = UnitType::new(1);
-        let mut types = ByType::default();
+        let mut types = ByTypeBuilder::default();
         types.set(
             depot,
             SupplyData {
@@ -335,7 +335,7 @@ mod tests {
         );
         let mut world = World::new();
         world.insert_resource(SupplyBook(Some(ModeSupplyData { max: 10 })));
-        world.insert_resource(SupplyCostBook::new(types, &ByAction::default()));
+        world.insert_resource(SupplyCostBook::new(types.build(), &ByAction::default()));
         world.init_resource::<Holdings>();
         world.add_observer(Holdings::inserted);
         world.add_observer(Holdings::removed);

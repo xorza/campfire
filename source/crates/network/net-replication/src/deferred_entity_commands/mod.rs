@@ -59,9 +59,7 @@ struct StoredValue {
 }
 
 /// [`Values`] of any component type.
-trait ErasedValues: Send + Sync {
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-
+trait ErasedValues: Any + Send + Sync {
     /// Applies `change` to `entity`, taking its value out of the store.
     fn apply(&mut self, change: Change, entity: &mut DeferredEntity<'_>);
 
@@ -105,8 +103,8 @@ impl DeferredEntityCommands {
 
     /// The store at `store`, which is `C`'s.
     fn typed<C: Component>(&mut self, store: usize) -> &mut Values<C> {
-        self.stores[store]
-            .as_any_mut()
+        let store: &mut dyn Any = &mut *self.stores[store];
+        store
             .downcast_mut()
             .expect("a component type's store holds its values")
     }
@@ -155,10 +153,6 @@ impl DeferredEntityCommands {
 }
 
 impl<C: Component> ErasedValues for Values<C> {
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
     fn apply(&mut self, change: Change, entity: &mut DeferredEntity<'_>) {
         let mut take = |index: usize| {
             self.values[index]

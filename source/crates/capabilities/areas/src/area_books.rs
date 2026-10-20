@@ -1,6 +1,8 @@
 use campfire_actions::{ActionsData, DeliveryData, Targeting};
 use campfire_common::DeclaredName;
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Section, TypePlace};
+use campfire_declarations::{
+    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section, TypePlace,
+};
 use campfire_script::UnknownName;
 use campfire_stats::{ModifierAppliers, ModifierBook, ModifiersData, Way};
 use campfire_units::UnitTypes;
@@ -99,7 +101,7 @@ impl AreaSpec {
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let tags = cx.fact::<UnitTypes>()?.tags();
         let modifiers = cx.book::<ModifierBook>()?;
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.types() {
             let Some(area) = unit.data.section::<AreaData>() else {
                 continue;
@@ -115,6 +117,6 @@ impl AreaSpec {
             })?;
             book.set(unit.unit_type, spec);
         }
-        Ok(book)
+        Ok(book.build())
     }
 }

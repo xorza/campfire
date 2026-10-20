@@ -37,6 +37,7 @@ campfire-visibility.workspace = true
 
 bevy_ecs = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive", "rc", "std"] }
+smallvec.workspace = true
 thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]

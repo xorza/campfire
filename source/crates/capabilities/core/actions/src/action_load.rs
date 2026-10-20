@@ -10,7 +10,7 @@ use campfire_values::{
     TypeScope, UnitType,
 };
 
-use crate::action_book::{ActionBook, PackageAction};
+use crate::action_book::{ActionBook, ActionBookBuilder, PackageAction};
 use crate::action_data::ActionData;
 use crate::action_names::ActionNames;
 use crate::action_parts::ActionParts;
@@ -34,6 +34,13 @@ pub struct ActionLoad {
 
 impl Fact for ActionLoad {}
 
+/// An `ActionLoad` as the load fills it.
+#[derive(Debug, Default)]
+struct ActionLoading {
+    book: ActionBookBuilder,
+    effects: EffectListBook,
+}
+
 impl ActionLoad {
     /// Every package's actions, package by package, each by its id, of the ranks its slots give
     /// it, but a rules package's, which no match loads; an error for a name the match does not
@@ -41,7 +48,7 @@ impl ActionLoad {
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let names = LoadNames::of(cx)?;
         let ranks = cx.fact::<ActionRanks>()?;
-        let mut load = Self::default();
+        let mut load = ActionLoading::default();
         for (index, package) in cx.packages() {
             let actions = package.content.get::<ActionsData>().into_iter();
             for (id, data) in actions.flat_map(|actions| &actions.0) {
@@ -60,9 +67,14 @@ impl ActionLoad {
                 )?;
             }
         }
-        Ok(load)
+        Ok(Self {
+            book: load.book.build(),
+            effects: load.effects,
+        })
     }
+}
 
+impl ActionLoading {
     /// Loads `loaded`, with its script, its params and its effect lists.
     fn action(
         &mut self,
@@ -84,7 +96,7 @@ impl ActionLoad {
         let script = script.transpose()?;
         let package_names = names.of_package(index, None);
         let parts = ActionParts::of(data, index, ranks, cx.rate(), &package_names);
-        let parts = parts.map_err(|error| Self::error(index, id, error))?;
+        let parts = parts.map_err(|error| ActionLoad::error(index, id, error))?;
         let action = self.book.load(
             names.scripts,
             PackageAction {
@@ -116,11 +128,13 @@ impl ActionLoad {
             let mut effects = mem::take(&mut self.effects);
             let pushed = effects.push(action, data, &names.of_package(index, Some(data)));
             self.effects = effects;
-            pushed.map_err(|error| Self::error(index, id, error))?;
+            pushed.map_err(|error| ActionLoad::error(index, id, error))?;
         }
         Ok(action)
     }
+}
 
+impl ActionLoad {
     /// The book error of `error`, which the data of `action` of the package at `package` gives.
     fn error(package: PackageIndex, action: &DeclaredName, error: ActionError) -> BookError {
         let at = BookPlace::Entry {

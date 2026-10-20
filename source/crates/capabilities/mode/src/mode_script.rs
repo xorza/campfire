@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use campfire_script::ScriptValue;
 use campfire_values::NameTable;
 
@@ -22,7 +20,7 @@ pub(crate) struct ModeScript {
 
 impl ModeScript {
     /// The values of `data`, its options of the values `picks` gives, and `map`.
-    pub(crate) fn new(data: &ModeData, picks: &OptionPicks, map: GameMap) -> Rc<Self> {
+    pub(crate) fn new(data: &ModeData, picks: &OptionPicks, map: GameMap) -> Self {
         let params = data
             .params
             .iter()
@@ -36,7 +34,7 @@ impl ModeScript {
                 .chain(options)
                 .map(|(name, value)| (name.as_str(), value)),
         );
-        Rc::new(Self { params: table, map })
+        Self { params: table, map }
     }
 
     /// The param `name`, as `ctx.params` reads it.

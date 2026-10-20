@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_common::Seat;
-use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByType, Section};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section};
 use campfire_math::Num;
 use campfire_players::{PlayersWorld, ResourceBook};
 use campfire_script::{Filter, MatchNames, UnknownName};
@@ -42,7 +42,7 @@ impl BountyBook {
     pub(crate) fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let mode = cx.mode_section::<ModeBountyData>();
         let resources = cx.book::<ResourceBook>()?;
-        let mut types = ByType::default();
+        let mut types = ByTypeBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<BountyData>() else {
                 continue;
@@ -69,7 +69,7 @@ impl BountyBook {
         Ok(Self(Some(Bounty {
             killer,
             start: mode.share,
-            types,
+            types: types.build(),
         })))
     }
 

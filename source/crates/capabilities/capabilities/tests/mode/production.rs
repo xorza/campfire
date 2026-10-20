@@ -166,7 +166,7 @@ fn on_input(ctx, player, name, value) {
         names.named((TypeScope::Mode, name)).unwrap()
     };
     let (hero, grunt) = (named("hero-x"), named("grunt"));
-    let mut types = ByType::default();
+    let mut types = ByTypeBuilder::default();
     types.set(
         hero,
         SupplyData {
@@ -181,7 +181,7 @@ fn on_input(ctx, player, name, value) {
             provides: 0,
         },
     );
-    let costs = SupplyCostBook::new(types, game.resource::<ByAction<TrainSpec>>());
+    let costs = SupplyCostBook::new(types.build(), game.resource::<ByAction<TrainSpec>>());
     SupplyBook(Some(ModeSupplyData { max: 5 })).load_into(&mut game);
     costs.load_into(&mut game);
     Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);

@@ -10,14 +10,16 @@ use crate::per_action::PerAction;
 /// A value for some of the match's actions, by action: what a kind's capability resolves of each
 /// action of its kind, as the section of its data gives it (04-capabilities/actions.md, Each kind
 /// owns its section). A clone shares the values, so a reader keeps the book itself, not a copy of
-/// what it holds.
+/// what it holds; `ByActionBuilder` builds it.
 #[derive(Resource, Debug, PartialEq, Eq)]
 pub struct ByAction<T: Send + Sync + 'static> {
-    #[expect(
-        clippy::rc_buffer,
-        reason = "the book grows in place as it is built, and its clones share it after"
-    )]
-    entries: Arc<Vec<Option<T>>>,
+    entries: Arc<[Option<T>]>,
+}
+
+/// A `ByAction` as it is built: each action's value set once, in any order.
+#[derive(Debug)]
+pub struct ByActionBuilder<T: Send + Sync + 'static> {
+    entries: Vec<Option<T>>,
 }
 
 impl<T: Send + Sync + 'static> ByAction<T> {
@@ -38,16 +40,22 @@ impl<T: Send + Sync + 'static> ByAction<T> {
     }
 }
 
-impl<T: Clone + Send + Sync + 'static> ByAction<T> {
+impl<T: Send + Sync + 'static> ByActionBuilder<T> {
     /// Gives `action` its `value`, which it has none of yet.
     pub fn set(&mut self, action: ActionId, value: T) {
         let index = action.index();
-        let entries = Arc::make_mut(&mut self.entries);
-        if entries.len() <= index {
-            entries.resize_with(index + 1, || None);
+        if self.entries.len() <= index {
+            self.entries.resize_with(index + 1, || None);
         }
-        assert!(entries[index].is_none(), "an action has one value");
-        entries[index] = Some(value);
+        assert!(self.entries[index].is_none(), "an action has one value");
+        self.entries[index] = Some(value);
+    }
+
+    /// The book of the values set.
+    pub fn build(self) -> ByAction<T> {
+        ByAction {
+            entries: Arc::from(self.entries),
+        }
     }
 }
 
@@ -62,7 +70,15 @@ impl<T: Send + Sync + 'static> Clone for ByAction<T> {
 impl<T: Send + Sync + 'static> Default for ByAction<T> {
     fn default() -> Self {
         Self {
-            entries: Arc::default(),
+            entries: Arc::new([]),
+        }
+    }
+}
+
+impl<T: Send + Sync + 'static> Default for ByActionBuilder<T> {
+    fn default() -> Self {
+        Self {
+            entries: Vec::new(),
         }
     }
 }
@@ -73,15 +89,35 @@ impl<T: PerAction> Book for ByAction<T> {
     fn share(&self, _: &mut MatchNames) {}
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_values::ActionId;
+
+    use crate::by_action::{ByAction, ByActionBuilder};
+
+    impl<T: Clone + Send + Sync + 'static> ByAction<T> {
+        /// Gives `action` its `value` in a built book, as a test adds an action's value: the book
+        /// is built again, and a clone keeps the values it shared.
+        pub fn set(&mut self, action: ActionId, value: T) {
+            let mut built = ByActionBuilder {
+                entries: self.entries.to_vec(),
+            };
+            built.set(action, value);
+            *self = built.build();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn an_action_gives_its_value_and_another_none() {
-        let mut book = ByAction::default();
-        book.set(ActionId::new(2), 'b');
-        book.set(ActionId::new(0), 'a');
+        let mut built = ByActionBuilder::default();
+        built.set(ActionId::new(2), 'b');
+        built.set(ActionId::new(0), 'a');
+        let book = built.build();
         assert_eq!(book.get(ActionId::new(0)), Some(&'a'));
         assert_eq!(book.get(ActionId::new(1)), None);
         assert_eq!(book.get(ActionId::new(2)), Some(&'b'));
@@ -89,10 +125,9 @@ mod tests {
         assert_eq!(book.values().collect::<Vec<_>>(), [&'a', &'b']);
         let held: Vec<_> = book.iter().collect();
         assert_eq!(held, [(ActionId::new(0), &'a'), (ActionId::new(2), &'b')]);
-        // A clone shares its values, and a set after it changes only the book it sets.
+        // A clone reads the same values from the same storage.
         let shared = book.clone();
-        book.set(ActionId::new(1), 'c');
-        assert_eq!(shared.get(ActionId::new(1)), None);
-        assert_eq!(book.get(ActionId::new(1)), Some(&'c'));
+        let [own, theirs] = [&book, &shared].map(|book| book.get(ActionId::new(0)).unwrap());
+        assert!(std::ptr::eq(own, theirs));
     }
 }

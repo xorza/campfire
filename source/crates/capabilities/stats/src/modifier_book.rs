@@ -30,18 +30,22 @@ use crate::stat_book::StatBook;
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
 /// depends on, in the order of its manifest. Package data, not state: a restore loads it from the
 /// packages, as a new match does. Ids follow the order of package, then name. A clone shares
-/// the entries, as the script view reads them.
-#[derive(Resource, Debug, Clone, Default)]
+/// the entries, as the script view reads them; `ModifierBookBuilder` loads it.
+#[derive(Resource, Debug, Clone)]
 pub struct ModifierBook {
-    #[expect(
-        clippy::rc_buffer,
-        reason = "the load grows the book through `Arc::make_mut`; the clones after it share it"
-    )]
-    entries: Arc<Vec<ModifierEntry>>,
+    entries: Arc<[ModifierEntry]>,
     /// Each modifier's name in its package.
     names: Arc<Names<ModifierId>>,
     /// The names of the params its modifiers read from the abilities that apply them.
     appliers: Arc<Names<ApplierParam>>,
+}
+
+/// A `ModifierBook` as the load fills it, package by package.
+#[derive(Debug, Default)]
+pub(crate) struct ModifierBookBuilder {
+    entries: Vec<ModifierEntry>,
+    names: Names<ModifierId>,
+    appliers: Names<ApplierParam>,
 }
 
 /// A loaded modifier: its package, its spec, and its compiled script with the combat events it
@@ -75,11 +79,11 @@ pub struct PackageModifier<'d> {
     pub script: Option<ScriptId>,
 }
 
-impl ModifierBook {
+impl ModifierBookBuilder {
     /// Loads `modifiers`, sorted by name, as those of `package`, after every modifier of an
     /// earlier package or name, their names resolved through `load`; an aura names a modifier
     /// of its own package. A modifier that does not load fails them all.
-    pub fn load<S: Fn(&Stat) -> Result<StatId, UnknownName>>(
+    pub(crate) fn load<S: Fn(&Stat) -> Result<StatId, UnknownName>>(
         &mut self,
         load: ModifierLoad<'_, S>,
         package: PackageIndex,
@@ -129,7 +133,7 @@ impl ModifierBook {
                 }
             },
         };
-        let appliers = Arc::make_mut(&mut self.appliers);
+        let appliers = &mut self.appliers;
         let specs = modifiers
             .iter()
             .map(|modifier| {
@@ -140,11 +144,9 @@ impl ModifierBook {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let entries = modifiers.iter().zip(specs).zip(granted);
-        let book = Arc::make_mut(&mut self.entries);
-        let names = Arc::make_mut(&mut self.names);
         for ((modifier, spec), tags) in entries {
-            names.add((package, modifier.name.as_str()));
-            book.push(ModifierEntry {
+            self.names.add((package, modifier.name.as_str()));
+            self.entries.push(ModifierEntry {
                 package,
                 spec,
                 script: modifier.script,
@@ -155,6 +157,23 @@ impl ModifierBook {
         Ok(())
     }
 
+    /// The book of the modifiers loaded.
+    pub(crate) fn build(self) -> ModifierBook {
+        ModifierBook {
+            entries: Arc::from(self.entries),
+            names: Arc::new(self.names),
+            appliers: Arc::new(self.appliers),
+        }
+    }
+}
+
+impl Default for ModifierBook {
+    fn default() -> Self {
+        ModifierBookBuilder::default().build()
+    }
+}
+
+impl ModifierBook {
     /// Whether `other` is this book as one load made it, not a book of another load.
     pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.entries, &other.entries)
@@ -356,7 +375,7 @@ impl ModifierBook {
         let scripts = cx.book::<ScriptBook>()?;
         let tags = cx.fact::<UnitTypes>()?.tags();
         let stats = cx.book::<StatBook>()?;
-        let mut book = Self::default();
+        let mut book = ModifierBookBuilder::default();
         for (index, package) in cx.packages() {
             let Some(modifiers) = package.content.get::<ModifiersData>() else {
                 continue;
@@ -391,7 +410,7 @@ impl ModifierBook {
                     }
                 })?;
         }
-        Ok(book)
+        Ok(book.build())
     }
 }
 
@@ -415,17 +434,43 @@ pub(crate) mod internals {
     use std::sync::Arc;
 
     use campfire_math::Num;
-    use campfire_script::HookSet;
+    use campfire_script::{HookSet, UnknownName};
     use campfire_units::StatId;
-    use campfire_values::{ModifierId, NameId, PackageIndex, TagSet};
+    use campfire_values::{ModifierId, NameId, PackageIndex, Stat, TagSet};
 
     use crate::interval_revival::IntervalRevival;
-    use crate::modifier_book::{ModifierBook, ModifierEntry};
+    use crate::modifier_book::{
+        ModifierBook, ModifierBookBuilder, ModifierEntry, ModifierError, ModifierLoad,
+        PackageModifier,
+    };
     use crate::modifier_data::Reapply;
     use crate::modifier_spec::{ModifierSpec, SpecChange, SpecNumber};
     use crate::stat_op::StatOp;
 
     impl ModifierBook {
+        /// The book's modifiers again as a load fills them, as a test adds a modifier after the
+        /// book is built: a clone keeps the modifiers it shared.
+        fn reopen(&self) -> ModifierBookBuilder {
+            ModifierBookBuilder {
+                entries: self.entries.to_vec(),
+                names: (*self.names).clone(),
+                appliers: (*self.appliers).clone(),
+            }
+        }
+
+        /// Loads `modifiers` of `package` into a built book, as `ModifierBookBuilder::load` does.
+        pub fn load<S: Fn(&Stat) -> Result<StatId, UnknownName>>(
+            &mut self,
+            load: ModifierLoad<'_, S>,
+            package: PackageIndex,
+            modifiers: &[PackageModifier<'_>],
+        ) -> Result<(), ModifierError> {
+            let mut book = self.reopen();
+            book.load(load, package, modifiers)?;
+            *self = book.build();
+            Ok(())
+        }
+
         /// Adds a modifier of no package that makes `changes`, each by a value of zero, and
         /// grants `tags`; its id. Its name is its place in the book.
         pub(crate) fn push_changes(
@@ -433,17 +478,17 @@ pub(crate) mod internals {
             changes: &[(StatId, StatOp)],
             tags: TagSet,
         ) -> ModifierId {
-            let book = Arc::make_mut(&mut self.entries);
-            let at = book.len();
+            let mut book = self.reopen();
+            let at = book.entries.len();
             let name = format!("{at:05}");
             let none = PackageIndex::new(u16::MAX);
-            let id = Arc::make_mut(&mut self.names).add((none, name.as_str()));
+            let id = book.names.add((none, name.as_str()));
             let stats = changes.iter().map(|&(stat, op)| SpecChange {
                 stat,
                 op,
                 value: SpecNumber::Value(Num::ZERO),
             });
-            book.push(ModifierEntry {
+            book.entries.push(ModifierEntry {
                 package: none,
                 spec: ModifierSpec {
                     duration: None,
@@ -462,12 +507,15 @@ pub(crate) mod internals {
                 hooks: HookSet::default(),
                 tags,
             });
+            *self = book.build();
             id
         }
 
         /// Makes modifier `id` grant `tags`, as a test's data would.
         pub fn grant_tags(&mut self, id: ModifierId, tags: TagSet) {
-            Arc::make_mut(&mut self.entries)[id.index()].tags = tags;
+            let mut book = self.reopen();
+            book.entries[id.index()].tags = tags;
+            *self = book.build();
         }
     }
 }

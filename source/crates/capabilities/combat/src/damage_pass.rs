@@ -138,14 +138,14 @@ impl DamagePass {
         if weigh.is_none() && hooks.is_none() {
             Self::drain(
                 &mut PassRun::Plain(world),
-                hooks.as_deref(),
+                hooks.as_ref(),
                 weigh,
                 &mut scratch,
             );
         } else if !world.resource::<PassQueue>().is_empty() {
             world.script_batch(|batch| {
                 let run = &mut PassRun::Scripted(batch);
-                Self::drain(run, hooks.as_deref(), weigh, &mut scratch);
+                Self::drain(run, hooks.as_ref(), weigh, &mut scratch);
             });
         }
         world.resource_mut::<PassQueue>().end(now);

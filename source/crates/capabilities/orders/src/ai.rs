@@ -1,6 +1,6 @@
 use campfire_common::Ticks;
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, NamedScripts, PerType, ScriptParams,
+    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, NamedScripts, PerType, ScriptParams,
 };
 use campfire_script::{Ctx, Hook, HookDecl, ScriptId, ScriptRole, Unit};
 use campfire_sim::MatchRate;
@@ -98,7 +98,7 @@ impl Ai {
     /// error for a script the package does not hold, or an AI that does not load.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let scripts = cx.book::<ScriptBook>()?;
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
             let Some(orders) = unit.data.section::<AiData>() else {
                 continue;
@@ -109,7 +109,7 @@ impl Ai {
             })?;
             book.set(unit.unit_type, ai);
         }
-        Ok(book)
+        Ok(book.build())
     }
 }
 

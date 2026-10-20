@@ -3,7 +3,7 @@ use std::num::NonZeroI64;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declarations::{Book, BookCx, BookError, BookPlace};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByTypeBuilder};
 use campfire_math::{Num, Rounding};
 use campfire_script::{MatchNames, UnknownName};
 use campfire_sim::MatchRate;
@@ -260,7 +260,8 @@ impl StatBook {
     pub fn unit_steps(cx: &BookCx<'_>) -> Result<UnitSteps, BookError> {
         let book = cx.book::<Self>()?;
         let rate = cx.rate();
-        let mut steps = UnitSteps::default();
+        let mut steps = ByTypeBuilder::default();
+        let mut turns = ByTypeBuilder::default();
         for unit in cx.standing() {
             let unit_type = unit.unit_type;
             let gives = |stat| {
@@ -274,7 +275,7 @@ impl StatBook {
             let step = book
                 .step(&values, rate)
                 .expect("a type gives only a stat the mode declares");
-            steps.steps.set(
+            steps.set(
                 unit_type,
                 MoveStep::new(step).expect("the book's step is never negative"),
             );
@@ -282,10 +283,13 @@ impl StatBook {
                 let turn = book.turn_step(&values, rate);
                 let turn = turn.expect("a type gives only a stat the mode declares");
                 let turn = TurnStep::new(turn).expect("the book's turn step is never negative");
-                steps.turns.set(unit_type, turn);
+                turns.set(unit_type, turn);
             }
         }
-        Ok(steps)
+        Ok(UnitSteps {
+            steps: steps.build(),
+            turns: turns.build(),
+        })
     }
 }
 

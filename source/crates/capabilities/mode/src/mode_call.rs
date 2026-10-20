@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::sync::Arc;
 
 use bevy_ecs::world::World;
@@ -28,7 +27,7 @@ use crate::player_states::PlayerStates;
 pub(crate) struct ModeCall {
     book: Arc<ModeSpec>,
     /// The mode's values as scripts read them.
-    script: Rc<ModeScript>,
+    script: ModeScript,
     /// The place in the mode's list of the script the running call is of, none for another role.
     running: Option<ListPlace>,
     /// Every field of the mode's state, in the order of their names.
@@ -115,7 +114,7 @@ impl CallParams for ModeCall {
 }
 
 impl ModeCall {
-    pub(crate) fn new(book: Arc<ModeSpec>, script: Rc<ModeScript>) -> Self {
+    pub(crate) fn new(book: Arc<ModeSpec>, script: ModeScript) -> Self {
         Self {
             book,
             script,

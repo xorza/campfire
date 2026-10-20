@@ -73,15 +73,22 @@ impl ScriptId {
 pub struct ScriptHost {
     engine: Engine,
     scripts: Vec<AST>,
-    /// What the running call's budget has left as it starts.
-    allowed: Rc<Cell<u64>>,
-    /// Operations of the running call, as the progress callback last saw them.
-    counted: Rc<Cell<u64>>,
+    /// The running call's budget, which the progress callback shares.
+    progress: Rc<CallProgress>,
     properties: PropertyForwards,
     /// What the scripts printed since the last `take_prints`.
     printed: Rc<RefCell<ScriptPrints>>,
     /// The scope each call runs in, which Rhai empties again after it, kept so its buffers stay.
     scope: Scope<'static>,
+}
+
+/// The running call's budget as the host and Rhai's progress callback share it.
+#[derive(Debug)]
+struct CallProgress {
+    /// What the budget has left as the call starts.
+    allowed: Cell<u64>,
+    /// Operations of the call, as the progress callback last saw them.
+    counted: Cell<u64>,
 }
 
 impl ScriptHost {
@@ -137,18 +144,19 @@ impl ScriptHost {
         } else {
             engine.on_print(|_| {}).on_debug(|_, _, _| {});
         }
-        let allowed = Rc::new(Cell::new(0));
-        let counted = Rc::new(Cell::new(0));
-        let (call_allowed, call_counted) = (Rc::clone(&allowed), Rc::clone(&counted));
+        let progress = Rc::new(CallProgress {
+            allowed: Cell::new(0),
+            counted: Cell::new(0),
+        });
+        let call = Rc::clone(&progress);
         engine.on_progress(move |count| {
-            call_counted.set(count);
-            (count > call_allowed.get()).then_some(Dynamic::UNIT)
+            call.counted.set(count);
+            (count > call.allowed.get()).then_some(Dynamic::UNIT)
         });
         let mut host = Self {
             engine,
             scripts: Vec::new(),
-            allowed,
-            counted,
+            progress,
             properties: PropertyForwards::new(),
             printed,
             scope: Scope::new(),
@@ -215,8 +223,8 @@ impl ScriptHost {
         if budget.left() == 0 {
             return Err(ScriptError::TickBudget);
         }
-        self.allowed.set(budget.left());
-        self.counted.set(0);
+        self.progress.allowed.set(budget.left());
+        self.progress.counted.set(0);
         let result = self.engine.call_fn_with_options::<Dynamic>(
             CallFnOptions::new().eval_ast(false),
             &mut self.scope,
@@ -225,7 +233,7 @@ impl ScriptHost {
             args,
         );
         debug_assert!(self.scope.is_empty(), "a call rewinds its scope");
-        budget.spend(self.counted.get());
+        budget.spend(self.progress.counted.get());
         result.map_err(ScriptError::from_eval)
     }
 }

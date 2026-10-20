@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryData;
 use bevy_ecs::world::World;
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, PerType};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, ByTypeBuilder, PerType};
 use campfire_math::Num;
 use campfire_script::UnknownName;
 use campfire_sim::SimComponent;
@@ -73,7 +73,7 @@ impl ActionSlots {
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let kinds = &cx.book::<SlotKindBook>()?.0;
         let actions = cx.book::<ActionBook>()?;
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
             let Some(slots) = unit.data.section::<TypeSlotsData>() else {
                 continue;
@@ -98,7 +98,7 @@ impl ActionSlots {
             held.sort_by_key(|&(_, kind, _)| kind);
             book.set(unit.unit_type, Self::new(held));
         }
-        Ok(book)
+        Ok(book.build())
     }
 }
 

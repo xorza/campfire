@@ -1,5 +1,7 @@
 use campfire_common::DeclaredName;
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Section, SectionTable};
+use campfire_declarations::{
+    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section, SectionTable,
+};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable, UnknownName};
 use campfire_values::Named;
@@ -91,7 +93,7 @@ impl CollisionData {
     /// by the mode's layers, or on the first; an error for a layer the mode does not declare.
     pub fn bodies(cx: &BookCx<'_>) -> Result<ByType<BodyForm>, BookError> {
         let layers = cx.fact_if::<LayerNames>()?;
-        let mut bodies = ByType::default();
+        let mut bodies = ByTypeBuilder::default();
         for unit in cx.standing() {
             let Some(collision) = unit.data.section::<Self>() else {
                 continue;
@@ -107,7 +109,7 @@ impl CollisionData {
             };
             bodies.set(unit.unit_type, collision.form.on(layer));
         }
-        Ok(bodies)
+        Ok(bodies.build())
     }
 }
 

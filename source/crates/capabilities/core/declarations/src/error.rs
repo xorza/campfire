@@ -150,32 +150,28 @@ impl fmt::Display for TypePlace {
 pub struct Problem(Box<dyn ProblemValue>);
 
 /// A module's error as a problem holds it.
-trait ProblemValue: Error + Send + Sync + 'static {
-    fn as_any(&self) -> &dyn Any;
-
+trait ProblemValue: Any + Error + Send + Sync {
     fn clone_box(&self) -> Box<dyn ProblemValue>;
 
     fn eq_dyn(&self, other: &dyn ProblemValue) -> bool;
 }
 
 impl<E: Error + Clone + PartialEq + Send + Sync + 'static> ProblemValue for E {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn clone_box(&self) -> Box<dyn ProblemValue> {
         Box::new(self.clone())
     }
 
     fn eq_dyn(&self, other: &dyn ProblemValue) -> bool {
-        other.as_any().downcast_ref::<E>() == Some(self)
+        let other: &dyn Any = other;
+        other.downcast_ref::<E>() == Some(self)
     }
 }
 
 impl Problem {
     /// The module's error, if it is an `E`.
     pub fn get<E: 'static>(&self) -> Option<&E> {
-        self.0.as_any().downcast_ref()
+        let problem: &dyn Any = &*self.0;
+        problem.downcast_ref()
     }
 }
 

@@ -14,11 +14,6 @@ pub(crate) trait SectionValue: Any + Send + Sync {
 
     fn table(&self) -> SectionTable;
 
-    fn as_any(&self) -> &dyn Any;
-
-    #[cfg(feature = "internals")]
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-
     fn clone_box(&self) -> Box<dyn SectionValue>;
 
     fn eq_dyn(&self, other: &dyn SectionValue) -> bool;
@@ -35,21 +30,13 @@ impl<S: Section> SectionValue for S {
         S::TABLE
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    #[cfg(feature = "internals")]
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
     fn clone_box(&self) -> Box<dyn SectionValue> {
         Box::new(self.clone())
     }
 
     fn eq_dyn(&self, other: &dyn SectionValue) -> bool {
-        other.as_any().downcast_ref::<S>() == Some(self)
+        let other: &dyn Any = other;
+        other.downcast_ref::<S>() == Some(self)
     }
 
     fn fmt_value(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -62,7 +49,7 @@ impl Sections {
     pub fn get<S: Section>(&self) -> Option<&S> {
         self.0
             .iter()
-            .find_map(|section| section.as_any().downcast_ref())
+            .find_map(|section| (&**section as &dyn Any).downcast_ref())
     }
 
     /// Its section `S`, or the value a table that does not give it reads as.
@@ -90,7 +77,7 @@ impl Sections {
     #[must_use]
     pub fn with<S: Section>(mut self, section: S) -> Self {
         self.0
-            .retain(|held| held.as_any().type_id() != TypeId::of::<S>());
+            .retain(|held| (&**held as &dyn Any).type_id() != TypeId::of::<S>());
         self.0.push(Box::new(section));
         self
     }
@@ -137,13 +124,15 @@ impl fmt::Debug for Sections {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use std::any::Any;
+
     use crate::section::Section;
     use crate::section::sections::Sections;
 
     impl Sections {
         /// Its section `S`, which a test changes in place, if the table gives it.
         pub fn get_mut<S: Section>(&mut self) -> Option<&mut S> {
-            (self.0.iter_mut()).find_map(|section| section.as_any_mut().downcast_mut())
+            (self.0.iter_mut()).find_map(|section| (&mut **section as &mut dyn Any).downcast_mut())
         }
     }
 }

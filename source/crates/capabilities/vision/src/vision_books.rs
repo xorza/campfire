@@ -1,4 +1,6 @@
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Section, Sections};
+use campfire_declarations::{
+    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section, Sections,
+};
 use campfire_geometry::{Grid, Polygon};
 use campfire_math::Num;
 use campfire_units::{MapBook, TeamNames};
@@ -67,13 +69,13 @@ impl VisionBook {
 impl Sight {
     /// The sight of each unit type with a `vision` section, a delivery type's among them.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.types() {
             if let Some(vision) = unit.data.section::<VisionData>() {
                 book.set(unit.unit_type, vision.sight);
             }
         }
-        Ok(book)
+        Ok(book.build())
     }
 }
 

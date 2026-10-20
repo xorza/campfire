@@ -1,5 +1,5 @@
 use campfire_actions::{ActionsData, DeliveryData, Flights, ListHook, Targeting};
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section};
 use campfire_math::Num;
 use campfire_script::ScriptRole;
 use campfire_stats::MoveSpeedCap;
@@ -121,13 +121,13 @@ impl Projectiles {
         reason = "a book's builder and an extension take the build's signature"
     )]
     pub(crate) fn flights(cx: &BookCx<'_>) -> Result<Flights, BookError> {
-        let mut flights = ByType::default();
+        let mut flights = ByTypeBuilder::default();
         for unit in cx.types() {
             if let Some(projectile) = unit.data.section::<ProjectileData>() {
                 flights.set(unit.unit_type, projectile.flight());
             }
         }
-        Ok(Flights(flights))
+        Ok(Flights(flights.build()))
     }
 }
 
@@ -136,7 +136,7 @@ impl ProjectileSpec {
     /// for a tag the match does not have.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let tags = cx.fact::<UnitTypes>()?.tags();
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.types() {
             let Some(projectile) = unit.data.section::<ProjectileData>() else {
                 continue;
@@ -146,6 +146,6 @@ impl ProjectileSpec {
             })?;
             book.set(unit.unit_type, spec);
         }
-        Ok(book)
+        Ok(book.build())
     }
 }

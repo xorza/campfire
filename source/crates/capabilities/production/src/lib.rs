@@ -335,7 +335,7 @@ pub mod internals {
         ActionData, ActionKind, ActionRange, ActionTarget, Actions, Aim, ByAction, ProgressDues,
     };
     use campfire_common::Ticks;
-    use campfire_declarations::ByType;
+    use campfire_declarations::ByTypeBuilder;
     use campfire_declarations::internals::BookLoad;
     use campfire_math::Num;
     use campfire_players::ResourceAmount;
@@ -449,11 +449,11 @@ pub mod internals {
 
         /// Counts supply, up to `max`, with each type's `supplies`, and the trains the book holds.
         pub fn count_supply(world: &mut World, max: u32, supplies: &[(UnitType, SupplyData)]) {
-            let mut types = ByType::default();
+            let mut types = ByTypeBuilder::default();
             for &(unit_type, supply) in supplies {
                 types.set(unit_type, supply);
             }
-            let costs = SupplyCostBook::new(types, world.resource::<ByAction<TrainSpec>>());
+            let costs = SupplyCostBook::new(types.build(), world.resource::<ByAction<TrainSpec>>());
             costs.load_into(world);
             (SupplyBook(Some(ModeSupplyData { max }))).load_into(world);
         }

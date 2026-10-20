@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_actions::{SlotKinds, TrackNames};
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section};
 use campfire_script::UnknownName;
 use campfire_values::{Named, PackageIndex, TrackId};
 
@@ -62,7 +62,7 @@ impl TrackSet {
     /// mode does not declare.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let names = cx.book::<TrackBook>()?.names();
-        let mut book = ByType::default();
+        let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
             let Some(tracks) = unit.data.section::<TypeTracksData>() else {
                 continue;
@@ -79,6 +79,6 @@ impl TrackSet {
                 book.set(unit.unit_type, set);
             }
         }
-        Ok(book)
+        Ok(book.build())
     }
 }

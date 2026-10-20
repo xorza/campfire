@@ -1,11 +1,9 @@
-use std::cell::RefCell;
-use std::mem;
-
 use bevy_ecs::entity::Entity;
 use campfire_script::{CallStart, Ctx, Hook, HookDecl, ScriptBatch, View};
 use campfire_sim::{SimTick, SimWorld, StableId};
 use campfire_units::{Owner, TagEffect};
 use campfire_values::ModifierId;
+use smallvec::SmallVec;
 
 use crate::instance::Instance;
 use crate::modifier_book::ModifierBook;
@@ -16,13 +14,15 @@ use crate::stats_call::StatsCall;
 use crate::stats_column::StatsColumn;
 
 /// Runs modifier scripts' hooks: those of an interval, and those of the events another
-/// capability reports to the modifiers its units hold, as combat's attacks, hits and kills.
-#[derive(Debug)]
+/// capability reports to the modifiers its units hold, as combat's attacks, hits and kills. A
+/// clone shares the scripts, as its `ctx` does.
+#[derive(Debug, Clone)]
 pub struct ModifierHooks {
     ctx: Ctx,
-    /// The modifiers that hear the running event, kept between events.
-    heard: RefCell<Vec<Heard>>,
 }
+
+/// The most modifiers of one carrier that hear one event with no allocation.
+const HEARD_INLINE: usize = 8;
 
 /// A hook of the modifiers a unit holds, which their runner calls with `ctx`, the modifier's
 /// handle, and what its event gives, as another capability reports the event.
@@ -51,10 +51,7 @@ struct HeardInstance {
 
 impl ModifierHooks {
     pub const fn new(ctx: Ctx) -> Self {
-        Self {
-            ctx,
-            heard: RefCell::new(Vec::new()),
-        }
+        Self { ctx }
     }
 
     /// The script view its calls see.
@@ -73,8 +70,7 @@ impl ModifierHooks {
         event: impl FnOnce() -> H::Event,
     ) {
         let hook = Hook::of::<H>();
-        let mut heard = mem::take(&mut *self.heard.borrow_mut());
-        heard.clear();
+        let mut heard = SmallVec::<[Heard; HEARD_INLINE]>::new();
         let world = batch.world();
         let entity = world.entity_of(carrier);
         if let Some(entity) = entity
@@ -101,7 +97,6 @@ impl ModifierHooks {
                 self.call::<H>(batch, carrier, modifier, depth, event.clone());
             }
         }
-        *self.heard.borrow_mut() = heard;
     }
 
     /// Calls the hook `H` of the instance `heard` on `carrier`, if it still holds: in the pool of

@@ -1,6 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, PerType};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, ByTypeBuilder, PerType};
 use campfire_script::UnknownName;
 use campfire_sim::StableId;
 use campfire_values::{ModifierId, Named, Rank, UnitType};
@@ -22,7 +22,7 @@ impl TypePassive {
     /// a modifier the package does not have.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let modifiers = cx.book::<ModifierBook>()?;
-        let mut passives = ByType::default();
+        let mut passives = ByTypeBuilder::default();
         for unit in cx.standing() {
             let Some(passive) = unit.data.section::<PassiveData>() else {
                 continue;
@@ -33,7 +33,7 @@ impl TypePassive {
             let id = named.ok_or_else(|| BookError::unknown(unit.package, at(), unknown()))?;
             passives.set(unit.unit_type, Self(id));
         }
-        Ok(passives)
+        Ok(passives.build())
     }
 }
 

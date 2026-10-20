@@ -5,7 +5,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, SystemState};
 use bevy_ecs::world::World;
 use campfire_actions::Targets;
-use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByType, Section};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section};
 use campfire_geometry::Placed;
 use campfire_math::{Num, Rounding};
 use campfire_script::{Filter, MatchNames, UnknownName};
@@ -81,7 +81,7 @@ impl ExperienceBook {
             })?),
             None => None,
         };
-        let mut gives = ByType::default();
+        let mut gives = ByTypeBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<ExperienceData>() else {
                 continue;
@@ -121,7 +121,11 @@ impl ExperienceBook {
                 }
             }
         };
-        Ok(Self(Some(Share { track, to, gives })))
+        Ok(Self(Some(Share {
+            track,
+            to,
+            gives: gives.build(),
+        })))
     }
 
     pub(crate) const fn share(&self) -> Option<&Share> {
