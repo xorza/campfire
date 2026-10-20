@@ -385,8 +385,9 @@ impl Shot {
 #[test]
 fn a_shells_splash_damages_the_units_of_its_relations_within_its_radius_once_each() {
     // A splash of 2 m at the enemies: the shell ends on the target's center, (8, 0, 0), in tick
-    // 5. An enemy whose body's edge lies 1.5 m from it takes the damage, one 2 m away does not,
-    // nor an ally within it; the target takes it once, its hit dealing nothing of its own.
+    // 5. An enemy whose body's edge lies 1.5 m from it takes the damage, and so does one exactly
+    // 2 m away, by the one reach rule; one a bit past 2 m does not, nor an ally within it; the
+    // target takes it once, its hit dealing nothing of its own.
     let splash = SplashData::new(Num::int(2), RelationSet::Enemies, true).unwrap();
     let mut near = Vec::new();
     let mut shot = Shot::new(
@@ -397,6 +398,7 @@ fn a_shells_splash_damages_the_units_of_its_relations_within_its_radius_once_eac
             for (position, team) in [
                 (at(Num::int(10) + half, Num::ZERO), 1),
                 (at(Num::int(11), Num::ZERO), 1),
+                (at(Num::int(8), Num::int(3) + Num::EPSILON), 1),
                 (at(Num::int(8), -Num::int(2) - half), 0),
             ] {
                 near.push(Mode::spawn(
@@ -410,11 +412,12 @@ fn a_shells_splash_damages_the_units_of_its_relations_within_its_radius_once_eac
         },
     );
     shot.through(5);
-    let [inside, at_edge, ally] = near[..] else {
-        panic!("three units near");
+    let [inside, at_edge, past_edge, ally] = near[..] else {
+        panic!("four units near");
     };
-    let healths = [shot.target, inside, at_edge, ally].map(|id| Stats::health(&shot.game, id));
-    assert_eq!(healths, [70, 70, 100, 100]);
+    let healths =
+        [shot.target, inside, at_edge, past_edge, ally].map(|id| Stats::health(&shot.game, id));
+    assert_eq!(healths, [70, 70, 70, 100, 100]);
 
     // At the allies, 9 m wide, sparing no source: the shooter, a point 8 m away, takes it, and
     // the target, an enemy, does not; sparing its source, the shooter takes nothing.

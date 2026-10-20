@@ -1,72 +1,41 @@
-use std::ops::ControlFlow;
-
 use bevy_ecs::system::{Query, Res, ResMut};
-use campfire_actions::Targets;
 use campfire_declare::ByType;
-use campfire_geometry::Placed;
 use campfire_sim::Position;
-use campfire_stats::{Held, HeldModifiers};
-use campfire_units::UnitsNear;
-use campfire_values::{Relation, Team, UnitType};
+use campfire_stats::{HeldModifiers, Projection};
+use campfire_values::{Team, UnitType};
 
 use crate::area::Area;
-use crate::area_spec::{AreaSpec, Inside};
+use crate::area_spec::AreaSpec;
 
 /// The modifiers each area holds on the units inside it.
 #[derive(Debug)]
 pub struct AreaHolds;
 
 impl AreaHolds {
-    /// Lists the modifiers each area holds this tick: its type's `inside` modifier for its source,
-    /// for the source's other allies and for the units that may be attacked, on each living unit
-    /// whose body is within its radius, whose tags block it as a target or not, from its source, by
-    /// its action at its rank.
+    /// Projects the modifiers each area holds this tick: its type's `inside` modifier for its
+    /// source, for the source's other allies and for the other units that may be attacked, on the
+    /// units within its radius, from its source, by its action at its rank. Stats select them as
+    /// they select an aura's (04-capabilities/stats.md, An area holds as an aura does).
     pub(super) fn hold_inside(
-        targets: Targets<'_, '_>,
         specs: Res<'_, ByType<AreaSpec>>,
         mut held: ResMut<'_, HeldModifiers>,
         areas: Query<'_, '_, (&Position, &Team, &UnitType, &Area)>,
-        near: UnitsNear<'_>,
     ) {
-        let holding = |unit_type| {
-            let spec = specs.get(unit_type).expect("an area's type has a spec");
-            (spec.inside != Inside::default()).then_some(spec)
-        };
-        if !areas
-            .iter()
-            .any(|(_, _, &unit_type, _)| holding(unit_type).is_some())
-        {
-            return;
-        }
-        let grid = near.current();
         for (&position, &team, &unit_type, area) in &areas {
-            let Some(spec) = holding(unit_type) else {
-                continue;
-            };
-            grid.visit_near(position.get(), spec.radius, |body| {
-                let Some(unit) = targets.living_at(body.key) else {
-                    return ControlFlow::Continue(());
-                };
-                if !targets.reaches(Placed::point(position.get()), spec.radius, &unit) {
-                    return ControlFlow::Continue(());
-                }
-                let by = area.by();
-                let modifier = match targets.relation(team, unit.team) {
-                    _ if unit.id == by.source => spec.inside.caster,
-                    Relation::Friendly => spec.inside.allies,
-                    Relation::Hostile | Relation::Neutral => spec.inside.enemies,
-                };
-                if let Some(modifier) = modifier {
-                    held.0.push(Held {
-                        target: unit.id,
-                        modifier,
-                        source: Some(by.source),
-                        action: Some(by.action),
-                        rank: by.rank,
-                    });
-                }
-                ControlFlow::Continue(())
-            });
+            let spec = specs.get(unit_type).expect("an area's type has a spec");
+            let by = area.by();
+            for (affects, modifier) in spec.inside.holds() {
+                held.project(Projection {
+                    at: position.get(),
+                    radius: spec.radius,
+                    team,
+                    affects,
+                    modifier,
+                    source: by.source,
+                    action: Some(by.action),
+                    rank: by.rank,
+                });
+            }
         }
     }
 }

@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::ops::ControlFlow;
 
 use bevy_ecs::entity::Entity;
@@ -379,9 +378,8 @@ impl Flights<'_> {
             aimed,
             hits,
         } = sphere;
-        let meets = |volume: Option<Volume>| {
-            volume.is_some_and(|volume| volume.nearest(point, half) != Ordering::Greater)
-        };
+        let meets =
+            |volume: Option<Volume>| volume.is_some_and(|volume| volume.reaches(point, half));
         let mut met = aimed.filter(|&aimed| aimed != source && meets(targets.volume_of(aimed)));
         if !hits.is_empty() {
             let grid = self.grid.expect("a curve finds the units near");

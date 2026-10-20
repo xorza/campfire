@@ -118,10 +118,7 @@ impl Module for Areas {
         );
         cx.server(AreasSet::Land, AreaLife::land);
         cx.server(AreasSet::LandAtResolve, AreaLife::land);
-        cx.add(
-            AreasSet::HoldInside,
-            UnitGrid::before_reading(AreaHolds::hold_inside),
-        );
+        cx.add(AreasSet::HoldInside, AreaHolds::hold_inside);
     }
 }
 

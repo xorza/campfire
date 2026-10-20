@@ -7,7 +7,7 @@ use campfire_declare::RoleForm;
 use campfire_geometry::Placed;
 use campfire_players::OnMatch;
 use campfire_sim::{EntityIndex, Position, StableId, TickClock, Unpredicted};
-use campfire_units::{Dead, MapBook, Owner, TagEffect, UnitsNear};
+use campfire_units::{Dead, Life, MapBook, Owner, TagEffect, UnitsNear};
 use campfire_values::{Relations, TagSet, Team, UnitTags};
 
 use crate::application::{Adding, ApplyAt};
@@ -20,6 +20,7 @@ use crate::modifier_dues::ModifierIndexes;
 use crate::modifier_params::ModifierParams;
 use crate::modifiers::Modifiers;
 use crate::modifiers::modifier_clocks::ModifierClocks;
+use crate::projection::{Affects, Projection};
 use crate::stat_books::StatBooks;
 
 /// The living units whose held modifiers `HeldPass::run` writes: on a predicting client, those it
@@ -35,6 +36,7 @@ type HeldUnits<'w, 's> = Query<
         Option<&'static Owner>,
         (&'static mut Modifiers, &'static mut ModifierClocks),
         Entity,
+        Option<&'static Life>,
     ),
     (Without<Dead>, Without<Unpredicted>),
 >;
@@ -69,16 +71,17 @@ pub struct HeldPass;
 
 impl HeldPass {
     /// Holds, in Resolve each tick, each aura's modifier on every living unit whose body comes
-    /// within its radius of its carrier's position in the map's metric, as an area's reaches, that
-    /// its `affects` selects, from the unit that carries the aura. An aura's instance projects only
-    /// while it has a stack and takes effect on its carrier, which its immunities may suppress. And
-    /// each one another capability holds this tick, as `HeldModifiers` lists it. Each ends on a
-    /// unit that left it. An aura's modifier resolves its numbers from the ability that gave the
-    /// aura, and has no duration. A predicting client keeps a held instance from a source whose
-    /// modifiers it does not hold, as a mode that hides them from it, or that it does not hold at
-    /// all, as the server sent it: it cannot tell whether that source's aura still reaches, so the
-    /// server's word corrects it once as it comes and once as it goes (10-replication-audiences.md,
-    /// A mode's hidden data is not predicted).
+    /// within its radius of its carrier's position in the map's metric, that its `affects`
+    /// selects, from the unit that carries the aura. An aura's instance projects only while it has
+    /// a stack and takes effect on its carrier, which its immunities may suppress. And each one
+    /// another capability holds this tick, as `HeldModifiers` lists it: on its unit, or on the
+    /// units its projection selects, by the rule of an aura's. Each ends on a unit that left it.
+    /// An aura's modifier resolves its numbers from the ability that gave the aura, and has no
+    /// duration. A predicting client keeps a held instance from a source whose modifiers it does
+    /// not hold, as a mode that hides them from it, or that it does not hold at all, as the server
+    /// sent it: it cannot tell whether that source's aura still reaches, so the server's word
+    /// corrects it once as it comes and once as it goes (10-replication-audiences.md, A mode's
+    /// hidden data is not predicted).
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"
@@ -93,7 +96,7 @@ impl HeldPass {
         mut units: HeldUnits<'_, '_>,
         carriers: HeldCarriers<'_, '_>,
         unseen: UnseenSources<'_, '_>,
-        mut held: Local<'_, Vec<Held>>,
+        (mut held, mut projections): (Local<'_, Vec<Held>>, Local<'_, Vec<Projection>>),
         near: UnitsNear<'_>,
         auras: Res<'_, AuraCarriers>,
         mut indexes: ModifierIndexes<'_>,
@@ -110,7 +113,9 @@ impl HeldPass {
             params: params.book(),
         };
         held.clear();
-        held.extend(others.0.drain(..));
+        held.extend(others.held.drain(..));
+        projections.clear();
+        projections.extend(others.projections.drain(..));
         let granting = tag_book.granting();
         let living = auras.iter().filter_map(|entity| {
             let written = units
@@ -120,7 +125,6 @@ impl HeldPass {
             written.or_else(|| carriers.get(entity).ok())
         });
         for (&source, at, &team, carrier, modifiers) in living {
-            let at = at.get();
             let immune = carrier.map_or_else(TagSet::default, |tags| tags.immune);
             let takes_effect = TagEffect::new(granting, immune);
             for instance in modifiers.iter() {
@@ -132,29 +136,44 @@ impl HeldPass {
                 if instance.stacks == 0 || !takes_effect.takes(book.tags(instance.id)) {
                     continue;
                 }
-                let (filter, modifier) = (aura.affects, aura.modifier);
-                near.current().visit_near(at, radius, |entry| {
-                    let Ok((&target, _, &other, tags, ..)) = units.get(entry.key) else {
-                        return ControlFlow::Continue(());
-                    };
-                    let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
-                    let relation = relations.between(team, other);
-                    let reaches = map.metric.reaches(Placed::point(at), radius, entry.body);
-                    if reaches && filter.selects(relation, tags) {
-                        held.push(Held {
-                            target,
-                            modifier,
-                            source: Some(source),
-                            action: instance.action,
-                            rank: instance.rank,
-                        });
-                    }
-                    ControlFlow::Continue(())
+                projections.push(Projection {
+                    at: at.get(),
+                    radius,
+                    team,
+                    affects: Affects::Filter(aura.affects),
+                    modifier: aura.modifier,
+                    source,
+                    action: instance.action,
+                    rank: instance.rank,
                 });
             }
         }
+        let grid = near.current();
+        for projection in &*projections {
+            grid.visit_near(projection.at, projection.radius, |entry| {
+                let Ok((&target, _, &other, tags, .., life)) = units.get(entry.key) else {
+                    return ControlFlow::Continue(());
+                };
+                let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
+                let relation = relations.between(projection.team, other);
+                let at = Placed::point(projection.at);
+                if campfire_units::lives(false, life)
+                    && map.metric.reaches(at, projection.radius, entry.body)
+                    && projection.selects(target, relation, tags)
+                {
+                    held.push(Held {
+                        target,
+                        modifier: projection.modifier,
+                        source: Some(projection.source),
+                        action: projection.action,
+                        rank: projection.rank,
+                    });
+                }
+                ControlFlow::Continue(())
+            });
+        }
         held.sort_unstable();
-        for (&id, _, _, _, _, (modifiers, clocks), entity) in &mut units {
+        for (&id, _, _, _, _, (modifiers, clocks), entity, _) in &mut units {
             let mut carried = CarriedMut::new(modifiers, clocks, indexes.of(id, entity));
             let first = held.partition_point(|entry| entry.target < id);
             let mine = held[first..].iter().take_while(|entry| entry.target == id);

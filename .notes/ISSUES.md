@@ -31,11 +31,9 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Ready
 
-- **Areas.** **Plan: 10.** An area's `inside` and an aura do one job in two shapes, and disagree on neutral and lifeless units (`area_spec.rs:94-101`, `area_holds.rs:47-58`, `held_pass.rs:131-139`).
 - **Benches.** Each of the 16 crates with a `[[bench]]` sets `[lib] bench = false`, which no command reads: the driver selects the bench targets alone, by `--bench '*'`.
 - **Client.** A press drags past 4 pixels along either axis, a constant of the client's code (`client/src/press.rs`, `DRAG_PIXELS`), and the Zero Hour import does not read the game's `Mouse.ini` `DragTolerance`, the pixels within which a press of the game is still a click.
 - **Client.** **Plan: 11.** A slot's charges come from progression's `Learning`, so a mode without progression shows none (`progression/src/learning.rs:44`, `client/src/hud/mod.rs:103`).
-- **Combat.** **Plan: 10.** A splash reaches a unit within `<` its radius, where the one reach rule is `≤` (`attacks.rs:120-122`, `metric.rs:54-73`).
 - **Import.** `MapFile` and `UnitsFile` name Zero Hour's files in `import` and Campfire's files in `package`: two types of one name (14-workspace-alignment.md, A type name that both sides declare keeps one meaning).
 - **Mode.** A spatial map's height grid and `[ground]` load into its `MapBook`, and the sim reads neither: `MapBook::point` takes a spatial map's position as its point in space.
 - **Net-endpoint.** The frame's send step wakes the endpoint's IO thread at every frame, whether or not it took a payload or moved a deadline (`net-endpoint/src/endpoint/mod.rs`, `Endpoint::send`): an idle server's IO thread wakes at its tick rate.

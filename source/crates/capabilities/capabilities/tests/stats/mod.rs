@@ -7,6 +7,7 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Toml;
 use campfire_common::{DeclaredName, Tick, Ticks};
+use campfire_declare::Scratch;
 use campfire_declare::internals::BookLoad;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
@@ -780,14 +781,14 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
         action: None,
         rank: Rank::FIRST,
     };
-    game.resource_mut::<HeldModifiers>().0.push(held);
+    game.resource_mut::<HeldModifiers>().hold(held);
     game.step();
     let holds = |game: &Match| {
         let modifiers = game.get::<Modifiers>(unit).unwrap();
         modifiers.get(inspired, None).is_some()
     };
     assert!(holds(&game));
-    assert!(game.resource::<HeldModifiers>().0.is_empty());
+    assert!(game.resource::<HeldModifiers>().is_clear());
     game.step();
     assert!(!holds(&game));
 }

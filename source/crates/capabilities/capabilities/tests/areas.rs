@@ -11,11 +11,14 @@ use campfire_production::Production;
 use campfire_projectiles::Projectiles;
 use campfire_script::Filter;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, SimComponent};
-use campfire_stats::{ModifierData, Stats};
-use campfire_units::{UnitTypeCore, UnitTypes, Units};
+use campfire_sim::{Capability, SimComponent, SimWorld};
+use campfire_stats::{
+    Application, AuraData, CarriedMut, ModifierData, Modifiers, NewInstance, Reapply, Stats,
+};
+use campfire_units::{Dead, Life, UnitTypeCore, UnitTypes, Units, UnitsWorld};
 use campfire_values::{
-    EngineTag, Number, PackageIndex, ParamRef, Rank, Relation, RelationSet, TagSet, Team, TypeScope,
+    EngineTag, FilterData, Number, PackageIndex, ParamRef, Rank, Relation, RelationSet, Scalar,
+    TagSet, Team, TypeScope, VisionShare,
 };
 
 #[test]
@@ -143,4 +146,116 @@ fn an_area_is_state_and_restores() {
     let area = Area::new(by, None, Tick::LIMIT);
     assert!(area.check(&game, entity));
     assert!(!area.check(&game, game.unit_entity(warded)));
+}
+
+#[test]
+fn an_area_and_an_aura_hold_on_the_same_units_of_each_relation_and_life() {
+    // An area that holds `guarded` on its source, `rallied` on the source's other allies and
+    // `marked` on the units that may be attacked, and an aura of the enemies that holds
+    // `inspired`, each of 2 m around the source at 0.
+    let declared = [Capability::Stats, Capability::Combat, Capability::Areas];
+    let mut game = Match::unscripted(&declared);
+    let core = UnitTypeCore::default();
+    let plain = Units::load_type(&mut game, TypeScope::Mode, "plain", &core);
+    Units::give_type(&mut game, plain, Life::full(Num::int(100)));
+    let lifeless = Units::load_type(&mut game, TypeScope::Mode, "lifeless", &core);
+    let field = Units::load_type(&mut game, TypeScope::Mode, "field", &core);
+    let action = Production::add_train(&mut game, field, Ticks::ZERO, None);
+    let name = |name| DeclaredName::new(name).unwrap();
+    let presence = ModifierData {
+        aura: Some(AuraData {
+            radius: Number::Value(Scalar::Int(2)),
+            affects: FilterData::parse("enemies").unwrap(),
+            modifier: name("inspired"),
+        }),
+        ..ModifierData::default()
+    };
+    // A package's modifiers load by name.
+    let plain_modifier = ModifierData::default();
+    for (modifier, data) in [
+        ("guarded", &plain_modifier),
+        ("inspired", &plain_modifier),
+        ("marked", &plain_modifier),
+        ("presence", &presence),
+        ("rallied", &plain_modifier),
+    ] {
+        Stats::load_modifier(&mut game, PackageIndex::MODE, modifier, data, None);
+    }
+    let inside = AreaInsideData {
+        caster: Some(name("guarded")),
+        allies: Some(name("rallied")),
+        enemies: Some(name("marked")),
+    };
+    let area = AreaData {
+        radius: Num::int(2),
+        delay_ms: 0,
+        duration_ms: 0,
+        affects: None,
+        inside,
+    };
+    Areas::load_type(&mut game, field, PackageIndex::MODE, &area);
+    let [inspired, guarded, rallied, marked, presence] =
+        ["inspired", "guarded", "rallied", "marked", "presence"]
+            .map(|modifier| Stats::modifier(&game, PackageIndex::MODE, modifier).unwrap());
+    // Team 0 regards team 2 as neutral, and team 1 as hostile, as every pair not set is.
+    game.relations_mut().set(
+        Team::new(0),
+        Team::new(2),
+        Relation::Neutral,
+        VisionShare::Shared,
+    );
+    let spawn = |game: &mut Match, unit_type, (x, z), team| {
+        let at = Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
+        Mode::spawn(game, unit_type, at, Team::new(team), ())
+    };
+    let source = spawn(&mut game, plain, (0, 0), 0);
+    let units = [
+        (plain, (1, 0), 1),
+        (plain, (-1, 0), 2),
+        (plain, (0, 1), 0),
+        (lifeless, (0, -1), 1),
+        (plain, (1, 1), 1),
+    ]
+    .map(|(unit_type, at, team)| spawn(&mut game, unit_type, at, team));
+    let [.., dead] = units;
+    game.insert_parts(dead, Dead);
+    let by = Delivering {
+        source,
+        action,
+        rank: Rank::FIRST,
+        start: None,
+        launch: None,
+    };
+    let area = Area::new(by, None, Tick::LIMIT);
+    Deliveries::spawn_of(&mut game, source, field, Vec3::ZERO, area);
+    let holder = game.unit_entity(source);
+    let aura = Application {
+        instance: NewInstance {
+            aura_radius: Some(Num::int(2)),
+            ..NewInstance::bare(presence, Some(source))
+        },
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+    };
+    CarriedMut::with(&mut game, holder, |carried| carried.apply(aura)).unwrap();
+    game.step();
+    // Each holds on the hostile unit, the neutral one and the hostile one of no life, which lives
+    // by the one living test, and on neither the source, the ally nor the dead unit; the source
+    // holds `guarded` alone, and the ally `rallied`.
+    let holds = |modifier| {
+        [source]
+            .into_iter()
+            .chain(units)
+            .map(|id| {
+                game.part::<Modifiers>(id)
+                    .get(modifier, Some(source))
+                    .is_some()
+            })
+            .collect::<Vec<_>>()
+    };
+    let enemies = [false, true, true, false, true, false];
+    assert_eq!(holds(inspired), enemies);
+    assert_eq!(holds(marked), enemies);
+    assert_eq!(holds(guarded), [true, false, false, false, false, false]);
+    assert_eq!(holds(rallied), [false, false, false, true, false, false]);
 }

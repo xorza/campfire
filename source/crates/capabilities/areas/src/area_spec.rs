@@ -3,7 +3,8 @@ use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_script::{Filter, TagNames, UnknownName};
 use campfire_sim::MatchRate;
-use campfire_values::{ModifierId, TimeTooLarge};
+use campfire_stats::Affects;
+use campfire_values::{ModifierId, RelationSet, TimeTooLarge};
 
 use crate::area_data::AreaData;
 use crate::error::AreaError;
@@ -19,14 +20,11 @@ pub struct AreaSpec {
     pub inside: Inside,
 }
 
-/// The modifiers an area holds on its source, on the source's other allies, and on the units
-/// that may be attacked, while they are inside.
+/// The modifiers an area holds on the units inside it, each with the units it affects: its
+/// source, the source's other allies, or the other units that may be attacked, as the filter of
+/// those relations alone selects them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Inside {
-    pub(crate) caster: Option<ModifierId>,
-    pub(crate) allies: Option<ModifierId>,
-    pub(crate) enemies: Option<ModifierId>,
-}
+pub struct Inside([Option<(Affects, ModifierId)>; 3]);
 
 impl AreaSpec {
     /// The spec of `data`: its times in ticks at `rate`, rounded up, what it reaches among the
@@ -38,28 +36,35 @@ impl AreaSpec {
         rate: MatchRate,
         modifier: impl Fn(&DeclaredName) -> Result<ModifierId, UnknownName>,
     ) -> Result<Self, AreaError> {
-        let inside = |name: &Option<DeclaredName>| name.as_ref().map(&modifier).transpose();
+        let inside = |affects, name: &Option<DeclaredName>| {
+            let modifier = name.as_ref().map(&modifier).transpose()?;
+            Ok::<_, UnknownName>(modifier.map(|modifier| (affects, modifier)))
+        };
+        let others = |relations| Affects::Others(Filter::of_relations(relations, tags));
         let ticks = |ms| rate.ticks(ms).ok_or(TimeTooLarge);
         Ok(Self {
             radius: data.radius,
             delay: ticks(data.delay_ms)?,
             duration: ticks(data.duration_ms)?,
             affects: Filter::resolve_or_enemies(data.affects.as_ref(), tags)?,
-            inside: Inside {
-                caster: inside(&data.inside.caster)?,
-                allies: inside(&data.inside.allies)?,
-                enemies: inside(&data.inside.enemies)?,
-            },
+            inside: Inside([
+                inside(Affects::Source, &data.inside.caster)?,
+                inside(others(RelationSet::Allies), &data.inside.allies)?,
+                inside(others(RelationSet::Enemies), &data.inside.enemies)?,
+            ]),
         })
     }
 }
 
 impl Inside {
-    /// Each modifier it holds, on the source, its allies and the units that may be attacked.
+    /// Each modifier it holds, with the units it affects.
+    pub(crate) fn holds(self) -> impl Iterator<Item = (Affects, ModifierId)> {
+        self.0.into_iter().flatten()
+    }
+
+    /// Each modifier it holds.
     pub(crate) fn modifiers(self) -> impl Iterator<Item = ModifierId> {
-        [self.caster, self.allies, self.enemies]
-            .into_iter()
-            .flatten()
+        self.holds().map(|(_, modifier)| modifier)
     }
 }
 

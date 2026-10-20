@@ -72,7 +72,7 @@ impl Attacks {
     /// tick's deliveries, in the order they came, its weapon's damage with the roll it drew: to the
     /// unit a hit struck, for a weapon of no splash; and where a projectile of a weapon of a splash
     /// ends, to each living unit of the relations its splash affects, to its source when it spares
-    /// none, whose volume lies nearer the end's point in space than its radius, by stable id
+    /// none, whose volume lies within its radius of the end's point in space, by stable id
     /// (04-capabilities/combat.md, An attack may splash).
     pub(super) fn take_hits(
         (tick, weapons): (Res<'_, SimTick>, Res<'_, ByAction<Weapon>>),
@@ -128,7 +128,7 @@ impl Attacks {
                         };
                         let within = targets
                             .volume_at(body.key)
-                            .is_some_and(|volume| volume.nearest(point, splash.radius).is_lt());
+                            .is_some_and(|volume| volume.reaches(point, splash.radius));
                         if affects && within {
                             splashed.push(unit.id);
                         }

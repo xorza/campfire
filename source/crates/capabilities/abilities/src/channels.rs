@@ -112,7 +112,7 @@ impl Channels {
                 Self::channel_hold(world.resource::<ActionBook>(), progress, id)
             });
             if let Some(held) = held {
-                world.resource_mut::<HeldModifiers>().0.push(held);
+                world.resource_mut::<HeldModifiers>().hold(held);
             }
         }
     }
@@ -235,7 +235,9 @@ impl Channels {
             if !progress.is_channel_due() {
                 indexes.forget_channel(id);
             }
-            held.0.extend(Self::channel_hold(&book, &progress, id));
+            if let Some(hold) = Self::channel_hold(&book, &progress, id) {
+                held.hold(hold);
+            }
         }
     }
 

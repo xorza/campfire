@@ -26,12 +26,18 @@ impl Volume {
         Vec3::new(position.x, position.y + self.height / 2, position.z)
     }
 
+    /// Whether `reach` from `point` reaches it in space: the distance at most it, as `nearest`
+    /// gives it (04-capabilities/00-overview.md, One reach rule).
+    pub fn reaches(&self, point: Vec3, reach: Num) -> bool {
+        self.nearest(point, reach) != Ordering::Greater
+    }
+
     /// How the distance in space from `point` to it lies against `reach`, at least 0: a point
     /// inside it is closer than every reach. Within its heights, as the planar reach rule
     /// measures, exactly; above or below them, from its gap on the ground plane, to the nearest
     /// bit, and the gap in height, their squares exactly (07-determinism-core.md, Exact where it
     /// fits).
-    pub fn nearest(&self, point: Vec3, reach: Num) -> Ordering {
+    fn nearest(&self, point: Vec3, reach: Num) -> Ordering {
         debug_assert!(reach >= Num::ZERO, "a reach is at least 0");
         let Placed { position, shape } = self.base;
         let [low, high, at] =
@@ -100,6 +106,12 @@ mod tests {
             assert_eq!(
                 at(num(distance) + Num::EPSILON),
                 Ordering::Less,
+                "{point:?}"
+            );
+            // A reach of exactly the distance reaches it, and one a bit short does not.
+            assert!(cylinder.reaches(point, num(distance)), "{point:?}");
+            assert!(
+                !cylinder.reaches(point, num(distance) - Num::EPSILON),
                 "{point:?}"
             );
         }

@@ -6,14 +6,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Lightyear in the tree](docs/design/12-lightyear-in-tree.md): the player hosts a LAN match and plays a singleplayer match as before, every link on Campfire's own network stack, copied from the fork's `main` into `source/crates/network/`, over its own UDP. With it go the batches of [Workspace alignment](docs/design/14-workspace-alignment.md), which give each crate one kind and one job, hold the stack to Campfire's conventions, give each shared tool one home and each word one meaning. The batches go by impact (Workspace alignment, The batches go by impact): first what is wrong now or makes each later batch safer, then the stack reshaped and renamed before Campfire names its types, then Campfire on the stack, then Campfire's own moves and words, which no batch of the slice needs. A batch never goes before one it needs. Each batch ends with `cargo drive gate` passing; a golden that moves names its batch and its cause.
 
-### 10. One rule in one place
-
-`areas`, `stats`, `combat`, `geometry`. It stands after the slice, as no batch needs it, and first of Campfire's own work, as it changes what a match computes: an area and an aura disagree on neutral and dead units, and a splash misses a unit at exactly its radius. Builds: a capability asks another through a contract below both.
-
-- [ ] source/crates/capabilities/areas/src/area_holds.rs:46 — an area's targets and an aura's select through two filters that disagree on neutral and dead units (One rule in one place). → Both select through one filter; the issue log's Areas item goes.
-- [ ] source/crates/capabilities/combat/src/attacks.rs:131 — a splash reaches within `<` its radius, where the one reach rule is `≤` (One rule in one place). → The splash reaches by `geometry`'s rule; the issue log's Combat item of the splash goes.
-- **Check:** a test places a unit at exactly a splash's radius and finds it hit; an area and an aura select the same units among neutral and dead ones; each golden that moves names this batch; `cargo drive gate` passes.
-
 ### 11. Campfire's problem crates
 
 `values`, `visibility`, `state-types`, `sim` (the plain form of `StableId`), `actions`, `progression`, `client` (charges), `client-files`; the directories of `geometry`, `schedule` and `verifier`; the workspace's `Cargo.toml`; 02 (the crates table). It stands after the slice, as no batch of it needs these moves, and before Campfire's words, which then rename each file once in its final crate; it takes the ECS out of every reader of a plain value. Builds: each crate depends only on lower layers; a capability asks another through a contract below both.

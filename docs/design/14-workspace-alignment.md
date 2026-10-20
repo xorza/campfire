@@ -34,7 +34,7 @@ Six causes explain nearly every finding. Each section of the decisions removes o
 - **A rule lives with its owner.** A slot's charges move from `progression`'s `Learning` to `actions`, which owns slots (E26).
 - **`common` holds plain shared values alone.** Its allocation audit and `backtrace` move to the measurement crate, and 02's list of its dependencies names `zeroize` (A9, A17).
 - **A directory names a domain, and the manifest names the kind.** `geometry` and `schedule` move to `sim/`, beside `math` and `sim`, and `verifier` to `apps/`, beside the other shipped binaries. Refused: a directory for each kind, which splits the stack across five directories (A18).
-- **One rule in one place.** An area's targets and an aura's select through one filter, and a splash reaches by the one reach rule, `≤`. Refused: two filters and two reaches, which already disagree on neutral and dead units and on the boundary (E24, E27).
+- **One rule in one place.** An area's targets and an aura's select through one filter, and a splash reaches by the one reach rule, `≤`. Refused: two filters and two reaches, which already disagree on a unit of no life, on the tags a filter selects only when it names them, and on the boundary (E24, E27).
 
 ### The stack held to Campfire's conventions
 
