@@ -43,6 +43,7 @@ mod tests {
     use bevy_ecs::resource::Resource;
     use bevy_ecs::schedule::ScheduleLabel;
     use bevy_ecs::system::ResMut;
+    use bevy_tasks::{AsyncComputeTaskPool, ComputeTaskPool, IoTaskPool};
 
     use super::*;
 
@@ -55,7 +56,7 @@ mod tests {
     }
 
     /// Each schedule of the app runs on the thread that updates it, whichever features the
-    /// test's build turns on.
+    /// test's build turns on, and each of Bevy's pools holds one thread.
     #[test]
     fn an_app_of_one_thread_runs_every_schedule_on_its_thread() {
         let mut app = App::new();
@@ -72,5 +73,11 @@ mod tests {
         app.update();
         let here = thread::current().id();
         assert_eq!(app.world().resource::<Ran>().0, [here; 8]);
+        let threads = [
+            ComputeTaskPool::get().thread_num(),
+            AsyncComputeTaskPool::get().thread_num(),
+            IoTaskPool::get().thread_num(),
+        ];
+        assert_eq!(threads, [1; 3]);
     }
 }

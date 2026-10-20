@@ -233,6 +233,7 @@ bevy_platform = { version = "=0.20.0", default-features = false }
 bevy_reflect = { version = "=0.20.0", default-features = false }
 bevy_replicon = { version = "=0.45.2", default-features = false }
 bevy_state = { version = "=0.20.0", default-features = false }
+bevy_tasks = { version = "=0.20.0", default-features = false }
 bevy_time = { version = "=0.20.0", default-features = false }
 bevy_transform = { version = "=0.20.0", default-features = false }
 bevy_utils = { version = "=0.20.0", default-features = false }

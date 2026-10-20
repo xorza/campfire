@@ -13,5 +13,8 @@ campfire-schedule.workspace = true
 bevy_app.workspace = true
 bevy_ecs = { workspace = true, features = ["std"] }
 
+[dev-dependencies]
+bevy_tasks.workspace = true
+
 [lints]
 workspace = true
