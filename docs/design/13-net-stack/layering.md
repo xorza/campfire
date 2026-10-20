@@ -29,9 +29,6 @@ The kinds of crate, problem, IO, glue and test support, and their rules are the 
   second problem.
 - **The link estimator and the timeline controller stay in `net-sync`.** They are four small
   files that a crate of their own would not pay for.
-- **The host client's path stays in the glue.** `net-transport` and `net-messages`
-  read `HostClient` and `Disconnected` from `net-connection`, as `api.md`'s "A host client
-  keeps an endpoint for each side" decides; `net-channels` does not.
 - **The UDP protocol is a problem crate, and its socket an IO crate.** `net-udp` holds the
   handshake, the seal, the admission and the server and client of the protocol over any datagram
   IO, the emulated network's among them; `net-socket` holds the OS's socket, `quinn-udp`'s batches

@@ -55,11 +55,11 @@ mod tests {
     #[test]
     fn each_mode_selects_its_links() {
         let [a, b] = [Entity::from_bits(1), Entity::from_bits(2)];
-        let [remote_a, remote_b] = [RemoteId(PeerId::Local(1)), RemoteId(PeerId::Local(2))];
+        let [remote_a, remote_b] = [RemoteId(PeerId::Entity(1)), RemoteId(PeerId::Entity(2))];
         let modes = [
             (ReplicationMode::default(), [true, true]),
             (
-                ReplicationMode::Target(NetworkTarget::single(PeerId::Local(2))),
+                ReplicationMode::Target(NetworkTarget::single(PeerId::Entity(2))),
                 [false, true],
             ),
             (

@@ -1,5 +1,4 @@
 use crate::event_sender::EventSender;
-use crate::host_event_sender::HostEventSender;
 use crate::message_registration;
 use crate::message_registry::{MessageRegistry, mapped_cx_deserialize, mapped_cx_serialize};
 use bevy_app::App;
@@ -26,10 +25,7 @@ impl<M: Event> EventRegistration<'_, M> {
 
     /// Adds the event sender component on each side that sends this event.
     pub fn add_direction(&mut self, directions: impl Into<LinkDirections>) -> &mut Self {
-        message_registration::add_senders::<M, EventSender<M>, HostEventSender<M>>(
-            self.app,
-            directions.into(),
-        );
+        message_registration::add_senders::<M, EventSender<M>>(self.app, directions.into());
         self
     }
 }

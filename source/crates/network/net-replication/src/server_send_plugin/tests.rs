@@ -11,12 +11,11 @@ use crate::replication_mode::ReplicationMode;
 use crate::replication_sender::ReplicationSender;
 use crate::visibility_ext::VisibilityExt;
 use bevy::prelude::*;
-use bevy_replicon::prelude::Remote;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_channels::internals::ChannelCounts;
 use campfire_net_channels::internals::TransportCounts;
 use campfire_net_connection::NetworkTarget;
-use campfire_net_core::PeerId;
+use campfire_net_connection::RemoteId;
 use campfire_net_despawn::DespawnReplicated;
 use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
@@ -670,67 +669,6 @@ fn a_sender_can_despawn_with_no_despawn_replicated() {
     );
 }
 
-#[test]
-fn an_entity_of_the_host_reaches_the_remote_clients_and_not_back() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::host_server());
-    let host_id = stepper.host_client().get::<RemoteId>().unwrap().0;
-
-    let host_entity = stepper
-        .server_app_mut()
-        .world_mut()
-        .spawn((
-            Replicate::to_clients(NetworkTarget::all_except([host_id])),
-            CompA(1.0),
-        ))
-        .id();
-
-    stepper.frame_step(2);
-
-    let remote_copies = stepper
-        .server_app_mut()
-        .world_mut()
-        .query_filtered::<Entity, (With<CompA>, With<Remote>)>()
-        .iter(stepper.server_app().world())
-        .count();
-    assert_eq!(
-        remote_copies, 0,
-        "a host-owned entity should not come back to the host as a remote copy"
-    );
-
-    let remote_client_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&host_entity)
-        .copied()
-        .expect("remote client should receive the rebroadcast entity");
-
-    assert_eq!(
-        stepper
-            .client_app(0)
-            .world()
-            .get::<CompA>(remote_client_entity),
-        Some(&CompA(1.0))
-    );
-
-    stepper
-        .server_app_mut()
-        .world_mut()
-        .entity_mut(host_entity)
-        .insert(CompA(2.0));
-    stepper.frame_step(2);
-
-    assert_eq!(
-        stepper
-            .client_app(0)
-            .world()
-            .get::<CompA>(remote_client_entity),
-        Some(&CompA(2.0)),
-        "rebroadcast client should receive subsequent updates from the host-owned entity"
-    );
-}
-
 const ENTITIES: usize = 1000;
 
 /// The transport counters of a stepper's apps, with the replication channels' share of them.
@@ -823,104 +761,6 @@ fn a_frame_that_changes_1000_entities_sends_exact_bytes() {
             },
         }
     );
-}
-
-/// On a host server, an entity has its host marker exactly while the host client is in its
-/// target: a retarget away from the host takes `Predicted`, a retarget back gives it again, and
-/// the end of the host side and the removal of the target take it too.
-#[test]
-fn the_host_marker_follows_the_target() {
-    let mut app = App::new();
-    app.add_plugins(ServerSendPlugin);
-    let host_id = PeerId::Local(0);
-    let host = app
-        .world_mut()
-        .spawn((RemoteId(host_id), HostClient { buffer: Vec::new() }))
-        .id();
-    let entity = app
-        .world_mut()
-        .spawn(PredictionTarget::to_clients(NetworkTarget::All))
-        .id();
-    app.world_mut().flush();
-    let predicted = |app: &App| app.world().entity(entity).contains::<Predicted>();
-    assert!(predicted(&app));
-
-    app.world_mut()
-        .entity_mut(entity)
-        .insert(PredictionTarget::to_clients(NetworkTarget::all_except([
-            host_id,
-        ])));
-    app.world_mut().flush();
-    assert!(!predicted(&app));
-
-    app.world_mut()
-        .entity_mut(entity)
-        .insert(PredictionTarget::to_clients(NetworkTarget::single(host_id)));
-    app.world_mut().flush();
-    assert!(predicted(&app));
-
-    app.world_mut().entity_mut(host).remove::<HostClient>();
-    app.world_mut().flush();
-    assert!(!predicted(&app));
-
-    app.world_mut()
-        .entity_mut(host)
-        .insert(HostClient { buffer: Vec::new() });
-    app.world_mut().flush();
-    assert!(predicted(&app));
-
-    app.world_mut()
-        .entity_mut(entity)
-        .remove::<PredictionTarget>();
-    app.world_mut().flush();
-    assert!(!predicted(&app));
-}
-
-/// A host client that both targets name gets `Predicted` alone, and `Interpolated` once the
-/// prediction target names it no more or goes.
-#[test]
-fn a_host_in_both_targets_is_predicted_alone() {
-    let mut app = App::new();
-    app.add_plugins(ServerSendPlugin);
-    let host_id = PeerId::Local(0);
-    app.world_mut()
-        .spawn((RemoteId(host_id), HostClient { buffer: Vec::new() }));
-    let entity = app
-        .world_mut()
-        .spawn((
-            PredictionTarget::to_clients(NetworkTarget::All),
-            InterpolationTarget::to_clients(NetworkTarget::All),
-        ))
-        .id();
-    app.world_mut().flush();
-    let markers = |app: &App| {
-        let entity = app.world().entity(entity);
-        [
-            entity.contains::<Predicted>(),
-            entity.contains::<Interpolated>(),
-        ]
-    };
-    assert_eq!(markers(&app), [true, false]);
-
-    app.world_mut()
-        .entity_mut(entity)
-        .insert(PredictionTarget::to_clients(NetworkTarget::all_except([
-            host_id,
-        ])));
-    app.world_mut().flush();
-    assert_eq!(markers(&app), [false, true]);
-
-    app.world_mut()
-        .entity_mut(entity)
-        .insert(PredictionTarget::to_clients(NetworkTarget::All));
-    app.world_mut().flush();
-    assert_eq!(markers(&app), [true, false]);
-
-    app.world_mut()
-        .entity_mut(entity)
-        .remove::<PredictionTarget>();
-    app.world_mut().flush();
-    assert_eq!(markers(&app), [false, true]);
 }
 
 /// A client that both targets name receives `Predicted` alone, and `Interpolated` in its place

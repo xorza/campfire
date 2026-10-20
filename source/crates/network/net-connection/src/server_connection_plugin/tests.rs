@@ -42,78 +42,56 @@ fn server_app() -> App {
     app
 }
 
-/// Spawns a started server with a remote client's link and a host client's link.
-fn spawn_links(app: &mut App) -> [Entity; 2] {
+/// Spawns a started server with a remote client's link.
+fn spawn_link(app: &mut App) -> Entity {
     let server = app.world_mut().spawn((Server::default(), Started)).id();
-    let remote = app
-        .world_mut()
+    app.world_mut()
         .spawn((
             LinkOf { server },
             ClientOf,
-            RemoteId(PeerId::Local(1)),
+            RemoteId(PeerId::Entity(1)),
             Connected,
         ))
-        .id();
-    let host = app
-        .world_mut()
-        .spawn((
-            LinkOf { server },
-            ClientOf,
-            Client,
-            RemoteId(PeerId::Local(0)),
-            Connected,
-        ))
-        .id();
-    [remote, host]
+        .id()
 }
 
 /// A remote client's link that disconnects, here as its link times out, is despawned at the end
-/// of the frame, and its peer is unmapped; a host client's link is the client, and stays.
+/// of the frame, and its peer is unmapped.
 #[test]
-fn disconnected_links_are_despawned_except_a_host_client() {
+fn a_disconnected_link_is_despawned() {
     let mut app = server_app();
-    let [remote, host] = spawn_links(&mut app);
+    let remote = spawn_link(&mut app);
 
     app.world_mut().entity_mut(remote).insert(Unlinked {
         reason: UnlinkReason::TimedOut,
     });
-    app.world_mut()
-        .entity_mut(host)
-        .insert(Disconnected::default());
     app.update();
 
     assert!(app.world().get_entity(remote).is_err());
-    assert!(app.world().get_entity(host).is_ok());
     let ends = app.world().resource::<Ends>();
     assert_eq!(
         ends.disconnected,
-        [
-            (
-                remote,
-                DisconnectedReason::LinkFailed(UnlinkReason::TimedOut)
-            ),
-            (host, DisconnectedReason::Initial),
-        ]
+        [(
+            remote,
+            DisconnectedReason::LinkFailed(UnlinkReason::TimedOut)
+        )]
     );
     let peer_map = &app.world().resource::<NetworkingState>().peer_map;
-    assert!(!peer_map.contains_key(&PeerId::Local(1)));
-    assert!(!peer_map.contains_key(&PeerId::Local(0)));
+    assert!(!peer_map.contains_key(&PeerId::Entity(1)));
 }
 
 /// A `Disconnect` on a server's link waits for the end of the frame, then reports its code as
-/// requested, closes the link with it, and despawns the link. On a host client's link, the
-/// server side does nothing: the host plugin handles the client.
+/// requested, closes the link with it, and despawns the link.
 #[test]
 fn disconnect_on_a_server_link_ends_it_with_its_code() {
     let mut app = server_app();
-    let [remote, host] = spawn_links(&mut app);
+    let remote = spawn_link(&mut app);
     let code = AppCode::new(AppCode::FIRST + 2);
 
     app.world_mut().trigger(Disconnect {
         entity: remote,
         reason: code,
     });
-    app.world_mut().trigger(Disconnect::from(host));
     app.world_mut().flush();
     assert_eq!(
         app.world()
@@ -121,12 +99,10 @@ fn disconnect_on_a_server_link_ends_it_with_its_code() {
             .map(|disconnecting| disconnecting.reason),
         Some(code)
     );
-    assert!(!app.world().entity(host).contains::<Disconnecting>());
 
     app.update();
 
     assert!(app.world().get_entity(remote).is_err());
-    assert!(app.world().entity(host).contains::<Connected>());
     let ends = app.world().resource::<Ends>();
     assert_eq!(
         ends.disconnected,
@@ -183,14 +159,14 @@ fn a_server_stops_when_its_link_fails() {
 #[test]
 fn a_reconnect_keeps_its_new_mapping() {
     let mut app = server_app();
-    let [old, _] = spawn_links(&mut app);
+    let old = spawn_link(&mut app);
     let server = app.world().get::<LinkOf>(old).unwrap().server;
     let new = app
         .world_mut()
         .spawn((
             LinkOf { server },
             ClientOf,
-            RemoteId(PeerId::Local(1)),
+            RemoteId(PeerId::Entity(1)),
             Connected,
         ))
         .id();
@@ -204,7 +180,7 @@ fn a_reconnect_keeps_its_new_mapping() {
         app.world()
             .resource::<NetworkingState>()
             .peer_map
-            .get(&PeerId::Local(1)),
+            .get(&PeerId::Entity(1)),
         Some(&new)
     );
 }
@@ -268,7 +244,7 @@ fn despawn_on_unlinked(trigger: On<'_, '_, Add<Unlinked>>, mut commands: Command
 fn an_io_that_despawns_its_own_link_is_tolerated() {
     let mut app = server_app();
     app.add_observer(despawn_on_unlinked);
-    let [remote, _] = spawn_links(&mut app);
+    let remote = spawn_link(&mut app);
 
     app.world_mut().entity_mut(remote).insert(Unlinked {
         reason: UnlinkReason::TimedOut,
@@ -280,7 +256,7 @@ fn an_io_that_despawns_its_own_link_is_tolerated() {
         !app.world()
             .resource::<NetworkingState>()
             .peer_map
-            .contains_key(&PeerId::Local(1))
+            .contains_key(&PeerId::Entity(1))
     );
 }
 

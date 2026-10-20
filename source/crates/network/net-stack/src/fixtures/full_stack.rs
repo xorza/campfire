@@ -5,11 +5,7 @@ use campfire_net_prediction::internals::PredictionStack;
 use campfire_net_replication::RoomPlugin;
 use campfire_net_stepper::Stack;
 
-use bevy::app::PluginGroupBuilder;
-use campfire_net_link::ServerLinkPlugin;
-
 use crate::client_plugins::ClientPlugins;
-use crate::layers;
 use crate::server_plugins::ServerPlugins;
 
 /// Every layer through the stack's plugin groups, with every layer's test protocol
@@ -23,23 +19,15 @@ impl FullStack {
     /// the stack's, which the allocation audits would count; a full propagation gives the same
     /// transforms.
     fn add_bevy(app: &mut App) {
-        if !app.is_plugin_added::<TransformPlugin>() {
-            app.add_plugins((TransformPlugin, StatesPlugin))
-                .insert_resource(StaticTransformOptimizations::Disabled);
-        }
+        app.add_plugins((TransformPlugin, StatesPlugin))
+            .insert_resource(StaticTransformOptimizations::Disabled);
     }
 }
 
 impl Stack for FullStack {
-    /// A server app takes the client's own layers alone for its host client, as `HostPlugins`
-    /// lists them, since the stepper adds its server first.
     fn add_client(&self, app: &mut App, tick_rate: TickRate) {
         Self::add_bevy(app);
-        if app.is_plugin_added::<ServerLinkPlugin>() {
-            app.add_plugins(layers::client(PluginGroupBuilder::start::<ClientPlugins>()));
-        } else {
-            app.add_plugins(ClientPlugins { tick_rate });
-        }
+        app.add_plugins(ClientPlugins { tick_rate });
     }
 
     fn add_server(&self, app: &mut App, tick_rate: TickRate) {

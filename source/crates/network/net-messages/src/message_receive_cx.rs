@@ -1,4 +1,3 @@
-use crate::endpoint_user::EndpointUser;
 use crate::receive_map_view::ReceiveMapView;
 use crate::serialize_fns::ErasedSerializeFns;
 use bevy_ecs::entity::Entity;
@@ -14,8 +13,6 @@ pub(crate) struct MessageReceiveCx<'a, 'w, 's> {
     pub(crate) commands: &'a ParallelCommands<'w, 's>,
     /// The link the message arrived on.
     pub(crate) link: Entity,
-    /// The user of the link whose receiver the message lands on.
-    pub(crate) user: EndpointUser,
     pub(crate) peer: PeerId,
     pub(crate) reader: &'a mut Reader,
     pub(crate) header: ReceivedMessageHeader,
@@ -28,7 +25,6 @@ impl core::fmt::Debug for MessageReceiveCx<'_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("MessageReceiveCx")
             .field("link", &self.link)
-            .field("user", &self.user)
             .field("peer", &self.peer)
             .field("header", &self.header)
             .field("channel_name", &self.channel_name)

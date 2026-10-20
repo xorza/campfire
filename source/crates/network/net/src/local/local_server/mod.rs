@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
+use bevy_app::{App, AppExit, Update};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
@@ -25,9 +25,9 @@ use crate::key_file::KeyFile;
 use crate::local::local_link::LocalLink;
 use crate::local::local_pace::LocalPace;
 use crate::local::local_server::error::LocalServerError;
-use crate::net_protocol::NetProtocol;
 use crate::os::Os;
 use crate::pace::Pace;
+use crate::paced_runner::PacedRunner;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_server::ServerFrameSystems;
@@ -303,7 +303,7 @@ impl Runs {
                 capabilities: self.packages.manifest().capabilities,
                 hosting: Hosting::Local,
             },
-            ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
+            PacedRunner,
             LocalPace {
                 pace: Arc::clone(&self.pace),
                 rate: MatchRate::new(self.tick_hz).rate(),

@@ -1,4 +1,3 @@
-use crate::endpoint_user::EndpointUser;
 use crate::link_messages::LinkMessages;
 use crate::message::Message;
 use crate::message_error::MessageError;
@@ -7,7 +6,6 @@ use crate::message_type_id::MessageTypeId;
 use crate::replicon_map_param::RepliconMapParam;
 use crate::send_map_view::SendMapView;
 use crate::send_queue::Priority;
-use crate::send_queue::SendTarget;
 use bevy_ecs::query::{Has, QueryFilter, With};
 use bevy_ecs::{
     entity::EntitySet,
@@ -22,13 +20,12 @@ use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::TransportError;
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
-use campfire_net_connection::HostClient;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_connection::NetworkTargetResolver;
 use campfire_net_connection::NetworkingState;
+use campfire_net_core::LinkDirection;
 use campfire_net_core::NetId;
 use campfire_net_link::Server;
-use campfire_net_timeline::LocalTimeline;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
 
@@ -40,10 +37,7 @@ use campfire_net_transport::Transport;
 /// [`EventSender`](crate::event_sender::EventSender)'s does.
 ///
 /// Each link sends from its own side, as its
-/// [`MessageSender`](crate::message_sender::MessageSender) does: a host client is the server's link
-/// to it, which sends toward the host client through its buffer, and the host client's own systems
-/// send to their server through a
-/// [`HostMessageSender`](crate::host_message_sender::HostMessageSender). A message sent against its
+/// [`MessageSender`](crate::message_sender::MessageSender) does. A message sent against its
 /// registered direction is a bug: a debug build panics, and a release build drops it, as a peer
 /// would unlink a sender that broke the protocol.
 ///
@@ -54,18 +48,12 @@ pub struct MultiMessageSender<'w, 's, F: QueryFilter + 'static = ()> {
     query: Query<
         'w,
         's,
-        (
-            &'static LinkMessages,
-            &'static mut Transport,
-            Option<&'static mut HostClient>,
-            Has<Client>,
-        ),
+        (&'static LinkMessages, &'static mut Transport, Has<Client>),
         (F, With<Connected>),
     >,
     replicon: RepliconMapParam<'w, 's>,
     registry: Res<'w, MessageRegistry>,
     channels: Res<'w, ChannelRegistry>,
-    timeline: Res<'w, LocalTimeline>,
     networking: Res<'w, NetworkingState>,
     resolver: Local<'s, NetworkTargetResolver>,
     writer: Local<'s, Writer>,
@@ -102,7 +90,6 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
             .channels
             .net_id(ChannelTypeId::of::<C>())
             .expect("a message is sent on a registered channel");
-        let tick = self.timeline.tick();
         let registered = self.registry.message(
             self.registry
                 .net_id(MessageTypeId::of::<M>())
@@ -110,24 +97,26 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
         );
         let maps_entities = registered.serialize_fns.maps_entities;
         let travels = |direction| registered.travels(direction);
-        // The bytes as this world names its entities, serialized once for every link that
-        // takes them so: each link of a server, and a host client.
+        // The bytes as this world names its entities, serialized once for every link of a server
+        // that takes them so.
         let mut as_is: Option<Bytes> = None;
-        for (link_messages, mut transport, mut host_client, is_client) in
+        for (link_messages, mut transport, is_client) in
             self.query.iter_many_unique_mut(links).matched()
         {
-            let remote_client = is_client && host_client.is_none();
-            let sends = EndpointUser::Link.sends(remote_client);
+            let sends = if is_client {
+                LinkDirection::ClientToServer
+            } else {
+                LinkDirection::ServerToClient
+            };
             debug_assert!(
                 travels(sends),
-                "{} is sent {sends:?}, against its registered direction: on a host client, the \
-                 client's own systems send through its host sender",
+                "{} is sent {sends:?}, against its registered direction",
                 core::any::type_name::<M>()
             );
             if !travels(sends) {
                 continue;
             }
-            let bytes = if maps_entities && remote_client {
+            let bytes = if maps_entities && is_client {
                 let view = self
                     .replicon
                     .send_view(link_messages.entity_mapper.local_to_remote());
@@ -141,15 +130,7 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
                     .serialize::<M>(message, &mut self.writer, &SendMapView::AsIs);
                 as_is.insert(self.writer.take_written()).clone()
             };
-            let target = match host_client.as_deref_mut() {
-                Some(host_client) => SendTarget::Host {
-                    buffer: &mut host_client.buffer,
-                    tick,
-                    direction: sends,
-                },
-                None => SendTarget::Transport(&mut transport),
-            };
-            send(target, channel, bytes, priority)?;
+            send(&mut transport, channel, bytes, priority)?;
         }
         Ok(())
     }
@@ -188,12 +169,12 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
 /// A message too large for its channel is the caller's to handle; any other transport error is a
 /// message sent on a channel its transport does not send on.
 fn send(
-    mut target: SendTarget<'_>,
+    transport: &mut Transport,
     channel: NetId,
     bytes: Bytes,
     priority: Priority,
 ) -> Result<(), MessageError> {
-    match target.send(channel, bytes, priority) {
+    match transport.send(channel, bytes, priority) {
         Ok(()) => Ok(()),
         Err(error @ TransportError::MessageTooLarge { .. }) => Err(error.into()),
         Err(error) => {
@@ -208,7 +189,6 @@ fn send(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::host_received_messages::HostReceivedMessages;
     use crate::fixtures::messages_stack::MessagesStack;
     use crate::fixtures::protocol::{ClientMessage, StringEvent, StringMessage};
     use crate::fixtures::received_messages::ReceivedMessages;
@@ -393,74 +373,18 @@ mod tests {
         assert_eq!(received(&stepper, 1), &[]);
     }
 
-    /// A host client receives what the server sends to all, a frame after a remote client does,
-    /// and alone what it sends to the host's id.
-    #[test]
-    fn a_host_client_receives_its_targets() {
-        let mut stepper = Stepper::new(MessagesStack, StepperSetup::host_server());
-        let host = stepper.host_client_entity();
-        let host_id = stepper.host_client().get::<RemoteId>().unwrap().0;
-        HostReceivedMessages::<StringMessage>::collect_in(stepper.server_app_mut());
-        ReceivedMessages::<StringMessage>::collect_in(stepper.client_app_mut(0));
-        let send = |stepper: &mut Stepper<MessagesStack>, target: NetworkTarget, text: &str| {
-            let message = StringMessage(text.to_string());
-            let system = stepper.server_app_mut().register_system(
-                move |mut sender: MultiMessageSender<'_, '_>, server: Single<'_, '_, &Server>| {
-                    sender
-                        .send_to_target::<_, Channel1>(&message, server.into_inner(), &target)
-                        .unwrap();
-                },
-            );
-            stepper
-                .server_app_mut()
-                .world_mut()
-                .run_system(system)
-                .unwrap();
-        };
-        let host_received = |stepper: &mut Stepper<MessagesStack>| {
-            core::mem::take(
-                &mut stepper
-                    .server_app_mut()
-                    .world_mut()
-                    .resource_mut::<HostReceivedMessages<StringMessage>>()
-                    .0,
-            )
-        };
-
-        send(&mut stepper, NetworkTarget::All, "All");
-        stepper.frame_step(2);
-        let all = StringMessage("All".to_string());
-        assert_eq!(
-            received(&stepper, 0),
-            &[(stepper.client_entity(0), all.clone())]
-        );
-        assert_eq!(host_received(&mut stepper), [(host, all)]);
-
-        send(&mut stepper, NetworkTarget::single(host_id), "Host");
-        stepper.frame_step(2);
-        assert_eq!(
-            received(&stepper, 0).len(),
-            1,
-            "the remote client gets nothing more"
-        );
-        assert_eq!(
-            host_received(&mut stepper),
-            [(host, StringMessage("Host".to_string()))]
-        );
-    }
-
-    /// A message only a client sends, sent to a host client, would go from the server's link to
-    /// it, against its direction: the host client's own systems send through its host sender.
+    /// A message only a client sends, sent from the server's link to a client, goes against its
+    /// direction.
     #[test]
     #[should_panic(expected = "is sent ServerToClient, against its registered direction")]
     fn a_message_against_its_direction_is_a_bug() {
-        let mut stepper = Stepper::new(MessagesStack, StepperSetup::host_server());
-        let host = stepper.host_client_entity();
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::single());
+        let link = stepper.client_of_entity(0);
         let system = stepper.server_app_mut().register_system(
             move |mut sender: MultiMessageSender<'_, '_>| {
-                let message = ClientMessage("Host".to_string());
+                let message = ClientMessage("Server".to_string());
                 sender
-                    .send::<_, Channel1>(&message, UniqueEntityArray::from([host]))
+                    .send::<_, Channel1>(&message, UniqueEntityArray::from([link]))
                     .unwrap();
             },
         );

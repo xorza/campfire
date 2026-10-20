@@ -3,34 +3,16 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::Remote;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::RemoteId;
-use campfire_net_connection::{ClientOf, Connect, Connected, NetworkTarget};
+use campfire_net_connection::{ClientOf, Connected, NetworkTarget};
 use campfire_net_interpolation::internals::*;
 use campfire_net_replication::internals::*;
 use campfire_net_replication::{
     Controlled, ControlledBy, ControlledLifetime, Interpolated, InterpolationTarget, Overridden,
     Predicted, PredictedSend, PredictionTarget, Replicate, RoomAllocator, Rooms,
 };
-use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::{Init, StepperSetup};
 use campfire_net_stepper::{StepOrder, Stepper};
 use tracing::info;
-
-fn host_only_stepper_before_host_connect() -> Stepper<PredictionStack> {
-    let mut setup = StepperSetup::with_clients(vec![ClientKind::Host]);
-    setup.init = Init::Deferred;
-    let mut stepper = Stepper::new(PredictionStack, setup);
-    stepper.start_server();
-    stepper
-}
-
-fn connect_host(stepper: &mut Stepper<PredictionStack>) -> Entity {
-    let host_client_entity = stepper.host_client_entity();
-    stepper.server_app_mut().world_mut().trigger(Connect {
-        entity: host_client_entity,
-    });
-    stepper.server_app_mut().world_mut().flush();
-    host_client_entity
-}
 
 #[test]
 fn late_join_client_gets_predicted_marker_for_prediction_target_all() {
@@ -1172,77 +1154,6 @@ fn each_client_gets_predicted_for_its_own_entity_and_interpolated_for_others() {
             .get::<Interpolated>(e1_on_c1)
             .is_none(),
         "Client 1 should NOT see entity_for_1 as Interpolated"
-    );
-}
-
-/// In host-server mode, spawning an entity with `PredictionTarget` should
-/// add the `Predicted` marker component.
-#[test]
-fn a_prediction_target_adds_predicted_on_a_host_server() {
-    let mut stepper = Stepper::new(PredictionStack, StepperSetup::host_server());
-
-    let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
-        .spawn((
-            Replicate::to_clients(NetworkTarget::All),
-            PredictionTarget::to_clients(NetworkTarget::All),
-        ))
-        .id();
-    stepper.frame_step(1);
-
-    let entity_ref = stepper.server_app().world().entity(server_entity);
-    assert!(
-        entity_ref.contains::<PredictedSend>(),
-        "PredictionTarget should add the sender-side marker"
-    );
-    assert!(
-        entity_ref.contains::<Predicted>(),
-        "entity should have Predicted in host-server mode"
-    );
-}
-
-#[test]
-fn a_prediction_target_marks_a_client_that_becomes_the_host_client() {
-    let mut stepper = host_only_stepper_before_host_connect();
-
-    let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
-        .spawn((
-            Replicate::to_clients(NetworkTarget::All),
-            PredictionTarget::to_clients(NetworkTarget::All),
-        ))
-        .id();
-    stepper.frame_step(1);
-
-    assert!(
-        !stepper
-            .server_app()
-            .world()
-            .entity(server_entity)
-            .contains::<Predicted>(),
-        "the authoritative entity should not be Predicted before it has a host-local receiver"
-    );
-    assert!(
-        stepper
-            .server_app()
-            .world()
-            .entity(server_entity)
-            .contains::<PredictedSend>(),
-        "PredictionTarget should retain its sender-side marker"
-    );
-
-    connect_host(&mut stepper);
-    stepper.frame_step(1);
-
-    assert!(
-        stepper
-            .server_app()
-            .world()
-            .entity(server_entity)
-            .contains::<Predicted>(),
-        "Predicted should be added after the client becomes a HostClient"
     );
 }
 

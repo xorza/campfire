@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::time::Duration;
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::component::{Component, Immutable, Mutable};
@@ -19,6 +18,7 @@ use crate::net_protocol::dismissed::Dismissed;
 use crate::net_protocol::input_ack::InputAck;
 use crate::net_protocol::input_message::InputMessage;
 use crate::net_protocol::join::Join;
+use crate::net_protocol::joined::Joined;
 use crate::net_protocol::leave_match::LeaveMatch;
 use crate::net_protocol::match_start::MatchStart;
 use crate::net_protocol::offer::Offer;
@@ -30,6 +30,7 @@ pub(crate) mod dismissed;
 pub(crate) mod input_ack;
 pub(crate) mod input_message;
 pub(crate) mod join;
+pub(crate) mod joined;
 pub(crate) mod leave_match;
 pub(crate) mod match_start;
 pub(crate) mod offer;
@@ -60,25 +61,20 @@ impl Channel for JoinChannel {}
 
 /// What the server and the client must register alike, in the same order: the messages, their
 /// channels, and the sim components that replicate, as the capabilities' lists name them, the
-/// core's and those of the mode's declared capabilities alone, so a capability the mode lacks costs no prediction history and no
-/// replication rule. The client predicts where its own units are, where they walk to and by which
-/// route, which it plans on its own pathing grid, the forced moves it learns of, which it continues
-/// as the server does, and their death and respawn, which it learns from the server: its sim stops
-/// a dead unit and brings it back as the server's does, and a rollback restores both. It learns
-/// each unit's type once and its level as it changes, and derives its own units' stats, tags and
-/// step from them and their modifiers as the server does, so the server sends a unit's step only
-/// with the unit. It starts their actions as the server does, and learns their pools and the
-/// actions' effects from the server. It learns the teams' relations, the match's end and each
-/// player's state on the match's and the players' entities, which replicate as units do.
+/// core's and those of the mode's declared capabilities alone, so a capability the mode lacks costs
+/// no prediction history and no replication rule. The client predicts where its own units are,
+/// where they walk to and by which route, which it plans on its own pathing grid, the forced moves
+/// it learns of, which it continues as the server does, and their death and respawn, which it
+/// learns from the server: its sim stops a dead unit and brings it back as the server's does, and a
+/// rollback restores both. It learns each unit's type once and its level as it changes, and derives
+/// its own units' stats, tags and step from them and their modifiers as the server does, so the
+/// server sends a unit's step only with the unit. It starts their actions as the server does, and
+/// learns their pools and the actions' effects from the server. It learns the teams' relations, the
+/// match's end and each player's state on the match's and the players' entities, which replicate as
+/// units do.
 #[derive(Debug)]
 pub struct NetProtocol {
     pub capabilities: CapabilitySet,
-}
-
-impl NetProtocol {
-    /// How often a headless app's loop runs, a server's or a bot's: often enough that no fixed
-    /// tick waits long for its frame.
-    pub const FRAME: Duration = Duration::from_millis(2);
 }
 
 impl Plugin for NetProtocol {
@@ -87,8 +83,10 @@ impl Plugin for NetProtocol {
             mode: ChannelMode::OrderedReliable,
             ..ChannelSetup::default()
         };
+        // A link receives inputs only once its player took a seat, so a peer that did not join
+        // fills no input channel and holds no part of its link's receive budget with one.
         app.register_channel::<InputChannel>(reliable)
-            .add_direction(LinkDirection::ClientToServer);
+            .add_direction_after::<Joined>(LinkDirection::ClientToServer);
         app.register_channel::<MatchChannel>(reliable)
             .add_direction(LinkDirection::ServerToClient);
         app.register_channel::<JoinChannel>(reliable)
@@ -173,11 +171,15 @@ mod tests {
     use std::collections::BTreeMap;
 
     use bevy_app::TaskPoolPlugin;
+    use bevy_ecs::world::World;
     use bevy_state::app::StatesPlugin;
     use bevy_time::TimePlugin;
     use campfire_math::TickRate;
+    use campfire_net_channels::ChannelTypeId;
+    use campfire_net_connection::ClientOf;
     use campfire_net_replication::ComponentRegistry;
     use campfire_net_stack::ServerPlugins;
+    use campfire_net_transport::{ChannelRegistry, Transport};
 
     use super::*;
 
@@ -276,5 +278,38 @@ mod tests {
         let registry = all.world().resource::<ComponentRegistry>();
         let every = Registered::of(registry, Release::capabilities());
         assert!(every.values().all(|&held| held));
+    }
+
+    /// A server's link receives on the join's channel from its start, and on the input channel
+    /// only once it joined, and keeps it as `Joined` goes.
+    #[test]
+    fn a_link_receives_inputs_only_once_joined() {
+        let mut app = app_of(Release::capability_set(&[]).unwrap());
+        let world = app.world_mut();
+        let link = world.spawn((ClientOf, Transport::default())).id();
+        let channels = world.resource::<ChannelRegistry>();
+        let [input, join] = [
+            ChannelTypeId::of::<InputChannel>(),
+            ChannelTypeId::of::<JoinChannel>(),
+        ]
+        .map(|channel| channels.net_id(channel).unwrap());
+        let receives = |world: &mut World, channel| {
+            world
+                .get_mut::<Transport>(link)
+                .unwrap()
+                .channel_receiver_mut(channel)
+                .is_some()
+        };
+        assert_eq!(
+            [receives(world, input), receives(world, join)],
+            [false, true]
+        );
+        world.entity_mut(link).insert(Joined);
+        assert_eq!(
+            [receives(world, input), receives(world, join)],
+            [true, true]
+        );
+        world.entity_mut(link).remove::<Joined>();
+        assert!(receives(world, input));
     }
 }

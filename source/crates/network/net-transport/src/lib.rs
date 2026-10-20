@@ -3,10 +3,6 @@
 //! frame, and the iteration over links that the layers above share.
 
 #![expect(
-    clippy::type_complexity,
-    reason = "a Bevy query names its data and its filters in one type"
-)]
-#![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
 )]

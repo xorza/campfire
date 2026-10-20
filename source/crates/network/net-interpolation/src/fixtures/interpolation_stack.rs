@@ -79,10 +79,10 @@ mod tests {
     use campfire_net_stepper::Stepper;
     use campfire_net_stepper::StepperSetup;
 
-    /// `init` returns once both of the client's timelines are synced, the host's included.
+    /// `init` returns once both of the client's timelines are synced.
     #[test]
     fn both_timelines_sync() {
-        let stepper = Stepper::new(InterpolationStack, StepperSetup::host_server());
+        let stepper = Stepper::new(InterpolationStack, StepperSetup::single());
         assert!(interpolation_timeline_is_synced(
             stepper.client_app(0).world()
         ));

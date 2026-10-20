@@ -39,15 +39,15 @@ How an app registers its protocol and names what the stack publishes.
   the synced timelines' `SystemParam`s, which skip a system on a condition no derive expresses.
   Refused: erased archetype walks through `UnsafeWorldCell` and transmuted fn pointers, whose
   saving of one system run for each type no bench measured, as Bevy's generic systems do.
-- **One plugin group for each kind of app, and no plugin adds another.** `ClientPlugins`,
-  `ServerPlugins` and `HostPlugins` list every layer, the shared ones once, so a host server
-  builds each layer once; a layer whose side takes several plugins gives them as a group of its
-  own, `ServerReplicationPlugins` among them. An IO's endpoint plugin, `EndpointPlugin<UdpIo>` or
-  the emulated network's `EndpointPlugin<EmulatedWires>`, is listed only behind that IO's cargo
-  feature, and Bevy's `TimePlugin` is the app's. A layer adds its registry on both sides and its
-  systems only where they run. Refused: a plugin that adds what it needs under
-  `is_plugin_added`, which hides the order of plugins and builds a shared plugin twice in a host
-  server ([Workspace alignment](../14-workspace-alignment.md), A plugin group lists every layer).
+- **One plugin group for each kind of app, and no plugin adds another.** `ClientPlugins` and
+  `ServerPlugins` list every layer, the shared ones once; a layer whose side takes several
+  plugins gives them as a group of its own, `ServerReplicationPlugins` among them. An IO's
+  endpoint plugin, `EndpointPlugin<UdpIo>` or the emulated network's
+  `EndpointPlugin<EmulatedWires>`, is listed only behind that IO's cargo feature, and Bevy's
+  `TimePlugin` is the app's. A layer adds its registry on both sides and its systems only where
+  they run. Refused: a plugin that adds what it needs under `is_plugin_added`, which hides the
+  order of plugins ([Workspace alignment](../14-workspace-alignment.md), A plugin group lists
+  every layer).
 
 ## Surface
 
@@ -75,26 +75,10 @@ How an app registers its protocol and names what the stack publishes.
   from it; a timeline's current instant is `now`. Refused: a
   `*Metadata` name, which says nothing of what a type holds.
 
-## Host client
-
-- **A host client keeps an endpoint for each side.** It is one entity that is both the client and
-  the server's link to it, so its `MessageSender<M>`, `MessageReceiver<M>` and `EventSender<M>`
-  are the link's, as on every server-side link, and its client systems use `HostMessageSender<M>`,
-  `HostMessageReceiver<M>` and `HostEventSender<M>`. An event comes from the server toward the
-  host client, and from the host client's id toward the server. Practice: Replicon reads a listen
-  server's client messages as `FromClient<M>` and its server messages as `M`. Refused: a
-  direction argument on one receiver, which a reader can forget; a second entity for the host
-  client, which changes every host-client path.
-- **A host client's messages take a remote link's path.** Each side's senders serialize into the
-  host client's buffer, and the next receive reads it into the other side's receivers, so
-  `MultiMessageSender` and the senders reach a host client one way. Refused: typed values handed
-  over in the same frame, which `MultiMessageSender` cannot do, as it holds no owned message, and
-  which kept a second path for every sender.
-
 ## Entities in messages
 
 - **Only a client maps the entities a message names,** through replicon's map, then the link's
-  own pairs from the hello. A server and a host client keep their entities, and an entity that a
+  own pairs from the hello. A server keeps its entities, and an entity that a
   client cannot map goes as `Entity::PLACEHOLDER` each way. Practice: Replicon, which maps on the
   client only. Refused: a mark in the entity's bits, which is generation bit 31 of a real entity;
   a flag beside each entity, which a `MapEntities` impl may visit in a different order on each

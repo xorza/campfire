@@ -1,4 +1,3 @@
-use crate::endpoint_user::EndpointUser;
 use crate::message::Message;
 use crate::message_error::MessageError;
 use crate::message_receive_cx::MessageReceiveCx;
@@ -33,14 +32,14 @@ use tracing::trace;
 /// The tag of the message registry's hash.
 const HASH_DOMAIN: HashDomain<RegistryHash> = HashDomain::new("campfire/message-registry/v1");
 
-/// Delivers one message into its user's receiver among `receivers`, which goes on when absent.
+/// Delivers one message into its receiver among `receivers`, which goes on when absent.
 pub(crate) type ReceiveMessageFn = fn(
     receivers: &mut FilteredEntityMut<'_, '_>,
     cx: MessageReceiveCx<'_, '_, '_>,
 ) -> Result<(), MessageError>;
 
-/// Clears the messages of `user`'s receiver among `receivers`.
-pub(crate) type ClearMessageFn = fn(receivers: &mut FilteredEntityMut<'_, '_>, user: EndpointUser);
+/// Clears the messages of the receiver among `receivers`.
+pub(crate) type ClearMessageFn = fn(receivers: &mut FilteredEntityMut<'_, '_>);
 
 /// Type-erased callback for the serialized-byte receive path of an event.
 pub(crate) type ReceiveEventFn = fn(cx: MessageReceiveCx<'_, '_, '_>) -> Result<(), MessageError>;
@@ -48,46 +47,18 @@ pub(crate) type ReceiveEventFn = fn(cx: MessageReceiveCx<'_, '_, '_>) -> Result<
 #[derive(Debug, Clone)]
 pub(crate) struct ReceiveMessageFns {
     /// The `MessageReceiver<M>` component.
-    pub(crate) link_component_id: ComponentId,
-    /// The `HostMessageReceiver<M>`
-    /// component.
-    pub(crate) host_component_id: ComponentId,
+    pub(crate) component_id: ComponentId,
     pub(crate) receive_message_fn: ReceiveMessageFn,
     pub(crate) message_clear_fn: ClearMessageFn,
 }
 
-/// The sender components of a message or event type, one for each user.
-#[derive(Debug, Clone, Copy, TypePath)]
-pub(crate) struct SendFns {
-    /// The `MessageSender<M>` or
-    /// `EventSender<M>`.
-    pub(crate) link: SenderFns,
-    /// The `HostMessageSender<M>` or
-    /// `HostEventSender<M>`.
-    pub(crate) host: SenderFns,
-}
-
-/// One sender component, and the fns that drain it.
+/// The sender component of a message or event type, `MessageSender<M>` or `EventSender<M>`, and
+/// the fns that drain it.
 #[derive(Debug, Clone, Copy, TypePath)]
 pub(crate) struct SenderFns {
     pub(crate) component_id: ComponentId,
     pub(crate) send_fn: SendFn,
     pub(crate) discard_fn: DiscardSendFn,
-}
-
-impl SendFns {
-    /// The sender of `user`.
-    pub(crate) const fn of(&self, user: EndpointUser) -> &SenderFns {
-        match user {
-            EndpointUser::Link => &self.link,
-            EndpointUser::HostClient => &self.host,
-        }
-    }
-
-    /// Both sender components.
-    pub(crate) const fn component_ids(&self) -> [ComponentId; 2] {
-        [self.link.component_id, self.host.component_id]
-    }
 }
 
 #[derive(Debug, Clone, Copy, TypePath)]
@@ -98,11 +69,11 @@ pub(crate) struct ReceiveEventFns {
 #[derive(Debug, Clone)]
 pub(crate) enum MessageModeFns {
     Message {
-        send: SendFns,
+        send: SenderFns,
         receive: ReceiveMessageFns,
     },
     Event {
-        send: SendFns,
+        send: SenderFns,
         receive: ReceiveEventFns,
     },
 }
@@ -123,7 +94,7 @@ impl RegisteredMessage {
         self.directions.is_empty() || self.directions.contains(direction)
     }
 
-    pub(crate) const fn send(&self) -> &SendFns {
+    pub(crate) const fn send(&self) -> &SenderFns {
         match &self.mode {
             MessageModeFns::Message { send, .. } | MessageModeFns::Event { send, .. } => send,
         }
@@ -138,10 +109,9 @@ impl RegisteredMessage {
         }
     }
 
-    /// The receiver components of a message, of both users.
-    fn receive_component_ids(&self) -> Option<[ComponentId; 2]> {
-        self.receive_message()
-            .map(|receive| [receive.link_component_id, receive.host_component_id])
+    /// The receiver component of a message.
+    fn receive_component_id(&self) -> Option<ComponentId> {
+        self.receive_message().map(|receive| receive.component_id)
     }
 }
 
@@ -329,8 +299,7 @@ impl MessageRegistry {
         self.receive_component_ids = self
             .messages
             .iter()
-            .filter_map(RegisteredMessage::receive_component_ids)
-            .flatten()
+            .filter_map(RegisteredMessage::receive_component_id)
             .collect();
     }
 

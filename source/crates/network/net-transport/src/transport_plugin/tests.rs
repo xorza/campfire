@@ -69,3 +69,57 @@ fn stopping_the_server_unlinks_it() {
     assert!(server.contains::<Unlinked>());
     assert!(!server.contains::<Linked>());
 }
+
+#[derive(Component)]
+struct Admitted;
+
+/// A channel a server's link receives on only once admitted: the link's transport gets no
+/// receiver of it until `Admitted` comes, then one, which stays as `Admitted` goes and comes back,
+/// with its state; a link admitted before its transport gets one with it; a client's link sends
+/// on it from the start.
+#[test]
+fn a_gated_channel_opens_to_a_link_once_admitted() {
+    use crate::app_channel_ext::AppChannelExt;
+    use crate::fixtures::test_transport_plugin::TestChannel;
+    use campfire_net_channels::ChannelSetup;
+    use campfire_net_connection::{Client, ClientOf};
+    use campfire_net_core::LinkDirection;
+
+    let mut app = App::new();
+    app.init_resource::<ChannelRegistry>();
+    app.register_channel::<TestChannel>(ChannelSetup::default())
+        .add_direction_after::<Admitted>(LinkDirection::ClientToServer);
+    let channel = app
+        .world()
+        .resource::<ChannelRegistry>()
+        .net_id(ChannelTypeId::of::<TestChannel>())
+        .unwrap();
+    let world = app.world_mut();
+    let link = world.spawn((ClientOf, Transport::default())).id();
+    let client = world.spawn((Client, Transport::default())).id();
+    let receives = |world: &mut World| {
+        world
+            .get_mut::<Transport>(link)
+            .unwrap()
+            .channel_receiver_mut(channel)
+            .is_some()
+    };
+    assert!(!receives(world));
+    world.entity_mut(link).insert(Admitted);
+    assert!(receives(world));
+    world.entity_mut(link).remove::<Admitted>();
+    world.entity_mut(link).insert(Admitted);
+    assert!(receives(world));
+    // A link admitted before its transport comes takes the receiver with it.
+    let early = world.spawn((ClientOf, Admitted)).id();
+    world.entity_mut(early).insert(Transport::default());
+    let early_receives = world
+        .get_mut::<Transport>(early)
+        .unwrap()
+        .channel_receiver_mut(channel)
+        .is_some();
+    assert!(early_receives);
+    let mut client_transport = world.get_mut::<Transport>(client).unwrap();
+    let sent = client_transport.send(channel, bytes::Bytes::from_static(&[1]), 1.0);
+    assert!(sent.is_ok());
+}

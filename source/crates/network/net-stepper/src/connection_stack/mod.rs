@@ -11,8 +11,8 @@ use crate::stack::Stack;
 
 /// The connection layer alone: clients and a server, connected once linked.
 ///
-/// Every stack adds a layer only if it is not added yet, so a server app that holds a host client
-/// adds the layers both sides share once.
+/// Every stack adds a layer only if it is not added yet, so a stack that builds on two layers,
+/// which both build on this one, adds it once.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ConnectionStack;
 

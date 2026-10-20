@@ -2,16 +2,11 @@ use super::*;
 use crate::app_event_ext::AppEventExt;
 use crate::app_message_ext::AppMessageExt;
 use crate::event_sender::EventSender;
-use crate::fixtures::host_received_messages::HostReceivedMessages;
 use crate::fixtures::messages_stack::MessagesStack;
 use crate::fixtures::protocol::EntityMessage;
 use crate::fixtures::protocol::StringEvent;
 use crate::fixtures::protocol::StringMessage;
 use crate::fixtures::received_messages::ReceivedMessages;
-use crate::host_event_sender::HostEventSender;
-use crate::host_message_sender::HostMessageSender;
-use crate::link_messages::LinkEndpoint;
-use crate::message_receiver::HostMessageReceiver;
 use crate::message_receiver::MessageReceiver;
 use crate::message_sender::MessageSender;
 use crate::message_type_id::MessageTypeId;
@@ -34,6 +29,7 @@ use campfire_net_payload::PacketSessionQueues;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
+use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::internals::TestTimelinePlugins;
 use campfire_net_transport::TransportPlugin;
 use campfire_net_transport::internals::Channel1;
@@ -122,7 +118,7 @@ fn to_clients_link(client: bool) -> (App, Entity) {
             loopback_link(),
             transport,
             MessageSender::<ToClients>::default(),
-            RemoteId(PeerId::Local(0)),
+            RemoteId(PeerId::Entity(0)),
             Linked,
             Connected,
         ))
@@ -194,7 +190,7 @@ fn a_sent_message_is_received_through_the_link() {
         loopback_link(),
         transport,
         MessageSender::<M>::default(),
-        RemoteId(PeerId::Local(0)),
+        RemoteId(PeerId::Entity(0)),
         Linked,
         Connected,
     ));
@@ -249,7 +245,7 @@ fn an_unread_message_is_dropped_at_the_frame_end() {
 
     let entity_mut = app.world_mut().spawn((
         MessageReceiver::<M>::default(),
-        RemoteId(PeerId::Local(0)),
+        RemoteId(PeerId::Entity(0)),
         Connected,
     ));
 
@@ -292,7 +288,7 @@ fn message_is_ready_in_the_receive_phase_it_arrives_in() {
             loopback_link(),
             transport,
             MessageSender::<M>::default(),
-            RemoteId(PeerId::Local(0)),
+            RemoteId(PeerId::Entity(0)),
             Linked,
             Connected,
         ))
@@ -313,100 +309,6 @@ fn message_is_ready_in_the_receive_phase_it_arrives_in() {
     assert_eq!(received[0].data, M(8));
     // The sender's local tick, 10, travels with the message.
     assert_eq!(received[0].remote_tick, NetTick(10));
-}
-
-/// On a host client, what the server's link sends lands in the host client's own receiver, and
-/// what the host client sends lands in the link's, each in the next frame's receive, as a remote
-/// link's would, and with the sender's tick.
-#[test]
-fn host_client_messages_land_on_the_other_side_in_the_next_receive() {
-    let mut app = message_test_app(false);
-    app.world_mut().resource_mut::<LocalTimeline>().shift(10);
-    let entity = app
-        .world_mut()
-        .spawn((
-            MessageSender::<M>::default(),
-            HostClient { buffer: Vec::new() },
-            RemoteId(PeerId::Local(0)),
-            Connected,
-        ))
-        .id();
-    // Apply the sender hooks so LinkMessages knows about them.
-    app.world_mut().flush();
-    let mut entity_mut = app.world_mut().entity_mut(entity);
-    entity_mut
-        .get_mut::<MessageSender<M>>()
-        .unwrap()
-        .send::<TestChannel>(M(10));
-    entity_mut
-        .get_mut::<HostMessageSender<M>>()
-        .unwrap()
-        .send::<TestChannel>(M(11));
-    app.update();
-    assert!(
-        !app.world()
-            .entity(entity)
-            .contains::<HostMessageReceiver<M>>()
-    );
-    app.world_mut().run_schedule(PreUpdate);
-
-    let mut entity_mut = app.world_mut().entity_mut(entity);
-    let to_host = entity_mut
-        .get_mut::<HostMessageReceiver<M>>()
-        .unwrap()
-        .receive_with_tick()
-        .map(|received| (received.data, received.remote_tick))
-        .collect::<Vec<_>>();
-    assert_eq!(to_host, [(M(10), NetTick(10))]);
-    let to_server = entity_mut
-        .get_mut::<MessageReceiver<M>>()
-        .unwrap()
-        .receive_with_tick()
-        .map(|received| (received.data, received.remote_tick))
-        .collect::<Vec<_>>();
-    assert_eq!(to_server, [(M(11), NetTick(10))]);
-}
-
-#[derive(Debug, Resource, Default)]
-struct EventSenders(Vec<PeerId>);
-
-/// On a host client, an event the server's link triggers comes from the server, and one the host
-/// client triggers comes from the host client's id.
-#[test]
-fn host_client_events_come_from_their_side() {
-    let mut app = message_test_app(true);
-    app.init_resource::<EventSenders>();
-    app.add_observer(
-        |trigger: On<'_, '_, RemoteEvent<E>>, mut senders: ResMut<'_, EventSenders>| {
-            senders.0.push(trigger.from);
-        },
-    );
-    let entity = app
-        .world_mut()
-        .spawn((
-            EventSender::<E>::default(),
-            HostClient { buffer: Vec::new() },
-            RemoteId(PeerId::Local(0)),
-            Connected,
-        ))
-        .id();
-    app.world_mut().flush();
-    let mut entity_mut = app.world_mut().entity_mut(entity);
-    entity_mut
-        .get_mut::<EventSender<E>>()
-        .unwrap()
-        .trigger::<TestChannel>(E(1));
-    entity_mut
-        .get_mut::<HostEventSender<E>>()
-        .unwrap()
-        .trigger::<TestChannel>(E(2));
-
-    app.update();
-    app.world_mut().run_schedule(PreUpdate);
-    assert_eq!(
-        app.world().resource::<EventSenders>().0,
-        [PeerId::Server, PeerId::Local(0)]
-    );
 }
 
 #[test]
@@ -433,7 +335,7 @@ fn an_event_on_a_channel_the_transport_lacks_panics() {
             loopback_link(),
             Transport::default(),
             EventSender::<E>::default(),
-            RemoteId(PeerId::Local(0)),
+            RemoteId(PeerId::Entity(0)),
             Linked,
             Connected,
         ))
@@ -447,7 +349,7 @@ fn an_event_on_a_channel_the_transport_lacks_panics() {
     app.update();
 }
 
-/// A sender or receiver an app adds is listed once, by its net id and user; one an app removes
+/// A sender or receiver an app adds is listed once, by its net id; one an app removes
 /// leaves its link's lists, so the frame's send and clear passes do not look for it.
 #[test]
 fn a_removed_endpoint_leaves_the_link_messages() {
@@ -458,16 +360,13 @@ fn a_removed_endpoint_leaves_the_link_messages() {
             MessageReceiver::<M>::default(),
             MessageSender::<M>::default(),
             EventSender::<E>::default(),
-            RemoteId(PeerId::Local(1)),
+            RemoteId(PeerId::Entity(1)),
             Connected,
         ))
         .id();
     let link_messages = app.world().get::<LinkMessages>(entity).unwrap();
     let registry = app.world().resource::<MessageRegistry>();
-    let link = |type_id| LinkEndpoint {
-        net_id: registry.net_id(type_id).unwrap(),
-        user: EndpointUser::Link,
-    };
+    let link = |type_id| registry.net_id(type_id).unwrap();
     assert_eq!(link_messages.receivers, [link(MessageTypeId::of::<M>())]);
     assert_eq!(
         link_messages.senders,
@@ -494,7 +393,7 @@ fn a_disconnect_removes_the_message_receivers() {
         .world_mut()
         .spawn((
             MessageReceiver::<M>::default(),
-            RemoteId(PeerId::Local(1)),
+            RemoteId(PeerId::Entity(1)),
             Connected,
         ))
         .id();
@@ -524,66 +423,25 @@ fn a_disconnect_removes_the_message_receivers() {
     );
 }
 
-/// Each end of a messages-stack stepper of one client of `kind`: the entity that sends, and the
-/// entity the other side receives on.
-struct Ends {
-    client: Entity,
-    server: Entity,
-}
+/// The two kinds of remote client a stepper's server takes.
+const KINDS: [ClientKind; 2] = [ClientKind::Plain, ClientKind::Udp];
 
-fn ends(stepper: &Stepper<MessagesStack>, kind: ClientKind) -> Ends {
-    match kind {
-        ClientKind::Plain | ClientKind::Udp => Ends {
-            client: stepper.client_entity(0),
-            server: stepper.client_of_entity(0),
-        },
-        // A host client is its own server link.
-        ClientKind::Host => Ends {
-            client: stepper.host_client_entity(),
-            server: stepper.host_client_entity(),
-        },
-    }
-}
-
-fn client_app(stepper: &mut Stepper<MessagesStack>, kind: ClientKind) -> &mut App {
-    match kind {
-        ClientKind::Plain | ClientKind::Udp => stepper.client_app_mut(0),
-        ClientKind::Host => stepper.server_app_mut(),
-    }
-}
-
-/// A message crosses from the client to the server, and from the server to the client, for a
-/// remote client and for a host client, whose server link is the client entity itself: the host
-/// client sends through its own side's sender, and reads its own side's receiver.
+/// A message crosses from the client to the server, and from the server to the client, for each
+/// kind of remote client.
 #[test]
 fn messages_cross_both_ways_for_each_client_kind() {
-    for kind in [ClientKind::Plain, ClientKind::Udp, ClientKind::Host] {
+    for kind in KINDS {
         let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(vec![kind]));
-        let Ends { client, server } = ends(&stepper, kind);
+        let (client, server) = (stepper.client_entity(0), stepper.client_of_entity(0));
         ReceivedMessages::<StringMessage>::collect_in(stepper.server_app_mut());
-        match kind {
-            ClientKind::Plain | ClientKind::Udp => {
-                ReceivedMessages::<StringMessage>::collect_in(client_app(&mut stepper, kind));
-            }
-            ClientKind::Host => {
-                HostReceivedMessages::<StringMessage>::collect_in(client_app(&mut stepper, kind));
-            }
-        }
+        ReceivedMessages::<StringMessage>::collect_in(stepper.client_app_mut(0));
 
         let hello = StringMessage("Hello".to_string());
-        let mut client_mut = client_app(&mut stepper, kind)
-            .world_mut()
-            .entity_mut(client);
-        match kind {
-            ClientKind::Plain | ClientKind::Udp => client_mut
-                .get_mut::<MessageSender<StringMessage>>()
-                .unwrap()
-                .send::<Channel1>(hello.clone()),
-            ClientKind::Host => client_mut
-                .get_mut::<HostMessageSender<StringMessage>>()
-                .unwrap()
-                .send::<Channel1>(hello.clone()),
-        }
+        stepper
+            .client_mut(0)
+            .get_mut::<MessageSender<StringMessage>>()
+            .unwrap()
+            .send::<Channel1>(hello.clone());
         stepper.frame_step(2);
         let received = core::mem::take(
             &mut stepper
@@ -594,32 +452,30 @@ fn messages_cross_both_ways_for_each_client_kind() {
         );
         assert_eq!(received, [(server, hello)], "{kind:?}");
 
-        // A remote client's message of one byte past two fragments of its packet session's largest
-        // payload crosses whole in three fragments.
-        if kind != ClientKind::Host {
-            let max_payload = stepper
-                .client(0)
-                .get::<Link>()
-                .unwrap()
-                .packet_session
-                .max_payload();
-            let fragment = fragment_len_for_max_payload(max_payload).unwrap();
-            let long = StringMessage("ab".repeat(fragment) + "c");
-            stepper
-                .client_mut(0)
-                .get_mut::<MessageSender<StringMessage>>()
-                .unwrap()
-                .send::<Channel1>(long.clone());
-            stepper.frame_step(2);
-            let received = core::mem::take(
-                &mut stepper
-                    .server_app_mut()
-                    .world_mut()
-                    .resource_mut::<ReceivedMessages<StringMessage>>()
-                    .0,
-            );
-            assert_eq!(received, [(server, long)], "{kind:?}");
-        }
+        // A message of one byte past two fragments of its packet session's largest payload
+        // crosses whole in three fragments.
+        let max_payload = stepper
+            .client(0)
+            .get::<Link>()
+            .unwrap()
+            .packet_session
+            .max_payload();
+        let fragment = fragment_len_for_max_payload(max_payload).unwrap();
+        let long = StringMessage("ab".repeat(fragment) + "c");
+        stepper
+            .client_mut(0)
+            .get_mut::<MessageSender<StringMessage>>()
+            .unwrap()
+            .send::<Channel1>(long.clone());
+        stepper.frame_step(2);
+        let received = core::mem::take(
+            &mut stepper
+                .server_app_mut()
+                .world_mut()
+                .resource_mut::<ReceivedMessages<StringMessage>>()
+                .0,
+        );
+        assert_eq!(received, [(server, long)], "{kind:?}");
 
         let world = StringMessage("World".to_string());
         let message = world.clone();
@@ -636,27 +492,12 @@ fn messages_cross_both_ways_for_each_client_kind() {
             .run_system(system)
             .unwrap();
         stepper.frame_step(2);
-        let client_world = client_app(&mut stepper, kind).world();
-        let received = match kind {
-            ClientKind::Plain | ClientKind::Udp => {
-                &client_world.resource::<ReceivedMessages<StringMessage>>().0
-            }
-            ClientKind::Host => {
-                &client_world
-                    .resource::<HostReceivedMessages<StringMessage>>()
-                    .0
-            }
-        };
+        let received = &stepper
+            .client_app(0)
+            .world()
+            .resource::<ReceivedMessages<StringMessage>>()
+            .0;
         assert_eq!(received, &[(client, world)], "{kind:?}");
-        if kind == ClientKind::Host {
-            assert!(
-                client_world
-                    .resource::<ReceivedMessages<StringMessage>>()
-                    .0
-                    .is_empty(),
-                "the server's message to its host client stays out of the server side"
-            );
-        }
     }
 }
 
@@ -664,67 +505,38 @@ fn messages_cross_both_ways_for_each_client_kind() {
 /// server's, and the server reads and writes its own, which the client reads back as its own. The
 /// server accepts from the client only an entity it replicates or the link's own, so a stale or
 /// forged one, here the server-only entity, is the placeholder; an entity that the client cannot
-/// map goes as the placeholder each way. A host client shares its server's world, so its entities
-/// cross unchanged.
+/// map goes as the placeholder each way.
 #[test]
 fn only_a_client_maps_the_entities_a_message_names() {
-    for kind in [ClientKind::Plain, ClientKind::Udp, ClientKind::Host] {
+    for kind in KINDS {
         let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(vec![kind]));
-        let Ends { client, server } = ends(&stepper, kind);
+        let (client, server) = (stepper.client_entity(0), stepper.client_of_entity(0));
         let replicated = stepper.server_app_mut().world_mut().spawn(Replicated).id();
         let server_only = stepper.server_app_mut().world_mut().spawn_empty().id();
         let unmapped = stepper.server_app_mut().world_mut().spawn_empty().id();
-        let mut spawn = || {
-            client_app(&mut stepper, kind)
-                .world_mut()
-                .spawn_empty()
-                .id()
-        };
+        let mut spawn = || stepper.client_app_mut(0).world_mut().spawn_empty().id();
         let (copy, stale, client_only) = (spawn(), spawn(), spawn());
         ReceivedMessages::<EntityMessage>::collect_in(stepper.server_app_mut());
-        let (client_sends, server_reads, server_sends, client_reads) = match kind {
-            ClientKind::Plain | ClientKind::Udp => {
-                ReceivedMessages::<EntityMessage>::collect_in(client_app(&mut stepper, kind));
-                let mut map = stepper.client_mut(0);
-                let map = &mut map.get_mut::<LinkMessages>().unwrap().entity_mapper;
-                map.insert(server, client);
-                map.insert(replicated, copy);
-                map.insert(server_only, stale);
-                let mut map = stepper.client_of_mut(0);
-                let map = &mut map.get_mut::<LinkMessages>().unwrap().entity_mapper;
-                map.insert(client, server);
-                (
-                    vec![client, copy, stale, client_only],
-                    vec![server, replicated, Entity::PLACEHOLDER, Entity::PLACEHOLDER],
-                    vec![server, replicated, server_only, unmapped],
-                    vec![client, copy, stale, Entity::PLACEHOLDER],
-                )
-            }
-            ClientKind::Host => {
-                HostReceivedMessages::<EntityMessage>::collect_in(client_app(&mut stepper, kind));
-                (
-                    vec![client, client_only],
-                    vec![client, client_only],
-                    vec![server, server_only],
-                    vec![server, server_only],
-                )
-            }
-        };
+        ReceivedMessages::<EntityMessage>::collect_in(stepper.client_app_mut(0));
+        let mut map = stepper.client_mut(0);
+        let map = &mut map.get_mut::<LinkMessages>().unwrap().entity_mapper;
+        map.insert(server, client);
+        map.insert(replicated, copy);
+        map.insert(server_only, stale);
+        let mut map = stepper.client_of_mut(0);
+        let map = &mut map.get_mut::<LinkMessages>().unwrap().entity_mapper;
+        map.insert(client, server);
+        let client_sends = [client, copy, stale, client_only];
+        let server_reads = vec![server, replicated, Entity::PLACEHOLDER, Entity::PLACEHOLDER];
+        let server_sends = [server, replicated, server_only, unmapped];
+        let client_reads = vec![client, copy, stale, Entity::PLACEHOLDER];
 
-        let mut client_mut = client_app(&mut stepper, kind)
-            .world_mut()
-            .entity_mut(client);
-        for &entity in &client_sends {
-            match kind {
-                ClientKind::Plain | ClientKind::Udp => client_mut
-                    .get_mut::<MessageSender<EntityMessage>>()
-                    .unwrap()
-                    .send::<Channel1>(EntityMessage(entity)),
-                ClientKind::Host => client_mut
-                    .get_mut::<HostMessageSender<EntityMessage>>()
-                    .unwrap()
-                    .send::<Channel1>(EntityMessage(entity)),
-            }
+        let mut client_mut = stepper.client_mut(0);
+        for entity in client_sends {
+            client_mut
+                .get_mut::<MessageSender<EntityMessage>>()
+                .unwrap()
+                .send::<Channel1>(EntityMessage(entity));
         }
         stepper.frame_step(2);
         // `Channel1` keeps no order.
@@ -746,7 +558,7 @@ fn only_a_client_maps_the_entities_a_message_names() {
 
         let system = stepper.server_app_mut().register_system(
             move |mut sender: MultiMessageSender<'_, '_>| {
-                for &entity in &server_sends {
+                for entity in server_sends {
                     sender
                         .send::<_, Channel1>(
                             &EntityMessage(entity),
@@ -762,17 +574,11 @@ fn only_a_client_maps_the_entities_a_message_names() {
             .run_system(system)
             .unwrap();
         stepper.frame_step(2);
-        let client_world = client_app(&mut stepper, kind).world();
-        let received = match kind {
-            ClientKind::Plain | ClientKind::Udp => {
-                &client_world.resource::<ReceivedMessages<EntityMessage>>().0
-            }
-            ClientKind::Host => {
-                &client_world
-                    .resource::<HostReceivedMessages<EntityMessage>>()
-                    .0
-            }
-        };
+        let received = &stepper
+            .client_app(0)
+            .world()
+            .resource::<ReceivedMessages<EntityMessage>>()
+            .0;
         assert_eq!(read(received), sorted(client_reads), "{kind:?}");
     }
 }
@@ -789,32 +595,23 @@ fn collect_events(
     received.0.push((from, trigger.event.clone()));
 }
 
-/// An event a client triggers reaches the server as from that client's link, for each kind; a
-/// host client triggers through its own side's sender.
+/// An event a client triggers reaches the server as from that client's link, for each kind.
 #[test]
 fn events_reach_the_server_for_each_client_kind() {
-    for kind in [ClientKind::Plain, ClientKind::Udp, ClientKind::Host] {
+    for kind in KINDS {
         let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(vec![kind]));
-        let Ends { client, server } = ends(&stepper, kind);
+        let server = stepper.client_of_entity(0);
         stepper
             .server_app_mut()
             .init_resource::<ReceivedEvents>()
             .add_observer(collect_events);
 
         let hello = StringEvent("Hello".to_string());
-        let mut client_mut = client_app(&mut stepper, kind)
-            .world_mut()
-            .entity_mut(client);
-        match kind {
-            ClientKind::Plain | ClientKind::Udp => client_mut
-                .get_mut::<EventSender<StringEvent>>()
-                .unwrap()
-                .trigger::<Channel1>(hello.clone()),
-            ClientKind::Host => client_mut
-                .get_mut::<HostEventSender<StringEvent>>()
-                .unwrap()
-                .trigger::<Channel1>(hello.clone()),
-        }
+        stepper
+            .client_mut(0)
+            .get_mut::<EventSender<StringEvent>>()
+            .unwrap()
+            .trigger::<Channel1>(hello.clone());
         stepper.frame_step(2);
         let received = &stepper.server_app().world().resource::<ReceivedEvents>().0;
         assert_eq!(received, &[(server, hello)], "{kind:?}");

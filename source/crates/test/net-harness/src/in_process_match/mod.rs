@@ -20,10 +20,10 @@ use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::TickHashes;
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
-    ClientDir, Clock, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup, LocalPace,
+    ClientDir, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup, LocalPace,
     MatchClock, Os, Pace, PendingOrders, PendingRestore, SeatScript, ServerBots, ServerDir,
-    ServerPin, ServerSetup, SessionDir, SessionOpening, SessionTimes, SimClient, SimServerPlugins,
-    SimServerWorld, UdpLinks, UncheckedRestore,
+    ServerPin, ServerSetup, SessionDir, SessionOpening, SessionSigner, SessionTimes, SimClient,
+    SimServerPlugins, SimServerWorld, UdpLinks, UncheckedRestore, UnixClock,
 };
 use campfire_net_connection::{Connect, Connected, Start};
 use campfire_net_core::LinkDirection;
@@ -204,7 +204,7 @@ pub struct InProcessMatch {
     /// The pause and the speed every end follows.
     pace: Arc<Pace>,
     /// The Unix time every end's clock reads, `TestKey::NOW` until a test sets it.
-    clock: Clock,
+    clock: UnixClock,
     /// What the last step cost each end, kept from step to step.
     step_cost: StepCost,
     /// The server's links that `lay_out_links` moves, in client order.
@@ -220,8 +220,8 @@ impl InProcessMatch {
     /// The match scenario's orders by team, the west then the east: each avatar walks 4 m toward
     /// the enemy tower, which kills it there; after it respawns, it walks to a point near the
     /// middle. From their spawns 2 m apart, the two walk on lines that part, so they never touch.
-    /// The first order waits for the clients' lead on the server to settle: the stack's sync brings it to
-    /// its target by 5 % of a tick a frame.
+    /// The first order waits for the clients' lead on the server to settle: the stack's sync brings
+    /// it to its target by 5 % of a tick a frame.
     pub const SCENARIO_SCRIPTS: [&str; 2] = [
         "[[order]]\ntick = 60\naction.orders.move.to = [4, -2]\n[[order]]\ntick = 450\naction.orders.move.to = [-3, -2]\n",
         "[[order]]\ntick = 60\naction.orders.move.to = [-4, 3]\n[[order]]\ntick = 450\naction.orders.move.to = [3, 4]\n",
@@ -269,7 +269,7 @@ impl InProcessMatch {
             packages,
             data: None,
             pace,
-            clock: Clock::manual(TestKey::NOW),
+            clock: UnixClock::manual(TestKey::NOW),
             step_cost: StepCost::default(),
             log,
         };
@@ -938,7 +938,7 @@ impl ClientApp {
         };
         let sim_client = SimClient {
             main: Arc::new(Signer::new(keys.main, Entropy::Fixed(4))),
-            session_key: keys.session,
+            session: SessionSigner::new(Signer::new(keys.session, Entropy::Fixed(4))),
             server: ServerPin {
                 key: TestKey::server().x_only_public_key().0,
                 tls_key: InProcessMatch::tls_key(),

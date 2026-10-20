@@ -14,7 +14,7 @@ pub trait Stack: Copy + Send + Sync + 'static {
     fn add_server(&self, app: &mut App, tick_rate: TickRate);
 
     /// Adds what both sides register once their plugins are in, such as a protocol: after
-    /// `add_client` on a client's app, and after `add_server` and `add_client` on a host server's.
+    /// `add_client` on a client's app, and after `add_server` on a server's.
     fn add_protocol(&self, app: &mut App);
 
     /// Inserts the components a remote client's link carries.
@@ -24,6 +24,6 @@ pub trait Stack: Copy + Send + Sync + 'static {
     fn server_link(&self, link: &mut EntityWorldMut<'_>);
 
     /// Whether a connected client's app is ready, which ends `Stepper::init`: `world` is the
-    /// client's app, or the server's for a host client.
+    /// client's app.
     fn is_ready(&self, world: &World) -> bool;
 }

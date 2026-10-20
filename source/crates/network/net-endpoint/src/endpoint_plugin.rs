@@ -6,6 +6,7 @@ use campfire_net_packets::DatagramIo;
 use core::marker::PhantomData;
 
 use crate::endpoint::Endpoint;
+use crate::frame_wake::FrameWake;
 use crate::packet_session_link::PacketSessionLink;
 
 /// The systems of the endpoints of one IO: the frame's two steps and their lifecycle.
@@ -20,6 +21,7 @@ impl<Io> Default for EndpointPlugin<Io> {
 
 impl<Io: DatagramIo> Plugin for EndpointPlugin<Io> {
     fn build(&self, app: &mut App) {
+        app.init_resource::<FrameWake>();
         app.add_observer(Endpoint::<Io>::link_start);
         app.add_observer(Endpoint::<Io>::unlink);
         app.add_systems(

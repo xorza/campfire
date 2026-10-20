@@ -13,7 +13,6 @@ use bevy_replicon::prelude::SingleComponent;
 use bevy_replicon::prelude::VisibilityFilter;
 use bevy_replicon::server::visibility::client_visibility::ClientVisibility;
 use bevy_replicon::server::visibility::registry::FilterRegistry;
-use campfire_net_connection::HostClient;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_connection::RemoteId;
 use serde::Deserialize;
@@ -59,14 +58,8 @@ mod private {
 
 #[doc(hidden)]
 pub trait TargetKind: private::Sealed + Send + Sync + 'static {
-    /// The marker a remote receiver of this target gets, which a host client gets on the
-    /// server's entity itself, as it shares the server's world.
-    type HostMarker: Bundle + Default;
     /// What leaves the entity with its target: Replicon's [`Replicated`] for [`Replicate`].
     type RemovedWith: Bundle;
-    /// Whether a link the entity's prediction target names is no target of this kind: a client
-    /// gets `Predicted` alone where both targets name it.
-    const YIELDS_TO_PREDICTION: bool = false;
 }
 
 /// Entity-level replication target: visible (spawned) exactly on the links in the target.
@@ -84,16 +77,7 @@ impl VisibilityFilter for ReplicationTarget<()> {
 }
 
 impl TargetKind for () {
-    type HostMarker = ();
     type RemovedWith = Replicated;
-}
-
-pub(crate) fn set_host_marker<T: TargetKind>(entity: &mut EntityCommands<'_>, targeted: bool) {
-    if targeted {
-        entity.try_insert(T::HostMarker::default());
-    } else {
-        entity.try_remove::<T::HostMarker>();
-    }
 }
 
 impl<T: TargetKind> ReplicationTarget<T> {
@@ -119,28 +103,12 @@ impl<T: TargetKind> ReplicationTarget<T> {
         &self.mode
     }
 
-    /// Whether a host client `host` takes this target's marker: the target names it, and for a
-    /// kind that yields to prediction, the entity's `prediction` target does not.
-    pub(crate) fn targets_host(
-        &self,
-        host: Entity,
-        remote: Option<&RemoteId>,
-        prediction: Option<&PredictionTarget>,
-    ) -> bool {
-        self.is_visible_for(host, remote)
-            && !(T::YIELDS_TO_PREDICTION
-                && prediction.is_some_and(|prediction| prediction.is_visible_for(host, remote)))
-    }
-
     /// Pure visibility predicate behind the [`VisibilityFilter`] impls.
-    ///
-    /// Also reused by the host marker sync, so that both agree.
     pub(crate) fn is_visible_for(&self, link: Entity, remote: Option<&RemoteId>) -> bool {
         self.mode.is_visible_for(link, remote)
     }
 
-    /// A target that is removed hides the entity from every link, and takes its host marker and
-    /// what leaves with it.
+    /// A target that is removed hides the entity from every link, and takes what leaves with it.
     ///
     /// `Remove` does not fire on replace (only `Discard` does), so a retarget runs just the
     /// filter's re-evaluation, preserving manual visibility overrides. A despawn (`new_archetype`
@@ -166,68 +134,9 @@ impl<T: TargetKind> ReplicationTarget<T> {
                 }
             }
             if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
-                entity_mut.remove::<(T::HostMarker, T::RemovedWith)>();
+                entity_mut.remove::<T::RemovedWith>();
             }
         });
-    }
-
-    /// A target that is inserted or replaced gives the entity its host marker exactly while a host
-    /// client is in the target.
-    pub(crate) fn sync_host_marker(
-        trigger: On<'_, '_, Insert<Self>>,
-        targets: Query<'_, '_, (&Self, Option<&PredictionTarget>)>,
-        hosts: Query<'_, '_, (Entity, Option<&RemoteId>), With<HostClient>>,
-        mut commands: Commands<'_, '_>,
-    ) where
-        T::HostMarker: Component,
-    {
-        let Ok((target, prediction)) = targets.get(trigger.entity) else {
-            return;
-        };
-        let targeted = hosts
-            .iter()
-            .any(|(host, remote)| target.targets_host(host, remote, prediction));
-        set_host_marker::<T>(&mut commands.entity(trigger.entity), targeted);
-    }
-
-    /// A client that becomes a host client gets the host marker of each target it is in.
-    pub(crate) fn sync_host_markers_on_host_added(
-        trigger: On<'_, '_, Add<HostClient>>,
-        hosts: Query<'_, '_, Option<&RemoteId>, With<HostClient>>,
-        targets: Query<'_, '_, (Entity, &Self, Has<T::HostMarker>, Option<&PredictionTarget>)>,
-        mut commands: Commands<'_, '_>,
-    ) where
-        T::HostMarker: Component,
-    {
-        let host = trigger.entity;
-        let Ok(remote) = hosts.get(host) else {
-            return;
-        };
-        for (entity, target, marked, prediction) in &targets {
-            if !marked && target.targets_host(host, remote, prediction) {
-                set_host_marker::<T>(&mut commands.entity(entity), true);
-            }
-        }
-    }
-
-    /// A client that stops being a host client takes the host markers that only it held.
-    pub(crate) fn sync_host_markers_on_host_removed(
-        trigger: On<'_, '_, Remove<HostClient>>,
-        hosts: Query<'_, '_, (Entity, Option<&RemoteId>), With<HostClient>>,
-        targets: Query<'_, '_, (Entity, &Self, Option<&PredictionTarget>), With<T::HostMarker>>,
-        mut commands: Commands<'_, '_>,
-    ) where
-        T::HostMarker: Component,
-    {
-        let leaving = trigger.entity;
-        for (entity, target, prediction) in &targets {
-            let targeted = hosts.iter().any(|(host, remote)| {
-                host != leaving && target.targets_host(host, remote, prediction)
-            });
-            if !targeted {
-                set_host_marker::<T>(&mut commands.entity(entity), false);
-            }
-        }
     }
 }
 
@@ -284,7 +193,6 @@ impl VisibilityFilter for PredictionTarget {
 pub struct PredictedSend;
 
 impl TargetKind for PredictedSend {
-    type HostMarker = Predicted;
     type RemovedWith = ();
 }
 
@@ -303,9 +211,7 @@ impl SentMarker for PredictedSend {
 pub struct InterpolatedSend;
 
 impl TargetKind for InterpolatedSend {
-    type HostMarker = Interpolated;
     type RemovedWith = ();
-    const YIELDS_TO_PREDICTION: bool = true;
 }
 
 impl SentMarker for InterpolatedSend {

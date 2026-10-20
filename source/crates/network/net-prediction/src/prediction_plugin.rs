@@ -30,7 +30,7 @@ use campfire_net_timeline::Rollback;
 /// A client's prediction and rollback, which run while the app holds a
 /// [`PredictionSetup`](crate::prediction_setup::PredictionSetup) and its topology is a client; a
 /// history writer also waits for a synced timeline, so it records no value under a tick before the
-/// sync. A host client and a server stay authoritative and run none of it.
+/// sync. A server stays authoritative and runs none of it.
 #[derive(Debug, Default)]
 pub(crate) struct PredictionPlugin;
 

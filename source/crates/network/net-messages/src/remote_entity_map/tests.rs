@@ -72,10 +72,6 @@ fn a_receive_view_maps_only_on_a_client() {
         local: &receive,
     };
     assert_eq!(view.get_mapped(remote), shared_local);
-
-    let mut view = ReceiveMapView::AsIs;
-    assert_eq!(view.get_mapped(remote), remote);
-    assert_eq!(view.get_mapped(unknown), unknown);
 }
 
 #[derive(Component)]

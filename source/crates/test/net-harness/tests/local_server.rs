@@ -12,8 +12,9 @@ use bevy_app::{App, TaskPoolPlugin};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_net::{
-    Clock, Hosting, JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol,
-    Os, Pace, PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SimClient,
+    Hosting, JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup, Os, Pace,
+    PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SessionSigner, SimClient,
+    UnixClock,
 };
 use campfire_net_connection::Connect;
 use campfire_protocol::internals::TestKey;
@@ -24,6 +25,9 @@ use campfire_test_packages::TestMode;
 
 /// How long the client gets to join and play.
 const DEADLINE: Duration = Duration::from_secs(10);
+
+/// The time between two frames of the client, which its test runs by hand.
+const FRAME: Duration = Duration::from_millis(2);
 
 #[test]
 fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
@@ -37,7 +41,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         options: Vec::new(),
         pace,
         os: Os {
-            clock: Clock::manual(TestKey::NOW),
+            clock: UnixClock::manual(TestKey::NOW),
             entropy: Entropy::Fixed(7),
         },
     })
@@ -48,13 +52,13 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
     let setup = SimClient {
         main: Arc::new(Signer::new(keys.main, Entropy::Fixed(4))),
-        session_key: keys.session,
+        session: SessionSigner::new(Signer::new(keys.session, Entropy::Fixed(4))),
         server: server.pin(),
         role: JoinRole::Play,
         hosting: Hosting::Local,
         packages,
         os: Os {
-            clock: Clock::manual(TestKey::NOW),
+            clock: UnixClock::manual(TestKey::NOW),
             entropy: Entropy::Fixed(4),
         },
         data: None,
@@ -72,7 +76,9 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         main: Arc::clone(&setup.main),
         os: setup.os.clone(),
         data: None,
-        ..setup
+        session: SessionSigner::new(Signer::new(keys.session, Entropy::Fixed(4))),
+        role: setup.role,
+        hosting: setup.hosting,
     };
     assert_eq!(at_20.check(), Err(TermsError::TickRate(elsewhere.tick_hz)));
     client.add_plugins(setup);
@@ -91,7 +97,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let frame = |client: &mut App| {
         assert!(start.elapsed() < DEADLINE, "the client did not play on");
         client.update();
-        thread::sleep(NetProtocol::FRAME);
+        thread::sleep(FRAME);
     };
     let playing = |client: &App| {
         client

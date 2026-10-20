@@ -17,6 +17,13 @@ send costs.
   completed messages that wait behind an ordering gap. Practice: ENet's `maximumWaitingData`,
   GameNetworkingSockets' `RecvBufferSize`, QUIC's connection window. Refused: renet's per-channel
   budget, which multiplies by the channel count.
+- **A channel opens to a link the app admits.** A channel registered with `add_direction_after::<G>`
+  gives a link of its receiving side its receiver only once the link holds `G`, so a peer the app
+  has not admitted, as a client that did not join, fills no such channel, and a packet on it is a
+  protocol violation; the receiver stays for the link's life, so a message in flight is not refused.
+  Refused: a receiver on every link from its link's start, which lets a peer before its admission
+  fill the channel to the receive budget; a check in the app's systems, which runs after the bytes
+  were held.
 - **A received packet ends one of three ways.** It is admitted, and accepted, so its packet session
   acknowledges it; refused when the budget is full, so it gets no ACK and its sender finds it lost
   and sends its reliable messages again (GameNetworkingSockets' "do not ack", ENet); or a protocol

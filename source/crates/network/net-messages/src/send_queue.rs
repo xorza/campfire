@@ -2,16 +2,12 @@ use crate::send_map_view::SendMapView;
 use crate::serialize_fns::ErasedSerializeFns;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::FilteredEntityMut;
-use bytes::Bytes;
 use campfire_common::ErrorReport;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::Writer;
 use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::TransportError;
-use campfire_net_connection::HostPayload;
-use campfire_net_core::LinkDirection;
 use campfire_net_core::NetId;
-use campfire_net_core::NetTick;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
 use tracing::{error, trace};
@@ -20,7 +16,7 @@ pub type Priority = f32;
 
 /// The values a sender holds until the frame sends them: the queue under
 /// `MessageSender<M>` and
-/// `EventSender<M>`, as under their host-side wrappers.
+/// `EventSender<M>`.
 #[derive(Debug)]
 pub(crate) struct SendQueue<M> {
     queued: Vec<Queued<M>>,
@@ -40,54 +36,14 @@ impl<M> Default for SendQueue<M> {
 }
 
 /// Where a link's senders write: the writer their values are serialized with, the link's entity
-/// map, the channel registry that names each channel's id, and the link itself.
+/// map, the channel registry that names each channel's id, and the link's transport, which packs
+/// them for its packet session.
 #[derive(Debug)]
 pub(crate) struct SendLink<'a, 'm> {
     pub(crate) writer: &'a mut Writer,
     pub(crate) entity_map: &'a SendMapView<'m>,
     pub(crate) channels: &'a ChannelRegistry,
-    pub(crate) target: SendTarget<'a>,
-}
-
-/// What a link's serialized values go to.
-#[derive(Debug)]
-pub(crate) enum SendTarget<'a> {
-    /// A remote link's transport, which packs them for its packet session.
-    Transport(&'a mut Transport),
-    /// A host client's buffer, which the other side of its entity reads from in the next
-    /// receive, at the app's `tick`.
-    Host {
-        buffer: &'a mut Vec<HostPayload>,
-        tick: NetTick,
-        direction: LinkDirection,
-    },
-}
-
-impl SendTarget<'_> {
-    /// A host client's buffer takes every message, as it skips the wire and its size limits.
-    pub(crate) fn send(
-        &mut self,
-        channel: NetId,
-        bytes: Bytes,
-        priority: Priority,
-    ) -> Result<(), TransportError> {
-        match self {
-            Self::Transport(transport) => transport.send(channel, bytes, priority),
-            Self::Host {
-                buffer,
-                tick,
-                direction,
-            } => {
-                buffer.push(HostPayload {
-                    bytes,
-                    channel,
-                    tick: *tick,
-                    direction: *direction,
-                });
-                Ok(())
-            }
-        }
-    }
+    pub(crate) transport: &'a mut Transport,
 }
 
 /// Serializes the queue of the sender the fn was built for, among `senders`, into its link.
@@ -161,7 +117,7 @@ impl<M: 'static> SendQueue<M> {
                 priority,
                 "serialized message for transport"
             );
-            match link.target.send(channel_id, bytes, priority) {
+            match link.transport.send(channel_id, bytes, priority) {
                 Ok(()) => {}
                 Err(error @ TransportError::MessageTooLarge { .. }) => {
                     error!(

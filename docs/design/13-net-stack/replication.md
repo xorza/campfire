@@ -37,8 +37,8 @@ visibility.
 
 - **A client that both targets name is predicted alone.** `InterpolationYield`, a mirror of the
   prediction target's mode, is a second filter of `InterpolatedSend` that hides it on each link
-  the prediction target names, as Replicon shows a component where every filter of its scope does;
-  a host client's markers read the prediction target itself, and the sender logs each such link.
+  the prediction target names, as Replicon shows a component where every filter of its scope does,
+  and the sender logs each such link.
   Refused: both markers, with which prediction and interpolation both write the component; a
   receiver that drops `Interpolated` beside `Predicted`, which leaves an entity on neither
   timeline when the prediction target goes; a field of `InterpolationTarget` kept in step, which

@@ -1,4 +1,3 @@
-use crate::endpoint_user::EndpointUser;
 use crate::message_registry::MessageRegistry;
 use crate::message_type_id::MessageTypeId;
 use crate::remote_entity_map::RemoteEntityMap;
@@ -18,12 +17,12 @@ use campfire_net_transport::Transport;
 #[derive(Debug, Component, Default, Reflect)]
 #[require(Transport)]
 pub struct LinkMessages {
-    /// The typed sender components on this entity, a host client's own side's included.
+    /// The net ids of the message types whose sender components are on this entity.
     #[reflect(ignore)]
-    pub(crate) senders: Vec<LinkEndpoint>,
-    /// The typed receiver components on this entity, a host client's own side's included.
+    pub(crate) senders: Vec<NetId>,
+    /// The net ids of the message types whose receiver components are on this entity.
     #[reflect(ignore)]
-    pub(crate) receivers: Vec<LinkEndpoint>,
+    pub(crate) receivers: Vec<NetId>,
     /// The writer this link's messages and events are serialized with, so its chunks are kept
     /// once for each link.
     #[reflect(ignore)]
@@ -32,19 +31,11 @@ pub struct LinkMessages {
     pub entity_mapper: RemoteEntityMap,
 }
 
-/// One sender or receiver component of a link: the message type it serves, by net id, and its
-/// user, which together name its component in the registry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LinkEndpoint {
-    pub(crate) net_id: NetId,
-    pub(crate) user: EndpointUser,
-}
-
-/// Which of a [`LinkMessages`]'s lists a sender or receiver component goes in, and its user.
+/// Which of a [`LinkMessages`]'s lists a sender or receiver component goes in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EndpointList {
-    Send(EndpointUser),
-    Receive(EndpointUser),
+    Send,
+    Receive,
 }
 
 /// A component through which a link sends or receives messages of one type, which the link's
@@ -59,7 +50,7 @@ impl LinkMessages {
     /// Lists the endpoint `T` as it is added: `T` requires [`LinkMessages`], so the lists are
     /// there, and its message type is registered before.
     pub(crate) fn list<T: ListedEndpoint>(mut world: DeferredWorld<'_>, context: HookContext) {
-        let entry = Self::entry(&world, T::LIST, T::message_type_id());
+        let entry = Self::net_id(&world, T::message_type_id());
         let mut link_messages = world
             .get_mut::<Self>(context.entity)
             .expect("a message endpoint requires its LinkMessages");
@@ -72,7 +63,7 @@ impl LinkMessages {
     /// Takes the endpoint `T` off the lists as it is removed, so they never name a removed
     /// component.
     pub(crate) fn unlist<T: ListedEndpoint>(mut world: DeferredWorld<'_>, context: HookContext) {
-        let entry = Self::entry(&world, T::LIST, T::message_type_id());
+        let entry = Self::net_id(&world, T::message_type_id());
         let Some(mut link_messages) = world.get_mut::<Self>(context.entity) else {
             return;
         };
@@ -81,23 +72,17 @@ impl LinkMessages {
             .retain(|known| *known != entry);
     }
 
-    fn entry(
-        world: &DeferredWorld<'_>,
-        endpoint: EndpointList,
-        type_id: MessageTypeId,
-    ) -> LinkEndpoint {
-        let net_id = world
+    fn net_id(world: &DeferredWorld<'_>, type_id: MessageTypeId) -> NetId {
+        world
             .get_resource::<MessageRegistry>()
             .and_then(|registry| registry.net_id(type_id))
-            .expect("a message is registered before its sender or receiver is added");
-        let (EndpointList::Send(user) | EndpointList::Receive(user)) = endpoint;
-        LinkEndpoint { net_id, user }
+            .expect("a message is registered before its sender or receiver is added")
     }
 
-    const fn list_mut(&mut self, endpoint: EndpointList) -> &mut Vec<LinkEndpoint> {
+    const fn list_mut(&mut self, endpoint: EndpointList) -> &mut Vec<NetId> {
         match endpoint {
-            EndpointList::Send(_) => &mut self.senders,
-            EndpointList::Receive(_) => &mut self.receivers,
+            EndpointList::Send => &mut self.senders,
+            EndpointList::Receive => &mut self.receivers,
         }
     }
 }

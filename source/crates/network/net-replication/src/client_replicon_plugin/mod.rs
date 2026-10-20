@@ -7,7 +7,6 @@ use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
 use bevy_replicon::prelude::*;
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
-use campfire_net_connection::HostClient;
 use campfire_net_transport::Transport;
 use campfire_net_transport::TransportSystems;
 
@@ -85,12 +84,7 @@ impl ClientRepliconPlugin {
             '_,
             '_,
             (),
-            (
-                With<Connected>,
-                With<Client>,
-                With<ReplicationReceiver>,
-                Without<HostClient>,
-            ),
+            (With<Connected>, With<Client>, With<ReplicationReceiver>),
         >,
     ) {
         // Receiver cleanup clears the confirmed tick map before Replicon's state transition resets
@@ -115,23 +109,9 @@ impl ClientRepliconPlugin {
 
     /// Sync replicon's `ClientState` with the stack's lifecycle.
     ///
-    /// Sets `Connected` only for real remote clients that can receive replication.
-    ///
-    /// Host-clients intentionally keep Replicon's `ClientState` disconnected so the app behaves
-    /// like a listen server: replication receive stays disabled and host-local client behavior is
-    /// emulated directly in the shared world instead.
+    /// Sets `Connected` only for clients that receive replication.
     fn sync_client_state(
-        connected: Query<
-            '_,
-            '_,
-            (),
-            (
-                With<Connected>,
-                With<Client>,
-                With<ReplicationReceiver>,
-                Without<HostClient>,
-            ),
-        >,
+        connected: Query<'_, '_, (), (With<Connected>, With<Client>, With<ReplicationReceiver>)>,
         state: Res<'_, State<ClientState>>,
         mut next_state: ResMut<'_, NextState<ClientState>>,
     ) {
@@ -198,12 +178,7 @@ impl ClientRepliconPlugin {
             '_,
             '_,
             Has<Persistent>,
-            (
-                With<Connected>,
-                With<Client>,
-                With<ReplicationReceiver>,
-                Without<HostClient>,
-            ),
+            (With<Connected>, With<Client>, With<ReplicationReceiver>),
         >,
         replicated: Query<'_, '_, (Entity, Has<Persistent>), With<Remote>>,
         mut confirmed_ticks: ResMut<'_, ConfirmedTickMap>,

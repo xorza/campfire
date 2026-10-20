@@ -21,6 +21,7 @@ use campfire_net_payload::{AppCode, UnlinkReason};
 use campfire_net_timeline::Clock;
 use campfire_store::Worker;
 
+use crate::frame_wake::FrameWake;
 use crate::link_binding::LinkBinding;
 use crate::packet_session_link::PacketSessionLink;
 
@@ -126,11 +127,12 @@ impl<Io: DatagramIo> Endpoint<Io> {
         mut endpoints: Query<'_, '_, (Entity, &mut Self)>,
         mut links: Query<'_, '_, &mut Link>,
         clock: Res<'_, Clock>,
+        wake: Res<'_, FrameWake>,
         mut commands: Commands<'_, '_>,
     ) {
         for (entity, mut endpoint) in &mut endpoints {
             let endpoint = &mut *endpoint;
-            endpoint.drive(&clock);
+            endpoint.drive(&clock, &wake);
             let runtime = &endpoint.runtime;
             let mut core = runtime.lock();
             while let Some(news) = core.next_news() {
@@ -230,10 +232,11 @@ impl<Io: DatagramIo> Endpoint<Io> {
 
     /// Resolves the driver at the first frame, and runs the frame's pass on a driven clock
     /// (13-net-stack/time.md, A real-socket IO runs on `Os`).
-    fn drive(&mut self, clock: &Clock) {
+    fn drive(&mut self, clock: &Clock, wake: &FrameWake) {
         let driver = self.driver.get_or_insert_with(|| match clock.os_origin() {
             Some(origin) => {
                 self.runtime.lock().set_time(EndpointTime::Os(origin));
+                self.runtime.wake_host_with(wake.signal());
                 let runtime = Arc::clone(&self.runtime);
                 Driver::Thread(Worker::start("campfire-endpoint", move || runtime.run()))
             }

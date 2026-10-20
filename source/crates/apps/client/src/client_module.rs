@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy::DefaultPlugins;
-use bevy::app::{App, PluginGroup, ScheduleRunnerPlugin, TaskPoolPlugin};
+use bevy::app::{App, PluginGroup, TaskPoolPlugin};
 use bevy::asset::AssetApp;
 use bevy::asset::io::AssetSourceBuilder;
 use bevy::log::LogPlugin;
@@ -11,7 +11,7 @@ use bevy::window::{Window, WindowPlugin};
 use campfire_bots::BotScript;
 use campfire_common::EnumAll;
 use campfire_declare::CapabilitySet;
-use campfire_net::{NetProtocol, Pace};
+use campfire_net::{Pace, PacedRunner};
 use campfire_package::ModePackages;
 use campfire_sim::Capability;
 
@@ -148,7 +148,7 @@ impl ClientEnd {
                     TaskPoolPlugin::default(),
                     TimePlugin,
                     StatesPlugin,
-                    ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
+                    PacedRunner,
                     Bot { script },
                 ));
                 return;

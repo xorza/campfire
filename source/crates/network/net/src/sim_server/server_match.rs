@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use bevy_time::{Real, Time, Virtual};
+use bevy_time::{Time, Virtual};
 use campfire_common::Seat;
-use campfire_net_timeline::{LocalTimeline, TimelineRate};
+use campfire_net_timeline::{Clock, LocalTimeline, TimelineRate};
 use campfire_package::ModePackages;
 use campfire_protocol::{ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_runner::{CheckedTerms, Session, SessionSource};
@@ -160,7 +160,7 @@ impl ServerMatch {
                 };
                 let Replayed { journal, snapshots } = restored.replay(world, with, replayed)?;
                 let players: Vec<Seat> = world.resource::<Session>().log().player_seats().collect();
-                let now = world.resource::<Time<Real>>().elapsed();
+                let now = world.resource::<Clock>().now().elapsed();
                 let run = Self {
                     offering,
                     journal: Some(journal),

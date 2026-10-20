@@ -5,7 +5,7 @@ How a link, a connection and a server come up and go down, and who ends each.
 ## Lifetimes
 
 - **The connection layer ends every server-side link.** `ServerConnectionPlugin` despawns each
-  `ClientOf` that is not a host client once it is `Disconnected`, for any cause, with `try_`
+  `ClientOf` once it is `Disconnected`, for any cause, with `try_`
   commands, and a reconnect is a new entity. Practice: bevy_replicon's backend contract, aeronet's
   `ConnectionPlugin`, renet, naia. Refused: each IO despawning its own links, which neither the
   packet session's endpoints nor Campfire's QUIC does; despawning on `Unlinked`, which skips

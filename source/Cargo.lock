@@ -2631,7 +2631,6 @@ dependencies = [
  "bevy_ecs",
  "bevy_platform",
  "bevy_reflect",
- "bytes",
  "campfire-common",
  "campfire-net-core",
  "campfire-net-link",

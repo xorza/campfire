@@ -207,6 +207,11 @@ impl PacketSession {
     /// Hands the frame what it reads at `now`: the opened payloads, which it accepts or refuses by
     /// its next send, the fates, the RTT samples, and the room and the largest payload of a
     /// datagram of `mtu` bytes.
+    /// Whether it opened a payload its host has not taken yet.
+    pub(crate) fn has_inbox(&self) -> bool {
+        !self.inbox.is_empty()
+    }
+
     pub(crate) fn hand_over(&mut self, queues: &mut PacketSessionQueues, mtu: usize, now: Instant) {
         for Inbound {
             payload,

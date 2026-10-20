@@ -1,4 +1,3 @@
-use crate::client::Client;
 use crate::client_of::ClientOf;
 use crate::connection_state::Connected;
 use crate::connection_state::Connecting;
@@ -24,8 +23,8 @@ use core::fmt::Debug;
 use tracing::trace;
 
 /// Starts and stops servers with their links, and ends every server-side link: a server's link is
-/// its start, each of its links a connection, and a link that is not a host client is despawned
-/// once it is [`Disconnected`], for any cause, and a reconnect is a new entity.
+/// its start, each of its links a connection, and a link is despawned once it is
+/// [`Disconnected`], for any cause, and a reconnect is a new entity.
 #[derive(Debug)]
 pub(crate) struct ServerConnectionPlugin;
 
@@ -56,7 +55,7 @@ impl ServerConnectionPlugin {
     /// frame, so that the packets sent this frame leave first.
     fn disconnect(
         trigger: On<'_, '_, Disconnect>,
-        query: Query<'_, '_, (), (With<ClientOf>, Without<Client>, Without<Disconnected>)>,
+        query: Query<'_, '_, (), (With<ClientOf>, Without<Disconnected>)>,
         mut commands: Commands<'_, '_>,
     ) {
         if query.contains(trigger.entity) {
@@ -160,12 +159,11 @@ impl ServerConnectionPlugin {
         }
     }
 
-    /// Disconnects each `Disconnecting` link and despawns each `Disconnected` one, except a host
-    /// client's, which is the client itself (13-net-stack/connection.md, The connection layer ends
-    /// every server-side link).
+    /// Disconnects each `Disconnecting` link and despawns each `Disconnected` one
+    /// (13-net-stack/connection.md, The connection layer ends every server-side link).
     fn end_links(
         disconnecting: Query<'_, '_, (Entity, &Disconnecting), With<LinkOf>>,
-        disconnected: Query<'_, '_, Entity, (With<LinkOf>, With<Disconnected>, Without<Client>)>,
+        disconnected: Query<'_, '_, Entity, (With<LinkOf>, With<Disconnected>)>,
         mut commands: Commands<'_, '_>,
     ) {
         for (entity, disconnecting) in &disconnecting {

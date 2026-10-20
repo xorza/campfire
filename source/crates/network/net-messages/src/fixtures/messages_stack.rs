@@ -78,11 +78,10 @@ mod tests {
         }
     }
 
-    /// A message the server sends reaches the client, and a host client connects in the server's
-    /// app.
+    /// A message the server sends reaches the client.
     #[test]
     fn a_message_reaches_the_client() {
-        let mut stepper = Stepper::new(MessagesStack, StepperSetup::host_server());
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::single());
         stepper
             .client_app_mut(0)
             .init_resource::<Received>()

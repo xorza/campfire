@@ -35,15 +35,6 @@ fn a_step_runs_each_app_once_unless_stalled() {
     assert_eq!(stepper.client_tick(0), client + 6);
 }
 
-/// A host client lives in the server's app: it has no app of its own and connects with `init`.
-#[test]
-fn a_host_client_has_no_app_and_connects() {
-    let stepper = Stepper::new(ConnectionStack, StepperSetup::host_server());
-    assert_eq!(stepper.client_count(), 1);
-    assert!(stepper.host_client().contains::<Connected>());
-    assert!(stepper.client(0).contains::<Connected>());
-}
-
 /// Client 1 disconnects through its stack: its own entity is disconnected, the server despawns its
 /// link to it, and client 0 stays connected at its index.
 #[test]

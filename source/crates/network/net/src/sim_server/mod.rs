@@ -19,7 +19,7 @@ use campfire_math::TickRate;
 use campfire_mode::MatchEnd;
 use campfire_net_connection::Disconnect;
 use campfire_net_link::{LinkOf, LinkSystems};
-use campfire_net_messages::{MessageReceiver, MessageSender};
+use campfire_net_messages::MessageReceiver;
 use campfire_net_replication::{ReplicationSender, RoomAllocator, RoomPlugin};
 use campfire_net_stack::ServerPlugins;
 use campfire_net_timeline::LocalTimeline;
@@ -47,10 +47,11 @@ use crate::faults::Faults;
 use crate::faults::fault::Fault;
 use crate::hosting::Hosting;
 use crate::match_clock::MatchClock;
-use crate::net_protocol::input_ack::InputAck;
+
+use crate::net_protocol::NetProtocol;
 use crate::net_protocol::input_message::InputMessage;
 use crate::net_protocol::save_command::SaveCommand;
-use crate::net_protocol::{MatchChannel, NetProtocol};
+use crate::sim_server::ack_sender::AckSender;
 use crate::sim_server::bot_driver::BotDriver;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::data_filter::DataFilters;
@@ -68,6 +69,7 @@ use crate::sim_server::spectators::Spectators;
 use crate::sim_server::team_rooms::TeamRooms;
 use crate::sim_server::viewer::Viewer;
 
+pub(crate) mod ack_sender;
 pub(crate) mod bot_driver;
 pub(crate) mod checkpoint_thread;
 pub(crate) mod checkpoints;
@@ -341,16 +343,8 @@ impl SimServer {
 /// their seats, as the log's order of one frame's inputs must not follow the query's.
 fn record_inputs(
     mut commands: Commands<'_, '_>,
-    mut links: Query<
-        '_,
-        '_,
-        (
-            Entity,
-            &PlayerLink,
-            &mut MessageReceiver<InputMessage>,
-            &mut MessageSender<InputAck>,
-        ),
-    >,
+    mut links: Query<'_, '_, (Entity, &PlayerLink, &mut MessageReceiver<InputMessage>)>,
+    mut acks: AckSender<'_, '_>,
     mut session: ResMut<'_, Session>,
     mut frame: ResMut<'_, FrameStart>,
     mut applied: Local<'_, Vec<Applied>>,
@@ -361,7 +355,7 @@ fn record_inputs(
     order.extend(links.iter().map(|(entity, link, ..)| (link.seat(), entity)));
     order.sort_unstable();
     for (_, entity) in order.drain(..) {
-        let (entity, &(mut link), mut receiver, mut acks) =
+        let (entity, &(mut link), mut receiver) =
             links.get_mut(entity).expect("a link the query just gave");
         for message in receiver.receive() {
             if link.is_refused() {
@@ -398,7 +392,7 @@ fn record_inputs(
                 unreachable!("a packet the log took is of a seat a player controls");
             };
             let first_seq = chain.next_seq() - u64::try_from(applied.len()).expect("a count fits");
-            acks.send::<MatchChannel>(InputAck::of(first_seq, &applied));
+            acks.send(entity, first_seq, &applied);
             for (((stamp, _), &outcome), seq) in inputs.zip(applied.iter()).zip(first_seq..) {
                 match Unapplied::try_from(outcome) {
                     Err(tick) => InputLogged {

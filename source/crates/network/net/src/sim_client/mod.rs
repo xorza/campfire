@@ -13,7 +13,6 @@ use bevy_ecs::schedule::common_conditions::{
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_replicon::prelude::Remote;
-use bevy_time::{Real, Time};
 use campfire_bots::{BotOrder, BotScript, BotUnits, BotView, OrderScratch, ScriptedInput};
 use campfire_capabilities::{MatchKind, MatchSetup, Order, Release};
 use campfire_common::ErrorReport;
@@ -32,7 +31,7 @@ use campfire_net_stack::ClientPlugins;
 use campfire_net_sync::{
     InputDelaySetup, InputTimelineSetup, RemoteTimeline, SyncSetup, SyncedLocalTimeline,
 };
-use campfire_net_timeline::{LocalTimeline, Rollback};
+use campfire_net_timeline::{Clock, LocalTimeline, Rollback};
 use campfire_package::ModePackages;
 use campfire_protocol::{SignedReceipt, Signer, Verifier};
 use campfire_runner::{SessionRules, TermsError};
@@ -43,7 +42,6 @@ use campfire_sim::{
 use campfire_units::{Avatar, Dead, Fallen, Owner, UnitsWorld};
 use campfire_values::{Team, TeamSet};
 use campfire_vision::ByHolding;
-use secp256k1::Keypair;
 use tracing::info;
 
 use crate::close_code::CloseCode;
@@ -79,6 +77,7 @@ use crate::sim_client::player_signer::PlayerSigner;
 use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::sent_inputs::SentInputs;
 use crate::sim_client::server_pin::ServerPin;
+use crate::sim_client::session_signer::SessionSigner;
 
 pub(crate) mod chain_history;
 pub(crate) mod client_dir;
@@ -88,6 +87,7 @@ pub(crate) mod player_signer;
 pub(crate) mod receipt_writer;
 pub(crate) mod sent_inputs;
 pub(crate) mod server_pin;
+pub(crate) mod session_signer;
 pub(crate) mod sim_client_world;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
@@ -103,8 +103,8 @@ const PREDICTION_SEED: SegmentSeed = SegmentSeed::ZERO;
 pub struct SimClient {
     /// The signer of the player's Nostr identity, which signs the delegation.
     pub main: Arc<Signer>,
-    /// This session's key, which the delegation lets sign the player's inputs.
-    pub session_key: Keypair,
+    /// The signer of this session's key, which the delegation lets sign the player's inputs.
+    pub session: SessionSigner,
     pub server: ServerPin,
     /// Whether the player plays a seat or watches.
     pub role: JoinRole,
@@ -201,7 +201,7 @@ impl Plugin for SimClient {
         let setup = MatchSetup::new(PREDICTION_SEED, rate, Role::Client).set(set);
         Release::build(world, setup, packages.books(rate), MatchKind::Predicting);
         mark_unpredicted(world);
-        world.insert_resource(PlayerSigner(Signer::new(self.session_key, self.os.entropy)));
+        world.insert_resource(PlayerSigner(self.session.take()));
         world.insert_resource(self.hosting);
         world.insert_resource(self.os.clone());
         world.insert_resource(JoinState::new(Joining {
@@ -372,7 +372,7 @@ fn receive_match_start(
 fn lose_link(
     unlinked: On<'_, '_, Insert<Unlinked>>,
     clients: Query<'_, '_, &Unlinked, With<Client>>,
-    time: Res<'_, Time<Real>>,
+    clock: Res<'_, Clock>,
     os: Res<'_, Os>,
     mut state: ResMut<'_, JoinState>,
     mut sent: ResMut<'_, SentInputs>,
@@ -385,7 +385,7 @@ fn lose_link(
         return;
     }
     let cause = LinkLossCause::of(reason);
-    match state.lose(time.elapsed(), os.entropy.random()) {
+    match state.lose(clock.now().elapsed(), os.entropy.random()) {
         LinkLoss::Rejoining => {
             info!(?cause, "the link to the server failed; trying again");
             sent.clear();
@@ -512,7 +512,7 @@ fn send_leave(
 /// down; stops once the server's grace period and restore window passed.
 fn retry_link(
     client: Single<'_, '_, (Entity, Has<Unlinked>), With<Client>>,
-    time: Res<'_, Time<Real>>,
+    clock: Res<'_, Clock>,
     os: Res<'_, Os>,
     mut state: ResMut<'_, JoinState>,
     mut commands: Commands<'_, '_>,
@@ -521,7 +521,7 @@ fn retry_link(
     if !state.is_rejoining() || !unlinked {
         return;
     }
-    match state.retry(time.elapsed(), os.entropy.random()) {
+    match state.retry(clock.now().elapsed(), os.entropy.random()) {
         Retry::Wait => {}
         Retry::Connect => {
             info!("connecting to the server again");

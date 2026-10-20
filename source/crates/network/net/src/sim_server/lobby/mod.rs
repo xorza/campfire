@@ -19,8 +19,9 @@ use campfire_visibility::HostVisibility;
 use tracing::info;
 
 use crate::error::JoinError;
+use crate::net_protocol::joined::Joined;
 use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
-use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Joined, Offering};
+use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Offering};
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_match::{MatchBegin, MatchSource, NewMatch, ServerMatch};

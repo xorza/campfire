@@ -4,7 +4,6 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 use campfire_net_connection::ClientOf;
 use campfire_net_connection::Connected;
-use campfire_net_connection::HostClient;
 use campfire_net_core::LinkDirection;
 use campfire_net_core::RegistryHash;
 use campfire_net_link::Unlink;
@@ -38,12 +37,7 @@ impl ProtocolCheckPlugin {
     /// On the server, send a message with the protocol checksum when a client connects
     fn send_verify_protocol(
         trigger: On<'_, '_, Add<Connected>>,
-        mut sender: Query<
-            '_,
-            '_,
-            &mut EventSender<ProtocolCheck>,
-            (With<ClientOf>, Without<HostClient>),
-        >,
+        mut sender: Query<'_, '_, &mut EventSender<ProtocolCheck>, With<ClientOf>>,
         hashes: Res<'_, ProtocolHashes>,
     ) {
         if let Ok(mut s) = sender.get_mut(trigger.entity) {

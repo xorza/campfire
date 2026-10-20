@@ -6,7 +6,6 @@ use bevy_time::{Time, Virtual};
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
 use campfire_net_connection::Disconnected;
-use campfire_net_connection::HostClient;
 use campfire_net_connection::NetworkTopology;
 use campfire_net_connection::NetworkingState;
 use campfire_net_messages::RemoteEvent;
@@ -33,17 +32,6 @@ impl InterpolationTimelinePlugin {
     ) {
         if clients.contains(trigger.entity) {
             timeline.reset_link();
-        }
-    }
-
-    /// Mark an in-process host client's presentation timeline ready without network sampling.
-    fn handle_host_client(
-        trigger: On<'_, '_, Add<HostClient>>,
-        clients: Query<'_, '_, (), With<Client>>,
-        mut timeline: ResMut<'_, InterpolationTimeline>,
-    ) {
-        if clients.contains(trigger.entity) {
-            timeline.set_synced(true);
         }
     }
 
@@ -75,19 +63,13 @@ impl InterpolationTimelinePlugin {
 
     /// Select the presentation source for the current topology and synchronize the resource.
     ///
-    /// A client follows its sole server; a host client shares the server's world and is ready
-    /// at once.
+    /// A client follows its sole server.
     fn sync_timeline(
         tick_rate: Res<'_, TimelineRate>,
         networking: Res<'_, NetworkingState>,
         setup: Res<'_, InterpolationSetup>,
         mut timeline: ResMut<'_, InterpolationTimeline>,
-        remotes: Query<
-            '_,
-            '_,
-            (&RemoteTimeline, &LinkEstimator),
-            (With<Client>, With<Connected>, Without<HostClient>),
-        >,
+        remotes: Query<'_, '_, (&RemoteTimeline, &LinkEstimator), (With<Client>, With<Connected>)>,
     ) {
         if networking.is_changed() {
             // Source-set changes reset controller hysteresis without rewinding the presentation
@@ -130,7 +112,6 @@ impl InterpolationTimelinePlugin {
                     "synchronized the application-global presentation timeline"
                 );
             }
-            NetworkTopology::HostClient { .. } => timeline.set_synced(true),
             NetworkTopology::Undefined
             | NetworkTopology::Server(_)
             | NetworkTopology::Invalid(_) => timeline.set_synced(false),
@@ -165,7 +146,6 @@ impl Plugin for InterpolationTimelinePlugin {
         app.init_resource::<InterpolationTimeline>();
         app.init_resource::<InterpolationSetup>();
         app.add_observer(Self::handle_connect);
-        app.add_observer(Self::handle_host_client);
         app.add_observer(Self::handle_disconnect);
         app.add_systems(PostUpdate, Self::sync_timeline.in_set(SyncSystems::Sync));
         app.add_systems(

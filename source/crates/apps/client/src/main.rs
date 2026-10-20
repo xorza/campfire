@@ -1,5 +1,5 @@
-//! Game client: joins a session over the stack's UDP, predicts the player's own avatar, and draws the
-//! match; a left click or drag selects the player's own units, and a right click orders them.
+//! Game client: joins a session over the stack's UDP, predicts the player's own avatar, and draws
+//! the match; a left click or drag selects the player's own units, and a right click orders them.
 //! With `--bot <orders file>`, it opens no window and renders nothing, and plays the file's
 //! `OrderScript` instead. With `--key <file>`, the player's main key is the file's, made when
 //! missing; without it, the player is a new key each run. With `--data <directory>`, the client
@@ -28,7 +28,7 @@ use bevy::app::App;
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_common::{ErrorReport, ExitStatus};
 use campfire_log::Logging;
-use campfire_net::{Hosting, KeyFile, Os, Pace, SimClient, WatchRequest, exit_code};
+use campfire_net::{Hosting, KeyFile, Os, Pace, SessionSigner, SimClient, WatchRequest, exit_code};
 use campfire_net_connection::Connect;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
@@ -129,7 +129,10 @@ fn main() -> ExitCode {
     let rate = MatchRate::new(pin.tick_hz).rate();
     let sim_client = SimClient {
         main,
-        session_key: Os::SYSTEM.entropy.keypair(),
+        session: SessionSigner::new(Signer::new(
+            Os::SYSTEM.entropy.keypair(),
+            Os::SYSTEM.entropy,
+        )),
         server: pin,
         role: args.role,
         hosting: match connection {

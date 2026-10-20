@@ -16,7 +16,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
+use bevy_app::{App, AppExit, Update};
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::With;
@@ -28,7 +28,7 @@ use campfire_common::{ExitStatus, TlsKey};
 use campfire_declare::CapabilitySet;
 use campfire_log::{LogEvent, Logging};
 use campfire_net::{
-    Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, Publisher,
+    Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, Os, PacedRunner, Publisher,
     RestoredSession, ServerBots, ServerDir, ServerFrameSystems, ServerSetup, SessionOpening,
     SimServerPlugins, SimServerWorld, StopRequest, UdpLinks, exit_code,
 };
@@ -196,7 +196,7 @@ fn server_app(
             capabilities: set,
             hosting: Hosting::Remote,
         },
-        ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
+        PacedRunner,
     ));
     app.world_mut().open_session(opening.session);
     app.insert_resource(data);

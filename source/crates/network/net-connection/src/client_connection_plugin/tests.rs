@@ -41,7 +41,7 @@ fn a_client_starts_disconnected_unless_it_spawns_connected() {
     let fresh = app.world_mut().spawn(Client).id();
     let connected = app
         .world_mut()
-        .spawn((Client, RemoteId(PeerId::Local(0)), Connected))
+        .spawn((Client, RemoteId(PeerId::Entity(0)), Connected))
         .id();
     app.world_mut().flush();
 

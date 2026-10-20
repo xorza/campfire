@@ -4,9 +4,8 @@ use crate::transport::Transport;
 use crate::transport_systems::TransportSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use campfire_net_channels::Channel;
+use campfire_net_channels::{Channel, ChannelTypeId};
 use campfire_net_connection::Disconnected;
-use campfire_net_connection::HostClient;
 use campfire_net_connection::LinkSide;
 use campfire_net_link::{Link, LinkSystems, Linked, Unlink};
 use campfire_net_payload::UnlinkReason;
@@ -25,12 +24,7 @@ impl TransportPlugin {
     fn buffer_receive(
         clock: Res<'_, Clock>,
         par_commands: ParallelCommands<'_, '_>,
-        mut query: Query<
-            '_,
-            '_,
-            (Entity, &mut Link, &mut Transport),
-            (With<Linked>, Without<HostClient>),
-        >,
+        mut query: Query<'_, '_, (Entity, &mut Link, &mut Transport), With<Linked>>,
     ) {
         let query = AdaptiveQueryIterMut::new(&mut query);
         query.for_each(|(entity, mut link, mut transport)| {
@@ -65,19 +59,11 @@ impl TransportPlugin {
     fn buffer_send(
         clock: Res<'_, Clock>,
         timeline: Res<'_, LocalTimeline>,
-        mut query: Query<'_, '_, (&mut Link, &mut Transport, Has<HostClient>), With<Linked>>,
+        mut query: Query<'_, '_, (&mut Link, &mut Transport), With<Linked>>,
     ) {
         let tick = timeline.tick();
         let query = AdaptiveQueryIterMut::new(&mut query);
-        query.for_each(|(mut link, mut transport, host_client)| {
-            // A host client's messages go to its buffer when they are sent, past its transport.
-            if host_client {
-                debug_assert!(
-                    !transport.has_staged(),
-                    "nothing is sent through a host client's transport"
-                );
-                return;
-            }
+        query.for_each(|(mut link, mut transport)| {
             transport.flush(&mut link.packet_session, tick, clock.now());
         });
     }
@@ -109,6 +95,39 @@ impl TransportPlugin {
     ) {
         if let Ok(mut transport) = query.get_mut(trigger.entity) {
             transport.add_channel_receive_from_registry::<C>(&registry);
+        }
+    }
+
+    /// Gives a link of side `R` the receiver of `C` as it gets `G`.
+    pub(crate) fn open_receiver_channel<C: Channel, R: LinkSide, G: Component>(
+        trigger: On<'_, '_, Add<G>>,
+        mut query: Query<'_, '_, &mut Transport, With<R>>,
+        registry: Res<'_, ChannelRegistry>,
+    ) {
+        if let Ok(mut transport) = query.get_mut(trigger.entity) {
+            Self::open_receiver::<C>(&mut transport, &registry);
+        }
+    }
+
+    /// Gives a link of side `R` that holds `G` already the receiver of `C` as its transport comes.
+    pub(crate) fn open_admitted_receiver_channel<C: Channel, R: LinkSide, G: Component>(
+        trigger: On<'_, '_, Insert<(Transport, R)>>,
+        mut query: Query<'_, '_, &mut Transport, (With<R>, With<G>)>,
+        registry: Res<'_, ChannelRegistry>,
+    ) {
+        if let Ok(mut transport) = query.get_mut(trigger.entity) {
+            Self::open_receiver::<C>(&mut transport, &registry);
+        }
+    }
+
+    /// Adds the receiver of `C` to `transport`, unless it holds one: a `G` that goes and comes
+    /// back keeps the channel's state.
+    fn open_receiver<C: Channel>(transport: &mut Transport, registry: &ChannelRegistry) {
+        let channel = registry
+            .net_id(ChannelTypeId::of::<C>())
+            .expect("a channel is registered before a link opens it");
+        if transport.channel_receiver_mut(channel).is_none() {
+            transport.add_channel_receive_from_registry::<C>(registry);
         }
     }
 }

@@ -39,14 +39,6 @@ mod tests {
         );
 
         app.world_mut().resource_mut::<NetworkingState>().topology =
-            NetworkTopology::HostClient { server, client };
-        assert!(
-            !app.world_mut()
-                .run_system_once(PredictionSetup::should_run)
-                .unwrap()
-        );
-
-        app.world_mut().resource_mut::<NetworkingState>().topology =
             NetworkTopology::Server(server);
         assert!(
             !app.world_mut()

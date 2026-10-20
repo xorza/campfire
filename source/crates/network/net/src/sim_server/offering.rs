@@ -7,7 +7,6 @@ use bevy_ecs::query::{With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_ecs::world::Mut;
-use bevy_time::{Real, Time};
 use campfire_common::ChannelBinding;
 use campfire_log::LogEvent;
 use campfire_net_connection::{ClientOf, Connected, Disconnect};
@@ -15,7 +14,7 @@ use campfire_net_core::NetTick;
 use campfire_net_endpoint::LinkBinding;
 use campfire_net_link::Unlinked;
 use campfire_net_messages::{MessageReceiver, MessageSender};
-use campfire_net_timeline::LocalTimeline;
+use campfire_net_timeline::{Clock, LocalTimeline};
 use campfire_protocol::{
     ConnectAnswer, ConnectChallenge, Delegation, Entropy, SessionTerms, Verifier,
 };
@@ -27,11 +26,12 @@ use crate::events::join_refused::JoinRefused;
 use crate::net_protocol::MatchChannel;
 use crate::net_protocol::dismissed::Dismissed;
 use crate::net_protocol::join::{Join, JoinRole};
+use crate::net_protocol::joined::Joined;
 use crate::net_protocol::offer::Offer;
-use crate::os::Clock;
 use crate::session_times::SessionTimes;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::server_setup::ServerSetup;
+use crate::unix_clock::UnixClock;
 
 /// Ticks between two sends of an offer that got no answer.
 const RESEND_TICKS: u32 = 30;
@@ -49,7 +49,7 @@ const ANSWER_WINDOW: Duration = Duration::from_secs(10);
 pub(crate) struct Offering {
     pub(crate) terms: Arc<SessionTerms>,
     pub(crate) times: SessionTimes,
-    clock: Clock,
+    clock: UnixClock,
     entropy: Entropy,
     verifier: Verifier,
 }
@@ -63,10 +63,6 @@ pub(crate) struct Offered {
     pub(crate) sent: NetTick,
     pub(crate) first: Duration,
 }
-
-/// A link whose player took a seat, before or after the start.
-#[derive(Component, Debug, Clone, Copy)]
-pub(crate) struct Joined;
 
 /// Why the server refused a link's join, or took its seat: the link receives nothing more, and
 /// ends as `Dismissing` has it.
@@ -114,24 +110,24 @@ impl Dismissing {
 
     /// Tells each dismissed link's client, once.
     pub(crate) fn tell(
-        time: Res<'_, Time<Real>>,
+        clock: Res<'_, Clock>,
         mut links: Query<'_, '_, (&mut Self, &mut MessageSender<Dismissed>)>,
     ) {
         for (mut dismissing, mut sender) in &mut links {
             if dismissing.told.is_none() {
                 sender.send::<MatchChannel>(dismissing.dismissed);
-                dismissing.told = Some(time.elapsed());
+                dismissing.told = Some(clock.now().elapsed());
             }
         }
     }
 
     /// Ends each dismissed link whose client was told `LINGER` ago and has not ended it.
     pub(crate) fn end(
-        time: Res<'_, Time<Real>>,
+        clock: Res<'_, Clock>,
         links: Query<'_, '_, (Entity, &Self), Without<Unlinked>>,
         mut commands: Commands<'_, '_>,
     ) {
-        let now = time.elapsed();
+        let now = clock.now().elapsed();
         for (link, dismissing) in &links {
             if dismissing
                 .told
@@ -178,11 +174,11 @@ impl Offered {
     /// Closes each offered link still to answer `ANSWER_WINDOW` after its first offer, with
     /// `CloseCode::Unanswered`.
     pub(crate) fn close_silent(
-        time: Res<'_, Time<Real>>,
+        clock: Res<'_, Clock>,
         links: Query<'_, '_, (Entity, &Self), (ToAnswer, Without<Unlinked>)>,
         mut commands: Commands<'_, '_>,
     ) {
-        let now = time.elapsed();
+        let now = clock.now().elapsed();
         for (link, offered) in &links {
             if now.saturating_sub(offered.first) >= ANSWER_WINDOW {
                 debug!(link = link.to_bits(), "the link left the offer unanswered");
@@ -271,13 +267,13 @@ impl Offering {
     pub(crate) fn offer_links<H: Resource + AsRef<Self>>(
         holder: Res<'_, H>,
         timeline: Res<'_, LocalTimeline>,
-        time: Res<'_, Time<Real>>,
+        clock: Res<'_, Clock>,
         mut links: OfferLinks<'_, '_>,
         mut commands: Commands<'_, '_>,
     ) {
         let at = OfferTime {
             tick: timeline.tick(),
-            real: time.elapsed(),
+            real: clock.now().elapsed(),
         };
         H::as_ref(&holder).offer(at, &mut links, &mut commands);
     }
@@ -362,10 +358,11 @@ mod tests {
     use bevy_time::{TimePlugin, TimeUpdateStrategy};
     use campfire_net_payload::AppCode;
     use campfire_net_payload::UnlinkReason;
+    use campfire_net_timeline::ClockPlugin;
 
     use super::*;
 
-    /// Each link the systems closed, with its code and when, in real time.
+    /// Each link the systems closed, with its code and when, by the app's clock.
     #[derive(Resource, Debug, Default)]
     struct Closes(Vec<(Entity, AppCode, Duration)>);
 
@@ -378,17 +375,19 @@ mod tests {
         // before its window ends at 11 s, stay. Each closes once: as the stack's endpoint does, a
         // close unlinks the link.
         let mut app = App::new();
-        app.add_plugins(TimePlugin);
+        app.add_plugins((TimePlugin, ClockPlugin));
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
             500,
         )));
         app.init_resource::<Closes>();
         app.add_observer(
             |close: On<'_, '_, Disconnect>,
-             time: Res<'_, Time<Real>>,
+             clock: Res<'_, Clock>,
              mut closes: ResMut<'_, Closes>,
              mut commands: Commands<'_, '_>| {
-                closes.0.push((close.entity, close.reason, time.elapsed()));
+                closes
+                    .0
+                    .push((close.entity, close.reason, clock.now().elapsed()));
                 commands.entity(close.entity).insert(Unlinked {
                     reason: UnlinkReason::Closed(close.reason),
                 });
@@ -420,7 +419,7 @@ mod tests {
         let answering = world.spawn(offered(Duration::from_secs(1))).id();
         for _ in 0..23 {
             app.update();
-            let now = app.world().resource::<Time<Real>>().elapsed();
+            let now = app.world().resource::<Clock>().now().elapsed();
             if now == Duration::from_millis(10_500) {
                 app.world_mut().entity_mut(answering).insert(Joined);
             }

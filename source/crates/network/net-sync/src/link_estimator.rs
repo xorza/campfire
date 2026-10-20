@@ -1,7 +1,7 @@
 //! The latency estimate of a link, from the RTT samples its packet session takes from each ACK.
 
 use bevy_ecs::prelude::*;
-use campfire_net_connection::{Connected, HostClient};
+use campfire_net_connection::Connected;
 use campfire_net_link::Link;
 use campfire_net_timeline::Clock;
 use core::time::Duration;
@@ -99,7 +99,7 @@ impl LinkEstimator {
     /// Takes each connected link's samples of the frame, which its packet session handed over.
     pub(crate) fn sample(
         clock: Res<'_, Clock>,
-        mut links: Query<'_, '_, (&Link, &mut Self), (With<Connected>, Without<HostClient>)>,
+        mut links: Query<'_, '_, (&Link, &mut Self), With<Connected>>,
     ) {
         let delta = clock.delta();
         for (link, mut estimator) in &mut links {

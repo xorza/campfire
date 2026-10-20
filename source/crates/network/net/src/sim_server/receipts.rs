@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut};
-use bevy_time::{Real, Time};
 use campfire_common::{Seat, Tick};
 use campfire_net_messages::MessageSender;
+use campfire_net_timeline::Clock;
 use campfire_protocol::{DurableHead, Receipt, SessionId, SignedReceipt};
 use campfire_runner::Session;
 
@@ -36,14 +36,14 @@ impl Receipts {
 
     /// Gives each seated player whose durable head moved a receipt of it, once a second.
     pub(crate) fn give(
-        time: Res<'_, Time<Real>>,
+        clock: Res<'_, Clock>,
         mut receipts: ResMut<'_, Self>,
         mut session: ResMut<'_, Session>,
         journal: Option<Res<'_, JournalWatch>>,
         seat_links: Res<'_, SeatLinks>,
         mut links: Query<'_, '_, &mut MessageSender<SignedReceipt>>,
     ) {
-        let now = time.elapsed();
+        let now = clock.now().elapsed();
         if now < receipts.next {
             return;
         }

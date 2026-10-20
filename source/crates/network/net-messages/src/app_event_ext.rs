@@ -1,9 +1,6 @@
 use crate::event_registration::EventRegistration;
 use crate::event_sender::EventSender;
-use crate::host_event_sender::HostEventSender;
-use crate::message_registry::{
-    MessageModeFns, MessageRegistry, ReceiveEventFns, SendFns, SenderFns,
-};
+use crate::message_registry::{MessageModeFns, MessageRegistry, ReceiveEventFns, SenderFns};
 use crate::remote_event::receive_event_typed;
 use crate::send_queue::SendQueue;
 use crate::serialize_fns::CxDeserializeFns;
@@ -52,22 +49,14 @@ fn register_event_with<M: Event>(
         app.world_mut().init_resource::<MessageRegistry>();
     }
     let sender_id = app.world_mut().register_component::<EventSender<M>>();
-    let host_sender_id = app.world_mut().register_component::<HostEventSender<M>>();
 
     let mut registry = app.world_mut().resource_mut::<MessageRegistry>();
     registry.register::<M>(
         MessageModeFns::Event {
-            send: SendFns {
-                link: SenderFns {
-                    component_id: sender_id,
-                    send_fn: SendQueue::<M>::send::<EventSender<M>>,
-                    discard_fn: SendQueue::<M>::discard::<EventSender<M>>,
-                },
-                host: SenderFns {
-                    component_id: host_sender_id,
-                    send_fn: SendQueue::<M>::send::<HostEventSender<M>>,
-                    discard_fn: SendQueue::<M>::discard::<HostEventSender<M>>,
-                },
+            send: SenderFns {
+                component_id: sender_id,
+                send_fn: SendQueue::<M>::send::<EventSender<M>>,
+                discard_fn: SendQueue::<M>::discard::<EventSender<M>>,
             },
             receive: ReceiveEventFns {
                 receive_event_fn: receive_event_typed::<M>,

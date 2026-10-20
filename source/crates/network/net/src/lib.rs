@@ -17,11 +17,13 @@ mod match_clock;
 mod net_protocol;
 mod os;
 mod pace;
+mod paced_runner;
 mod process_exit;
 mod session_times;
 mod sim_client;
 mod sim_server;
 mod udp_links;
+mod unix_clock;
 
 pub use crate::close_code::CloseCode;
 pub use crate::error::{JoinError, ReceiptRefusal, SaveRefusal};
@@ -58,8 +60,9 @@ pub use crate::net_protocol::input_message::InputMessage;
 pub use crate::net_protocol::join::JoinRole;
 pub use crate::net_protocol::save_command::SaveCommand;
 pub use crate::net_protocol::{InputChannel, NetProtocol};
-pub use crate::os::{Clock, Os};
+pub use crate::os::Os;
 pub use crate::pace::{Pace, PaceSpeed};
+pub use crate::paced_runner::PacedRunner;
 pub use crate::process_exit::exit_code;
 pub use crate::session_times::SessionTimes;
 pub use crate::sim_client::client_dir::ClientDir;
@@ -67,6 +70,7 @@ pub use crate::sim_client::client_layout::ClientLayout;
 pub use crate::sim_client::join_state::error::TermsMismatch;
 pub use crate::sim_client::join_state::{JoinState, Loss};
 pub use crate::sim_client::server_pin::ServerPin;
+pub use crate::sim_client::session_signer::SessionSigner;
 pub use crate::sim_client::{LeaveRequest, PendingOrders, PendingSaves, SimClient, WatchRequest};
 pub use crate::sim_server::ServerFrameSystems;
 pub use crate::sim_server::error::MatchBeginError;
@@ -89,6 +93,7 @@ pub use crate::sim_server::sim_server_plugins::SimServerPlugins;
 pub use crate::sim_server::sim_server_world::{SessionOpening, SimServerWorld, StopRequest};
 pub use crate::sim_server::snapshot_dir::SnapshotDir;
 pub use crate::udp_links::UdpLinks;
+pub use crate::unix_clock::UnixClock;
 
 #[cfg(feature = "internals")]
 pub mod internals {

@@ -6,17 +6,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Lightyear in the tree](docs/design/12-lightyear-in-tree.md): the player hosts a LAN match and plays a singleplayer match as before, every link on Campfire's own network stack, copied from the fork's `main` into `source/crates/network/`, over its own UDP. With it go the batches of [Workspace alignment](docs/design/14-workspace-alignment.md), which give each crate one kind and one job, hold the stack to Campfire's conventions, give each shared tool one home and each word one meaning. The batches go by impact (Workspace alignment, The batches go by impact): first what is wrong now or makes each later batch safer, then the stack reshaped and renamed before Campfire names its types, then Campfire on the stack, then Campfire's own moves and words, which no batch of the slice needs. A batch never goes before one it needs. Each batch ends with `cargo drive gate` passing; a golden that moves names its batch and its cause.
 
-### 9. Campfire's glue on the stack
-
-`net`, `server`, `client`, and the stack's host-client path in `net-connection`, `net-messages`, `net-replication`, `net-sync`, `net-interpolation`, `net-transport` and `net-stack`. It stands right after Campfire on the stack, which ports the glue as it is, so each fix here changes one thing against working links; it closes four of the issue log's items of the server's frame and links. Builds: a pass visits what changed.
-
-- [ ] source/crates/network/net/src/net_protocol/mod.rs:75 — the server's frame runs every network system 500 times a second for the transport's timers, which the stack's IO thread now runs (issue log, Net). → The frame runs at the tick and when a link has work; the item goes.
-- [ ] source/crates/network/net/src/net_protocol/mod.rs:81 — a link that did not join uses every channel with no budget (issue log, Net). → A link before `Joined` receives on the join's channels alone; the item goes.
-- [ ] source/crates/network/net/src/sim_client/mod.rs:98 — `SimClient` keeps the session's `Keypair` for the app's life, and `InputAck` collects a `Vec` for each ack (issue log, Net). → The key leaves the plugin at its build, and an ack writes into a buffer the link keeps; the items go.
-- [ ] source/crates/network/net/src/sim_server/offering.rs:116 — the session's timers read `Time<Real>` beside the stack's clock, and `net`'s Unix-seconds clock is a second `Clock` (13-net-stack/time.md, One clock per app, owned by the stack). → They read the stack's `Clock`, and `net`'s is `UnixClock`.
-- [ ] source/crates/network/net-connection/src/host_plugin/ — the stack's host-client path, which no Campfire mode runs (The stack's host-client path goes). → It goes, with its tests and `13-net-stack/api.md`'s decisions of it.
-- **Check:** the LAN check passes; the server's frames per second at idle fall to its tick rate; `cargo drive gate` passes.
-
 ### 10. One rule in one place
 
 `areas`, `stats`, `combat`, `geometry`. It stands after the slice, as no batch needs it, and first of Campfire's own work, as it changes what a match computes: an area and an aura disagree on neutral and dead units, and a splash misses a unit at exactly its radius. Builds: a capability asks another through a contract below both.

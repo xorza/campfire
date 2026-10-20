@@ -331,6 +331,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 
 - **The protocol is apart from the transport.** `protocol` is the versioned, documented format a replay needs; `net` uses the network stack over `bevy_replicon` for transport, replication, prediction and interest, and links over the stack's sealed UDP alone ([The stack's UDP](13-net-stack/udp.md)).
 - **One release on both ends.** Client and server always run the same engine release.
+- **A headless app runs a frame at each tick and on each link's work.** A server, a local server and a bot run a frame, then wait on the stack's `FrameWake` until their next fixed tick, at most one tick's length, so an idle server runs as many frames as ticks and reads a packet as it comes ([The IO thread wakes the frame](13-net-stack/packet-session.md)). Refused: Bevy's loop of a fixed 2 ms, which ran every network system 500 times a second; a wait for the tick alone, which reads a packet up to a tick late.
 
 ## Libraries
 

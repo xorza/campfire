@@ -15,8 +15,6 @@ use tracing::trace;
 /// code that runs during deserialization must not insert mappings.
 #[derive(Debug, Clone, Copy)]
 pub enum ReceiveMapView<'a> {
-    /// The sender names entities as this world does: a host client, or no link.
-    AsIs,
     /// A client's side: the local entity from `shared` first, then from `local`. An entity that
     /// neither holds becomes [`Entity::PLACEHOLDER`].
     Lookup {
@@ -39,7 +37,6 @@ pub enum ReceiveMapView<'a> {
 impl EntityMapper for ReceiveMapView<'_> {
     fn get_mapped(&mut self, entity: Entity) -> Entity {
         let mapped = match *self {
-            Self::AsIs => return entity,
             Self::Lookup { shared, local } => shared
                 .and_then(|shared| shared.get(&entity))
                 .or_else(|| local.0.get(&entity))

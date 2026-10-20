@@ -9,7 +9,6 @@ use bevy_replicon::client::confirm_history::ConfirmHistory;
 use bevy_replicon::prelude::Signature;
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
-use campfire_net_connection::HostClient;
 use campfire_net_timeline::LocalTimeline;
 
 /// Matches an entity a client pre-spawned to the one its server replicates, by the hash of a
@@ -49,12 +48,7 @@ impl PreSpawnedPlugin {
             '_,
             '_,
             (),
-            (
-                With<Client>,
-                With<Connected>,
-                With<ReplicationReceiver>,
-                Without<HostClient>,
-            ),
+            (With<Client>, With<Connected>, With<ReplicationReceiver>),
         >,
         mut receiver: ResMut<'_, PreSpawnedReceiver>,
         mut commands: Commands<'_, '_>,

@@ -20,7 +20,7 @@ use crate::timeline_sync_plugin::TimelineSyncPlugin;
 pub struct SyncStack;
 
 impl SyncStack {
-    /// The sync both sides share, once in an app that holds a host client beside its server.
+    /// The sync both sides share, once in an app whose stack takes it through two layers.
     fn add_shared(app: &mut App) {
         if !app.is_plugin_added::<TimelineSyncPlugin>() {
             app.add_plugins(SyncPlugins);

@@ -1,4 +1,3 @@
-use crate::endpoint_user::EndpointUser;
 use crate::link_messages::LinkMessages;
 use crate::link_messages::{EndpointList, ListedEndpoint};
 use crate::message::Message;
@@ -45,7 +44,7 @@ impl<M: Message> QueuedSender<M> for MessageSender<M> {
 }
 
 impl<M: Message> ListedEndpoint for MessageSender<M> {
-    const LIST: EndpointList = EndpointList::Send(EndpointUser::Link);
+    const LIST: EndpointList = EndpointList::Send;
 
     fn message_type_id() -> MessageTypeId {
         MessageTypeId::of::<M>()

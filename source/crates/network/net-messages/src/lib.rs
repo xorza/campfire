@@ -1,6 +1,4 @@
-//! Messages and events of registered types over each link, the entity map of each link, and a
-//! host client's endpoint for each side (13-net-stack/api.md, A host client keeps an endpoint for
-//! each side).
+//! Messages and events of registered types over each link, and the entity map of each link.
 
 #![expect(
     clippy::type_complexity,
@@ -15,14 +13,11 @@ mod app_event_ext;
 mod app_message_ext;
 #[cfg(feature = "internals")]
 pub mod bench;
-mod endpoint_user;
 mod entity_check;
 mod event_registration;
 mod event_sender;
 #[cfg(feature = "internals")]
 mod fixtures;
-mod host_event_sender;
-mod host_message_sender;
 mod link_messages;
 mod message;
 mod message_error;
@@ -52,14 +47,11 @@ pub use crate::app_message_ext::AppMessageExt;
 pub use crate::entity_check::EntityCheck;
 pub use crate::event_registration::EventRegistration;
 pub use crate::event_sender::EventSender;
-pub use crate::host_event_sender::HostEventSender;
-pub use crate::host_message_sender::HostMessageSender;
 pub use crate::link_messages::LinkMessages;
 pub use crate::message::Message;
 pub use crate::message_error::MessageError;
 pub use crate::message_plugin::MessagePlugin;
 pub use crate::message_receive_cx::ReceivedMessageHeader;
-pub use crate::message_receiver::HostMessageReceiver;
 pub use crate::message_receiver::MessageReceiver;
 pub use crate::message_registration::MessageRegistration;
 pub use crate::message_registry::MessageRegistry;
@@ -81,7 +73,6 @@ pub use crate::wire_entity::WireEntity;
 /// fixtures and measurements.
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::fixtures::host_received_messages::HostReceivedMessages;
     pub use crate::fixtures::messages_stack::MessagesStack;
     pub use crate::fixtures::protocol::{
         ClientMessage, EntityMessage, MappedEntityEvent, MessagesProtocolPlugin, SeqMessage,

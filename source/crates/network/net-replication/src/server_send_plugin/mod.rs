@@ -7,7 +7,6 @@ use crate::replication_target::PredictedSend;
 use crate::replication_target::PredictionTarget;
 use crate::replication_target::Replicate;
 use crate::replication_target::ReplicationTarget;
-use crate::replication_target::set_host_marker;
 use crate::replication_timer::ReplicationTimer;
 use crate::visibility_bits::VisibilityBits;
 use bevy_app::prelude::*;
@@ -18,8 +17,6 @@ use bevy_replicon::server::server_tick::ServerTick;
 use bevy_replicon::server::visibility::registry::FilterRegistry;
 use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 use bevy_time::Time;
-use campfire_net_connection::HostClient;
-use campfire_net_connection::RemoteId;
 use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::Rollback;
 use tracing::trace;
@@ -43,14 +40,6 @@ impl Plugin for ServerSendPlugin {
         app.add_observer(ReplicationTarget::<()>::on_remove);
         app.add_observer(ReplicationTarget::<PredictedSend>::on_remove);
         app.add_observer(ReplicationTarget::<InterpolatedSend>::on_remove);
-        app.add_observer(ReplicationTarget::<PredictedSend>::sync_host_marker);
-        app.add_observer(ReplicationTarget::<InterpolatedSend>::sync_host_marker);
-        app.add_observer(ReplicationTarget::<PredictedSend>::sync_host_markers_on_host_added);
-        app.add_observer(ReplicationTarget::<InterpolatedSend>::sync_host_markers_on_host_added);
-        app.add_observer(ReplicationTarget::<PredictedSend>::sync_host_markers_on_host_removed);
-        app.add_observer(ReplicationTarget::<InterpolatedSend>::sync_host_markers_on_host_removed);
-        app.add_observer(Self::sync_host_interpolated_on_prediction);
-        app.add_observer(Self::sync_host_interpolated_on_prediction_removed);
         app.register_required_components_with::<PredictionTarget, InterpolationYield>(
             InterpolationYield::hiding_nothing,
         );
@@ -79,43 +68,6 @@ impl Plugin for ServerSendPlugin {
 }
 
 impl ServerSendPlugin {
-    /// A prediction target, inserted or replaced, gives a host client the `Interpolated` marker
-    /// exactly while the interpolation target names it and the prediction target does not.
-    pub(crate) fn sync_host_interpolated_on_prediction(
-        trigger: On<'_, '_, Insert<PredictionTarget>>,
-        targets: Query<'_, '_, (&InterpolationTarget, &PredictionTarget)>,
-        hosts: Query<'_, '_, (Entity, Option<&RemoteId>), With<HostClient>>,
-        mut commands: Commands<'_, '_>,
-    ) {
-        let Ok((target, prediction)) = targets.get(trigger.entity) else {
-            return;
-        };
-        let targeted = hosts
-            .iter()
-            .any(|(host, remote)| target.targets_host(host, remote, Some(prediction)));
-        set_host_marker::<InterpolatedSend>(&mut commands.entity(trigger.entity), targeted);
-    }
-
-    /// A prediction target that goes leaves each host client the interpolation target names its
-    /// `Interpolated` marker.
-    pub(crate) fn sync_host_interpolated_on_prediction_removed(
-        trigger: On<'_, '_, Remove<PredictionTarget>>,
-        targets: Query<'_, '_, &InterpolationTarget>,
-        hosts: Query<'_, '_, (Entity, Option<&RemoteId>), With<HostClient>>,
-        mut commands: Commands<'_, '_>,
-    ) {
-        if trigger.trigger().new_archetype.is_none() {
-            return;
-        }
-        let Ok(target) = targets.get(trigger.entity) else {
-            return;
-        };
-        let targeted = hosts
-            .iter()
-            .any(|(host, remote)| target.targets_host(host, remote, None));
-        set_host_marker::<InterpolatedSend>(&mut commands.entity(trigger.entity), targeted);
-    }
-
     /// Replication is triggered in Replicon every time the `ServerTick` is incremented.
     ///
     /// Run this once per app frame after the fixed loop has drained. Replicating

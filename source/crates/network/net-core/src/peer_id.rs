@@ -15,8 +15,6 @@ pub enum PeerId {
     /// A peer that a link names by its address.
     #[cfg_attr(feature = "reflect", reflect(ignore))]
     Address(SocketAddr),
-    /// A local client to use when running in HostServer mode
-    Local(u64),
     /// Refers to the server
     Server,
 }
@@ -32,7 +30,6 @@ impl ToBytes for PeerId {
                     SocketAddr::V6(_) => 1 + 16 + 2,
                 }
             }
-            Self::Local(_) => 1 + 8,
             Self::Server => 1,
         }
     }
@@ -59,10 +56,6 @@ impl ToBytes for PeerId {
                     buffer.write_u16(v6.port());
                 }
             },
-            Self::Local(id) => {
-                buffer.write_u8(5);
-                buffer.write_u64(*id);
-            }
             Self::Server => {
                 buffer.write_u8(6);
             }
@@ -99,16 +92,9 @@ impl ToBytes for PeerId {
                 );
                 Ok(Self::Address(address))
             }
-            5 => Ok(Self::Local(buffer.read_u64()?)),
             6 => Ok(Self::Server),
             _ => Err(SerializationError::InvalidValue),
         }
-    }
-}
-
-impl PeerId {
-    pub const fn is_local(&self) -> bool {
-        matches!(self, Self::Local(_))
     }
 }
 

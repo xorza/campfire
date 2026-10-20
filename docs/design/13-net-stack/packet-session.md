@@ -39,6 +39,12 @@ packet stream under the transport's messages. The sealed handshake is in [UDP](u
   The frame takes the lock in the endpoint's two systems alone. Refused: a thread in lockstep on a
   driven clock, which adds two handoffs a frame and runs nothing in parallel; the frame as the only
   driver, which a stall stops.
+- **The IO thread wakes the frame.** A pass that opens a payload for the host, or leaves it news,
+  raises the app's `FrameWake`, which every endpoint of the app shares, so a host that waits on it
+  between its ticks reads a link's work as it comes, and runs no frame for a keep-alive or an ACK.
+  Practice: Source's dedicated server, which sleeps on its sockets until its next tick or a packet.
+  Refused: a frame on a fixed short loop, which runs every system for nothing between ticks; a
+  wake from each datagram, which an idle link's keep-alives would raise.
 - **A pass touches only the packet sessions that need it.** A datagram finds its packet session by
   its route in a map, and a pass polls the packet sessions whose timer is due in a heap of
   deadlines, so a pass costs what its datagrams and due timers cost, whatever the endpoint holds.

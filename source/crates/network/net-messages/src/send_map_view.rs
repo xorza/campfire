@@ -14,7 +14,7 @@ use tracing::trace;
 #[derive(Debug, Clone, Copy)]
 pub enum SendMapView<'a> {
     /// The receiver names entities as this world does, or checks them: a server's side of a
-    /// link, or a host client.
+    /// link.
     AsIs,
     /// A client's side: the server's entity from `shared` first, then from `local`. An entity
     /// that neither holds becomes [`Entity::PLACEHOLDER`], which the server cannot take for one

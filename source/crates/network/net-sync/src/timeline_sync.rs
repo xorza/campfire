@@ -91,8 +91,8 @@ pub trait TimelineSync {
 
     /// Set whether the timeline has completed its initial synchronization.
     ///
-    /// The sync plugins set it for network clients; a driver that needs no remote
-    /// samples, such as an in-process host client, sets it directly.
+    /// The sync plugins set it for network clients; a driver that needs no remote samples sets it
+    /// directly.
     fn set_synced(&mut self, synced: bool);
 
     /// The speed of your timeline relative to your system clock as an `f32`.

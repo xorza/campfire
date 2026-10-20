@@ -3,11 +3,11 @@ use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, SystemParam, SystemState};
 use bevy_ecs::world::World;
-use bevy_time::{Real, Time};
 use campfire_common::{ErrorReport, Seat};
 use campfire_mode::MatchMode;
 use campfire_net_connection::{Connected, Disconnect};
 use campfire_net_messages::{MessageReceiver, MessageSender};
+use campfire_net_timeline::Clock;
 use campfire_protocol::{
     Controller, Delegation, LeaveReason, ServerInput, ServerInputError, SessionLog,
 };
@@ -18,11 +18,12 @@ use crate::close_code::CloseCode;
 use crate::error::JoinError;
 use crate::match_clock::MatchClock;
 use crate::net_protocol::MatchChannel;
+use crate::net_protocol::joined::Joined;
 use crate::net_protocol::leave_match::LeaveMatch;
 use crate::net_protocol::match_start::{ChainHead, MatchStart, SeatChain};
 use crate::net_protocol::watch_start::WatchStart;
 use crate::sim_server::match_visibility::MatchVisibility;
-use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Joined, Offering};
+use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Offering};
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::seat_links::{SeatLink, SeatLinks};
 use crate::sim_server::spectators::Spectators;
@@ -262,7 +263,7 @@ impl Door {
     /// it logs the player's `Leave` after grace; a player who asks to leave logs `Leave` at once,
     /// and their link ends.
     pub(crate) fn watch(
-        time: Res<'_, Time<Real>>,
+        clock: Res<'_, Clock>,
         door: Res<'_, Self>,
         mut session: ResMut<'_, Session>,
         mut seat_links: ResMut<'_, SeatLinks>,
@@ -270,7 +271,7 @@ impl Door {
         connected: Query<'_, '_, (), With<Connected>>,
         mut commands: Commands<'_, '_>,
     ) {
-        let now = time.elapsed();
+        let now = clock.now().elapsed();
         let grace = door.offering.times.grace;
         let seats = session.log().seat_count();
         for seat in (0..seats).map(Seat::new) {

@@ -7,22 +7,22 @@ use serde::{Deserialize, Serialize};
 /// seq `first` on, the tick each applies in, or none for one logged late or early, which never
 /// takes effect. The client replays each in that tick, so a rollback predicts its own inputs
 /// where the server applied them, not where it stamped them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct InputAck {
     pub(crate) first: u64,
     pub(crate) applied: Vec<Option<Tick>>,
 }
 
 impl InputAck {
-    /// The acknowledgment of the inputs from seq `first` on, as the log placed them.
-    pub(crate) fn of(first: u64, applied: &[Applied]) -> Self {
-        let applied = applied
-            .iter()
-            .map(|applied| match *applied {
+    /// Makes it the acknowledgment of the inputs from seq `first` on, as the log placed them, in
+    /// its own buffer, which a server keeps from ack to ack.
+    pub(crate) fn fill(&mut self, first: u64, applied: &[Applied]) {
+        self.first = first;
+        self.applied.clear();
+        self.applied
+            .extend(applied.iter().map(|applied| match *applied {
                 Applied::At(tick) => Some(tick),
                 Applied::Late | Applied::Early => None,
-            })
-            .collect();
-        Self { first, applied }
+            }));
     }
 }

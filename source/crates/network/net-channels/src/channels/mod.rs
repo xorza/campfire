@@ -457,11 +457,6 @@ impl Channels {
         Ok(())
     }
 
-    /// Whether a message waits for the next send.
-    pub const fn has_staged(&self) -> bool {
-        !self.staged.is_empty()
-    }
-
     fn check_message_len(&self, channel_id: NetId, len: usize) -> Result<(), TransportError> {
         let max_len = self
             .senders

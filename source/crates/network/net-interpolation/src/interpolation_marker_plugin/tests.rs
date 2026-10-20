@@ -2,30 +2,10 @@ use crate::fixtures::interpolation_stack::InterpolationStack;
 use crate::fixtures::protocol::*;
 use bevy::prelude::*;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
-use campfire_net_connection::{Connect, NetworkTarget};
-use campfire_net_replication::{
-    ConfirmedHistory, Interpolated, InterpolatedSend, InterpolationTarget, Replicate,
-};
-use campfire_net_stepper::ClientKind;
-use campfire_net_stepper::{Init, StepperSetup};
+use campfire_net_connection::NetworkTarget;
+use campfire_net_replication::{ConfirmedHistory, Interpolated, InterpolationTarget, Replicate};
+use campfire_net_stepper::StepperSetup;
 use campfire_net_stepper::{StepOrder, Stepper};
-
-fn host_only_stepper_before_host_connect() -> Stepper<InterpolationStack> {
-    let mut setup = StepperSetup::with_clients(vec![ClientKind::Host]);
-    setup.init = Init::Deferred;
-    let mut stepper = Stepper::new(InterpolationStack, setup);
-    stepper.start_server();
-    stepper
-}
-
-fn connect_host(stepper: &mut Stepper<InterpolationStack>) -> Entity {
-    let host_client_entity = stepper.host_client_entity();
-    stepper.server_app_mut().world_mut().trigger(Connect {
-        entity: host_client_entity,
-    });
-    stepper.server_app_mut().world_mut().flush();
-    host_client_entity
-}
 
 #[test]
 fn a_manual_interpolated_marker_backfills_an_existing_replicated_component() {
@@ -123,77 +103,6 @@ fn the_removal_of_an_interpolation_target_removes_the_receiver_marker() {
             .world()
             .entity(client_entity)
             .contains::<Interpolated>()
-    );
-}
-
-/// In host-server mode, spawning an entity with `InterpolationTarget` should
-/// add the `Interpolated` marker component.
-#[test]
-fn an_interpolation_target_adds_interpolated_on_a_host_server() {
-    let mut stepper = Stepper::new(InterpolationStack, StepperSetup::host_server());
-
-    let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
-        .spawn((
-            Replicate::to_clients(NetworkTarget::All),
-            InterpolationTarget::to_clients(NetworkTarget::All),
-        ))
-        .id();
-    stepper.frame_step(1);
-
-    let entity_ref = stepper.server_app().world().entity(server_entity);
-    assert!(
-        entity_ref.contains::<InterpolatedSend>(),
-        "InterpolationTarget should add the sender-side marker"
-    );
-    assert!(
-        entity_ref.contains::<Interpolated>(),
-        "entity should have Interpolated in host-server mode"
-    );
-}
-
-#[test]
-fn an_interpolation_target_marks_a_client_that_becomes_the_host_client() {
-    let mut stepper = host_only_stepper_before_host_connect();
-
-    let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
-        .spawn((
-            Replicate::to_clients(NetworkTarget::All),
-            InterpolationTarget::to_clients(NetworkTarget::All),
-        ))
-        .id();
-    stepper.frame_step(1);
-
-    assert!(
-        !stepper
-            .server_app()
-            .world()
-            .entity(server_entity)
-            .contains::<Interpolated>(),
-        "the authoritative entity should not be Interpolated before it has a host-local receiver"
-    );
-    assert!(
-        stepper
-            .server_app()
-            .world()
-            .entity(server_entity)
-            .contains::<InterpolatedSend>(),
-        "InterpolationTarget should retain its sender-side marker"
-    );
-
-    connect_host(&mut stepper);
-    stepper.frame_step(1);
-
-    assert!(
-        stepper
-            .server_app()
-            .world()
-            .entity(server_entity)
-            .contains::<Interpolated>(),
-        "Interpolated should be added after the client becomes a HostClient"
     );
 }
 

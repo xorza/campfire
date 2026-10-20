@@ -5,14 +5,14 @@ use std::task::Wake;
 /// A flag a thread waits on, which another sets: a wake that comes before the wait is kept, so
 /// none is lost.
 #[derive(Debug, Default)]
-pub(crate) struct Signal {
+pub struct Signal {
     raised: Mutex<bool>,
     condvar: Condvar,
 }
 
 impl Signal {
     /// Waits until the flag is raised or `timeout` passes, and lowers it.
-    pub(crate) fn wait(&self, timeout: Option<Duration>) {
+    pub fn wait(&self, timeout: Option<Duration>) {
         let raised = self
             .raised
             .lock()
@@ -32,7 +32,7 @@ impl Signal {
         *raised = false;
     }
 
-    pub(crate) fn raise(&self) {
+    pub fn raise(&self) {
         *self
             .raised
             .lock()
@@ -56,6 +56,13 @@ mod tests {
     use campfire_store::Worker;
 
     use super::*;
+
+    impl Signal {
+        /// Whether the flag is raised, which it then lowers.
+        pub(crate) fn take_raised(&self) -> bool {
+            core::mem::replace(&mut *self.raised.lock().unwrap(), false)
+        }
+    }
     use std::sync::Arc;
     use std::time::Instant;
 

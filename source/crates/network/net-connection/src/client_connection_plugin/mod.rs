@@ -11,13 +11,13 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 use campfire_net_core::PeerId;
 use campfire_net_link::LocalAddress;
-use campfire_net_link::{LinkOf, LinkStart, Linked, Linking, Unlink};
+use campfire_net_link::{LinkStart, Linked, Linking, Unlink};
 use campfire_net_link::{Server, Unlinked};
 use campfire_net_payload::UnlinkReason;
 use tracing::trace;
 
 /// The lifecycle of each client: a client's link is its connection, so each state of the link
-/// is the connection's, except on a host client, which has no link of its own.
+/// is the connection's.
 #[derive(Debug)]
 pub(crate) struct ClientConnectionPlugin;
 
@@ -50,7 +50,7 @@ impl ClientConnectionPlugin {
 
     fn connect_on_linking(
         trigger: On<'_, '_, Add<Linking>>,
-        query: Query<'_, '_, (), (With<Client>, Without<LinkOf>)>,
+        query: Query<'_, '_, (), With<Client>>,
         mut commands: Commands<'_, '_>,
     ) {
         if query.contains(trigger.entity) {
@@ -62,12 +62,7 @@ impl ClientConnectionPlugin {
     /// one the server.
     fn connected_on_linked(
         trigger: On<'_, '_, Add<Linked>>,
-        query: Query<
-            '_,
-            '_,
-            (&LocalAddress, Option<&LocalId>, Option<&RemoteId>),
-            (With<Client>, Without<LinkOf>),
-        >,
+        query: Query<'_, '_, (&LocalAddress, Option<&LocalId>, Option<&RemoteId>), With<Client>>,
         mut commands: Commands<'_, '_>,
     ) {
         if let Ok((local_address, local_id, remote_id)) = query.get(trigger.entity) {
@@ -85,7 +80,7 @@ impl ClientConnectionPlugin {
     /// A `Disconnect` unlinks, which reports the disconnect's code.
     fn unlink_on_disconnect(
         trigger: On<'_, '_, Disconnect>,
-        query: Query<'_, '_, (), (With<Client>, Without<LinkOf>, Without<Disconnected>)>,
+        query: Query<'_, '_, (), (With<Client>, Without<Disconnected>)>,
         mut commands: Commands<'_, '_>,
     ) {
         if query.contains(trigger.entity) {

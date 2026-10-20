@@ -52,11 +52,6 @@ impl StepperSetup {
         Self::with_clients(vec![ClientKind::Plain])
     }
 
-    /// One host client and one remote client.
-    pub fn host_server() -> Self {
-        Self::with_clients(vec![ClientKind::Host, ClientKind::Plain])
-    }
-
     /// `n` remote clients.
     pub fn with_plain_clients(n: usize) -> Self {
         Self::with_clients(vec![ClientKind::Plain; n])

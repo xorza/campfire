@@ -11,7 +11,6 @@ use bevy_time::{Fixed, Time, Virtual};
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
 use campfire_net_connection::Disconnected;
-use campfire_net_connection::HostClient;
 use campfire_net_connection::NetworkTopology;
 use campfire_net_connection::NetworkingState;
 use campfire_net_timeline::LocalTimeline;
@@ -54,8 +53,7 @@ impl LocalTimelineSyncPlugin {
         }
     }
 
-    /// Paces `Time<Virtual>` by the controller's factor while a client or host client is
-    /// synchronized, else by 1.
+    /// Paces `Time<Virtual>` by the controller's factor while a client is synchronized, else by 1.
     ///
     /// The application holds the base speed, as a game speed: the written speed is the base times
     /// the factor. A speed that differs from the one written last frame is the application's new
@@ -67,11 +65,7 @@ impl LocalTimelineSyncPlugin {
         mut virtual_time: ResMut<'_, Time<Virtual>>,
         mut composed: Local<'_, Option<ComposedSpeed>>,
     ) {
-        let factor = if sync.is_synced()
-            && matches!(
-                networking.topology,
-                NetworkTopology::Client(_) | NetworkTopology::HostClient { .. }
-            ) {
+        let factor = if sync.is_synced() && networking.topology.is_client() {
             sync.relative_speed()
         } else {
             1.0
@@ -98,8 +92,7 @@ impl LocalTimelineSyncPlugin {
 
     /// Select the topology's clock source and update [`LocalTimelineSync`].
     ///
-    /// A client follows its sole authoritative server; a host client shares the server's clock
-    /// and is synchronized at once.
+    /// A client follows its sole authoritative server.
     #[expect(
         clippy::too_many_arguments,
         reason = "a Bevy system takes each resource it reads"
@@ -111,86 +104,70 @@ impl LocalTimelineSyncPlugin {
         setup: Res<'_, InputTimelineSetup>,
         local_timeline: Res<'_, LocalTimeline>,
         mut sync: ResMut<'_, LocalTimelineSync>,
-        remotes: Query<
-            '_,
-            '_,
-            (&RemoteTimeline, &LinkEstimator),
-            (With<Client>, With<Connected>, Without<HostClient>),
-        >,
+        remotes: Query<'_, '_, (&RemoteTimeline, &LinkEstimator), (With<Client>, With<Connected>)>,
         mut commands: Commands<'_, '_>,
     ) {
-        let mut is_synced = sync.is_synced();
         let local_now = local_timeline.now(&fixed_time);
 
         if networking.is_changed() {
             sync.reset();
             sync.set_synced(false);
-            is_synced = false;
         }
 
-        match &networking.topology {
-            NetworkTopology::Client(client) => {
-                let Ok((remote, estimator)) = remotes.get(*client) else {
-                    return;
-                };
-                if !remote.has_received_packet() {
-                    return;
-                }
-                let Some(estimate) = estimator.estimate() else {
-                    return;
-                };
-                sync.set_link_input_delay(&setup, Some(estimate), tick_rate.0);
-                let remote_estimate = remote.current_estimate();
-                let before_speed = sync.relative_speed();
-                let sample = SyncSample {
-                    remote,
-                    setup: &*setup,
-                    estimate,
-                    tick_rate: tick_rate.0,
-                };
-                if let Some(tick_span) = sync.sync(local_now, &sample) {
-                    trace!(
-                        target: "campfire_net_debug::sync",
-                        kind = "sync_adjustment",
-                        schedule = "PostUpdate",
-                        sample_point = "PostUpdate",
-                        source = ?client,
-                        timeline = "LocalTimeline",
-                        local_tick = local_now.tick().0,
-                        remote_tick = remote.tick().0,
-                        remote_estimate = ?remote_estimate,
-                        tick_span,
-                        relative_speed = sync.relative_speed(),
-                        ?estimate,
-                        "local timeline sync emitted LocalTimelineShift"
-                    );
-                    commands.trigger(LocalTimelineShift { delta: tick_span });
-                } else {
-                    trace!(
-                        target: "campfire_net_debug::sync",
-                        kind = "sync_sample",
-                        schedule = "PostUpdate",
-                        sample_point = "PostUpdate",
-                        source = ?client,
-                        timeline = "LocalTimeline",
-                        local_tick = local_now.tick().0,
-                        remote_tick = remote.tick().0,
-                        remote_estimate = ?remote_estimate,
-                        relative_speed_before = before_speed,
-                        relative_speed = sync.relative_speed(),
-                        ?estimate,
-                        "local timeline sync sampled"
-                    );
-                }
-            }
-            // A host client shares the server's clock, so it needs no latency sample or
-            // remote-clock correction: it is synchronized at once, at the input delay of a link
-            // with no latency.
-            NetworkTopology::HostClient { .. } if !is_synced => {
-                sync.apply_link_input_delay(&setup, None, tick_rate.0);
-                sync.set_synced(true);
-            }
-            _ => {}
+        let NetworkTopology::Client(client) = &networking.topology else {
+            return;
+        };
+        let Ok((remote, estimator)) = remotes.get(*client) else {
+            return;
+        };
+        if !remote.has_received_packet() {
+            return;
+        }
+        let Some(estimate) = estimator.estimate() else {
+            return;
+        };
+        sync.set_link_input_delay(&setup, Some(estimate), tick_rate.0);
+        let remote_estimate = remote.current_estimate();
+        let before_speed = sync.relative_speed();
+        let sample = SyncSample {
+            remote,
+            setup: &*setup,
+            estimate,
+            tick_rate: tick_rate.0,
+        };
+        if let Some(tick_span) = sync.sync(local_now, &sample) {
+            trace!(
+                target: "campfire_net_debug::sync",
+                kind = "sync_adjustment",
+                schedule = "PostUpdate",
+                sample_point = "PostUpdate",
+                source = ?client,
+                timeline = "LocalTimeline",
+                local_tick = local_now.tick().0,
+                remote_tick = remote.tick().0,
+                remote_estimate = ?remote_estimate,
+                tick_span,
+                relative_speed = sync.relative_speed(),
+                ?estimate,
+                "local timeline sync emitted LocalTimelineShift"
+            );
+            commands.trigger(LocalTimelineShift { delta: tick_span });
+        } else {
+            trace!(
+                target: "campfire_net_debug::sync",
+                kind = "sync_sample",
+                schedule = "PostUpdate",
+                sample_point = "PostUpdate",
+                source = ?client,
+                timeline = "LocalTimeline",
+                local_tick = local_now.tick().0,
+                remote_tick = remote.tick().0,
+                remote_estimate = ?remote_estimate,
+                relative_speed_before = before_speed,
+                relative_speed = sync.relative_speed(),
+                ?estimate,
+                "local timeline sync sampled"
+            );
         }
     }
 
@@ -232,39 +209,6 @@ impl Plugin for LocalTimelineSyncPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::input_delay_setup::InputDelaySetup;
-    use crate::sync_setup::SyncSetup;
-    use bevy_ecs::system::RunSystemOnce;
-    use campfire_math::TickRate;
-
-    /// The pass that sees a host client's topology change resets the controller, and syncs the
-    /// host client at once at the input delay of a link with no latency: the fixed 3 ticks here,
-    /// not the reset's 0.
-    #[test]
-    fn a_host_client_keeps_its_input_delay_through_the_topology_change() {
-        let mut app = App::new();
-        app.insert_resource(TimelineRate(TickRate::try_from(100).unwrap()));
-        app.init_resource::<Time<Fixed>>();
-        app.init_resource::<LocalTimeline>();
-        app.init_resource::<LocalTimelineSync>();
-        app.insert_resource(InputTimelineSetup::new(
-            SyncSetup::default(),
-            InputDelaySetup::fixed_input_delay(3),
-        ));
-        let server = app.world_mut().spawn_empty().id();
-        let client = app.world_mut().spawn_empty().id();
-        let mut networking = NetworkingState::default();
-        networking.topology = NetworkTopology::HostClient { server, client };
-        app.insert_resource(networking);
-
-        app.world_mut()
-            .run_system_once(LocalTimelineSyncPlugin::sync_timelines)
-            .unwrap();
-
-        let sync = app.world().resource::<LocalTimelineSync>();
-        assert!(sync.is_synced());
-        assert_eq!(sync.input_delay(), 3);
-    }
 
     fn virtual_speed(app: &App) -> f32 {
         app.world().resource::<Time<Virtual>>().relative_speed()

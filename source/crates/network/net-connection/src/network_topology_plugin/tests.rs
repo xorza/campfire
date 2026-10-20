@@ -16,7 +16,7 @@ fn app() -> App {
 
 fn connect_client(app: &mut App, peer: u64) -> Entity {
     app.world_mut()
-        .spawn((Client, RemoteId(PeerId::Local(peer)), Connected))
+        .spawn((Client, RemoteId(PeerId::Entity(peer)), Connected))
         .id()
 }
 
@@ -37,7 +37,7 @@ fn only_a_ready_client_or_server_is_cached() {
 
     app.world_mut()
         .entity_mut(client)
-        .insert((RemoteId(PeerId::Local(1)), Connected));
+        .insert((RemoteId(PeerId::Entity(1)), Connected));
     app.update();
     assert_eq!(mode(&app), &NetworkTopology::Client(client));
 
@@ -60,35 +60,6 @@ fn only_a_ready_client_or_server_is_cached() {
         .insert(Stopped::default());
     app.update();
     assert_eq!(mode(&app), &NetworkTopology::Undefined);
-}
-
-#[test]
-fn host_client_requires_a_connected_client_and_its_started_server() {
-    let mut app = app();
-    let server = app.world_mut().spawn(Server::default()).id();
-    let client = app
-        .world_mut()
-        .spawn((
-            Client,
-            RemoteId(PeerId::Local(0)),
-            Connected,
-            LinkOf { server },
-            HostClient { buffer: Vec::new() },
-        ))
-        .id();
-
-    app.update();
-    assert_eq!(
-        mode(&app),
-        &NetworkTopology::Invalid(NetworkTopologyError::HostClientServerNotStarted {
-            client,
-            server
-        })
-    );
-
-    app.world_mut().entity_mut(server).insert(Started);
-    app.update();
-    assert_eq!(mode(&app), &NetworkTopology::HostClient { server, client });
 }
 
 #[test]
@@ -123,26 +94,6 @@ fn an_unsupported_mix_of_ready_sides_is_invalid() {
         &NetworkTopology::Invalid(NetworkTopologyError::MultipleStartedServers(
             SmallVec::from_slice(&[server, other_server])
         ))
-    );
-}
-
-#[test]
-fn a_connected_host_client_without_its_server_link_is_invalid() {
-    let mut app = app();
-    let client = app
-        .world_mut()
-        .spawn((
-            Client,
-            RemoteId(PeerId::Local(0)),
-            Connected,
-            HostClient { buffer: Vec::new() },
-        ))
-        .id();
-
-    app.update();
-    assert_eq!(
-        mode(&app),
-        &NetworkTopology::Invalid(NetworkTopologyError::HostClientMissingLinkOf { client })
     );
 }
 

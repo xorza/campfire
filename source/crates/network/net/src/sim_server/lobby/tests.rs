@@ -20,10 +20,11 @@ use campfire_visibility::{OutView, Setting, SpectatorFog, Visibility, Visibility
 
 use super::*;
 use crate::net_protocol::join::{Join, JoinRole};
-use crate::os::{Clock, Os};
+use crate::os::Os;
 use crate::session_times::SessionTimes;
 use crate::sim_server::offering::Offered;
 use crate::sim_server::server_bots::SeatScript;
+use crate::unix_clock::UnixClock;
 
 /// A session of the lane mode's 2 seats, with bots in seats `bots` and seats `open` open.
 fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
@@ -53,7 +54,7 @@ fn opening(bots: &[u32], open: &[u32]) -> LobbyOpening {
             signer: Arc::new(Signer::new(TestKey::server(), Entropy::Fixed(5))),
             times: SessionTimes::DEFAULT,
             os: Os {
-                clock: Clock::manual(TestKey::NOW),
+                clock: UnixClock::manual(TestKey::NOW),
                 entropy: Entropy::Fixed(5),
             },
         },
@@ -197,7 +198,7 @@ impl Joining {
 
 fn links(world: &mut World) -> [Entity; 4] {
     [1, 2, 3, 4].map(|peer| {
-        let remote = RemoteId(PeerId::Local(peer));
+        let remote = RemoteId(PeerId::Entity(peer));
         world.spawn((remote, Connected, Joined)).id()
     })
 }

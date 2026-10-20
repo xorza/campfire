@@ -13,7 +13,6 @@ campfire-net-core.workspace = true
 campfire-net-link.workspace = true
 campfire-net-payload.workspace = true
 
-bytes.workspace = true
 serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true

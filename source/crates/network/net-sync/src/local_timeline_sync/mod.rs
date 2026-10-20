@@ -65,7 +65,7 @@ impl LocalTimelineSync {
         tick_rate: TickRate,
     ) -> bool {
         let client = match topology {
-            NetworkTopology::Client(client) | NetworkTopology::HostClient { client, .. } => *client,
+            NetworkTopology::Client(client) => *client,
             NetworkTopology::Undefined
             | NetworkTopology::Server(_)
             | NetworkTopology::Invalid(_) => return false,
@@ -73,19 +73,10 @@ impl LocalTimelineSync {
         let Ok(estimator) = links.get(client) else {
             return false;
         };
-        self.apply_link_input_delay(setup, estimator.estimate(), tick_rate);
-        true
-    }
-
-    /// Applies the input delay `estimate` calls for at once, where no resync will.
-    pub(crate) fn apply_link_input_delay(
-        &mut self,
-        setup: &InputTimelineSetup,
-        estimate: Option<LinkEstimate>,
-        tick_rate: TickRate,
-    ) {
-        self.set_link_input_delay(setup, estimate, tick_rate);
+        // At once, where no resync will.
+        self.set_link_input_delay(setup, estimator.estimate(), tick_rate);
         self.input_delay_ticks = self.link_input_delay_ticks;
+        true
     }
 
     /// Recompute input delay when the global configuration resource is inserted or replaced.
@@ -98,7 +89,7 @@ impl LocalTimelineSync {
         mut timeline: ResMut<'_, Self>,
     ) {
         if !timeline.recompute_input_delay(&setup, &networking.topology, &links, tick_rate.0) {
-            // Configuration is commonly installed before a Client or HostClient connects. The
+            // Configuration is commonly installed before a Client connects. The
             // configured minimum is topology-independent; the first resync replaces it with the
             // latency-aware delay once the Link is ready.
             timeline.input_delay_ticks = setup.input_delay_setup.min_input_delay_ticks();

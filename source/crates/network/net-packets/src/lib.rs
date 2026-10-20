@@ -54,6 +54,7 @@ pub use crate::open_error::OpenError;
 pub use crate::packet_session_setup::PacketSessionSetup;
 pub use crate::protection::Protection;
 pub use crate::seal::{Seal, TAG_LEN};
+pub use crate::signal::Signal;
 pub use crate::stateless_reset::{MIN_LEN as MIN_RESET_LEN, TOKEN_LEN as RESET_TOKEN_LEN};
 
 /// What the tests and benches of the layers above share: this layer's stack, test protocol,

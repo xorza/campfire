@@ -1,4 +1,3 @@
-use crate::endpoint_user::EndpointUser;
 use crate::link_messages::LinkMessages;
 use crate::link_messages::{EndpointList, ListedEndpoint};
 use crate::message::Message;
@@ -7,15 +6,12 @@ use crate::message_receive_cx::MessageReceiveCx;
 use crate::message_receive_cx::ReceivedMessageHeader;
 use crate::message_type_id::MessageTypeId;
 use crate::received_message::ReceivedMessage;
-use bevy_ecs::change_detection::Mut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::ParallelCommands;
 use bevy_ecs::world::FilteredEntityMut;
 use bevy_ecs::world::World;
 use bevy_utils::prelude::DebugName;
-use core::ops::Deref;
-use core::ops::DerefMut;
 use tracing::trace;
 use tracing::warn;
 
@@ -108,49 +104,27 @@ impl<M: Message> MessageReceiver<M> {
 }
 
 impl<M: Message> MessageReceiver<M> {
-    /// Pushes `message` into the receiver of `user`, which goes on the entity first if it is not
+    /// Pushes `message` into the receiver of `entity`, which goes on the entity first if it is not
     /// there yet.
     fn queue_received(
         commands: &ParallelCommands<'_, '_>,
         entity: Entity,
-        user: EndpointUser,
         message: ReceivedMessage<M>,
     ) {
         commands.command_scope(|mut commands| {
             commands.queue(move |world: &mut World| {
-                let Ok(mut entity_mut) = world.get_entity_mut(entity) else {
-                    return;
-                };
-                match user {
-                    EndpointUser::Link => entity_mut
+                if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
+                    entity_mut
                         .entry::<Self>()
                         .or_default()
                         .get_mut()
-                        .push_received(message),
-                    EndpointUser::HostClient => entity_mut
-                        .entry::<HostMessageReceiver<M>>()
-                        .or_default()
-                        .get_mut()
-                        .push_received(message),
+                        .push_received(message);
                 }
             });
         });
     }
 
-    /// The receiver of `user` among `receivers`.
-    fn of_user<'a>(
-        receivers: &'a mut FilteredEntityMut<'_, '_>,
-        user: EndpointUser,
-    ) -> Option<Mut<'a, Self>> {
-        match user {
-            EndpointUser::Link => receivers.get_mut::<Self>(),
-            EndpointUser::HostClient => receivers
-                .get_mut::<HostMessageReceiver<M>>()
-                .map(|receiver| receiver.map_unchanged(|receiver| &mut **receiver)),
-        }
-    }
-
-    /// Receive a single message of type `M` from the channel, into its user's receiver among
+    /// Receive a single message of type `M` from the channel, into its receiver among
     /// `receivers`, or into one that goes on with the commands when absent.
     pub(crate) fn receive_message_typed(
         receivers: &mut FilteredEntityMut<'_, '_>,
@@ -159,7 +133,6 @@ impl<M: Message> MessageReceiver<M> {
         let MessageReceiveCx {
             commands,
             link: entity,
-            user,
             reader,
             header:
                 ReceivedMessageHeader {
@@ -172,7 +145,7 @@ impl<M: Message> MessageReceiver<M> {
             entity_map,
             ..
         } = cx;
-        let receiver = Self::of_user(receivers, user);
+        let receiver = receivers.get_mut::<Self>();
         let insert_receiver = receiver.is_none();
         let data = serialize_fns.deserialize::<M>(reader, entity_map)?;
         let message = ReceivedMessage {
@@ -184,7 +157,7 @@ impl<M: Message> MessageReceiver<M> {
         if let Some(mut receiver) = receiver {
             receiver.push_received(message);
         } else {
-            Self::queue_received(commands, entity, user, message);
+            Self::queue_received(commands, entity, message);
         }
         trace!(
             "Received message {:?} on channel {channel_type_id:?}",
@@ -205,10 +178,11 @@ impl<M: Message> MessageReceiver<M> {
         Ok(())
     }
 
-    /// Clears `user`'s receiver among `receivers`, which the link lists.
-    pub(crate) fn clear_typed(receivers: &mut FilteredEntityMut<'_, '_>, user: EndpointUser) {
-        let mut receiver =
-            Self::of_user(receivers, user).expect("a link holds each receiver it lists");
+    /// Clears the receiver among `receivers`, which the link lists.
+    pub(crate) fn clear_typed(receivers: &mut FilteredEntityMut<'_, '_>) {
+        let mut receiver = receivers
+            .get_mut::<Self>()
+            .expect("a link holds each receiver it lists");
         if receiver.has_messages() {
             warn!(
                 "Unhandled messages {:?}. Clearing to avoid accumulating messages...",
@@ -219,48 +193,8 @@ impl<M: Message> MessageReceiver<M> {
     }
 }
 
-/// The receiver of a host client's own side: what its server sends the host client.
-///
-/// A host client is also the server's link to it, whose [`MessageReceiver<M>`] holds what the
-/// host client sends its server, so the host client's systems read this one. It has the API of
-/// [`MessageReceiver<M>`].
-#[derive(Debug, Component)]
-#[require(LinkMessages)]
-#[component(on_add = LinkMessages::list::<HostMessageReceiver<M>>, on_remove = LinkMessages::unlist::<HostMessageReceiver<M>>)]
-pub struct HostMessageReceiver<M: Message>(MessageReceiver<M>);
-
-impl<M: Message> Default for HostMessageReceiver<M> {
-    fn default() -> Self {
-        Self(MessageReceiver::default())
-    }
-}
-
-impl<M: Message> Deref for HostMessageReceiver<M> {
-    type Target = MessageReceiver<M>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<M: Message> DerefMut for HostMessageReceiver<M> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl<M: Message> HostMessageReceiver<M> {}
-
 impl<M: Message> ListedEndpoint for MessageReceiver<M> {
-    const LIST: EndpointList = EndpointList::Receive(EndpointUser::Link);
-
-    fn message_type_id() -> MessageTypeId {
-        MessageTypeId::of::<M>()
-    }
-}
-
-impl<M: Message> ListedEndpoint for HostMessageReceiver<M> {
-    const LIST: EndpointList = EndpointList::Receive(EndpointUser::HostClient);
+    const LIST: EndpointList = EndpointList::Receive;
 
     fn message_type_id() -> MessageTypeId {
         MessageTypeId::of::<M>()

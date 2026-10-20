@@ -67,7 +67,7 @@ mod tests {
     /// The client connects and syncs with prediction on, its app holding the prediction setup.
     #[test]
     fn the_client_predicts_once_synced() {
-        let stepper = Stepper::new(PredictionStack, StepperSetup::host_server());
+        let stepper = Stepper::new(PredictionStack, StepperSetup::single());
         assert!(
             stepper
                 .client_app(0)

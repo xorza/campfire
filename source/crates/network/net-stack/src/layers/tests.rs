@@ -1,32 +1,27 @@
 use bevy_ecs::prelude::{Add, Entity, On, Query, ResMut, Resource};
-use bevy_ecs::schedule::{Schedules, SingleThreadedExecutor};
 use campfire_log::internals::LogCheck;
 use campfire_net_connection::Connected;
 use campfire_net_connection::Disconnected;
 use campfire_net_connection::DisconnectedReason;
-use campfire_net_connection::HostClient;
 use campfire_net_connection::Started;
 use campfire_net_connection::Stop;
 use campfire_net_connection::{LocalId, RemoteId};
 use campfire_net_endpoint::Endpoint;
 use campfire_net_interpolation::InterpolationTimeline;
-use campfire_net_interpolation::internals::interpolation_timeline_is_synced;
 use campfire_net_link::{LocalAddress, RemoteAddress, Unlinked};
 use campfire_net_messages::LinkMessages;
 use campfire_net_messages::internals::StringMessage;
-use campfire_net_messages::{EventSender, MessageReceiver, MessageSender};
+use campfire_net_messages::{MessageReceiver, MessageSender};
 use campfire_net_payload::UnlinkReason;
-use campfire_net_replication::{ReplicationReceiver, ReplicationSender, SenderHello};
+use campfire_net_replication::ReplicationSender;
 use campfire_net_stepper::AppId;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_stepper::{StepOrder, Stepper};
-use campfire_net_sync::internals::input_timeline_is_synced;
 use campfire_net_sync::{LinkEstimator, LocalTimelineSync, RemoteTimeline};
 use campfire_net_transport::Transport;
 
 use super::*;
 use crate::fixtures::full_stack::FullStack;
-use crate::host_plugins::HostPlugins;
 use crate::server_plugins::ServerPlugins;
 use bevy::app::{App, TaskPoolPlugin};
 use bevy::state::app::StatesPlugin;
@@ -95,63 +90,6 @@ fn a_client_server_has_every_layers_components() {
     assert!(stepper.client_of(0).contains::<RemoteId>());
 }
 
-/// Check that the client/server setup is correct:
-/// - the various components we expect are present
-#[test]
-fn a_host_server_has_every_layers_components() {
-    let mut stepper = Stepper::new(FullStack, StepperSetup::host_server());
-    stepper.frame_step(1);
-
-    // Check that the various components we expect are present
-    assert!(stepper.host_client().contains::<HostClient>());
-    // The global synchronization state follows LocalTimeline directly for a host client.
-    assert!(input_timeline_is_synced(stepper.server_app().world()));
-    assert!(!stepper.host_client().contains::<LocalTimelineSync>());
-    assert!(stepper.host_client().contains::<RemoteTimeline>());
-    // TODO: update Interpolation to be disabled for host-clients!
-    assert!(
-        stepper
-            .server_app()
-            .world()
-            .contains_resource::<InterpolationTimeline>()
-    );
-    assert!(!stepper.host_client().contains::<InterpolationTimeline>());
-    assert!(interpolation_timeline_is_synced(
-        stepper.server_app().world()
-    ));
-    assert!(stepper.host_client().contains::<Transport>());
-    assert!(stepper.host_client().contains::<LinkMessages>());
-    assert!(
-        stepper
-            .host_client()
-            .contains::<MessageSender<StringMessage>>()
-    );
-    // Message receivers are created lazily when the first payload arrives.
-    assert!(
-        !stepper
-            .host_client()
-            .contains::<MessageReceiver<StringMessage>>()
-    );
-    assert!(stepper.host_client().contains::<EventSender<SenderHello>>());
-    // no need to replicate between the host-client and the server
-    assert!(!stepper.host_client().contains::<ReplicationSender>());
-    assert!(!stepper.host_client().contains::<ReplicationReceiver>());
-    assert!(stepper.host_client().contains::<Connected>());
-    assert!(stepper.host_client().contains::<LocalId>());
-    assert!(stepper.host_client().contains::<RemoteId>());
-
-    assert!(stepper.server().contains::<Started>());
-    assert!(stepper.server().contains::<Endpoint<EmulatedWires>>());
-}
-
-fn use_single_threaded_schedules(stepper: &mut Stepper<FullStack>) {
-    for app in stepper.apps_mut() {
-        for (_, schedule) in app.world_mut().resource_mut::<Schedules>().iter_mut() {
-            schedule.set_executor(SingleThreadedExecutor::new());
-        }
-    }
-}
-
 /// Regression test for https://github.com/cBournhonesque/lightyear/issues/613.
 ///
 /// The old `ServerConnections::disconnect` path removed the client from netcode before removing
@@ -161,7 +99,6 @@ fn use_single_threaded_schedules(stepper: &mut Stepper<FullStack>) {
 #[test]
 fn a_disconnect_the_server_asks_for_logs_no_error() {
     let mut stepper = Stepper::new(FullStack, StepperSetup::single());
-    use_single_threaded_schedules(&mut stepper);
     let server = stepper.server_entity();
     let server_client = stepper.client_of_entity(0);
     drop(LogCheck::scoped(|| {
@@ -202,7 +139,6 @@ fn record_disconnect(
 #[test]
 fn an_abrupt_unlink_logs_no_error() {
     let mut stepper = Stepper::new(FullStack, StepperSetup::single());
-    use_single_threaded_schedules(&mut stepper);
     let server_client = stepper.client_of_entity(0);
     stepper.server_app_mut().init_resource::<Disconnects>();
     stepper.server_app_mut().add_observer(record_disconnect);
@@ -256,14 +192,4 @@ fn a_dedicated_server_runs_no_interpolation() {
     });
     assert!(!app.world().contains_resource::<InterpolationTimeline>());
     assert!(app.world().contains_resource::<InterpolationRegistry>());
-}
-
-/// A host server builds the shared layers once, a client's and a server's own beside them.
-#[test]
-fn a_host_server_builds_both_sides() {
-    let app = app_with(|app| {
-        app.add_plugins(HostPlugins::default());
-    });
-    assert!(app.world().contains_resource::<InterpolationTimeline>());
-    assert!(app.is_plugin_added::<ServerLinkPlugin>());
 }

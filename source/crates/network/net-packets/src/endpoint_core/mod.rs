@@ -165,6 +165,8 @@ pub struct EndpointCore<C> {
     time: EndpointTime,
     /// Whether the endpoint dropped: its pass ends once its closes went.
     ended: bool,
+    /// Whether a packet session opened a payload since the IO thread last asked.
+    opened: bool,
 }
 
 impl<C: Carrier> EndpointCore<C> {
@@ -199,6 +201,7 @@ impl<C: Carrier> EndpointCore<C> {
             transmits: Vec::new(),
             time: EndpointTime::Driven(Instant::ZERO),
             ended: false,
+            opened: false,
         }
     }
 
@@ -390,6 +393,7 @@ impl<C: Carrier> EndpointCore<C> {
         let received = peer
             .packet_session
             .receive(now, payload, path, &mut self.transmits);
+        self.opened |= peer.packet_session.has_inbox();
         // A peer routed by its ID whose newest packet comes from an address of its own is
         // checked there before its datagrams go to it.
         if path == Path::Candidate
@@ -499,6 +503,13 @@ impl<C: Carrier> EndpointCore<C> {
                 datagram: datagram.freeze(),
             });
         }
+    }
+
+    /// Whether the host has work: news it has not taken, or a payload a packet session opened
+    /// since it was last asked, which it then forgets. The IO thread wakes the host's frame on it.
+    pub(crate) fn take_host_due(&mut self) -> bool {
+        let opened = core::mem::replace(&mut self.opened, false);
+        opened || !self.news.is_empty()
     }
 
     /// The oldest news the host has not taken.

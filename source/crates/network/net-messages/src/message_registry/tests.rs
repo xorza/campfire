@@ -1,6 +1,8 @@
 use super::*;
 use crate::app_message_ext::AppMessageExt;
+use crate::entity_check::EntityCheck;
 use crate::message_plugin::MessagePlugin;
+use crate::receive_entity_map::ReceiveEntityMap;
 use crate::send_entity_map::SendEntityMap;
 use bevy_ecs::entity::Entity;
 
@@ -75,6 +77,24 @@ fn a_type_registers_as_a_message_or_as_an_event_and_not_both() {
     app.register_event::<EventMessage>();
 }
 
+/// A server that replicates no entity.
+#[derive(Debug)]
+struct Unreplicated;
+
+impl EntityCheck for Unreplicated {
+    fn holds(&self, _: Entity) -> bool {
+        false
+    }
+}
+
+/// A view of the pairs of `empty`, none, for a message that names no entity.
+const fn unmapped(empty: &ReceiveEntityMap) -> ReceiveMapView<'_> {
+    ReceiveMapView::Lookup {
+        shared: None,
+        local: empty,
+    }
+}
+
 #[test]
 fn a_message_round_trips() {
     let mut app = App::new();
@@ -88,7 +108,7 @@ fn a_message_round_trips() {
 
     let mut reader = Reader::from(data);
     let read = registry
-        .deserialize(&mut reader, &ReceiveMapView::AsIs)
+        .deserialize(&mut reader, &unmapped(&ReceiveEntityMap::default()))
         .unwrap();
     assert_eq!(message, read);
 }
@@ -112,13 +132,13 @@ fn a_message_round_trips_through_custom_fns() {
 
     let mut reader = Reader::from(data);
     let read = registry
-        .deserialize(&mut reader, &ReceiveMapView::AsIs)
+        .deserialize(&mut reader, &unmapped(&ReceiveEntityMap::default()))
         .unwrap();
     assert_eq!(message, read);
 }
 
-/// A client writes its entity 1 as the server's 2, which the server reads as is; the server
-/// writes 2 as is, which the client reads back as its 1.
+/// A client writes its entity 1 as the server's 2, which the server reads as its own, as it is the
+/// link's; the server writes 2 as is, which the client reads back as its 1.
 #[test]
 fn a_message_maps_its_entities_on_the_client() {
     let mut app = App::new();
@@ -136,8 +156,14 @@ fn a_message_maps_its_entities_on_the_client() {
     };
     registry.serialize(&Message3(client), &mut writer, &client_send);
     let mut reader = Reader::from(writer.take_written());
+    let mut known = SendEntityMap::default();
+    known.insert(server, client);
+    let server_receive = ReceiveMapView::Checked {
+        known: &known,
+        replicated: &Unreplicated,
+    };
     let read = registry
-        .deserialize::<Message3>(&mut reader, &ReceiveMapView::AsIs)
+        .deserialize::<Message3>(&mut reader, &server_receive)
         .unwrap();
     assert_eq!(read.0, server);
 

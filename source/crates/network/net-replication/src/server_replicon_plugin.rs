@@ -10,7 +10,6 @@ use bevy_replicon::server::visibility::client_visibility::ClientVisibility;
 use bevy_replicon::shared::backend::connected_client::NetworkId;
 use campfire_net_connection::ClientOf;
 use campfire_net_connection::Connected;
-use campfire_net_connection::HostClient;
 use campfire_net_connection::Started;
 use campfire_net_transport::Transport;
 use campfire_net_transport::TransportSystems;
@@ -30,8 +29,6 @@ impl Plugin for ServerRepliconPlugin {
     fn build(&self, app: &mut App) {
         // When Connected is added to a link entity, add replicon's ConnectedClient + NetworkId
         app.add_observer(Self::on_client_connected);
-        app.add_observer(Self::on_host_client_added);
-        app.add_observer(Self::on_host_client_removed);
         // Gate replication (not messaging) on ReplicationSender via ClientVisibility.
         app.init_resource::<DetachedBit>();
         app.add_observer(Self::strip_client_visibility_without_sender);
@@ -87,14 +84,11 @@ impl ServerRepliconPlugin {
     /// so replicon's packet path can target it. They go with the link entity, which the connection
     /// layer despawns once it is disconnected, as replicon's backend contract asks.
     ///
-    /// Host-clients intentionally do not become replicon `ConnectedClient`s because they share the
-    /// same world as the server.
-    ///
     /// Each link's `NetworkId` is the next of a count, unique for the app's life: a peer id does
     /// not fit 64 bits injectively, and a reconnect is a new client to replicon.
     fn on_client_connected(
         trigger: On<'_, '_, Add<Connected>>,
-        remotes: Query<'_, '_, &Transport, (With<ClientOf>, Without<HostClient>)>,
+        remotes: Query<'_, '_, &Transport, With<ClientOf>>,
         mut next_network_id: Local<'_, u64>,
         mut commands: Commands<'_, '_>,
     ) {
@@ -112,51 +106,15 @@ impl ServerRepliconPlugin {
             .try_insert((ConnectedClient { max_size }, network_id));
     }
 
-    /// A host client needs only `ClientVisibility`, for the stack's same-app visibility hooks,
-    /// while it is a host client.
-    fn on_host_client_added(
-        trigger: On<'_, '_, Add<HostClient>>,
-        visibilities: Query<'_, '_, (), With<ClientVisibility>>,
-        mut commands: Commands<'_, '_>,
-    ) {
-        if !visibilities.contains(trigger.entity) {
-            commands
-                .entity(trigger.entity)
-                .try_insert(ClientVisibility::default());
-        }
-    }
-
-    /// A client that stops being a host client stops receiving same-app visibility.
-    fn on_host_client_removed(
-        trigger: On<'_, '_, Remove<HostClient>>,
-        mut commands: Commands<'_, '_>,
-    ) {
-        if trigger.trigger().new_archetype.is_some() {
-            commands
-                .entity(trigger.entity)
-                .try_remove::<ClientVisibility>();
-        }
-    }
-
     /// Only links with [`ReplicationSender`](crate::replication_sender::ReplicationSender)
     /// participate in replication.
     ///
     /// `ClientVisibility` is what admits a link into replicon's send loop, so it is kept exactly on
     /// connected server-side links that also have `ReplicationSender`. Links without it stay
-    /// connected (messages still flow) but receive no replication. Host links keep their existing
-    /// manual insert in [`ServerRepliconPlugin::on_client_connected`].
+    /// connected (messages still flow) but receive no replication.
     fn strip_client_visibility_without_sender(
         trigger: On<'_, '_, Add<ClientVisibility>>,
-        links: Query<
-            '_,
-            '_,
-            (),
-            (
-                With<ClientOf>,
-                Without<HostClient>,
-                Without<ReplicationSender>,
-            ),
-        >,
+        links: Query<'_, '_, (), (With<ClientOf>, Without<ReplicationSender>)>,
         mut commands: Commands<'_, '_>,
     ) {
         if links.contains(trigger.entity) {
@@ -170,17 +128,7 @@ impl ServerRepliconPlugin {
     /// Inserting `ClientVisibility` makes replicon evaluate each pre-existing entity for the link.
     fn admit_client_visibility_with_sender(
         trigger: On<'_, '_, Add<ReplicationSender>>,
-        links: Query<
-            '_,
-            '_,
-            (),
-            (
-                With<ClientOf>,
-                Without<HostClient>,
-                With<Connected>,
-                Without<ClientVisibility>,
-            ),
-        >,
+        links: Query<'_, '_, (), (With<ClientOf>, With<Connected>, Without<ClientVisibility>)>,
         mut commands: Commands<'_, '_>,
     ) {
         if links.contains(trigger.entity) {
@@ -198,7 +146,7 @@ impl ServerRepliconPlugin {
     fn detach_link_with_sender_removed(
         trigger: On<'_, '_, Remove<ReplicationSender>>,
         detached_bit: Res<'_, DetachedBit>,
-        mut links: Query<'_, '_, &mut ClientVisibility, (With<ClientOf>, Without<HostClient>)>,
+        mut links: Query<'_, '_, &mut ClientVisibility, With<ClientOf>>,
         replicated: Query<'_, '_, Entity, With<Replicated>>,
     ) {
         if trigger.trigger().new_archetype.is_none() {
@@ -217,7 +165,7 @@ impl ServerRepliconPlugin {
     fn attach_detached_link_with_sender_added(
         trigger: On<'_, '_, Add<ReplicationSender>>,
         detached_bit: Res<'_, DetachedBit>,
-        mut links: Query<'_, '_, &mut ClientVisibility, (With<ClientOf>, Without<HostClient>)>,
+        mut links: Query<'_, '_, &mut ClientVisibility, With<ClientOf>>,
         replicated: Query<'_, '_, Entity, With<Replicated>>,
     ) {
         if let Ok(mut visibility) = links.get_mut(trigger.entity) {
@@ -235,11 +183,7 @@ impl ServerRepliconPlugin {
             '_,
             '_,
             &mut ClientVisibility,
-            (
-                With<ClientOf>,
-                Without<HostClient>,
-                Without<ReplicationSender>,
-            ),
+            (With<ClientOf>, Without<ReplicationSender>),
         >,
     ) {
         for mut visibility in &mut detached {
@@ -333,6 +277,7 @@ mod tests {
     use campfire_net_despawn::DespawnReplicated;
     use campfire_net_link::{Link, Linked, Server};
     use campfire_net_transport::TransportPlugin;
+    use core::net::SocketAddr;
 
     /// A link whose packet session carries payloads of at most `max_payload` bytes.
     fn link(max_payload: usize) -> Link {
@@ -374,25 +319,29 @@ mod tests {
         );
     }
 
-    /// Peer ids `Entity(1)`, `Local(1)` and `Server` all gave the bits 1, so their links shared a
-    /// `NetworkId`: a count gives them 0, 1 and 2.
+    /// Peer ids of each kind whose bits can be equal, `Entity(1)`, the address of port 1 and
+    /// `Server`, share no `NetworkId`: a count gives them 0, 1 and 2.
     #[test]
     fn each_link_takes_its_own_network_id() {
         let mut app = App::new();
         app.add_observer(ServerRepliconPlugin::on_client_connected);
         app.init_resource::<NetworkIdMap>();
 
-        let ids: Vec<_> = [PeerId::Entity(1), PeerId::Local(1), PeerId::Server]
-            .into_iter()
-            .map(|peer| {
-                let entity = app
-                    .world_mut()
-                    .spawn((RemoteId(peer), ClientOf, Transport::default(), Connected))
-                    .id();
-                app.world_mut().flush();
-                app.world().get::<NetworkId>(entity).unwrap().get()
-            })
-            .collect();
+        let ids: Vec<_> = [
+            PeerId::Entity(1),
+            PeerId::Address(SocketAddr::from(([0, 0, 0, 0], 1))),
+            PeerId::Server,
+        ]
+        .into_iter()
+        .map(|peer| {
+            let entity = app
+                .world_mut()
+                .spawn((RemoteId(peer), ClientOf, Transport::default(), Connected))
+                .id();
+            app.world_mut().flush();
+            app.world().get::<NetworkId>(entity).unwrap().get()
+        })
+        .collect();
 
         assert_eq!(ids, [0, 1, 2]);
         assert_eq!(app.world().resource::<NetworkIdMap>().len(), 3);
@@ -491,30 +440,5 @@ mod tests {
         DespawnReplicated.apply(app.world_mut().entity_mut(servers[1]));
         app.update();
         assert_eq!(state(&app), ServerState::Stopped);
-    }
-
-    /// A host client gets same-app visibility once connected, and loses it with its host side.
-    #[test]
-    fn a_host_client_has_visibility_while_it_is_one() {
-        let mut app = App::new();
-        app.add_observer(ServerRepliconPlugin::on_client_connected);
-        app.add_observer(ServerRepliconPlugin::on_host_client_added);
-        app.add_observer(ServerRepliconPlugin::on_host_client_removed);
-        let host = app
-            .world_mut()
-            .spawn((
-                RemoteId(PeerId::Local(0)),
-                ClientOf,
-                Connected,
-                HostClient { buffer: Vec::new() },
-            ))
-            .id();
-        app.world_mut().flush();
-        assert!(app.world().entity(host).contains::<ClientVisibility>());
-        assert!(!app.world().entity(host).contains::<ConnectedClient>());
-
-        app.world_mut().entity_mut(host).remove::<HostClient>();
-        app.world_mut().flush();
-        assert!(!app.world().entity(host).contains::<ClientVisibility>());
     }
 }
