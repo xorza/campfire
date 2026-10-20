@@ -1,7 +1,7 @@
 use std::pin::pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use bevy::app::{App, TaskPoolPlugin};
+use bevy::app::App;
 use bevy::asset::io::AssetSourceBuilder;
 use bevy::asset::{
     Asset, AssetApp, AssetLoader, AssetPlugin, AssetServer, Handle, LoadContext, LoadState,
@@ -11,6 +11,7 @@ use bevy::image::{CompressedImageFormats, Image, ImageSampler, ImageType};
 use bevy::reflect::TypePath;
 use bevy::render::render_resource::TextureFormat;
 use bevy::tasks::{block_on, poll_once};
+use campfire_app_threads::OneThreadPlugins;
 use campfire_store::InputFile;
 use campfire_store::internals::TestDir;
 
@@ -191,7 +192,7 @@ fn bevy_keeps_a_models_reader_and_its_permit_for_the_whole_load() {
         PackageSource::NAME,
         AssetSourceBuilder::new(move || Box::new(source.clone())),
     );
-    app.add_plugins((TaskPoolPlugin::default(), AssetPlugin::default()));
+    app.add_plugins((OneThreadPlugins, AssetPlugin::default()));
     app.init_asset::<Model>();
     app.register_asset_loader(GatedLoader {
         started: Arc::clone(&started),

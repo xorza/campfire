@@ -2032,6 +2032,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-app-threads"
+version = "0.1.0"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "campfire-schedule",
+]
+
+[[package]]
 name = "campfire-areas"
 version = "0.1.0"
 dependencies = [
@@ -2131,6 +2140,7 @@ dependencies = [
  "async-lock",
  "bevy",
  "campfire-actions",
+ "campfire-app-threads",
  "campfire-areas",
  "campfire-bots",
  "campfire-capabilities",
@@ -2338,6 +2348,7 @@ dependencies = [
  "campfire-stats",
  "campfire-store",
  "campfire-test-packages",
+ "campfire-threads",
  "campfire-units",
  "campfire-values",
  "campfire-verifier",
@@ -2435,6 +2446,7 @@ dependencies = [
  "campfire-net-payload",
  "campfire-protocol",
  "campfire-store",
+ "campfire-threads",
  "campfire-verifier",
  "clap",
  "derive_more",
@@ -2450,6 +2462,7 @@ dependencies = [
  "campfire-common",
  "campfire-log",
  "campfire-store",
+ "campfire-threads",
  "clap",
  "serde",
  "tracing",
@@ -2476,7 +2489,7 @@ name = "campfire-measure"
 version = "0.1.0"
 dependencies = [
  "backtrace",
- "campfire-store",
+ "campfire-threads",
  "criterion",
  "tracing",
 ]
@@ -2543,6 +2556,7 @@ dependencies = [
  "bevy_replicon",
  "bevy_state",
  "bevy_time",
+ "campfire-app-threads",
  "campfire-bots",
  "campfire-capabilities",
  "campfire-codec",
@@ -2580,6 +2594,7 @@ dependencies = [
  "campfire-states",
  "campfire-store",
  "campfire-test-packages",
+ "campfire-threads",
  "campfire-units",
  "campfire-values",
  "campfire-visibility",
@@ -2690,7 +2705,7 @@ dependencies = [
  "campfire-net-packets",
  "campfire-net-payload",
  "campfire-net-timeline",
- "campfire-store",
+ "campfire-threads",
 ]
 
 [[package]]
@@ -2703,6 +2718,7 @@ dependencies = [
  "bevy_state",
  "bevy_time",
  "campfire-actions",
+ "campfire-app-threads",
  "campfire-bots",
  "campfire-capabilities",
  "campfire-codec",
@@ -2835,7 +2851,7 @@ dependencies = [
  "campfire-net-emulator",
  "campfire-net-packets",
  "campfire-net-payload",
- "campfire-store",
+ "campfire-threads",
  "thiserror 2.0.21",
 ]
 
@@ -2856,6 +2872,7 @@ dependencies = [
  "campfire-common",
  "campfire-net-core",
  "campfire-store",
+ "campfire-threads",
  "httparse",
  "netdev",
  "polling",
@@ -2955,6 +2972,7 @@ dependencies = [
  "bevy_app",
  "bevy_ecs",
  "bevy_replicon",
+ "campfire-app-threads",
  "campfire-log",
  "campfire-math",
  "campfire-measure",
@@ -2978,6 +2996,7 @@ dependencies = [
  "campfire-net-timeline",
  "campfire-net-transport",
  "campfire-store",
+ "campfire-threads",
  "serde",
  "tracing",
 ]
@@ -2989,6 +3008,7 @@ dependencies = [
  "bevy_app",
  "bevy_ecs",
  "bevy_time",
+ "campfire-app-threads",
  "campfire-common",
  "campfire-math",
  "campfire-net-connection",
@@ -3050,6 +3070,7 @@ dependencies = [
  "bevy_reflect",
  "bevy_utils",
  "bytes",
+ "campfire-app-threads",
  "campfire-common",
  "campfire-math",
  "campfire-measure",
@@ -3329,6 +3350,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_state",
  "bevy_time",
+ "campfire-app-threads",
  "campfire-bots",
  "campfire-common",
  "campfire-declarations",
@@ -3413,6 +3435,7 @@ name = "campfire-store"
 version = "0.1.0"
 dependencies = [
  "campfire-store",
+ "campfire-threads",
  "libc",
  "signal-hook",
  "socket2",
@@ -3431,6 +3454,13 @@ dependencies = [
  "campfire-package",
  "campfire-package-disk",
  "campfire-store",
+]
+
+[[package]]
+name = "campfire-threads"
+version = "0.1.0"
+dependencies = [
+ "campfire-threads",
 ]
 
 [[package]]

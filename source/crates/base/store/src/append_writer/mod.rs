@@ -11,9 +11,7 @@ use crate::append_writer::error::{AppendError, AppendOpenError};
 use crate::append_writer::slow_sync::SlowSync;
 use crate::durable_file::DurableFile;
 use crate::path_error::PathError;
-use crate::worker::Worker;
-use crate::worker::failure::Failure;
-use crate::worker::worker_lock::WorkerLock;
+use campfire_threads::{Failure, ThreadName, Worker, WorkerLock};
 
 pub(crate) mod append_file;
 pub(crate) mod append_watch;
@@ -97,7 +95,7 @@ impl AppendWriter {
     /// A new file at `path`, holding `head` alone, written durably as a whole file, and open to
     /// append on the worker `name`.
     pub fn create(
-        name: &str,
+        name: impl Into<ThreadName>,
         path: &Path,
         head: &[u8],
     ) -> Result<Self, PathError<AppendOpenError>> {
@@ -109,12 +107,16 @@ impl AppendWriter {
                 .map_err(AppendOpenError::Open)
         };
         let file = open().map_err(PathError::at(path))?;
-        Ok(Self::start(name, file))
+        Ok(Self::start(name.into(), file))
     }
 
     /// The file at `path`, cut to its first `whole` bytes, those a read found whole, so a torn
     /// tail is gone before the next record, and open to append on the worker `name`.
-    pub fn reopen(name: &str, path: &Path, whole: u64) -> Result<Self, PathError<AppendOpenError>> {
+    pub fn reopen(
+        name: impl Into<ThreadName>,
+        path: &Path,
+        whole: u64,
+    ) -> Result<Self, PathError<AppendOpenError>> {
         let open = || {
             let file = OpenOptions::new()
                 .write(true)
@@ -129,16 +131,16 @@ impl AppendWriter {
                 .map_err(AppendOpenError::Open)
         };
         let file = open().map_err(PathError::at(path))?;
-        Ok(Self::start(name, file))
+        Ok(Self::start(name.into(), file))
     }
 
     /// A writer that appends to `file` on the worker `name`.
-    fn start<F: AppendFile>(name: &str, file: F) -> Self {
+    fn start<F: AppendFile>(name: ThreadName, file: F) -> Self {
         Self::start_bounded(name, file, Self::BOUNDS)
     }
 
     /// A writer that keeps `bounds`.
-    fn start_bounded<F: AppendFile>(name: &str, file: F, bounds: AppendBounds) -> Self {
+    fn start_bounded<F: AppendFile>(name: ThreadName, file: F, bounds: AppendBounds) -> Self {
         let shared = Arc::new(AppendShared {
             pending: WorkerLock::default(),
             wake: Condvar::new(),
@@ -273,6 +275,8 @@ impl Drop for AppendWriter {
 pub(crate) mod internals {
     use std::io;
 
+    use campfire_threads::ThreadName;
+
     use crate::append_writer::AppendWriter;
     use crate::append_writer::append_file::AppendFile;
 
@@ -292,8 +296,8 @@ pub(crate) mod internals {
 
     impl AppendWriter {
         /// A writer on the worker `name` whose every sync fails, as a full or a failing disk's.
-        pub fn failing_sync(name: &str) -> Self {
-            Self::start(name, FailingSync)
+        pub fn failing_sync(name: impl Into<ThreadName>) -> Self {
+            Self::start(name.into(), FailingSync)
         }
     }
 }

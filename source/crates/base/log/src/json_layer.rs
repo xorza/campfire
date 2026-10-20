@@ -205,7 +205,7 @@ mod tests {
     use serde::Deserialize;
     use tracing::{error, info, warn};
 
-    use campfire_store::internals::Parallel;
+    use campfire_threads::internals::Parallel;
 
     use crate::json_layer::internals::LogCheck;
     use crate::log_event::LogEvent;

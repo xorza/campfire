@@ -1,0 +1,17 @@
+[package]
+name = "campfire-threads"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata.campfire]
+kind = "proxy"
+
+[features]
+internals = []
+
+[dev-dependencies]
+campfire-threads = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

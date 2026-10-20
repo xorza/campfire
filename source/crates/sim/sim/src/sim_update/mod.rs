@@ -1,10 +1,8 @@
-use bevy_ecs::schedule::{
-    IntoScheduleConfigs, Schedule, ScheduleLabel, SingleThreadedExecutor, SystemSet,
-};
+use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, ScheduleLabel, SystemSet};
 use bevy_ecs::system::{Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::{EnumAll, SegmentSeed};
-use campfire_schedule::StrictSchedule;
+use campfire_schedule::{OneThreadSchedule, StrictSchedule};
 
 use crate::id_allocator::IdAllocator;
 use crate::match_rate::MatchRate;
@@ -69,7 +67,7 @@ impl SimUpdate {
     /// executor among them (02-engine-core.md, The sim is one schedule on one thread).
     pub(crate) fn schedule() -> Schedule {
         let mut schedule = StrictSchedule::of(Self);
-        schedule.set_executor(SingleThreadedExecutor::new());
+        OneThreadSchedule::apply(&mut schedule);
         schedule.configure_sets(SimEdgeSystems::Start.before(SimSystems::Inputs));
         for stages in SimSystems::ALL.windows(2) {
             schedule.configure_sets((

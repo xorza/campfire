@@ -1,8 +1,7 @@
 use std::mem;
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
 
-use crate::worker::Worker;
-use crate::worker::worker_lock::WorkerLock;
+use campfire_threads::{ThreadName, Worker, WorkerLock};
 
 /// One job at a time on a worker: the caller fills a job and sends it, and the worker does it and
 /// gives it back with its answer, so the next job reuses its buffers and a steady state allocates
@@ -30,7 +29,10 @@ struct Done<J, A> {
 
 impl<J: Default + Send + 'static, A: Send + 'static> Exchange<J, A> {
     /// Starts the worker `name`, which does each job with `work`.
-    pub fn start(name: &str, mut work: impl FnMut(&mut J) -> A + Send + 'static) -> Self {
+    pub fn start(
+        name: impl Into<ThreadName>,
+        mut work: impl FnMut(&mut J) -> A + Send + 'static,
+    ) -> Self {
         // One job is out at a time, so a channel of one slot each way never makes a send wait,
         // and, bounded, holds its slot in a buffer it made once.
         let (jobs, received) = mpsc::sync_channel::<J>(1);

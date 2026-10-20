@@ -1,6 +1,7 @@
 use super::*;
 use bevy_ecs::system::RunSystemOnce;
 use bytes::BytesMut;
+use campfire_app_threads::OneThreadPlugins;
 use campfire_net_channels::{Channels, PacketKind};
 use campfire_net_core::Instant;
 use campfire_net_payload::{OpenedPayload, PacketNumber, ReceivePayload};
@@ -17,7 +18,7 @@ struct Outcomes {
 #[test]
 fn a_protocol_violation_unlinks_the_link_once() {
     let mut app = App::new();
-    app.add_plugins(TaskPoolPlugin::default());
+    app.add_plugins(OneThreadPlugins);
     let world = app.world_mut();
     world.insert_resource(Clock::frame_at(Instant::ZERO, Duration::ZERO));
     world.init_resource::<Outcomes>();

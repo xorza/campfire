@@ -15,7 +15,7 @@ use campfire_net_payload::{
 };
 use core::time::Duration;
 
-use campfire_store::internals::Parallel;
+use campfire_threads::internals::Parallel;
 
 use crate::fixtures::full_stack::FullStack;
 use crate::scenario::Scenario;

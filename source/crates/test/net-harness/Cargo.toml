@@ -14,6 +14,7 @@ kind = "test"
 # `internals` of its own: it depends, with their `internals`, on every crate its library names, and
 # dev-depends so on each crate that only its tests name.
 [dependencies]
+campfire-app-threads.workspace = true
 campfire-bots.workspace = true
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-codec = { workspace = true, features = ["internals"] }

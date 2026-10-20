@@ -5,12 +5,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use bevy_app::{App, TaskPoolPlugin};
+use bevy_app::App;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::schedule::{Schedules, SingleThreadedExecutor};
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
+use campfire_app_threads::OneThreadPlugins;
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::{Directive, Order};
 use campfire_codec::Toml;
@@ -373,7 +373,6 @@ impl InProcessMatch {
         let ClientApp { mut app, entity } = ClientApp::new(self, joiner);
         app.finish();
         app.cleanup();
-        run_in_order(&mut app);
         self.clients.push(app);
         self.client_entities.push(entity);
         let client = self.clients.len() - 1;
@@ -955,7 +954,7 @@ impl ClientApp {
         };
         let rate = MatchRate::new(tick_hz);
         let mut client = App::new();
-        client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
+        client.add_plugins((OneThreadPlugins, TimePlugin, StatesPlugin));
         client.add_plugins(sim_client);
         client.add_plugins(LocalPacePlugin {
             pace: Arc::clone(&local.pace),
@@ -972,17 +971,6 @@ impl ClientApp {
             app: client,
             entity,
         }
-    }
-}
-
-/// Runs every schedule of `app`, a client's, on one thread, so systems with no order between them
-/// keep the same order in every run: the stack's schedules have such systems, and the parallel
-/// executor, which Bevy's `multi_threaded` feature turns on wherever a workspace build enables
-/// it, orders them by timing. A server's plugins run its own on one thread.
-fn run_in_order(app: &mut App) {
-    let mut schedules = app.world_mut().resource_mut::<Schedules>();
-    for (_, schedule) in schedules.iter_mut() {
-        schedule.set_executor(SingleThreadedExecutor::new());
     }
 }
 

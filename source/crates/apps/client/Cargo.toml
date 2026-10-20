@@ -8,6 +8,7 @@ license.workspace = true
 kind = "app"
 
 [dependencies]
+campfire-app-threads.workspace = true
 campfire-actions.workspace = true
 campfire-areas.workspace = true
 campfire-bots.workspace = true

@@ -9,6 +9,7 @@ kind = "io"
 
 [dependencies]
 campfire-store.workspace = true
+campfire-threads.workspace = true
 campfire-common.workspace = true
 campfire-net-core.workspace = true
 
@@ -19,6 +20,9 @@ thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 ureq.workspace = true
 xmltree.workspace = true
+
+[dev-dependencies]
+campfire-threads = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

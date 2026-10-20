@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use bevy::DefaultPlugins;
-use bevy::app::{App, PluginGroup, TaskPoolPlugin};
+use bevy::app::{App, PluginGroup};
 use bevy::asset::AssetApp;
 use bevy::asset::io::AssetSourceBuilder;
 use bevy::log::LogPlugin;
 use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
+use campfire_app_threads::OneThreadPlugins;
 use campfire_bots::BotScript;
 use campfire_common::EnumAll;
 use campfire_declarations::CapabilitySet;
@@ -145,7 +146,7 @@ impl ClientEnd {
         let local = match self {
             Self::Bot(script) => {
                 app.add_plugins((
-                    TaskPoolPlugin::default(),
+                    OneThreadPlugins,
                     TimePlugin,
                     StatesPlugin,
                     PacedRunnerPlugin,

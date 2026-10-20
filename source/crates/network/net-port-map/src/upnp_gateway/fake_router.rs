@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use campfire_common::ErrorReport;
-use campfire_store::Worker;
+use campfire_threads::{ThreadName, Worker};
 
 const SERVICE: &str = "urn:schemas-upnp-org:service:WANIPConnection:1";
 
@@ -102,7 +102,7 @@ impl FakeRouter {
         let stop = Arc::new(AtomicBool::new(false));
         let searcher = {
             let stop = Arc::clone(&stop);
-            Worker::start("fake-ssdp", move || {
+            Worker::start(ThreadName::fixture("fake-ssdp"), move || {
                 let mut buffer = [0; 1500];
                 while !stop.load(Ordering::Relaxed) {
                     if let Ok((_, from)) = ssdp.recv_from(&mut buffer) {
@@ -118,7 +118,7 @@ impl FakeRouter {
         };
         let server = {
             let (calls, stop) = (Arc::clone(&calls), Arc::clone(&stop));
-            Worker::start("fake-igd", move || {
+            Worker::start(ThreadName::fixture("fake-igd"), move || {
                 while !stop.load(Ordering::Relaxed) {
                     match http.accept() {
                         Ok((stream, _)) => {

@@ -3,6 +3,7 @@
 //! every tick, and so does the replay of the log's file with the packages a verifier holds. So does
 //! the MOBA 3v3's, whose players learn ranks.
 
+use campfire_threads::ThreadName;
 use std::num::NonZeroU32;
 use std::ops::Range;
 use std::path::Path;
@@ -231,7 +232,8 @@ fn a_matchs_journal_publishes_the_log_its_twin_of_no_journal_holds() {
         .game_mut()
         .session_mut()
         .keep_journal(Box::new(FileJournal(
-            AppendWriter::create("journal", &path, JournalFrames::TAG).unwrap(),
+            AppendWriter::create(ThreadName::fixture("journal"), &path, JournalFrames::TAG)
+                .unwrap(),
         )));
     let orders = ORDERS.each_ref();
     for game in [&mut fixed, &mut twin] {

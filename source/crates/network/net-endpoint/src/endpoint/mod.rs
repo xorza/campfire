@@ -19,7 +19,7 @@ use campfire_net_packets::{
 };
 use campfire_net_payload::{AppCode, UnlinkReason};
 use campfire_net_timeline::Clock;
-use campfire_store::Worker;
+use campfire_threads::{Job, Worker};
 
 use crate::frame_wake::FrameWake;
 use crate::link_binding::LinkBinding;
@@ -238,7 +238,7 @@ impl<Io: DatagramIo> Endpoint<Io> {
                 self.runtime.lock().set_time(EndpointTime::Os(origin));
                 self.runtime.wake_host_with(wake.signal());
                 let runtime = Arc::clone(&self.runtime);
-                Driver::Thread(Worker::start("campfire-endpoint", move || runtime.run()))
+                Driver::Thread(Worker::start(Job::Endpoint, move || runtime.run()))
             }
             None => Driver::Inline,
         });

@@ -32,11 +32,13 @@ default-members = [
     "crates/apps/import",
     "crates/apps/server",
     "crates/apps/verifier",
+    "crates/base/app-threads",
     "crates/base/codec",
     "crates/base/common",
     "crates/base/common-derive",
     "crates/base/log",
     "crates/base/store",
+    "crates/base/threads",
     "crates/capabilities/abilities",
     "crates/capabilities/areas",
     "crates/capabilities/capabilities",
@@ -174,6 +176,7 @@ campfire-values = { path = "crates/capabilities/core/values" }
 campfire-units = { path = "crates/capabilities/core/units" }
 campfire-visibility = { path = "crates/capabilities/core/visibility" }
 campfire-vision = { path = "crates/capabilities/vision" }
+campfire-app-threads = { path = "crates/base/app-threads" }
 campfire-codec = { path = "crates/base/codec" }
 campfire-common = { path = "crates/base/common" }
 campfire-common-derive = { path = "crates/base/common-derive" }
@@ -212,6 +215,7 @@ campfire-schedule = { path = "crates/sim/schedule" }
 campfire-script = { path = "crates/capabilities/core/script" }
 campfire-sim = { path = "crates/sim/sim" }
 campfire-store = { path = "crates/base/store" }
+campfire-threads = { path = "crates/base/threads" }
 campfire-test-packages = { path = "crates/test/test-packages" }
 campfire-verifier = { path = "crates/apps/verifier" }
 

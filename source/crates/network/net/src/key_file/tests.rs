@@ -1,4 +1,5 @@
-use campfire_store::internals::{Race, TestDir};
+use campfire_store::internals::TestDir;
+use campfire_threads::internals::Race;
 
 use super::*;
 

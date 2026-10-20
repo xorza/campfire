@@ -33,8 +33,8 @@ impl Proxy {
 }
 
 /// The calls only `store` makes (02-engine-core.md, Storage): those that read, list, check, write,
-/// rename or remove a file or make a directory, `Path`'s probes, and those that start a thread.
-const STORAGE_METHODS: [&str; 37] = [
+/// rename or remove a file or make a directory, and `Path`'s probes.
+const STORAGE_METHODS: [&str; 32] = [
     "std::fs::read",
     "std::fs::read_to_string",
     "std::fs::read_dir",
@@ -67,12 +67,21 @@ const STORAGE_METHODS: [&str; 37] = [
     "tempfile::tempfile",
     "tempfile::tempdir_in",
     "tempfile::tempfile_in",
+];
+
+/// The calls only `threads` makes (02-engine-core.md, Threads are a crate of their own): those that
+/// start a thread.
+const THREAD_METHODS: [&str; 5] = [
     "std::thread::spawn",
     "std::thread::scope",
     "std::thread::Builder::spawn",
     "std::thread::Builder::spawn_scoped",
     "std::thread::Builder::spawn_unchecked",
 ];
+
+/// The types only `app-threads` names (02-engine-core.md, An app's threads are one plan): the
+/// plugin and the options that size Bevy's task pools.
+const APP_THREAD_TYPES: [&str; 2] = ["bevy_app::TaskPoolPlugin", "bevy_app::TaskPoolOptions"];
 
 /// The types only `store` holds, each banned whole so every method of it is.
 const STORAGE_TYPES: [&str; 10] = [
@@ -132,10 +141,12 @@ const CODEC_TYPES: [&str; 9] = [
 ];
 
 /// The calls only `schedule` makes: those that set a schedule's build settings, which can switch
-/// off the ambiguity and hierarchy checks.
-const SCHEDULE_METHODS: [&str; 2] = [
+/// off the ambiguity and hierarchy checks, and its executor, which can run its systems on other
+/// threads.
+const SCHEDULE_METHODS: [&str; 3] = [
     "bevy_ecs::schedule::Schedule::set_build_settings",
     "bevy_ecs::schedule::Schedules::configure_schedules",
+    "bevy_ecs::schedule::Schedule::set_executor",
 ];
 
 /// The despawns only `campfire-net-despawns` makes in the network stack's replication crates
@@ -172,13 +183,14 @@ const LINTS: [&str; 2] = [
 const GROUPS: [&str; 2] = [concat!("clippy::", "style"), concat!("clippy::", "all")];
 
 /// Every proxy crate, each the owner of one group of the bans.
-pub(crate) const PROXIES: [Proxy; 4] = [
+pub(crate) const PROXIES: [Proxy; 6] = [
     Proxy {
         dir: "base/store",
         lints: &LINTS,
         methods: &STORAGE_METHODS,
         types: &STORAGE_TYPES,
         dependencies: &[
+            "campfire-threads",
             "libc",
             "signal-hook",
             "socket2",
@@ -187,7 +199,31 @@ pub(crate) const PROXIES: [Proxy; 4] = [
             "windows",
             "zeroize",
         ],
-        names: &["std::fs", "std::thread", "tempfile::"],
+        names: &["std::fs", "tempfile::"],
+        crates: &[],
+    },
+    Proxy {
+        dir: "base/threads",
+        lints: &[LINTS[0]],
+        methods: &THREAD_METHODS,
+        types: &[],
+        dependencies: &[],
+        names: &[
+            "thread::spawn",
+            "thread::scope",
+            "thread::Builder",
+            "spawn_scoped",
+            "spawn_unchecked",
+        ],
+        crates: &[],
+    },
+    Proxy {
+        dir: "base/app-threads",
+        lints: &[LINTS[1]],
+        methods: &[],
+        types: &APP_THREAD_TYPES,
+        dependencies: &["bevy_app", "bevy_ecs", "campfire-schedule"],
+        names: &["TaskPoolPlugin", "TaskPoolOptions"],
         crates: &[],
     },
     Proxy {
@@ -212,7 +248,7 @@ pub(crate) const PROXIES: [Proxy; 4] = [
         methods: &SCHEDULE_METHODS,
         types: &[],
         dependencies: &["bevy_ecs"],
-        names: &["set_build_settings", "configure_schedules"],
+        names: &["set_build_settings", "configure_schedules", "set_executor"],
         crates: &[],
     },
     Proxy {
@@ -232,12 +268,20 @@ pub(crate) const PROXIES: [Proxy; 4] = [
 ];
 
 /// The bans with no proxy, which nothing may exempt: each lets two conflicting sim systems run in
-/// either order, or seeds a map at random.
-const UNOWNED_METHODS: [&str; 4] = [
+/// either order, runs a query on the compute pool, or seeds a map at random.
+const UNOWNED_METHODS: [&str; 12] = [
     "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with",
     "bevy_ecs::schedule::Schedule::ignore_ambiguity",
     "bevy_ecs::schedule::Schedules::allow_ambiguous_component",
     "bevy_ecs::world::World::allow_ambiguous_resource",
+    "bevy_ecs::system::Query::par_iter",
+    "bevy_ecs::system::Query::par_iter_mut",
+    "bevy_ecs::system::Query::par_iter_inner",
+    "bevy_ecs::system::Query::par_iter_many",
+    "bevy_ecs::system::Query::par_iter_many_unique",
+    "bevy_ecs::system::Query::par_iter_many_unique_mut",
+    "bevy_ecs::query::QueryState::par_iter",
+    "bevy_ecs::query::QueryState::par_iter_mut",
 ];
 const UNOWNED_TYPES: [&str; 3] = [
     "std::collections::HashMap",
@@ -247,10 +291,11 @@ const UNOWNED_TYPES: [&str; 3] = [
 
 /// What names a call of no proxy's group in source, which no proxy's source holds, as its
 /// exemption would cover it.
-const UNOWNED_NAMES: [&str; 6] = [
+const UNOWNED_NAMES: [&str; 7] = [
     "ambiguous_with",
     "ignore_ambiguity",
     "allow_ambiguous",
+    "par_iter",
     "HashMap",
     "HashSet",
     "RandomState",
@@ -262,9 +307,10 @@ const UNOWNED_NAMES: [&str; 6] = [
 const THREAD_LOCAL: &str = "std::thread::LocalKey";
 
 /// What names a banned type in source, other than the thread-local one.
-const TYPE_NAMES: [&str; 8] = [
+const TYPE_NAMES: [&str; 9] = [
     "std::fs",
     "tempfile::",
+    "TaskPool",
     "postcard::",
     "toml::",
     "serde_json::",
@@ -390,6 +436,7 @@ fn each_banned_call_goes_through_its_proxy_alone() {
     // A thread-local module's exemption covers every banned type, so each has a name it shows.
     let types = STORAGE_TYPES
         .iter()
+        .chain(&APP_THREAD_TYPES)
         .chain(&CODEC_TYPES)
         .chain(&UNOWNED_TYPES);
     let unnamed: Vec<&str> = types

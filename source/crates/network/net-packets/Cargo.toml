@@ -11,15 +11,15 @@ kind = "problem"
 # The packet sessions' counts, for the tests of every layer above
 internals = [
     "campfire-net-bytes/internals",
-    "dep:campfire-store",
-    "campfire-store/internals",
+    "dep:campfire-threads",
+    "campfire-threads/internals",
     "campfire-net-emulator/internals",
     "campfire-net-payload/internals",
 ]
 
 [dependencies]
 campfire-common.workspace = true
-campfire-store = { workspace = true, optional = true }
+campfire-threads = { workspace = true, optional = true }
 campfire-net-core.workspace = true
 campfire-net-bytes.workspace = true
 campfire-net-emulator.workspace = true

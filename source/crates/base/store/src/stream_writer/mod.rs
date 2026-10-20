@@ -7,9 +7,7 @@ use crate::path_error::PathError;
 use crate::platform::user_only::UserOnly;
 use crate::stream_writer::error::StreamError;
 use crate::stream_writer::stream_sender::StreamSender;
-use crate::worker::Worker;
-use crate::worker::failure::Failure;
-use crate::worker::worker_lock::WorkerLock;
+use campfire_threads::{Failure, ThreadName, Worker, WorkerLock};
 
 pub(crate) mod error;
 pub(crate) mod stream_sender;
@@ -55,18 +53,22 @@ impl StreamWriter {
     /// A file at `path` emptied, or a new one, its user's only, as every file `store` makes; one
     /// it empties keeps the access it had. Written on the worker `name`, with a buffer of `bound`
     /// bytes.
-    pub fn create(name: &str, path: &Path, bound: usize) -> Result<Self, PathError<io::Error>> {
+    pub fn create(
+        name: impl Into<ThreadName>,
+        path: &Path,
+        bound: usize,
+    ) -> Result<Self, PathError<io::Error>> {
         let open = || {
             let file = UserOnly::open_or_create(path)?;
             file.set_len(0)?;
             Ok(file)
         };
         let file = open().map_err(PathError::at(path))?;
-        Ok(Self::start(name, file, bound))
+        Ok(Self::start(name.into(), file, bound))
     }
 
     /// A writer that writes to `file` on the worker `name`, with a buffer of `bound` bytes.
-    fn start<W: Write + Send + 'static>(name: &str, file: W, bound: usize) -> Self {
+    fn start<W: Write + Send + 'static>(name: ThreadName, file: W, bound: usize) -> Self {
         assert!(bound > 0, "a stream's buffer holds a byte");
         let shared = Arc::new(StreamShared {
             pending: WorkerLock::default(),

@@ -132,8 +132,9 @@ impl LookModel {
 
 #[cfg(test)]
 mod tests {
-    use bevy::app::{App, TaskPoolPlugin};
+    use bevy::app::App;
     use bevy::asset::{AssetApp, AssetPlugin};
+    use campfire_app_threads::OneThreadPlugins;
     use campfire_client_files::{ClientModel, ClientUnits, ModelScale};
     use campfire_common::DeclaredName;
     use campfire_units::TypeOrigin;
@@ -144,7 +145,7 @@ mod tests {
     #[test]
     fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
         let mut app = App::new();
-        app.add_plugins((TaskPoolPlugin::default(), AssetPlugin::default()));
+        app.add_plugins((OneThreadPlugins, AssetPlugin::default()));
         app.init_asset::<WorldAsset>();
         let model = |path: &str, hide: &[&str]| ClientModel {
             model: PackagePath::parse(path).unwrap(),

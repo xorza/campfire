@@ -11,16 +11,23 @@ kind = "problem"
 internals = [
     "campfire-codec/internals",
     "campfire-store?/internals",
+    "campfire-threads?/internals",
     "dep:tracing-subscriber",
 ]
 # The binaries' start: the terminal and the JSON file, which a worker of `store` writes. Only a
 # binary turns it on, so no crate of the deterministic core depends on `store`.
-start = ["dep:campfire-store", "dep:clap", "dep:tracing-subscriber"]
+start = [
+    "dep:campfire-store",
+    "dep:campfire-threads",
+    "dep:clap",
+    "dep:tracing-subscriber",
+]
 
 [dependencies]
 campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-store = { workspace = true, optional = true }
+campfire-threads = { workspace = true, optional = true }
 
 clap = { workspace = true, features = [
     "derive",
@@ -44,6 +51,7 @@ tracing-subscriber = { workspace = true, features = [
 [dev-dependencies]
 campfire-log = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
+campfire-threads = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

@@ -1,14 +1,13 @@
-use bevy_app::{
-    App, FixedMainScheduleOrder, FixedUpdate, PluginsState, TaskPoolOptions, TaskPoolPlugin, Update,
-};
+use bevy_app::{App, FixedMainScheduleOrder, FixedUpdate, PluginsState, Update};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::With;
-use bevy_ecs::schedule::{Schedules, SingleThreadedExecutor};
+use bevy_ecs::schedule::Schedules;
 use bevy_ecs::system::{Commands, Query};
 use bevy_ecs::world::{EntityRef, EntityWorldMut, World};
 use bevy_time::{Real, Time, TimePlugin, TimeUpdateStrategy};
+use campfire_app_threads::OneThreadPlugins;
 use campfire_common::Secret;
 use campfire_math::TickRate;
 use campfire_net_connection::{
@@ -25,7 +24,7 @@ use campfire_net_timeline::LocalTimeline;
 use campfire_net_udp::{
     AdmissionSetup, ServerIdentity, ServerSecret, ServerTrust, UdpClient, UdpServer, UdpSetup,
 };
-use campfire_schedule::StrictSchedule;
+use campfire_schedule::{OneThreadSchedule, StrictSchedule};
 use core::num::NonZeroU32;
 use core::time::Duration;
 use std::sync::{Arc, Mutex};
@@ -111,7 +110,7 @@ impl<S: Stack> Stepper<S> {
             ClientKind::Plain
         };
         let mut server_app = App::new();
-        server_app.add_plugins((Self::task_pools(), TimePlugin));
+        server_app.add_plugins((OneThreadPlugins, TimePlugin));
         stack.add_server(&mut server_app, setup.tick_rate);
         // The links the server's endpoint spawns take the stack's components before they link: a
         // queued command runs before the endpoint's `Linked`, which comes in a later command.
@@ -237,7 +236,7 @@ impl<S: Stack> Stepper<S> {
     /// A remote client's app with the stack's plugins and protocol, finished.
     fn new_client_app(&self) -> App {
         let mut client_app = App::new();
-        client_app.add_plugins((Self::task_pools(), TimePlugin));
+        client_app.add_plugins((OneThreadPlugins, TimePlugin));
         self.stack.add_client(&mut client_app, self.tick_rate);
         self.stack.add_protocol(&mut client_app);
         client_app
@@ -252,28 +251,15 @@ impl<S: Stack> Stepper<S> {
         client_app
     }
 
-    /// Task pools of one thread each, so a parallel query runs on the frame's thread, in one
-    /// order in every run, and spawns no task: the compute pool is the process's, which the first
-    /// app of a stepper's test makes.
-    fn task_pools() -> TaskPoolPlugin {
-        TaskPoolPlugin {
-            task_pool_options: TaskPoolOptions::with_num_threads(1),
-        }
-    }
-
     /// Makes `app`'s `Update` and `FixedUpdate` strict, so an ambiguity of the stack or a test
-    /// fails the build of its schedule, and runs each schedule of `app` on one thread, so systems
-    /// with no order between them keep one order in every run, and a frame allocates nothing for
-    /// a task: Bevy's parallel executor, which its `multi_threaded` feature turns on wherever a
-    /// workspace build enables it, orders them by timing and spawns a task for each
-    /// (14-workspace-alignment.md, The stepper runs Campfire's strict schedules).
+    /// fails the build of its schedule (14-workspace-alignment.md, The stepper runs Campfire's
+    /// strict schedules), and runs each of its schedules on one thread, so systems with no order
+    /// between them keep one order in every run: again here, as a test adds systems after the
+    /// app finished, and a system of a new label makes a schedule `OneThreadPlugins` never saw.
     fn run_strictly(app: &mut App) {
         app.edit_schedule(Update, StrictSchedule::apply);
         app.edit_schedule(FixedUpdate, StrictSchedule::apply);
-        let mut schedules = app.world_mut().resource_mut::<Schedules>();
-        for (_, schedule) in schedules.iter_mut() {
-            schedule.set_executor(SingleThreadedExecutor::new());
-        }
+        OneThreadSchedule::apply_all(&mut app.world_mut().resource_mut::<Schedules>());
     }
 
     /// A new emulated link for remote client `client_id`, its models seeded by the index.

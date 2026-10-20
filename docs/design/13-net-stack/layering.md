@@ -13,11 +13,6 @@ The kinds of crate, problem, IO, glue and test support, and their rules are the 
 - **The vocabulary is plain, and the clock and the timelines a glue crate of their own.** They
   are `net-core` and `net-timeline`. Refused: a plain tick crate beside an ECS `core`,
   or the vocabulary in `common`, each of which leaves a crate two jobs.
-- **The iteration over links is `net-transport`'s.** `AdaptiveQueryIterMut` runs one link
-  serially, as Bevy's `par_iter_mut` starts a task for one item, and each of its callers,
-  transport and the layers above it, iterates links. Refused: a crate for one helper; a copy in
-  each user, which can become different; `net-core`, which gives the vocabulary a second
-  job.
 - **The channels are a problem crate, and `Transport` the component that wraps them.** A link's
   channels and their two packet steps are `net-channels`, which reads what a packet session opened
   and packs messages into its budget; `net-transport` holds the component, the registry and the

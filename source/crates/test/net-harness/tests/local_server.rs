@@ -8,9 +8,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use bevy_app::{App, TaskPoolPlugin};
+use bevy_app::App;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
+use campfire_app_threads::OneThreadPlugins;
 use campfire_net::{
     Hosting, JoinRole, JoinState, LocalRelinkPlugin, LocalServer, LocalServerSetup, Os, Pace,
     PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SessionSigner, SimClientPlugin,
@@ -49,7 +50,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
 
     let keys = TestKey::player(0);
     let mut client = App::new();
-    client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
+    client.add_plugins((OneThreadPlugins, TimePlugin, StatesPlugin));
     let setup = SimClientPlugin {
         main: Arc::new(Signer::new(keys.main, Entropy::Fixed(4))),
         session: SessionSigner::new(Signer::new(keys.session, Entropy::Fixed(4))),

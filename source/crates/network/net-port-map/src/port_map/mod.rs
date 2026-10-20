@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use campfire_common::ErrorReport;
 
-use campfire_store::Worker;
+use campfire_threads::{Job, Worker};
 use polling::Poller;
 use tracing::{info, warn};
 
@@ -63,7 +63,7 @@ impl PortMap {
             poller: Poller::new()?,
         });
         let listening = Listening::open(Arc::clone(&stop), mapper.routes())?;
-        let worker = Worker::start("campfire-port-map", move || listening.run(mapper));
+        let worker = Worker::start(Job::PortMap, move || listening.run(mapper));
         Ok(Self {
             stop,
             _worker: worker,

@@ -1,7 +1,6 @@
 use std::sync::{Arc, Condvar};
 
-use crate::worker::Worker;
-use crate::worker::worker_lock::WorkerLock;
+use campfire_threads::{ThreadName, Worker, WorkerLock};
 
 /// A worker that writes the newest value it is given: a value not yet written is replaced by a
 /// newer one, so a slow disk skips values and never queues them, and no caller waits for it. A
@@ -34,7 +33,10 @@ struct Slot<T, E> {
 
 impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
     /// Starts the worker `name`, which writes each value with `write`.
-    pub fn start(name: &str, mut write: impl FnMut(&T) -> Result<(), E> + Send + 'static) -> Self {
+    pub fn start(
+        name: impl Into<ThreadName>,
+        mut write: impl FnMut(&T) -> Result<(), E> + Send + 'static,
+    ) -> Self {
         let shared = Arc::new(LatestShared {
             slot: WorkerLock::new(Slot {
                 newest: None,

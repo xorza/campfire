@@ -86,7 +86,7 @@ Each step prints one line; a failed step names its log, `target/drive/log/<step>
 
 ## Code
 
-- **Banned calls go through their proxy crate**: files and threads through `store`, the formats through `codec`, schedule settings through `schedule`. Only a proxy's crate root `expect`s `clippy::disallowed_methods` or `clippy::disallowed_types`, but a `thread_local!` an outside API forces, whose module `expect`s `clippy::disallowed_types` at its head. When a proxy lacks what a caller needs, the proxy gains it.
+- **Banned calls go through their proxy crate**: files through `store`, threads through `threads`, Bevy's task pools through `app-threads`, the formats through `codec`, schedule settings and executors through `schedule`; no query runs in parallel. Only a proxy's crate root `expect`s `clippy::disallowed_methods` or `clippy::disallowed_types`, but a `thread_local!` an outside API forces, whose module `expect`s `clippy::disallowed_types` at its head. When a proxy lacks what a caller needs, the proxy gains it.
 - **Each operation has one home, by what it acts on:** the whole match a trait on `World`, the match's content an associated function of its module's type, a value made from the world a constructor of its own type, a test fixture a struct of the ids it places.
 - **Native only.** Linux, macOS and Windows: no browser and no WebAssembly, and nothing that exists only for them.
 - **No data in strings.** A fixed set is an enum, a value with rules a checked newtype, an error an enum of cases, each made where its text enters.

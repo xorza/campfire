@@ -53,7 +53,7 @@ impl Wake for Signal {
 
 #[cfg(test)]
 mod tests {
-    use campfire_store::Worker;
+    use campfire_threads::{ThreadName, Worker};
 
     use super::*;
 
@@ -74,7 +74,7 @@ mod tests {
         signal.raise();
         signal.wait(None);
         let raiser = Arc::clone(&signal);
-        let worker = Worker::start("raiser", move || raiser.raise());
+        let worker = Worker::start(ThreadName::fixture("raiser"), move || raiser.raise());
         signal.wait(None);
         drop(worker);
         let start = Instant::now();

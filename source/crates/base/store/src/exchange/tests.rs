@@ -6,7 +6,9 @@ use super::*;
 fn each_job_comes_back_with_its_answer_and_its_buffer_is_reused() {
     // The worker sums the job's numbers; the caller refills the buffer it gave back.
     let mut exchange: Exchange<Vec<u32>, u32> =
-        Exchange::start("sums", |job: &mut Vec<u32>| job.iter().sum());
+        Exchange::start(ThreadName::fixture("sums"), |job: &mut Vec<u32>| {
+            job.iter().sum()
+        });
     assert!(!exchange.is_pending());
     assert_eq!(exchange.take(), None);
     assert_eq!(exchange.wait(), None);
@@ -42,7 +44,8 @@ fn each_job_comes_back_with_its_answer_and_its_buffer_is_reused() {
 #[test]
 #[should_panic(expected = "one job at a time")]
 fn a_second_job_before_the_first_answer_is_refused() {
-    let mut exchange: Exchange<u32, u32> = Exchange::start("one", |job: &mut u32| *job);
+    let mut exchange: Exchange<u32, u32> =
+        Exchange::start(ThreadName::fixture("one"), |job: &mut u32| *job);
     exchange.send(|job| *job = 1);
     exchange.send(|job| *job = 2);
 }
@@ -50,7 +53,7 @@ fn a_second_job_before_the_first_answer_is_refused() {
 #[test]
 fn a_worker_that_panicked_passes_its_panic_to_the_next_call_that_needs_it() {
     let panics = || {
-        Exchange::<u32, u32>::start("panics", |job: &mut u32| {
+        Exchange::<u32, u32>::start(ThreadName::fixture("panics"), |job: &mut u32| {
             if *job == 0 {
                 panic::panic_any(5_u32);
             }

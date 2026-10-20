@@ -6,6 +6,7 @@ use std::path::Path;
 
 use campfire_common::ExitStatus;
 use campfire_store::StreamWriter;
+use campfire_threads::Job;
 use clap::Parser;
 use tracing::{error, warn};
 use tracing_subscriber::filter::Directive;
@@ -62,7 +63,7 @@ impl Logging {
         let path = env::var_os("CAMPFIRE_LOG");
         let opened = path
             .as_ref()
-            .map(|path| StreamWriter::create("log", Path::new(path), LOG_BUFFER))
+            .map(|path| StreamWriter::create(Job::Log, Path::new(path), LOG_BUFFER))
             .transpose();
         let (writer, failed) = match opened {
             Ok(writer) => (writer, None),

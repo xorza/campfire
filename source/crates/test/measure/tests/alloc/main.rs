@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use campfire_measure::{AllocAudit, CountingAllocator};
-use campfire_store::Worker;
+use campfire_threads::{ThreadName, Worker};
 
 #[global_allocator]
 static ALLOCATOR: CountingAllocator = CountingAllocator;
@@ -65,7 +65,7 @@ fn another_threads_allocations_are_counted_and_its_excluded_part_is_its_own() {
     let go = Arc::new(AtomicBool::new(false));
     let running = Arc::new(AtomicBool::new(false));
     let (start, runs) = (Arc::clone(&go), Arc::clone(&running));
-    let worker = Worker::start("alloc-sibling", move || {
+    let worker = Worker::start(ThreadName::fixture("alloc-sibling"), move || {
         runs.store(true, Ordering::Release);
         while !start.load(Ordering::Acquire) {
             hint::spin_loop();

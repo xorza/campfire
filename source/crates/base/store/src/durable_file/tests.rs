@@ -1,7 +1,7 @@
 use tempfile::TempDir;
 
 use super::*;
-use crate::race::Race;
+use campfire_threads::internals::Race;
 
 #[test]
 fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {

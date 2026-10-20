@@ -53,6 +53,7 @@ campfire-codec = { workspace = true, features = ["internals"] }
 campfire-deliveries = { workspace = true, features = ["internals"] }
 campfire-interaction = { workspace = true, features = ["internals"] }
 campfire-projectiles = { workspace = true, features = ["internals"] }
+campfire-threads = { workspace = true, features = ["internals"] }
 campfire-verifier = { workspace = true, features = ["internals"] }
 
 [lints]

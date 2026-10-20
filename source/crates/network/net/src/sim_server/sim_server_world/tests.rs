@@ -11,6 +11,8 @@ use campfire_runner::{HostChoices, SessionRules};
 use campfire_store::AppendWriter;
 use campfire_test_packages::TestMode;
 
+use campfire_threads::ThreadName;
+
 use super::*;
 use crate::sim_server::session_journal::SessionJournal;
 
@@ -37,7 +39,7 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
         seats: vec![SeatStart::Open],
     };
     let log = SessionLog::new(header).unwrap();
-    let journal = SessionJournal(AppendWriter::failing_sync("journal"));
+    let journal = SessionJournal(AppendWriter::failing_sync(ThreadName::fixture("journal")));
     let mut world = World::new();
     world.init_resource::<Faults>();
     world.insert_resource(State::new(ServerPhase::Lobby));

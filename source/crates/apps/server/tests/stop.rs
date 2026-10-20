@@ -7,10 +7,11 @@ use std::process::{Child, Command};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use bevy_app::{App, TaskPoolPlugin};
+use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
+use campfire_app_threads::OneThreadPlugins;
 use campfire_common::ExitStatus;
 use campfire_log::LogLine;
 use campfire_math::TickRate;
@@ -146,7 +147,7 @@ impl ClientApp {
         let socket =
             ClientSocket::bind(listening.address, UdpLinks::client(listening.tls_key)).unwrap();
         let mut app = App::new();
-        app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
+        app.add_plugins((OneThreadPlugins, TimePlugin, StatesPlugin));
         app.add_plugins(ClientPlugins {
             tick_rate: TickRate::try_from(listening.tick_hz.get()).unwrap(),
         });

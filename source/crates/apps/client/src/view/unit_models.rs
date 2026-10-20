@@ -383,7 +383,6 @@ mod tests {
     use std::f32::consts::FRAC_PI_2;
     use std::path::Path;
 
-    use bevy::app::TaskPoolPlugin;
     use bevy::asset::Assets;
     use bevy::asset::io::memory::{Dir, MemoryAssetReader};
     use bevy::asset::io::{AssetSourceBuilder, AssetSourceId};
@@ -394,6 +393,7 @@ mod tests {
     use bevy::mesh::MeshPlugin;
     use bevy::mesh::MeshTag;
     use bevy::world_serialization::{WorldAsset, WorldAssetRoot, WorldSerializationPlugin};
+    use campfire_app_threads::OneThreadPlugins;
     use campfire_client_files::{
         ClientModel, ClientObjects, ClientUnit, ClientUnits, ModelScale, TeamColors,
     };
@@ -465,7 +465,7 @@ mod tests {
             AssetSourceBuilder::new(move || Box::new(reader.clone())),
         );
         app.add_plugins((
-            TaskPoolPlugin::default(),
+            OneThreadPlugins,
             AssetPlugin::default(),
             WorldSerializationPlugin,
             MeshPlugin,
@@ -529,7 +529,7 @@ mod tests {
     #[test]
     fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales() {
         let mut app = App::new();
-        app.add_plugins((TaskPoolPlugin::default(), AssetPlugin::default()));
+        app.add_plugins((OneThreadPlugins, AssetPlugin::default()));
         app.init_asset::<WorldAsset>();
         // Ground 8 samples high everywhere, a step of 0.5 m: 4 m under every point.
         let grid = HeightGrid::new(

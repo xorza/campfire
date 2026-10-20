@@ -16,7 +16,7 @@ use campfire_net_link::Server;
 use campfire_net_packets::EmulatedWires;
 use campfire_package::ModePackages;
 use campfire_sim::MatchRate;
-use campfire_store::Worker;
+use campfire_threads::{Job, Worker};
 use campfire_visibility::HostVisibility;
 use tracing::error;
 
@@ -168,7 +168,7 @@ impl LocalServer {
         };
         let opening = SessionOpening::New(Box::new(lobby));
         let session = opening.span();
-        let worker = Worker::start("local server", move || {
+        let worker = Worker::start(Job::LocalServer, move || {
             let _session = session.entered();
             let mut app = runs.app(link, dir);
             app.world_mut().open_session(opening);

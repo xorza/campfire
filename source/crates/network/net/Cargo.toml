@@ -41,12 +41,14 @@ internals = [
     "campfire-sim/internals",
     "campfire-states/internals",
     "campfire-store/internals",
+    "campfire-threads/internals",
     "campfire-units/internals",
     "campfire-values/internals",
     "campfire-vision/internals",
 ]
 
 [dependencies]
+campfire-app-threads.workspace = true
 campfire-bots.workspace = true
 campfire-capabilities.workspace = true
 campfire-codec.workspace = true
@@ -81,6 +83,7 @@ campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-states.workspace = true
 campfire-store.workspace = true
+campfire-threads.workspace = true
 campfire-units.workspace = true
 campfire-values = { workspace = true, features = ["ecs"] }
 campfire-visibility = { workspace = true, features = ["ecs"] }

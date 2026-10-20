@@ -170,10 +170,10 @@ impl SendingWays for Replicated<'_> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use bevy_app::TaskPoolPlugin;
     use bevy_ecs::world::World;
     use bevy_state::app::StatesPlugin;
     use bevy_time::TimePlugin;
+    use campfire_app_threads::OneThreadPlugins;
     use campfire_math::TickRate;
     use campfire_net_channels::ChannelTypeId;
     use campfire_net_connection::ClientOf;
@@ -252,7 +252,7 @@ mod tests {
     /// A server's app with the protocol of the capabilities `set`.
     fn app_of(set: CapabilitySet) -> App {
         let mut app = App::new();
-        app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
+        app.add_plugins((OneThreadPlugins, TimePlugin, StatesPlugin));
         app.add_plugins(ServerPlugins {
             tick_rate: TickRate::try_from(20).unwrap(),
         });

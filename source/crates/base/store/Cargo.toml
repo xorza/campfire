@@ -8,9 +8,11 @@ license.workspace = true
 kind = "proxy"
 
 [features]
-internals = ["dep:tempfile"]
+internals = ["dep:tempfile", "campfire-threads/internals"]
 
 [dependencies]
+campfire-threads.workspace = true
+
 socket2 = { workspace = true, features = ["all"] }
 tempfile = { workspace = true, optional = true }
 thiserror = { workspace = true, features = ["std"] }

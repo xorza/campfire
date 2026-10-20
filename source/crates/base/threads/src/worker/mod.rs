@@ -1,8 +1,7 @@
 use std::panic;
 use std::thread::{self, JoinHandle};
 
-pub(crate) mod failure;
-pub(crate) mod worker_lock;
+use crate::thread_name::ThreadName;
 
 /// A named thread that runs one job until its holder ends it. The holder's `Drop` tells the job to
 /// close, through the job's own wake: a flag and a condition variable, or a channel it drops.
@@ -17,11 +16,11 @@ pub struct Worker {
 }
 
 impl Worker {
-    /// Starts the thread `name`, which runs `job`.
-    pub fn start(name: &str, job: impl FnOnce() + Send + 'static) -> Self {
+    /// Starts the thread `name`, a job's, which runs `run`.
+    pub fn start(name: impl Into<ThreadName>, run: impl FnOnce() + Send + 'static) -> Self {
         let thread = thread::Builder::new()
-            .name(name.to_owned())
-            .spawn(job)
+            .name(name.into().as_str().to_owned())
+            .spawn(run)
             .expect("the OS starts a thread");
         Self {
             thread: Some(thread),

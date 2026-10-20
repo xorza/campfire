@@ -23,9 +23,10 @@ use campfire_net_transport::Transport;
 use super::*;
 use crate::fixtures::full_stack::FullStack;
 use crate::server_plugins::ServerPlugins;
-use bevy::app::{App, TaskPoolPlugin};
+use bevy::app::App;
 use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
+use campfire_app_threads::OneThreadPlugins;
 use campfire_net_interpolation::InterpolationRegistry;
 use core::time::Duration;
 
@@ -178,7 +179,7 @@ fn an_abrupt_unlink_logs_no_error() {
 
 fn app_with(groups: impl FnOnce(&mut App)) -> App {
     let mut app = App::new();
-    app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
+    app.add_plugins((OneThreadPlugins, TimePlugin, StatesPlugin));
     groups(&mut app);
     app
 }

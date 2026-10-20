@@ -5,6 +5,7 @@ use bevy_ecs::system::{Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_protocol::SignedReceipt;
 use campfire_store::{DurableDir, DurableFile, LatestWriter};
+use campfire_threads::Job;
 
 use crate::faults::Faults;
 use crate::faults::error::ReceiptWriteError;
@@ -23,7 +24,7 @@ impl ReceiptWriter {
     pub(crate) fn start(data: Arc<ClientDir>) -> Self {
         let mut bytes = Vec::new();
         Self(LatestWriter::start(
-            "receipts",
+            Job::Receipts,
             move |receipt: &SignedReceipt| {
                 DurableDir::create(&data.layout().receipts_dir())?;
                 let file = data.layout().receipt_file(receipt.receipt.session_id);

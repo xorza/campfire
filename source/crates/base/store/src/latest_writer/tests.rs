@@ -9,7 +9,7 @@ fn the_newest_value_replaces_one_not_written_and_the_newest_failure_is_taken_onc
     let (go, gate) = mpsc::channel::<()>();
     let written = Arc::new(Mutex::new(Vec::new()));
     let into = Arc::clone(&written);
-    let writer = LatestWriter::start("latest", move |value: &u32| {
+    let writer = LatestWriter::start(ThreadName::fixture("latest"), move |value: &u32| {
         gate.recv().unwrap();
         into.lock().unwrap().push(*value);
         if value % 2 == 1 { Err(*value) } else { Ok(()) }

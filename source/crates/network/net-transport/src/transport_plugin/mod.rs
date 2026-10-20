@@ -1,4 +1,3 @@
-use crate::adaptive_query_iter_mut::AdaptiveQueryIterMut;
 use crate::packet_received::PacketReceived;
 use crate::transport::Transport;
 use crate::transport_systems::TransportSystems;
@@ -23,35 +22,30 @@ impl TransportPlugin {
     /// whose packet breaks the protocol.
     fn buffer_receive(
         clock: Res<'_, Clock>,
-        par_commands: ParallelCommands<'_, '_>,
+        mut commands: Commands<'_, '_>,
         mut query: Query<'_, '_, (Entity, &mut Link, &mut Transport), With<Linked>>,
     ) {
-        let query = AdaptiveQueryIterMut::new(&mut query);
-        query.for_each(|(entity, mut link, mut transport)| {
+        for (entity, mut link, mut transport) in &mut query {
             let _span = trace_span!("transport", ?entity).entered();
             let received = transport.receive(
                 &mut link.packet_session,
                 clock.now(),
                 clock.delta(),
                 |remote_tick| {
-                    par_commands.command_scope(|mut commands| {
-                        commands.trigger(PacketReceived {
-                            entity,
-                            remote_tick,
-                        });
+                    commands.trigger(PacketReceived {
+                        entity,
+                        remote_tick,
                     });
                 },
             );
             if let Err(error) = received {
                 debug!(?error, "unlinking a peer that broke the protocol");
-                par_commands.command_scope(|mut commands| {
-                    commands.trigger(Unlink {
-                        entity,
-                        reason: UnlinkReason::ProtocolViolation,
-                    });
+                commands.trigger(Unlink {
+                    entity,
+                    reason: UnlinkReason::ProtocolViolation,
                 });
             }
-        });
+        }
     }
 
     /// Packs each link's staged messages into packets for its packet session, while its budget
@@ -62,10 +56,9 @@ impl TransportPlugin {
         mut query: Query<'_, '_, (&mut Link, &mut Transport), With<Linked>>,
     ) {
         let tick = timeline.tick();
-        let query = AdaptiveQueryIterMut::new(&mut query);
-        query.for_each(|(mut link, mut transport)| {
+        for (mut link, mut transport) in &mut query {
             transport.flush(&mut link.packet_session, tick, clock.now());
-        });
+        }
     }
 
     /// On disconnection, reset the Transport to its original state.

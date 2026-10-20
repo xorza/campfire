@@ -1,5 +1,6 @@
 use std::fs;
 use std::io;
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::mpsc;
 use std::thread;
 
@@ -63,7 +64,8 @@ impl Drop for SendOnDrop {
 #[test]
 fn a_writer_whose_file_fails_reports_the_failure_once_and_keeps_nothing_after() {
     for (append, sync) in [(true, false), (false, true)] {
-        let writer = AppendWriter::start("failing", FailingFile { append, sync });
+        let writer =
+            AppendWriter::start(ThreadName::fixture("failing"), FailingFile { append, sync });
         let watch = writer.watch();
         writer.append(1, |out| out.extend_from_slice(b"lost"));
         while !watch.is_settled() {
@@ -106,7 +108,11 @@ fn a_writer_is_settled_once_its_records_are_synced_and_a_slow_sync_is_seen() {
         slow_after,
         ..AppendWriter::BOUNDS
     };
-    let writer = AppendWriter::start_bounded("gated", GatedFile { gate, entered }, bounds);
+    let writer = AppendWriter::start_bounded(
+        ThreadName::fixture("gated"),
+        GatedFile { gate, entered },
+        bounds,
+    );
     let watch = writer.watch();
     assert!(watch.is_settled());
     writer.append(1, |out| out.extend_from_slice(b"held"));
@@ -148,7 +154,11 @@ fn a_writer_fails_once_its_sync_hangs_or_its_records_wait_past_the_bound() {
     for hung in [true, false] {
         let (release, gate) = mpsc::channel();
         let (entered, in_sync) = mpsc::channel();
-        let writer = AppendWriter::start_bounded("held", GatedFile { gate, entered }, bounds);
+        let writer = AppendWriter::start_bounded(
+            ThreadName::fixture("held"),
+            GatedFile { gate, entered },
+            bounds,
+        );
         let watch = writer.watch();
         writer.append(1, |out| out.extend_from_slice(b"held"));
         in_sync.recv().unwrap();
@@ -181,10 +191,10 @@ fn a_writer_dropped_in_a_panic_returns_while_its_sync_does_not() {
     // The worker's sync waits for a word that comes only once the test saw the drop return.
     let (release, gate) = mpsc::channel();
     let (returned, dropped) = mpsc::channel();
-    let holder = thread::spawn(move || {
+    let holder = Worker::start(ThreadName::fixture("holder"), move || {
         let _returned = SendOnDrop(returned);
         let (entered, in_sync) = mpsc::channel();
-        let writer = AppendWriter::start("held", GatedFile { gate, entered });
+        let writer = AppendWriter::start(ThreadName::fixture("held"), GatedFile { gate, entered });
         writer.append(1, |out| out.extend_from_slice(b"held"));
         in_sync.recv().unwrap();
         // A record that panics as it is written poisons the lock the drop takes.
@@ -194,7 +204,7 @@ fn a_writer_dropped_in_a_panic_returns_while_its_sync_does_not() {
         .recv_timeout(Duration::from_secs(10))
         .expect("the drop returns");
     // The holder's panic is its own, and no other passed on, which would have aborted.
-    let payload = holder.join().unwrap_err();
+    let payload = panic::catch_unwind(AssertUnwindSafe(|| drop(holder))).unwrap_err();
     assert_eq!(payload.downcast_ref::<&str>(), Some(&"the holder panics"));
     drop(release);
 }
@@ -203,7 +213,7 @@ fn a_writer_dropped_in_a_panic_returns_while_its_sync_does_not() {
 fn a_new_file_holds_its_head_then_its_records_and_a_reopen_cuts_a_torn_tail() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("journal");
-    let writer = AppendWriter::create("journal", &path, b"head/").unwrap();
+    let writer = AppendWriter::create(ThreadName::fixture("journal"), &path, b"head/").unwrap();
     let watch = writer.watch();
     for record in [&b"first/"[..], b"", b"third/"] {
         writer.append(1, |out| out.extend_from_slice(record));
@@ -219,7 +229,7 @@ fn a_new_file_holds_its_head_then_its_records_and_a_reopen_cuts_a_torn_tail() {
     // A crash tore the last record: reopened at the end of the whole ones, the file loses the
     // tear and goes on after them.
     fs::write(&path, b"head/first/thi").unwrap();
-    let writer = AppendWriter::reopen("journal", &path, 11).unwrap();
+    let writer = AppendWriter::reopen(ThreadName::fixture("journal"), &path, 11).unwrap();
     writer.append(1, |out| out.extend_from_slice(b"after/"));
     drop(writer);
     assert_eq!(fs::read(&path).unwrap(), b"head/first/after/");
@@ -227,14 +237,18 @@ fn a_new_file_holds_its_head_then_its_records_and_a_reopen_cuts_a_torn_tail() {
     // A file that is not there does not reopen; one in a directory that is not there is not
     // made.
     assert!(matches!(
-        AppendWriter::reopen("journal", &dir.path().join("none"), 0),
+        AppendWriter::reopen(ThreadName::fixture("journal"), &dir.path().join("none"), 0),
         Err(PathError {
             error: AppendOpenError::Open(_),
             ..
         })
     ));
     assert!(matches!(
-        AppendWriter::create("journal", &dir.path().join("none").join("journal"), b""),
+        AppendWriter::create(
+            ThreadName::fixture("journal"),
+            &dir.path().join("none").join("journal"),
+            b""
+        ),
         Err(PathError {
             error: AppendOpenError::Create(DurableError::Create(_)),
             ..

@@ -7,7 +7,7 @@ use campfire_net_core::Instant;
 use campfire_net_payload::{
     OutgoingPayload, PacketSessionQueues, PayloadFate, PayloadKind, PayloadToken, UnlinkReason,
 };
-use campfire_store::Worker;
+use campfire_threads::{ThreadName, Worker};
 
 use crate::datagram_io::DatagramIo;
 use crate::datagram_io::Outbound;
@@ -66,9 +66,12 @@ impl<Io: DatagramIo> PlainHost<Io> {
         let runtime = Arc::new(EndpointRuntime::new(parts));
         runtime.lock().set_time(EndpointTime::Os(origin));
         let thread = Arc::clone(&runtime);
-        let driver = Driver::Thread(Worker::start("campfire-plain-host", move || {
-            thread.run();
-        }));
+        let driver = Driver::Thread(Worker::start(
+            ThreadName::fixture("plain-host"),
+            move || {
+                thread.run();
+            },
+        ));
         Self::with_runtime(runtime, driver)
     }
 

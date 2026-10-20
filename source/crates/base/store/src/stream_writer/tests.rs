@@ -38,7 +38,11 @@ fn gated(bound: usize) -> (StreamWriter, mpsc::Sender<()>, Arc<Mutex<Vec<u8>>>) 
         gate,
         written: Arc::clone(&written),
     };
-    (StreamWriter::start("stream", file, bound), go, written)
+    (
+        StreamWriter::start(ThreadName::fixture("stream"), file, bound),
+        go,
+        written,
+    )
 }
 
 /// Waits until the worker took every piece put so far.
@@ -59,17 +63,22 @@ fn pieces_go_out_in_order_and_a_full_buffer_makes_a_caller_wait() {
     sender.put(|out| out.extend_from_slice(b"cd"));
     sender.put(|out| out.extend_from_slice(b"gh"));
     let late = sender.clone();
-    let waiting = thread::spawn(move || late.put(|out| out.extend_from_slice(b"ef")));
+    let waiting = Worker::start(ThreadName::fixture("late"), move || {
+        late.put(|out| out.extend_from_slice(b"ef"));
+    });
     // Given the time to run, the late caller has put nothing: the buffer is full.
     thread::sleep(Duration::from_millis(20));
     assert_eq!(writer.shared.pending.lock().bytes, b"cdgh");
     // "ab" is written, the worker takes "cdgh", and the late caller puts "ef".
     go.send(()).unwrap();
-    waiting.join().unwrap();
+    drop(waiting);
     // The writer closes while the write of "cdgh" waits for its word: a piece put then is
     // dropped at once, so a caller that goes on putting cannot keep the worker running.
     let shared = Arc::clone(&writer.shared);
-    let closing = thread::spawn(move || writer.close());
+    let (closed, close) = mpsc::channel();
+    let closing = Worker::start(ThreadName::fixture("closing"), move || {
+        closed.send(writer.close()).unwrap();
+    });
     while !shared.pending.lock().closing {
         thread::yield_now();
     }
@@ -78,7 +87,8 @@ fn pieces_go_out_in_order_and_a_full_buffer_makes_a_caller_wait() {
     // The worker writes "cdgh" and "ef", what the buffer held, then ends, with no failure.
     go.send(()).unwrap();
     go.send(()).unwrap();
-    assert!(closing.join().unwrap().is_none());
+    assert!(close.recv().unwrap().is_none());
+    drop(closing);
     assert_eq!(*written.lock().unwrap(), b"abcdghef");
 }
 
@@ -121,7 +131,7 @@ impl Write for Unflushed {
 
 #[test]
 fn a_failed_flush_is_taken_once_while_the_stream_runs() {
-    let writer = StreamWriter::start("stream", Unflushed, 4);
+    let writer = StreamWriter::start(ThreadName::fixture("stream"), Unflushed, 4);
     assert!(writer.take_failure().is_none());
     writer.sender().put(|out| out.extend_from_slice(b"ab"));
     let failure = loop {
@@ -155,13 +165,14 @@ fn a_writer_dropped_as_a_panic_unwinds_closes_over_a_piece_that_panicked() {
 fn a_created_stream_is_its_users_only_and_empties_a_file_there() {
     let test_dir = TestDir::new();
     let fresh = test_dir.path("fresh");
-    drop(StreamWriter::create("stream", &fresh, 16).unwrap());
+    drop(StreamWriter::create(ThreadName::fixture("stream"), &fresh, 16).unwrap());
     assert_eq!(UserOnly::exposure_at(&fresh).unwrap(), None);
     assert_eq!(test_dir.read_text(Path::new("fresh")), "");
     // A file there is emptied before the stream's first piece.
     let kept = Path::new("kept");
     test_dir.write(kept, "old text");
-    let writer = StreamWriter::create("stream", &test_dir.path("kept"), 16).unwrap();
+    let writer =
+        StreamWriter::create(ThreadName::fixture("stream"), &test_dir.path("kept"), 16).unwrap();
     writer.sender().put(|out| out.extend_from_slice(b"new"));
     assert!(writer.close().is_none());
     assert_eq!(test_dir.read_text(kept), "new");

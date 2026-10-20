@@ -46,7 +46,6 @@ use campfire_net_core::NetTick;
 use campfire_net_core::PeerId;
 use campfire_net_link::Unlink;
 use campfire_net_payload::UnlinkReason;
-use campfire_net_transport::AdaptiveQueryIterMut;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
 use campfire_net_transport::TransportSystems;
@@ -288,7 +287,7 @@ impl MessagePlugin {
         replicon: RepliconMapParam<'_, '_>,
     ) {
         let replicon = &replicon;
-        AdaptiveQueryIterMut::new(&mut links).for_each(
+        links.iter_mut().for_each(
             |(entity, link_messages, mut transport, peer, is_client, mut receivers)| {
                 let map = &link_messages.entity_mapper;
                 let view = if is_client {
@@ -393,7 +392,7 @@ impl MessagePlugin {
         let replicon = &replicon;
         let registry = &registry;
         let channels = &channels;
-        AdaptiveQueryIterMut::new(&mut links).for_each(
+        links.iter_mut().for_each(
             |(entity, mut transport, mut link_messages, is_client, connected, mut endpoints)| {
                 if !connected {
                     Self::discard_unsent(&mut endpoints, entity, &link_messages, registry);

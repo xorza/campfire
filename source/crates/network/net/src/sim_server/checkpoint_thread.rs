@@ -4,6 +4,7 @@ use bevy_ecs::world::World;
 use campfire_protocol::{Checkpoint, CheckpointBegun};
 use campfire_sim::{EntityIndex, StateDelta, StateRegistry};
 use campfire_store::Exchange;
+use campfire_threads::Job;
 
 use crate::faults::error::SnapshotWriteError;
 use crate::sim_server::snapshot_dir::SnapshotDir;
@@ -17,19 +18,19 @@ use crate::sim_server::snapshot_dir::SnapshotDir;
 /// order, so the main thread never waits for the thread to send.
 #[derive(Debug)]
 pub(crate) struct CheckpointThread {
-    exchange: Exchange<Job, Returned>,
+    exchange: Exchange<CheckpointWork, Returned>,
     /// The deltas made while one was on the thread, in order: each goes as the one before comes
     /// back, so a queued one means one is on the thread.
-    queued: VecDeque<Job>,
+    queued: VecDeque<CheckpointWork>,
     /// Jobs given back, whose buffers the next queued delta reuses.
-    spares: Vec<Job>,
+    spares: Vec<CheckpointWork>,
 }
 
 /// What the main thread sends the checkpoint thread: the state changed since the last job, the
 /// whole state for the first, and the checkpoint begun at the boundary the delta was made at,
 /// when one was.
 #[derive(Debug, Default)]
-struct Job {
+struct CheckpointWork {
     begun: Option<CheckpointBegun>,
     delta: StateDelta,
 }
@@ -67,7 +68,9 @@ impl CheckpointThread {
             world,
             snapshot: Vec::new(),
         };
-        let mut exchange = Exchange::start("checkpoints", move |job: &mut Job| copy.run(job));
+        let mut exchange = Exchange::start(Job::Checkpoints, move |job: &mut CheckpointWork| {
+            copy.run(job)
+        });
         exchange.send(|job| job.delta = base);
         Self {
             exchange,
@@ -131,7 +134,7 @@ impl CheckpointThread {
 
 impl CheckpointCopy {
     /// Brings the copy up to `job`'s delta, and takes the checkpoint begun there, when one was.
-    fn run(&mut self, job: &mut Job) -> Returned {
+    fn run(&mut self, job: &mut CheckpointWork) -> Returned {
         self.registry.apply(&job.delta, &mut self.world);
         match job.begun.take() {
             None => Returned::Applied,

@@ -8,6 +8,7 @@ license.workspace = true
 kind = "test"
 
 [dependencies]
+campfire-app-threads.workspace = true
 campfire-common.workspace = true
 campfire-math.workspace = true
 campfire-net-timeline.workspace = true

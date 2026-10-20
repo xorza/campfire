@@ -326,16 +326,17 @@ fn nested_crates(crates: &[Crate]) -> Vec<String> {
 }
 
 /// The crates whose test infrastructure any crate's tests may take: `store`'s test directories and
-/// pinned files, `log`'s check of the warnings, `measure`'s allocation audit, `codec` for a type's
-/// encoded form, `math` for the numbers a crate's values hold, and the test packages
-/// (02-engine-core.md, One rule of test homes).
-const TEST_INFRASTRUCTURE: [&str; 6] = [
+/// pinned files, `threads`' parallel runs, races and named threads, `log`'s check of the warnings,
+/// `measure`'s allocation audit, `codec` for a type's encoded form, `math` for the numbers a
+/// crate's values hold, and the test packages (02-engine-core.md, One rule of test homes).
+const TEST_INFRASTRUCTURE: [&str; 7] = [
     "campfire-codec",
     "campfire-log",
     "campfire-math",
     "campfire-measure",
     "campfire-store",
     "campfire-test-packages",
+    "campfire-threads",
 ];
 
 /// The entries of `manifest`'s `internals` feature.
@@ -922,7 +923,7 @@ fn an_optional_dependency_is_named_by_library_code() {
 #[test]
 fn the_name_checks_fail_on_what_breaks_them() {
     // A proxy's source that names another proxy's call or one of no proxy's, but not its own.
-    let [store, codec, _, _] = &PROXIES;
+    let [store, _, _, codec, _, _] = &PROXIES;
     let text = "use std::fs::File;\nlet map: HashMap<u8, u8>;\nlet n = 1;";
     assert_eq!(foreign_names(codec, text), ["std::fs", "HashMap"]);
     assert_eq!(

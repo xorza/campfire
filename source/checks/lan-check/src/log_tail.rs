@@ -82,6 +82,7 @@ mod tests {
     use campfire_net::{InputLogged, MatchStarted};
     use campfire_store::AppendWriter;
     use campfire_store::internals::TestDir;
+    use campfire_threads::ThreadName;
 
     use super::*;
 
@@ -99,7 +100,7 @@ mod tests {
         assert_eq!(tail.read::<MatchStarted>().unwrap(), []);
         let path = Process::Bot(0).log_path(test_dir.root());
         let first = format!("{}\n{}", started(1), &started(2)[..20]);
-        AppendWriter::create("tail", &path, first.as_bytes())
+        AppendWriter::create(ThreadName::fixture("tail"), &path, first.as_bytes())
             .unwrap()
             .close();
         // The line the process did not end waits for its end.
@@ -110,7 +111,7 @@ mod tests {
         assert_eq!(tail.read::<MatchStarted>().unwrap(), [seat(1)]);
         assert_eq!(tail.read::<MatchStarted>().unwrap(), []);
         let len = u64::try_from(first.len()).unwrap();
-        let writer = AppendWriter::reopen("tail", &path, len).unwrap();
+        let writer = AppendWriter::reopen(ThreadName::fixture("tail"), &path, len).unwrap();
         let more = format!("{}\n{}\n", &started(2)[20..], started(3));
         writer.append(1, |bytes| bytes.extend(more.as_bytes()));
         writer.close();

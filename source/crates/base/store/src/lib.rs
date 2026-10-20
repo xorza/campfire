@@ -1,13 +1,12 @@
-//! How the engine writes files and runs threads: durable and secret files, data directories and
-//! their locks, and the worker threads that write them, each with its failure; and the signals
-//! that stop its process, the other promise of its platform layer. The bytes of each
-//! file are its caller's: this crate depends on no engine crate, and decides no policy for a
-//! failure.
+//! How the engine writes files: durable and secret files, data directories and their locks, and
+//! the workers of `threads` that write them, each with its failure; and the signals that stop its
+//! process, the other promise of its platform layer. The bytes of each file are its caller's:
+//! this crate depends on no engine crate, and decides no policy for a failure.
 
 #![expect(
     clippy::disallowed_methods,
     clippy::disallowed_types,
-    reason = "the one crate that touches files and starts threads, which clippy.toml denies the others"
+    reason = "the one crate that touches files, which clippy.toml denies the others"
 )]
 
 mod append_writer;
@@ -19,20 +18,15 @@ mod exchange;
 mod input_file;
 mod latest_writer;
 mod output_file;
-#[cfg(feature = "internals")]
-mod parallel;
 mod path_error;
 #[cfg(feature = "internals")]
 mod pinned_file;
 mod platform;
-#[cfg(feature = "internals")]
-mod race;
 mod run_dir;
 mod secret_file;
 mod stream_writer;
 #[cfg(feature = "internals")]
 mod test_dir;
-mod worker;
 
 pub use crate::append_writer::AppendWriter;
 pub use crate::append_writer::append_watch::AppendWatch;
@@ -60,15 +54,12 @@ pub use crate::secret_file::SecretFile;
 pub use crate::stream_writer::StreamWriter;
 pub use crate::stream_writer::error::StreamError;
 pub use crate::stream_writer::stream_sender::StreamSender;
-pub use crate::worker::Worker;
 
 /// What the tests of the engine's crates use of files and threads: a test's own directory, the
 /// files it pins, a race of writers, a parallel run and a link.
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::parallel::Parallel;
     pub use crate::pinned_file::PinnedFile;
     pub use crate::platform::file_link::FileLink;
-    pub use crate::race::Race;
     pub use crate::test_dir::TestDir;
 }

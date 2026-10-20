@@ -22,6 +22,9 @@ disallowed-types = [
     { path = "tempfile::NamedTempFile", reason = "a test's files live in campfire_store::internals::TestDir" },
     { path = "tempfile::Builder", reason = "a test's files live in campfire_store::internals::TestDir" },
     { path = "tempfile::SpooledTempFile", reason = "a test's files live in campfire_store::internals::TestDir" },
+    # campfire-app-threads alone sizes Bevy's task pools (02-engine-core.md, An app's threads are one plan).
+    { path = "bevy_app::TaskPoolPlugin", reason = "size an app's pools through campfire_app_threads::OneThreadPlugins" },
+    { path = "bevy_app::TaskPoolOptions", reason = "size an app's pools through campfire_app_threads::OneThreadPlugins" },
     # campfire-codec alone calls the formats (02-engine-core.md, Serialization): one configuration, one canonical form and one error type for each, and every network message and replicated component encodes through it.
     { path = "postcard::Serializer", reason = "encode through campfire_codec::Binary" },
     { path = "postcard::Deserializer", reason = "decode through campfire_codec::Binary" },
@@ -72,12 +75,12 @@ disallowed-methods = [
     { path = "tempfile::tempfile", reason = "a test's files live in campfire_store::internals::TestDir" },
     { path = "tempfile::tempdir_in", reason = "a test's files live in campfire_store::internals::TestDir" },
     { path = "tempfile::tempfile_in", reason = "a test's files live in campfire_store::internals::TestDir" },
-    # campfire-store alone starts a thread, through its Worker (02-engine-core.md, Storage): it names the thread, closes and joins it, and does not hang a crash.
-    { path = "std::thread::spawn", reason = "start threads through campfire_store::Worker" },
-    { path = "std::thread::scope", reason = "start threads through campfire_store::Worker" },
-    { path = "std::thread::Builder::spawn", reason = "start threads through campfire_store::Worker" },
-    { path = "std::thread::Builder::spawn_scoped", reason = "start threads through campfire_store::Worker" },
-    { path = "std::thread::Builder::spawn_unchecked", reason = "start threads through campfire_store::Worker" },
+    # campfire-threads alone starts a thread, through its Worker (02-engine-core.md, Threads are a crate of their own): a job of its list, named, closed and joined, and no crash hangs on it.
+    { path = "std::thread::spawn", reason = "start threads through campfire_threads::Worker" },
+    { path = "std::thread::scope", reason = "start threads through campfire_threads::Worker" },
+    { path = "std::thread::Builder::spawn", reason = "start threads through campfire_threads::Worker" },
+    { path = "std::thread::Builder::spawn_scoped", reason = "start threads through campfire_threads::Worker" },
+    { path = "std::thread::Builder::spawn_unchecked", reason = "start threads through campfire_threads::Worker" },
     # campfire-codec alone calls the formats (02-engine-core.md, Serialization): one configuration, one canonical form and one error type for each, and every network message and replicated component encodes through it.
     { path = "postcard::to_allocvec", reason = "encode and decode through campfire_codec" },
     { path = "postcard::to_allocvec_cobs", reason = "encode and decode through campfire_codec" },
@@ -114,9 +117,19 @@ disallowed-methods = [
     { path = "bevy_replicon::postcard_utils::entity_to_extend_mut", reason = "encode and decode through campfire_codec" },
     { path = "bevy_replicon::postcard_utils::from_buf", reason = "encode and decode through campfire_codec" },
     { path = "bevy_replicon::postcard_utils::entity_from_buf", reason = "encode and decode through campfire_codec" },
-    # campfire-schedule alone sets a schedule's build settings, which can switch off the ambiguity and hierarchy checks.
+    # campfire-schedule alone sets a schedule's build settings, which can switch off the ambiguity and hierarchy checks, and its executor, which can run its systems on other threads.
     { path = "bevy_ecs::schedule::Schedule::set_build_settings", reason = "build a sim schedule through campfire_schedule::StrictSchedule" },
     { path = "bevy_ecs::schedule::Schedules::configure_schedules", reason = "build a sim schedule through campfire_schedule::StrictSchedule" },
+    { path = "bevy_ecs::schedule::Schedule::set_executor", reason = "run a schedule on one thread through campfire_schedule::OneThreadSchedule" },
+    # Banned everywhere: a query run on the compute pool, as no pass gains threads inside itself (02-engine-core.md, The sim is one schedule on one thread; 02-engine-core.md, No query runs in parallel).
+    { path = "bevy_ecs::system::Query::par_iter", reason = "iterate in order; a parallel pass is a decision with its measurement" },
+    { path = "bevy_ecs::system::Query::par_iter_mut", reason = "iterate in order; a parallel pass is a decision with its measurement" },
+    { path = "bevy_ecs::system::Query::par_iter_inner", reason = "iterate in order; a parallel pass is a decision with its measurement" },
+    { path = "bevy_ecs::system::Query::par_iter_many", reason = "iterate in order; a parallel pass is a decision with its measurement" },
+    { path = "bevy_ecs::system::Query::par_iter_many_unique", reason = "iterate in order; a parallel pass is a decision with its measurement" },
+    { path = "bevy_ecs::system::Query::par_iter_many_unique_mut", reason = "iterate in order; a parallel pass is a decision with its measurement" },
+    { path = "bevy_ecs::query::QueryState::par_iter", reason = "iterate in order; a parallel pass is a decision with its measurement" },
+    { path = "bevy_ecs::query::QueryState::par_iter_mut", reason = "iterate in order; a parallel pass is a decision with its measurement" },
     # Banned everywhere: each lets two conflicting sim systems run in either order, which the sim schedule refuses.
     { path = "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with", reason = "order the systems instead" },
     { path = "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with_all", reason = "order the systems instead" },
@@ -126,6 +139,13 @@ disallowed-methods = [
     { path = "bevy_ecs::schedule::Schedules::allow_ambiguous_resource", reason = "order the systems instead" },
     { path = "bevy_ecs::world::World::allow_ambiguous_component", reason = "order the systems instead" },
     { path = "bevy_ecs::world::World::allow_ambiguous_resource", reason = "order the systems instead" },
+    # campfire-store alone starts a thread, through its Worker (02-engine-core.md, Storage): it names the thread, closes and joins it, and does not hang a crash.
+    { path = "std::thread::spawn", reason = "start threads through campfire_store::Worker" },
+    { path = "std::thread::scope", reason = "start threads through campfire_store::Worker" },
+    { path = "std::thread::Builder::spawn", reason = "start threads through campfire_store::Worker" },
+    { path = "std::thread::Builder::spawn_scoped", reason = "start threads through campfire_store::Worker" },
+    { path = "std::thread::Builder::spawn_unchecked", reason = "start threads through campfire_store::Worker" },
+    # campfire-schedule alone sets a schedule's build settings, which can switch off the ambiguity and hierarchy checks.
     # campfire-net-despawns alone despawns in the network stack's replication crates (13-net-stack/replication.md, The server alone ends a replicated entity's life on the receiver): Bevy's despawn takes each child the server still owns.
     { path = "bevy_ecs::system::Commands::despawn_all", reason = "despawn through campfire_net_despawns::DespawnReplicated" },
     { path = "bevy_ecs::system::Commands::despawn_all_where", reason = "despawn through campfire_net_despawns::DespawnReplicated" },

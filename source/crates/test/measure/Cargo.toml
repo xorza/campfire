@@ -16,7 +16,7 @@ criterion = { workspace = true, features = ["cargo_bench_support"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
-campfire-store = { workspace = true, features = ["internals"] }
+campfire-threads = { workspace = true, features = ["internals"] }
 
 [[test]]
 name = "alloc"

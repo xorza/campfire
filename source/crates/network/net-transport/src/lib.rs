@@ -7,7 +7,6 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
-mod adaptive_query_iter_mut;
 mod app_channel_ext;
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -20,7 +19,6 @@ mod transport;
 mod transport_plugin;
 mod transport_systems;
 
-pub use crate::adaptive_query_iter_mut::AdaptiveQueryIterMut;
 pub use crate::app_channel_ext::AppChannelExt;
 pub use crate::channel_registration::ChannelRegistration;
 pub use crate::channel_registry::ChannelRegistry;

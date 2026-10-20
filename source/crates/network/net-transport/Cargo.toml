@@ -46,6 +46,7 @@ bevy_reflect = { workspace = true, features = ["smallvec", "std"] }
 bevy_utils = { workspace = true, features = ["debug"], optional = true }
 
 [dev-dependencies]
+campfire-app-threads.workspace = true
 campfire-net-transport = { workspace = true, features = ["internals"] }
 
 [lib]

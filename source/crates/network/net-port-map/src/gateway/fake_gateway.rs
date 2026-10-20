@@ -2,7 +2,7 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use campfire_store::Worker;
+use campfire_threads::{ThreadName, Worker};
 
 use crate::gateway::MESSAGE_MAX;
 
@@ -32,7 +32,7 @@ impl FakeGateway {
         let requests = Arc::new(Requests::default());
         let worker = {
             let requests = Arc::clone(&requests);
-            Worker::start("fake-gateway", move || {
+            Worker::start(ThreadName::fixture("fake-gateway"), move || {
                 let mut buffer = [0; MESSAGE_MAX];
                 loop {
                     // A reply to a client gone reaches Windows as a reset on the next read.
