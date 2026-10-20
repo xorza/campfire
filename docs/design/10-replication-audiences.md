@@ -67,6 +67,7 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 ## What a client predicts
 
 - **A client derives what it can for every unit it holds.** Stats and tags derive from what reaches every client by default, so the client derives them for each unit it holds, as the server does.
+- **A client writes only what it predicts or derives.** A type sent on change and not predicted takes the server's older value at each change, so a client's own write of it shows as a jump back, as a growing site's life showed as a hit; a type the client must write is predicted, which a rollback compares.
 - **Prediction reads only what its client holds.** A test walks the client's prediction schedule and checks that each component a system reads is derived on the client, of a kind every holder receives, or read on its own predicted units alone, and names each failure.
 
 ## The checks

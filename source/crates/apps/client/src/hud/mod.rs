@@ -39,7 +39,7 @@ use crate::selection::{Selection, SelectionSystems};
 use crate::view::ViewSystems;
 use crate::view::client_data::ClientData;
 use crate::view::drawing::{Drawing, DrawingOf};
-use crate::view::look::PickShape;
+use crate::view::look::UnitShape;
 
 mod gauge;
 mod pixel_scale;
@@ -190,7 +190,7 @@ struct Ranked {
 /// The roots of the drawings of a shape with no gauges yet: the unit each draws, and its shape;
 /// a projectile's drawing has none, and no gauges.
 type Ungauged<'w, 's> =
-    Query<'w, 's, (Entity, &'static DrawingOf, &'static PickShape), Without<Gauged>>;
+    Query<'w, 's, (Entity, &'static DrawingOf, &'static UnitShape), Without<Gauged>>;
 
 /// What the gauges read of a drawn unit as they are made: its team, its life, its other pools, and
 /// its ability slots.
@@ -564,7 +564,7 @@ impl HudPlugin {
         time: Res<'_, Time>,
         palette: Res<'_, HudPalette>,
         (units, gauged): (Hurt<'_, '_>, Roots<'_, '_>),
-        roots: Query<'_, '_, (&Transform, &PickShape), Without<GaugeStand>>,
+        roots: Query<'_, '_, (&Transform, &UnitShape), Without<GaugeStand>>,
         stands: Stands<'_, '_>,
         mut gauges: Query<'_, '_, &mut Gauge>,
         mut commands: Commands<'_, '_>,
@@ -751,7 +751,7 @@ impl HudPlugin {
         own: OwnPlayer<'_, '_>,
         slots: Query<'_, '_, &ActionProgress>,
         units: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
-        shapes: Query<'_, '_, &PickShape>,
+        shapes: Query<'_, '_, &UnitShape>,
         (mut rings, mut wanted): (Local<'_, Vec<UnitRing>>, Local<'_, Vec<RingKey>>),
         mut commands: Commands<'_, '_>,
     ) {
@@ -938,7 +938,7 @@ mod tests {
         app.update();
         let (_, ring) = rings.single(app.world()).unwrap();
         assert_eq!(ring.translation, Vec3::new(3.0, 0.05, -2.0));
-        let reach = app.world().get::<PickShape>(root).unwrap().reach();
+        let reach = app.world().get::<UnitShape>(root).unwrap().reach();
         assert_eq!(ring.scale, Vec3::splat(reach));
         assert_eq!(app.world().get::<Gauge>(gauge).unwrap().kind, shown(450));
         app.world_mut().entity_mut(unit).insert(life(500));

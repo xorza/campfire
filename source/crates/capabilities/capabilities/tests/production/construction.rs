@@ -763,8 +763,10 @@ fn two_builders_that_arrive_at_one_place_in_one_tick_place_one_site() {
 
 #[test]
 fn a_predicting_clients_build_reads_only_what_it_holds() {
-    // The client predicts player 0's builder, and holds as the server sent them an enemy walker
-    // in the depot's box and a static body beside it. Its builder is ordered to build the depot.
+    // The client predicts player 0's builder and a depot site the server spawned at 10 of its 100
+    // life, and holds as the server sent them an enemy walker in the depot's box and a static
+    // body beside it. Its builder is ordered to build the depot. The site grows, and its life is
+    // the server's to write.
     Release::sync_held(&ORDERING, 12, |game| {
         let shop = Shop::place(game);
         let yard = Yard::place(game, shop, Rules::of(Style::Alone));
@@ -776,5 +778,21 @@ fn a_predicting_clients_build_reads_only_what_it_holds() {
         game.insert_parts(post, Unpredicted);
         let builder = yard.builder(game, halves(-8, 0), Team::new(0), 0);
         Production::build_at(game, builder, 0, 0);
+        let site = Site::new(SiteStart {
+            action: yard.build,
+            rank: Rank::FIRST,
+            time: Num::int(4),
+            gain: Num::int(90),
+            paid: &[],
+            holder: None,
+        });
+        let parts = (
+            site,
+            SiteProgress::default(),
+            StatusTags::from([Production::CONSTRUCTING]),
+            Owner::new(Seat::new(0)),
+        );
+        let depot = Mode::spawn(game, shop.depot, halves(0, 12), Team::new(0), parts);
+        game.part_mut::<Life>(depot).take(Num::int(90));
     });
 }

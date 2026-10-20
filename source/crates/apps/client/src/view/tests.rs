@@ -394,14 +394,14 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     // model, so nothing draws it and nothing points at it.
     let (quiet, _, at) = root(world, sound);
     assert_eq!(at, Vec3::new(5.0, 4.0, 0.0));
-    assert!(world.get::<PickShape>(quiet).is_none() && world.get::<Look>(quiet).is_none());
+    assert!(world.get::<UnitShape>(quiet).is_none() && world.get::<Look>(quiet).is_none());
     assert!(world.get::<Children>(quiet).is_none());
     // Its root stands at the ground's 4 m and its own 2 m, turned a quarter about y, with its
     // shape and no figure, and turns as its unit faces; its one child is its model, at its scale
     // of 1.25, with the node its look hides, painted by its team.
     let (root, _, translation) = root(world, unit);
     assert_eq!(translation, Vec3::new(3.0, 6.0, 0.0));
-    assert!(world.get::<PickShape>(root).is_some() && world.get::<Look>(root).is_none());
+    assert!(world.get::<UnitShape>(root).is_some() && world.get::<Look>(root).is_none());
     assert!(world.get::<Turns>(root).is_some());
     let turn = Quat::from_rotation_y(90.0_f32.to_radians());
     let turned = world.get::<Transform>(root).unwrap().rotation;
@@ -427,7 +427,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     // structure of no walk and no avatar, 3.8 m.
     let height = |unit| {
         let root = world.get::<Drawing>(unit).unwrap().root();
-        world.get::<PickShape>(root).unwrap().height
+        world.get::<UnitShape>(root).unwrap().height
     };
     assert_eq!([unit, pit, shed].map(height), [2.5, 0.0, 3.8]);
 }

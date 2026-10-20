@@ -12,7 +12,7 @@ use campfire_common::{Tick, Ticks};
 use campfire_declarations::ByType;
 use campfire_players::{PlayersWorld, ResourceAmount};
 use campfire_sim::{DueIndex, SimComponent, SimTick, StableId, TimedKept, TimedProcess, TimedRuns};
-use campfire_states::{Replication, SentOnChange};
+use campfire_states::{Replication, SentPredicted};
 use campfire_units::{Dead, UnitEntity};
 use campfire_values::{ActionId, NameId, Rank, UnitType};
 use campfire_visibility::DataKind;
@@ -230,7 +230,7 @@ impl SimComponent for TrainQueue {
 
 impl Replication for TrainQueue {
     const KIND: DataKind = DataKind::Queues;
-    type Sending = SentOnChange;
+    type Sending = SentPredicted;
 }
 
 /// A snapshot is untrusted, so a head time without a head or without one, or paid amounts that

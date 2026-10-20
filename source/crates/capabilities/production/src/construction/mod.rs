@@ -270,7 +270,8 @@ impl Construction {
     /// group. A site that reaches its time completes: it loses its site and its `constructing`
     /// tag, its builders' orders end, and, on the server, its building frees its free units and
     /// joins the completed sites, whose `on_site_complete` the mode runs. A predicting client's
-    /// form `F` completes sites alike, and leaves the free units and the hook to the server.
+    /// form `F` grows and completes sites alike, and leaves their life, the free units and the
+    /// hook to the server.
     pub(crate) fn progress_sites<F: RoleForm>(
         (index, book, builds, map, producers): (
             Res<'_, EntityIndex>,
@@ -373,7 +374,9 @@ impl Construction {
                 (Style::Alone | Style::Builders(_), _) => builders,
             };
             let progressed = progress.grow(site, spec.rate(count));
-            if let Some(mut life) = life {
+            // Life is sent on change and not predicted (10-replication-audiences.md, A client
+            // writes only what it predicts or derives).
+            if let Some(mut life) = life.filter(|_| !F::PREDICTS) {
                 life.add(progressed.life);
             }
             if progressed.complete {

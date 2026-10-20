@@ -7,22 +7,24 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 
 use bevy_ecs::change_detection::{ComponentTicks, Tick};
-use bevy_ecs::component::{Component, ComponentId, Mutable};
+use bevy_ecs::component::{Component, ComponentId, Immutable, Mutable};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::With;
+use bevy_ecs::query::{Has, With};
 use bevy_ecs::world::World;
 use campfire_declarations::CapabilitySet;
 use campfire_sim::{SimResource, StableId, Unpredicted};
-use campfire_states::{Replication, StateTypes};
+use campfire_states::{Declared, Replication, Sending, SendingWays, StateTypes};
 use campfire_visibility::{DataKind, Recipients};
 
 use crate::release::Release;
 
-/// How a client comes to hold a state type: it derives it, or receives it as its kind's.
+/// How a client comes to hold a state type: it derives it, or receives it as its kind's, and
+/// writes it on the units it predicts when `written`, as it predicts it, which a rollback
+/// compares, or derives it as the server does.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ClientHolding {
     Derived,
-    Of(DataKind),
+    Of { kind: DataKind, written: bool },
 }
 
 impl ClientHolding {
@@ -34,8 +36,8 @@ impl ClientHolding {
     pub(crate) const fn reaches(self, predicted: bool) -> bool {
         match self {
             Self::Derived => true,
-            Self::Of(kind) if predicted => kind.is_sent(),
-            Self::Of(kind) => {
+            Self::Of { kind, .. } if predicted => kind.is_sent(),
+            Self::Of { kind, .. } => {
                 matches!(kind.audience(), Recipients::ALL)
                     || matches!(
                         kind,
@@ -89,33 +91,44 @@ impl ClientHolds {
     /// Each state type a client receives that a unit of `world` it does not predict holds, by the
     /// unit's stable id and the type's name.
     pub(crate) fn parts(&self, world: &mut World) -> Vec<(StableId, &'static str)> {
-        self.received(world, |_| true)
+        self.received(world, |held| !held.predicted)
     }
 
-    /// Each state type a client receives that a unit of `world` it does not predict changed after
-    /// `since`, by the unit's stable id and the type's name: a client writes none, and derives
-    /// the rest.
+    /// Each state type a client receives that a unit of `world` changed after `since`, where the
+    /// client writes none, by the unit's stable id and the type's name: on a unit it does not
+    /// predict, every one; on a unit it predicts, one it neither predicts nor derives
+    /// (10-replication-audiences.md, A client writes only what it predicts or derives).
     pub(crate) fn writes(&self, world: &mut World, since: Tick) -> Vec<(StableId, &'static str)> {
         let now = world.read_change_tick();
-        self.received(world, |ticks| ticks.is_changed(since, now))
+        self.received(world, |held| {
+            !(held.predicted && held.written) && held.ticks.is_changed(since, now)
+        })
     }
 
-    /// Each state type a client receives that a unit of `world` it does not predict holds with
-    /// change ticks that `keep` takes, by the unit's stable id and the type's name.
+    /// Each state type a client receives that a unit of `world` holds, as `keep` takes it, by the
+    /// unit's stable id and the type's name.
     fn received(
         &self,
         world: &mut World,
-        keep: impl Fn(ComponentTicks) -> bool,
+        keep: impl Fn(ReceivedPart) -> bool,
     ) -> Vec<(StableId, &'static str)> {
+        let mut units = world.query_filtered::<(Entity, Has<Unpredicted>), With<StableId>>();
+        let units: Vec<_> = units.iter(world).collect();
         let mut received = Vec::new();
-        for entity in Self::unpredicted(world) {
+        for (entity, unpredicted) in units {
             let unit = world.entity(entity);
-            let id = *unit.get::<StableId>().expect("a unit has a stable id");
+            let id = *unit.get::<StableId>().unwrap();
             for &component in unit.archetype().components() {
-                let Some((name, ClientHolding::Of(_))) = self.get(component) else {
+                let Some((name, ClientHolding::Of { written, .. })) = self.get(component) else {
                     continue;
                 };
-                if unit.get_change_ticks_by_id(component).is_some_and(&keep) {
+                let ticks = unit.get_change_ticks_by_id(component).unwrap();
+                let held = ReceivedPart {
+                    predicted: !unpredicted,
+                    written,
+                    ticks,
+                };
+                if keep(held) {
                     received.push((id, name));
                 }
             }
@@ -131,6 +144,15 @@ impl ClientHolds {
     }
 }
 
+/// A state type a unit holds, of those a client receives: whether the client predicts the unit,
+/// whether it writes the type there, and the type's change ticks.
+#[derive(Debug, Clone, Copy)]
+struct ReceivedPart {
+    predicted: bool,
+    written: bool,
+    ticks: ComponentTicks,
+}
+
 /// The walk of a match's lists that registers each state type and classes it.
 #[derive(Debug)]
 struct Classes<'w> {
@@ -143,11 +165,22 @@ impl Classes<'_> {
         let id = self.world.register_component::<C>();
         self.holds.0.insert(id, (type_name::<C>(), held));
     }
+
+    /// A type a client receives, and writes on the units it predicts as their owner's client
+    /// predicts it.
+    fn sent<C: Replication>(&mut self) {
+        let mut predicts = OwnerPredicts(false);
+        <C::Sending as Sending<C>>::visit(&mut predicts);
+        self.of::<C>(ClientHolding::Of {
+            kind: C::KIND,
+            written: predicts.0,
+        });
+    }
 }
 
 impl StateTypes for Classes<'_> {
     fn component<C: Replication>(&mut self) {
-        self.of::<C>(ClientHolding::Of(C::KIND));
+        self.sent::<C>();
     }
 
     fn derived<C: Component>(&mut self) {
@@ -155,12 +188,36 @@ impl StateTypes for Classes<'_> {
     }
 
     fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
-        self.of::<C>(ClientHolding::Of(C::KIND));
+        self.of::<C>(ClientHolding::Of {
+            kind: C::KIND,
+            written: true,
+        });
     }
 
     fn resource<R: SimResource + Default>(&mut self) {}
 
     fn sim_component<C: Replication>(&mut self) {
-        self.of::<C>(ClientHolding::Of(C::KIND));
+        self.sent::<C>();
     }
+}
+
+/// Whether a type's owner's client predicts it, as its way of sending says.
+#[derive(Debug)]
+struct OwnerPredicts(bool);
+
+impl SendingWays for OwnerPredicts {
+    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {}
+
+    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {}
+
+    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {}
+
+    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
+        &mut self,
+        _: Declared,
+    ) {
+        self.0 = true;
+    }
+
+    fn server<C: Replication>(&mut self, _: Declared) {}
 }
