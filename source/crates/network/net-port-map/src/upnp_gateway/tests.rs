@@ -21,8 +21,8 @@ fn search(router: &FakeRouter) -> UpnpGateway {
     .unwrap()
 }
 
-fn ask(renewed: Option<&Mapping>) -> Ask<'_> {
-    Ask {
+fn ask(renewed: Option<&Mapping>) -> MapAsk<'_> {
+    MapAsk {
         internal_port: 4433,
         name: "campfire-test",
         renewed,
@@ -32,7 +32,7 @@ fn ask(renewed: Option<&Mapping>) -> Ask<'_> {
 
 /// Maps port 4433 for `LIFETIME`, anew or `renewed`, with draws of seed 0 and a stop that never
 /// comes.
-fn map(gateway: &UpnpGateway, renewed: Option<&Mapping>) -> Result<Mapping, MapError> {
+fn map(gateway: &UpnpGateway, renewed: Option<&Mapping>) -> Result<Mapping, PortMapError> {
     gateway.map(
         ask(renewed),
         &AtomicBool::new(false),
@@ -160,7 +160,7 @@ fn a_port_another_host_holds_is_mapped_at_another_and_its_renewal_fails() {
     assert!(
         matches!(
             error,
-            MapError::UpnpAdd(SoapError::Refused(CONFLICT_IN_MAPPING_ENTRY))
+            PortMapError::UpnpAdd(SoapError::Refused(CONFLICT_IN_MAPPING_ENTRY))
         ),
         "{error:?}"
     );
@@ -212,7 +212,7 @@ fn a_draw_falls_back_to_the_port_inside_or_gives_up_after_its_tries() {
     assert!(
         matches!(
             error,
-            MapError::UpnpAddAny(SoapError::Refused(CONFLICT_IN_MAPPING_ENTRY))
+            PortMapError::UpnpAddAny(SoapError::Refused(CONFLICT_IN_MAPPING_ENTRY))
         ),
         "{error:?}"
     );
@@ -234,14 +234,14 @@ fn a_stop_ends_a_map_between_two_requests() {
     let gateway = search(&router);
     let mut random = Random::seeded(0);
     let error = gateway.map(ask(None), &stop, &mut random).unwrap_err();
-    assert!(matches!(error, MapError::Stopped), "{error:?}");
+    assert!(matches!(error, PortMapError::Stopped), "{error:?}");
     let calls = router.calls();
     let actions: Vec<&str> = calls.iter().map(|call| call.action.as_str()).collect();
     assert_eq!(actions, ["AddPortMapping"]);
 
     // Stopped before it starts, it sends none.
     let error = gateway.map(ask(None), &stop, &mut random).unwrap_err();
-    assert!(matches!(error, MapError::Stopped), "{error:?}");
+    assert!(matches!(error, PortMapError::Stopped), "{error:?}");
     assert_eq!(router.calls().len(), 1);
 }
 
@@ -255,5 +255,5 @@ fn no_router_that_answers_the_search_is_an_error_at_its_timeout() {
         &AtomicBool::new(false),
     )
     .unwrap_err();
-    assert!(matches!(error, MapError::NoUpnpRouter), "{error:?}");
+    assert!(matches!(error, PortMapError::NoUpnpRouter), "{error:?}");
 }

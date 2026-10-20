@@ -17,12 +17,12 @@ pub enum Step {
     /// Its order ends.
     End,
     /// Its build starts, its site spawning.
-    Start(Start),
+    Start(StartingBuild),
 }
 
 /// A build that starts: the building's type and place, and what it pays and spends.
 #[derive(Debug, Clone, Copy)]
-pub struct Start {
+pub struct StartingBuild {
     pub(super) unit_type: UnitType,
     pub position: Vec3,
     pub(super) angle: Num,

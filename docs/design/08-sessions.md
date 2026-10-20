@@ -53,6 +53,7 @@ How a session outlives its server process, its players' links and its players.
 
 - **Restore equivalence.** A match restored from a checkpoint plays the same ticks to the same hashes as the match that made it; every gap a test finds is closed as state, or as derived data rebuilt after a restore.
 - **A checkpoint never waits for the last.** The log keeps the checkpoints begun in the order they began, and their records come in that order, so a checkpoint due while the last one's snapshot still syncs begins at once. Refused: one checkpoint begun at a time, which made the tick at the boundary wait on the last snapshot's fsync.
+- **A log file may start at a checkpoint.** A verifier checks its base against the segment's signed checkpoint record before it replays, as Ethereum's checkpoint sync starts from a signed state. Refused: a server's journal for verifiers, whose state a verifier must not trust.
 
 ## Saves and loads
 

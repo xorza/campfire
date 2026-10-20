@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::ResMut;
-use campfire_bots::{BotBuffers, BotScript, BotSink, BotView, Named, OrderUnsent};
+use campfire_bots::{BotBuffers, BotScript, BotSink, BotView, NamedRefs, OrderUnsent};
 use campfire_capabilities::Directive;
 use campfire_common::ErrorReport;
 use campfire_common::{Seat, Tick};
@@ -146,7 +146,7 @@ impl BotSink for BotServer<'_> {
         .log();
     }
 
-    fn unsent(&mut self, seat: Seat, directive: &Directive<Named>, cause: OrderUnsent) {
+    fn unsent(&mut self, seat: Seat, directive: &Directive<NamedRefs>, cause: OrderUnsent) {
         BotOrderUnsent {
             seat,
             cause,

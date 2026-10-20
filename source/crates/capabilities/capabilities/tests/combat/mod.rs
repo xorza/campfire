@@ -1,3 +1,6 @@
+use campfire_declarations::internals::BookLoad;
+use campfire_units::MapSpace;
+use campfire_values::TagSet;
 use std::collections::BTreeMap;
 use std::num::NonZeroU16;
 
@@ -234,7 +237,6 @@ fn a_weapon_of_its_own_amount_and_period_fires_its_clip_then_reloads() {
     let mut client = Match::predicting(&[Capability::Stats, Capability::Combat]);
     Combat::load_weapon_stats(&mut client);
     let fight = rifle_fight(&mut client, Unpredicted);
-    client.insert_parts(fight[0], ClipShots::default());
     let [ready, hits] = rifle_ticks(&mut client, fight);
     assert_eq!(ready, readies);
     assert_eq!(hits, Vec::<u64>::new());
@@ -281,7 +283,7 @@ fn a_range_counts_from_the_edge_of_each_body_in_the_maps_metric() {
         (Num::int(3), 4, true, Metric::Spatial, false),
     ] {
         let mut game = fight_match();
-        game.resource_mut::<MapBook>().metric = metric;
+        MapBook::amend(&mut game, |_, map| map.space = MapSpace::from(metric));
         let types = [fighter(), dummy()].map(|armed| armed.load(&mut game));
         if bodies {
             for unit_type in types {
@@ -876,8 +878,9 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     for (window, assisted) in [(None, 0), (Some(4), 1), (Some(5), 2)] {
         let mut game = fight_match();
         if let Some(ticks) = window {
-            game.resource_mut::<CombatBook>()
-                .set_assist_window(Some(Ticks::new(ticks)));
+            CombatBook::amend(&mut game, |_, book| {
+                book.set_assist_window(Some(Ticks::new(ticks)));
+            });
         }
         let team = Team::new(0);
         let victim = combatant(130, 0, 0, 1, 0);
@@ -918,6 +921,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
             team: Some(Team::new(1)),
             owner,
             avatar: false,
+            tags: TagSet::NONE,
         };
         assert_eq!(
             seen,
@@ -1024,7 +1028,7 @@ fn load_damage_stats(world: &mut World) {
     });
     world.insert_resource(bound.unwrap());
     Stats::load_book(world, book);
-    world.resource_mut::<PoolBook>().set_life(life);
+    PoolBook::amend(world, |_, book| book.set_life(life));
 }
 
 /// A modifier of no stats, tags or script, as each shield the shield test gives is.
@@ -1046,8 +1050,9 @@ const ATTACK: DamageCause = DamageCause::Attack {
 #[test]
 fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     let mut game = fight_match();
-    game.resource_mut::<CombatBook>()
-        .set_assist_window(Some(Ticks::new(10)));
+    CombatBook::amend(&mut game, |_, book| {
+        book.set_assist_window(Some(Ticks::new(10)));
+    });
     let [dummy, stays] = arm(&mut game, [dummy(), dummy().on_death(OnDeath::Stay)]);
     let a = Mode::spawn(&mut game, dummy, (0, 0, 0), Team::new(0), ());
     let b = Mode::spawn(&mut game, dummy, (1, 0, 0), Team::new(0), ());
@@ -1265,15 +1270,23 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     game.run_until(3);
     assert_eq!(game.part::<Life>(source).current(), Num::int(3));
     assert_eq!(game.part::<Life>(target).current(), Num::int(35));
-    // Without the bindings the same stats do nothing: at 50, an attack of 10 heals the source
-    // nothing, and a heal of 10 is whole.
+    // Without the bindings the same stats do nothing: in a match whose combat binds its life
+    // alone, a source at 50 heals nothing from an attack of 10, which takes the target from 100
+    // to 90, and a heal of 10 is whole.
+    let mut game = fight_match();
+    load_damage_stats(&mut game);
     Combat::bind_life(&mut game, PoolId::FIRST);
+    let [dummy, source] = [self::dummy(), self::dummy()].map(|armed| armed.load(&mut game));
+    Stats::give_type_stats(&mut game, source, &[-half, half, Num::ONE / 4]);
+    let pools = Pools::new([(mana, Num::int(100))]).unwrap();
+    Units::give_type(&mut game, source, pools);
+    let source = Mode::spawn(&mut game, source, (0, 0, 0), Team::new(0), ());
+    let target = Mode::spawn(&mut game, dummy, (1, 0, 0), Team::new(1), ());
     let entity = game.unit_entity(source);
-    let mut life = game.get_mut::<Life>(entity).unwrap();
-    life.add(Num::int(47));
+    game.get_mut::<Life>(entity).unwrap().take(Num::int(50));
     Combat::damage(&mut game, Some(source), target, 10, ATTACK);
-    game.run_until(4);
-    assert_eq!(game.part::<Life>(target).current(), Num::int(25));
+    game.run_until(1);
+    assert_eq!(game.part::<Life>(target).current(), Num::int(90));
     assert_eq!(game.part::<Life>(source).current(), Num::int(50));
     Combat::heal_unit(&mut game, source, 10);
     assert_eq!(game.part::<Life>(source).current(), Num::int(60));

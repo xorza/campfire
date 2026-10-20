@@ -27,6 +27,7 @@ use crate::lists_of::ListsOf;
 /// the run of each list a launch holds, `on_hit` and `on_end`. An action past the end has none.
 /// Package data, not state.
 #[derive(Resource, Debug, Clone, Default)]
+#[component(immutable)]
 pub struct EffectListBook {
     effects: Vec<EffectSpec>,
     runs: Vec<[Range<u32>; 3]>,

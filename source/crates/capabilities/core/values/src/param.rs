@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_math::Num;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::ranked::Ranked;
@@ -11,7 +11,7 @@ use crate::stat::Stat;
 /// A param, as `ctx.params` reads it: one value or one per rank, or a scaling table, `base +
 /// per_level × (level − 1) + Σ ratio × stat + Σ bonus ratio × (stat − type's value)` of the
 /// source.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Param {
     Ranked(Ranked<Scalar>),
@@ -21,7 +21,7 @@ pub enum Param {
 /// A scaling table: the base, per rank or one, its gain a level, the ratio of each stat it
 /// scales with, by the stat's name, and under `bonus` the ratio of each stat's part above its
 /// type's value.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Scaling {
     pub base: Ranked<Num>,
     #[serde(default)]

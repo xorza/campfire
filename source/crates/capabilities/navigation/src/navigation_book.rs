@@ -8,6 +8,7 @@ use crate::paths::Paths;
 /// The map's paths, which walkers go along, and the cells units plan routes over. Map data, not
 /// state: a restore takes it from the map, as a new match does.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[component(immutable)]
 pub struct NavigationBook {
     pub paths: Paths,
     /// The cells units plan routes over, when the map has them.

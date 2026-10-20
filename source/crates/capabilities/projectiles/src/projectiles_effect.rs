@@ -58,7 +58,7 @@ impl Effect for ProjectilesEffect {
             }
             Toward::Unit(target) => Flight::homing(target),
             Toward::Direction(direction) => {
-                let Some(direction) = world.resource::<MapBook>().metric.direction(direction)
+                let Some(direction) = world.resource::<MapBook>().metric().direction(direction)
                 else {
                     return;
                 };

@@ -47,8 +47,6 @@ campfire-vision = { workspace = true, features = ["internals"] }
 [lints]
 workspace = true
 
-[lib]
-bench = false
 
 [[bench]]
 name = "vision"

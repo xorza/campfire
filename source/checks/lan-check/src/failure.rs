@@ -10,7 +10,7 @@ use crate::session_kind::SessionKind;
 
 /// One way a LAN match failed the check.
 #[derive(Debug, Display, Clone, PartialEq, Eq)]
-pub(crate) enum Failure {
+pub(crate) enum CheckFailure {
     /// A process did not end with success; never with `ProcessOutcome::Succeeded`.
     #[display("{process} {outcome}")]
     Ended {

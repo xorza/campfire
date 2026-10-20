@@ -12,7 +12,7 @@ use campfire_net_core::Instant;
 use campfire_net_core::Random;
 use campfire_net_packets::{
     ConnectionId, Datagram, Establish, Established, Establishing, MIN_RESET_LEN, Outbound,
-    Protection, ServerEstablish,
+    PathCheck, Protection, ReadCost, ServerEstablish,
 };
 use rustls::quic::{Connection, KeyChange, Keys, ServerConnection, Version};
 
@@ -255,15 +255,11 @@ impl ServerSide {
 }
 
 impl Establish for ServerSide {
-    fn challenge(&mut self) -> [u8; 8] {
-        self.random.array()
-    }
-
-    fn receive(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing) {
+    fn receive(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing) -> ReadCost {
         let Datagram { from, payload } = datagram;
         let len = payload.len();
         let Some(packet) = HandshakePacket::read(payload) else {
-            return;
+            return ReadCost::Light;
         };
         match packet {
             HandshakePacket::Initial {
@@ -275,15 +271,15 @@ impl Establish for ServerSide {
                 // A client pads each of its `Initial`s, so an answer to one is never larger than
                 // it, whatever address it names (RFC 9000 §14.1).
                 if len < PADDED_INITIAL {
-                    return;
+                    return ReadCost::Light;
                 }
                 if let Some(pending) = self.pending.get(&(from, id)) {
                     pending.resend(out);
-                    return;
+                    return ReadCost::Light;
                 }
                 if !self.accepting {
                     Self::send(out, from, handshake_packet::refuse(id));
-                    return;
+                    return ReadCost::Light;
                 }
                 let checked =
                     token.and_then(|token| self.token_key.check(&token, from.ip(), id, now));
@@ -301,11 +297,11 @@ impl Establish for ServerSide {
                         now + RETRY_LIFETIME,
                     );
                     Self::send(out, from, handshake_packet::retry(id, &token));
-                    return;
+                    return ReadCost::Light;
                 }
                 if !self.admit(from.ip(), now) {
                     Self::send(out, from, handshake_packet::refuse(id));
-                    return;
+                    return ReadCost::Light;
                 }
                 self.start(
                     now,
@@ -317,6 +313,7 @@ impl Establish for ServerSide {
                     },
                     out,
                 );
+                return ReadCost::Handshake;
             }
             HandshakePacket::Handshake {
                 id,
@@ -325,26 +322,26 @@ impl Establish for ServerSide {
             } => {
                 let key = (from, id);
                 let Some(pending) = self.pending.get_mut(&key) else {
-                    return;
+                    return ReadCost::Light;
                 };
                 let Some(keys) = &pending.handshake_keys else {
-                    return;
+                    return ReadCost::Light;
                 };
                 let Some(CryptoFrame { offset, data }) =
                     HandshakePacket::open(number, datagram, keys.remote.packet.as_ref())
                 else {
-                    return;
+                    return ReadCost::Light;
                 };
                 let mut plain = Vec::new();
                 pending.handshake.push(offset, &data, &mut plain);
                 if plain.is_empty() {
-                    return;
+                    return ReadCost::Light;
                 }
                 if pending.tls.read_hs(&plain).is_err() {
                     if let Some(pending) = self.drop_pending(key) {
                         pending.fail(out);
                     }
-                    return;
+                    return ReadCost::Light;
                 }
                 if !pending.tls.is_handshaking()
                     && let Some(keys) = pending.one_rtt.take()
@@ -367,6 +364,7 @@ impl Establish for ServerSide {
             }
             HandshakePacket::Retry { .. } | HandshakePacket::Refuse { .. } => {}
         }
+        ReadCost::Light
     }
 
     /// Sends each pending flight again at its timer, and drops a handshake that waited longer
@@ -398,11 +396,6 @@ impl Establish for ServerSide {
         let route = route.expect("a server's packet session is routed by its connection ID");
         self.release(route);
     }
-
-    /// A server routes its clients' datagrams by the connection ID it gave each.
-    fn routes_by_prefix(&self) -> bool {
-        true
-    }
 }
 
 impl ServerEstablish for ServerSide {
@@ -432,6 +425,18 @@ impl ServerEstablish for ServerSide {
         reset[0] &= 0x7f;
         reset[len - token.len()..].copy_from_slice(&token);
         Self::send(out, *from, Bytes::from(reset));
+    }
+
+    /// A server routes its clients' datagrams by the connection ID it gave each, so a client
+    /// moves, and its new path is checked.
+    fn path_check(&mut self) -> Option<&mut dyn PathCheck> {
+        Some(self)
+    }
+}
+
+impl PathCheck for ServerSide {
+    fn challenge(&mut self) -> [u8; 8] {
+        self.random.array()
     }
 }
 

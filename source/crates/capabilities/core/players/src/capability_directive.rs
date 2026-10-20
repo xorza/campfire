@@ -1,4 +1,4 @@
-use campfire_codec::{Binary, Taken};
+use campfire_codec::{Binary, Decoded};
 use campfire_sim::{Capability, StableId};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -17,7 +17,7 @@ pub trait CapabilityDirective: Serialize + DeserializeOwned + Copy + Send + Sync
     fn decode_into(body: &[u8], units: &mut Vec<StableId>) -> Option<Self> {
         let start = units.len();
         let directive = read_units(body, units).and_then(|rest| {
-            let Taken { value, rest } = Binary::take::<Self>(rest).ok()?;
+            let Decoded { value, rest } = Binary::take::<Self>(rest).ok()?;
             rest.is_empty().then_some(value)
         });
         if directive.is_none() {
@@ -30,7 +30,7 @@ pub trait CapabilityDirective: Serialize + DeserializeOwned + Copy + Send + Sync
 /// Appends the units `body` lists first to `units`, and gives the bytes after them; `None` unless
 /// they are one at least, in increasing stable id, each once.
 fn read_units<'b>(body: &'b [u8], units: &mut Vec<StableId>) -> Option<&'b [u8]> {
-    let Taken {
+    let Decoded {
         value: count,
         mut rest,
     } = Binary::take::<usize>(body).ok()?;

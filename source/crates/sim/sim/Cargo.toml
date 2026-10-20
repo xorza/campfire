@@ -39,8 +39,6 @@ campfire-sim = { workspace = true, features = ["internals"] }
 name = "tests"
 path = "tests/mod.rs"
 
-[lib]
-bench = false
 
 [[bench]]
 name = "sim"

@@ -6,23 +6,20 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::files::content_table::ContentTable;
-use crate::files::script_list::ScriptList;
+use crate::files::script_list::ScriptOrder;
 
 /// The mode's `data/mode.toml`: its scripts, the defaults of its unit types' sections, the mode's
 /// own data, and its actions and modifiers, which its content holds beside the unit types of
 /// `data/units.toml`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ModeFile {
-    pub(crate) scripts: ScriptList,
+    pub(crate) scripts: ScriptOrder,
     pub(crate) defaults: UnitDefaults,
     pub(crate) data: ModeData,
     pub(crate) content: PackageContent,
 }
 
 impl ModeFile {
-    /// The key of its list of scripts, the mode's alone: no rules package's data gives it.
-    pub(crate) const SCRIPTS: &'static str = "scripts";
-
     /// The key of the defaults of its unit types' sections.
     const DEFAULTS: &'static str = "defaults";
 }
@@ -33,9 +30,9 @@ impl<'de> Deserialize<'de> for ModeFile {
         if table.holds("units") {
             return Err(D::Error::custom("units are in data/units.toml"));
         }
-        let scripts: ScriptList = table
-            .take(Self::SCRIPTS)
-            .ok_or_else(|| D::Error::missing_field(Self::SCRIPTS))?
+        let scripts: ScriptOrder = table
+            .take(ScriptOrder::KEY)
+            .ok_or_else(|| D::Error::missing_field(ScriptOrder::KEY))?
             .map_err(D::Error::custom)?;
         let readers = Release::sections();
         let defaults = match table.take_value(Self::DEFAULTS) {

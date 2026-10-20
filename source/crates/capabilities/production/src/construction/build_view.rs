@@ -18,7 +18,7 @@ use campfire_vision::TeamSight;
 use crate::build_book::{BuildBook, Building, Style};
 use crate::build_start::BuildStart;
 use crate::builder::{BuildOrder, Builder};
-use crate::construction::step::{Start, Step};
+use crate::construction::step::{StartingBuild, Step};
 use crate::holdings::{Holdings, OwnedUnits};
 use crate::placement::Placement;
 use crate::requirement_book::RequirementBook;
@@ -142,7 +142,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
 
     /// The start of the build at a point of the builder of `entity`'s `order`, when it passes
     /// its action's checks, its requirements, by the holdings, and its placement.
-    pub(super) fn start(&mut self, entity: Entity, order: BuildOrder) -> Option<Start> {
+    pub(super) fn start(&mut self, entity: Entity, order: BuildOrder) -> Option<StartingBuild> {
         let (_, _, &from, _, &team, owner, slots, times, pools, .., tags) =
             self.builders.get(entity).ok()?;
         let BuildTarget::Point { angle, .. } = order.target else {
@@ -180,7 +180,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         let room = self
             .placement
             .passes(team, placed.position, placed.body, building.spec);
-        (met && room).then_some(Start {
+        (met && room).then_some(StartingBuild {
             unit_type: building.spec.unit_type,
             position: placed.position,
             angle,
@@ -262,7 +262,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             return Step::End;
         };
         let builder = Placed::new(from.get(), Body::shape_of(body));
-        if !placed.reached_by(self.map.metric, builder, building.range) {
+        if !placed.reached_by(self.map.metric(), builder, building.range) {
             let Shape::Box(boxed) = placed.body.shape() else {
                 panic!("a building's body is a box");
             };

@@ -8,6 +8,17 @@ use campfire_sim::Capability;
 use campfire_values::{PackageIndex, PackagePath};
 use thiserror::Error;
 
+/// Why a patch does not make its value whole.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum PatchError {
+    /// It lacks `field`, which the value needs.
+    #[error("missing field `{0}`")]
+    Missing(&'static str),
+    /// The value's rule, as its text says, refuses what it holds.
+    #[error("{0}")]
+    Refused(&'static str),
+}
+
 /// What the package load did not check and a match's books cannot hold: each in the package at
 /// its place among the match's packages, the mode's 0.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

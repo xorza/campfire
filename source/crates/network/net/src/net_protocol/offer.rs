@@ -9,7 +9,7 @@ use crate::session_times::SessionTimes;
 /// delegating, how long the server waits for a player whose link fails, and the challenge its
 /// answer signs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Offer {
+pub(crate) struct SessionOffer {
     /// Shared with the offering it comes from, so an offer sent again copies no term.
     pub terms: Arc<SessionTerms>,
     pub times: SessionTimes,

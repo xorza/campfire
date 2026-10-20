@@ -43,7 +43,7 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
     assert_eq!(remote.map, None);
     assert!(matches!(
         remote.server,
-        Server::Remote { address, tick_hz, .. }
+        PlayedServer::Remote { address, tick_hz, .. }
             if address == SocketAddr::from(([10, 0, 0, 2], 4433)) && tick_hz.get() == 30
     ));
 
@@ -63,7 +63,7 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         "start_money=50000",
     ]);
     assert_eq!(local.map, MapName::parse("lane"));
-    let Server::Local {
+    let PlayedServer::Local {
         bots,
         options,
         data,

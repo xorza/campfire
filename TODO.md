@@ -1,9 +1,10 @@
 script api autogen doc
 timesource
 custom cargo build in checks
-rhai dependency
 session log human readable
-why network depends on script
+why network depends on script, rhai dependency
 what is deny_unknown_fields
 seats->slots
 extransion traits audit
+coverage
+migrate to stable rustc

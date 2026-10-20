@@ -1,7 +1,7 @@
 use std::ops::ControlFlow;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Has, QueryEntityError, Without};
+use bevy_ecs::query::{Has, QueryEntityError, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
@@ -427,9 +427,10 @@ impl Attacks {
             ),
             Without<Dead>,
         >,
-        (index, aims, map, mut held): (
+        (index, aims, dead, map, mut held): (
             Res<'_, EntityIndex>,
             Query<'_, '_, (&Position, Option<&UnitTags>, Option<&Body>), Without<Dead>>,
+            Query<'_, '_, (), With<Dead>>,
             Res<'_, MapBook>,
             Option<ResMut<'_, HeldHits>>,
         ),
@@ -456,6 +457,13 @@ impl Attacks {
                 (mut clips, body),
             )) = attackers.get_mut(entity)
             else {
+                // Only a death or a despawn takes an attacker out of reach: a living one that
+                // lacks a part the strike reads, as a client's of no `ClipShots`, would hold its
+                // windup due in each tick and strike never.
+                debug_assert!(
+                    index.get(source) != Some(entity) || dead.contains(entity),
+                    "attacker {source:?} lacks a part the strike reads"
+                );
                 indexes.hold_resolve(source, entity);
                 continue;
             };

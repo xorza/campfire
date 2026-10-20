@@ -1,4 +1,4 @@
-use campfire_bots::{BotBuffers, BotScript, BotSink, HeldBotView, Named, OrderUnsent};
+use campfire_bots::{BotBuffers, BotScript, BotSink, HeldBotView, NamedRefs, OrderUnsent};
 use campfire_capabilities::{Directive, Match, Order};
 use campfire_common::{Seat, Tick};
 use campfire_harness::{FixedMatch, MatchUnits};
@@ -9,7 +9,7 @@ use campfire_sim::{Position, StableId};
 use campfire_units::{Life, Units};
 use campfire_values::UnitType;
 
-use crate::failure::Failure;
+use crate::failure::CheckFailure;
 
 /// America's command center, the building a skirmish starts a player with.
 pub(crate) const CENTER: &str = "americacommandcenter";
@@ -51,7 +51,7 @@ impl BotSink for DuePayloads {
         self.0.push(payload.to_vec());
     }
 
-    fn unsent(&mut self, _: Seat, _: &Directive<Named>, _: OrderUnsent) {}
+    fn unsent(&mut self, _: Seat, _: &Directive<NamedRefs>, _: OrderUnsent) {}
 }
 
 impl MatchPlay {
@@ -67,9 +67,9 @@ impl MatchPlay {
     /// Drives player `seat` by `script` from the tick it runs next, as a server drives its bot,
     /// and keeps the farthest its units stand from its command center; a failure when the player
     /// has no one center.
-    pub(crate) fn drive_bot(&mut self, seat: u32, script: BotScript) -> Result<(), Failure> {
+    pub(crate) fn drive_bot(&mut self, seat: u32, script: BotScript) -> Result<(), CheckFailure> {
         let [center] = self.owned(CENTER, seat)?[..] else {
-            return Err(Failure::FightStart);
+            return Err(CheckFailure::FightStart);
         };
         let home = MatchUnits::of(self.game()).position(center);
         self.bot = Some(MatchBot {
@@ -155,9 +155,13 @@ impl MatchPlay {
 
     /// The living units player `seat` owns of the type `name`, by stable id; a failure when the
     /// mode has no such type.
-    pub(crate) fn owned(&self, name: &'static str, seat: u32) -> Result<Vec<StableId>, Failure> {
+    pub(crate) fn owned(
+        &self,
+        name: &'static str,
+        seat: u32,
+    ) -> Result<Vec<StableId>, CheckFailure> {
         let world = self.fixed.game();
-        let typed: UnitType = Units::type_named(world, name).ok_or(Failure::NoType(name))?;
+        let typed: UnitType = Units::type_named(world, name).ok_or(CheckFailure::NoType(name))?;
         let owned = MatchUnits::of(world)
             .all()
             .filter(|(_, unit)| {

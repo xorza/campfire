@@ -9,7 +9,7 @@ use campfire_math::Num;
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::regions::Regions;
 use crate::segment::Segment;
-use crate::terrain::Terrain;
+use crate::terrain::WallGrid;
 use crate::walker::Walker;
 use crate::walker_kinds::WalkerKinds;
 
@@ -46,7 +46,7 @@ pub(crate) struct PathingGrid {
 impl PathingGrid {
     /// The grid over `grid`'s cells for `walkers`, with the cells `terrain`'s walls block and no
     /// static body yet.
-    pub(crate) fn new(grid: Grid, walkers: WalkerKinds, terrain: &Terrain) -> Self {
+    pub(crate) fn new(grid: Grid, walkers: WalkerKinds, terrain: &WallGrid) -> Self {
         let words = grid.cells().div_ceil(64);
         let mut walled = vec![0; words * walkers.len()];
         let mut walls = vec![false; walkers.len()];

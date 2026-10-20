@@ -42,7 +42,7 @@ use campfire_store::StopSignals;
 use tracing::{error, info};
 
 use crate::command_line::{Args, CommandLine};
-use crate::error::StartError;
+use crate::error::LaunchError;
 use crate::opening::error::OpeningError;
 use crate::opening::{Opening, OpeningSetup, RestoreWindow};
 
@@ -73,11 +73,11 @@ fn main() -> ExitCode {
 }
 
 /// Starts the server and runs it: the exit code of its end, or the refusal that ended its start.
-fn run() -> Result<ExitCode, StartError> {
+fn run() -> Result<ExitCode, LaunchError> {
     // Caught first, so a signal during the start stops the server at its first frame.
     let stop = StopSignals::catch()?;
     let line =
-        Logging::command_line::<CommandLine>(env::args_os()).map_err(StartError::CommandLine)?;
+        Logging::command_line::<CommandLine>(env::args_os()).map_err(LaunchError::CommandLine)?;
     let args = Args::from(line);
     let scripts = args.bot_scripts()?;
     let Args {
@@ -100,7 +100,7 @@ fn run() -> Result<ExitCode, StartError> {
     // data as it was.
     let socket = ServerSocket::bind(address, UdpLinks::server(&signer))?;
     let tls_key = socket.tls_key().expect("a raw key's identity");
-    let no_session = |error| StartError::Session {
+    let no_session = |error| LaunchError::Session {
         data: data.layout().path().to_owned(),
         error,
     };
@@ -145,10 +145,10 @@ fn run() -> Result<ExitCode, StartError> {
 
 /// Logs `error`, the refusal that ended the start: a journal that keeps no files as the event a
 /// check reads, a command line not at all, as its parser printed it.
-fn refused(error: &StartError) {
+fn refused(error: &LaunchError) {
     match error {
-        StartError::CommandLine(_) => {}
-        StartError::Session {
+        LaunchError::CommandLine(_) => {}
+        LaunchError::Session {
             error: error @ OpeningError::Open(LobbyOpenError::KeepFiles(_)),
             ..
         } => JournalFailed {

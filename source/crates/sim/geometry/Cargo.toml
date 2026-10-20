@@ -31,8 +31,6 @@ campfire-geometry = { workspace = true, features = ["internals"] }
 [lints]
 workspace = true
 
-[lib]
-bench = false
 
 [[bench]]
 name = "geometry"

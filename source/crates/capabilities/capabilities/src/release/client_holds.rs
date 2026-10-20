@@ -20,12 +20,12 @@ use crate::release::Release;
 
 /// How a client comes to hold a state type: it derives it, or receives it as its kind's.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Held {
+pub(crate) enum ClientHolding {
     Derived,
     Of(DataKind),
 }
 
-impl Held {
+impl ClientHolding {
     /// Whether a client holds a type held so of a unit, which it predicts when `predicted`: one it
     /// derives always; of a unit it predicts, whose owner it is, every kind sent; of another, a
     /// kind whose default audience holds every client that holds the unit, or one of its own
@@ -49,7 +49,7 @@ impl Held {
 /// Each state type of the lists of a match, by its id in that match's world, with its name and
 /// how a client holds it.
 #[derive(Debug, Default)]
-pub(crate) struct ClientHolds(BTreeMap<ComponentId, (&'static str, Held)>);
+pub(crate) struct ClientHolds(BTreeMap<ComponentId, (&'static str, ClientHolding)>);
 
 impl ClientHolds {
     /// The state types of a match of `set`, by their ids in `world`, which registers each.
@@ -63,7 +63,7 @@ impl ClientHolds {
     }
 
     /// The name of the state type `id` and how a client holds it; none for a type of no list.
-    pub(crate) fn get(&self, id: ComponentId) -> Option<(&'static str, Held)> {
+    pub(crate) fn get(&self, id: ComponentId) -> Option<(&'static str, ClientHolding)> {
         self.0.get(&id).copied()
     }
 
@@ -112,7 +112,7 @@ impl ClientHolds {
             let unit = world.entity(entity);
             let id = *unit.get::<StableId>().expect("a unit has a stable id");
             for &component in unit.archetype().components() {
-                let Some((name, Held::Of(_))) = self.get(component) else {
+                let Some((name, ClientHolding::Of(_))) = self.get(component) else {
                     continue;
                 };
                 if unit.get_change_ticks_by_id(component).is_some_and(&keep) {
@@ -139,7 +139,7 @@ struct Classes<'w> {
 }
 
 impl Classes<'_> {
-    fn of<C: Component>(&mut self, held: Held) {
+    fn of<C: Component>(&mut self, held: ClientHolding) {
         let id = self.world.register_component::<C>();
         self.holds.0.insert(id, (type_name::<C>(), held));
     }
@@ -147,20 +147,20 @@ impl Classes<'_> {
 
 impl StateTypes for Classes<'_> {
     fn component<C: Replication>(&mut self) {
-        self.of::<C>(Held::Of(C::KIND));
+        self.of::<C>(ClientHolding::Of(C::KIND));
     }
 
     fn derived<C: Component>(&mut self) {
-        self.of::<C>(Held::Derived);
+        self.of::<C>(ClientHolding::Derived);
     }
 
     fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
-        self.of::<C>(Held::Of(C::KIND));
+        self.of::<C>(ClientHolding::Of(C::KIND));
     }
 
     fn resource<R: SimResource + Default>(&mut self) {}
 
     fn sim_component<C: Replication>(&mut self) {
-        self.of::<C>(Held::Of(C::KIND));
+        self.of::<C>(ClientHolding::Of(C::KIND));
     }
 }

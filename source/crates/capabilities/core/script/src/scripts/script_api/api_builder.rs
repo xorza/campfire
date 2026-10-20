@@ -122,7 +122,7 @@ impl<'a> ApiBuilder<'a> {
         f.register(self.host.engine_mut(), &decl.kind.bound_name(decl.name));
         let output = FormOutput {
             ty: F::output(),
-            names: F::NAME_KIND,
+            names: F::NAMES,
         };
         self.record_runs(decl, output, &[]);
         self
@@ -151,7 +151,7 @@ impl<'a> ApiBuilder<'a> {
         );
         let output = FormOutput {
             ty: F::output(),
-            names: F::NAME_KIND,
+            names: F::NAMES,
         };
         self.record_runs(decl, output, F::TYPES);
         self
@@ -187,7 +187,7 @@ impl<'a> ApiBuilder<'a> {
         f.register(self.host.engine_mut(), &decl.kind.bound_name(decl.name));
         let output = FormOutput {
             ty: F::output(),
-            names: F::NAME_KIND,
+            names: F::NAMES,
         };
         self.record_runs(decl, output, F::TYPES);
         self

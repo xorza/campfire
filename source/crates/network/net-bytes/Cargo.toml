@@ -29,8 +29,6 @@ variadics_please = { workspace = true, features = ["alloc"] }
 [dev-dependencies]
 campfire-net-bytes = { workspace = true, features = ["internals"] }
 
-[lib]
-bench = false
 
 [[bench]]
 name = "net-bytes"

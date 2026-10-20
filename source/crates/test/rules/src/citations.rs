@@ -76,17 +76,45 @@ fn citations(text: &str) -> Vec<Citation> {
     found
 }
 
-/// The titles `text`, a design document, holds: each heading, and each bold lead of a bullet,
-/// with no stop or comma after it.
-fn titles(text: &str) -> Vec<String> {
-    let mut found = Vec::new();
-    for line in text.lines() {
+/// The titles a design document holds, and the bold leads of its bullets that never close.
+#[derive(Debug)]
+struct Titles {
+    titles: Vec<String>,
+    unclosed: Vec<String>,
+}
+
+/// The titles of `text`, a design document: each heading, and each bold lead of a bullet, nested
+/// or not, with no stop or comma after it, read over the bullet's lines to its first blank line,
+/// bullet or heading, so a lead that wraps reads whole.
+fn titles(text: &str) -> Titles {
+    let mut found = Titles {
+        titles: Vec::new(),
+        unclosed: Vec::new(),
+    };
+    let mut lines = text.lines().peekable();
+    while let Some(line) = lines.next() {
         if let Some(heading) = line.strip_prefix('#') {
-            found.push(heading.trim_start_matches('#').trim().to_owned());
-        } else if let Some(lead) = line.strip_prefix("- **")
-            && let Some((title, _)) = lead.split_once("**")
-        {
-            found.push(title.trim_end_matches(['.', ',']).to_owned());
+            found
+                .titles
+                .push(heading.trim_start_matches('#').trim().to_owned());
+            continue;
+        }
+        let Some(lead) = line.trim_start().strip_prefix("- **") else {
+            continue;
+        };
+        let mut bullet = lead.to_owned();
+        while let Some(next) = lines.next_if(|next| {
+            let next = next.trim_start();
+            !next.is_empty() && !next.starts_with("- ") && !next.starts_with('#')
+        }) {
+            bullet.push(' ');
+            bullet.push_str(next.trim_start());
+        }
+        match bullet.split_once("**") {
+            Some((title, _)) => found
+                .titles
+                .push(title.trim_end_matches(['.', ',']).to_owned()),
+            None => found.unclosed.push(bullet),
         }
     }
     found
@@ -94,8 +122,15 @@ fn titles(text: &str) -> Vec<String> {
 
 /// Each citation of `files`, by the file that holds it, that names no document `documents` holds,
 /// or a title its document lacks; and each mention of a design by its number, the old form.
-fn broken(files: &[SourceFile], documents: &BTreeMap<String, Option<Vec<String>>>) -> Vec<String> {
+fn broken(files: &[SourceFile], documents: &BTreeMap<String, Option<Titles>>) -> Vec<String> {
     let mut found = Vec::new();
+    for (document, titles) in documents {
+        for lead in titles.iter().flat_map(|titles| &titles.unclosed) {
+            found.push(format!(
+                "{document}: a bold lead that never closes: {lead:?}"
+            ));
+        }
+    }
     for SourceFile {
         path: file, text, ..
     } in files
@@ -103,7 +138,7 @@ fn broken(files: &[SourceFile], documents: &BTreeMap<String, Option<Vec<String>>
         let text = joined(text);
         for Citation { document, title } in citations(&text) {
             match documents.get(&document) {
-                Some(Some(titles)) if title.is_empty() || titles.contains(&title) => {}
+                Some(Some(titles)) if title.is_empty() || titles.titles.contains(&title) => {}
                 Some(Some(_)) => found.push(format!("{file}: {document} holds no {title:?}")),
                 _ => found.push(format!("{file}: no {document}")),
             }
@@ -121,7 +156,7 @@ fn broken(files: &[SourceFile], documents: &BTreeMap<String, Option<Vec<String>>
 
 /// The document at `document` and its titles, a design document's path relative to `docs/design/`
 /// or the repository's root, as `AGENTS.md`'s; none for a path that names no document.
-fn document(document: &str) -> Option<Vec<String>> {
+fn document(document: &str) -> Option<Titles> {
     let root = source().join("..");
     let path = if document.starts_with("docs/design/") || document == "AGENTS.md" {
         root.join(document)
@@ -165,14 +200,17 @@ fn a_citation_names_a_decision_its_document_holds() {
     assert_eq!(broken(&files, &documents), Vec::<String>::new());
 
     // A sample: a whole document, a title a wrapped comment holds, two in one parenthesis, a
-    // missing title, a missing document, a link that is no citation, and the old form.
+    // title its bullet wraps, a nested bullet's, a missing title, a missing document, a link that
+    // is no citation, and the old form; and a lead that never closes.
     let sample = "/// As (a.md) says, and (a.md, One title; a.md, Two\n/// title), not (a.md, Three) \
-                  nor (b.md, One title); [a link](a.md#one-title); design 02, D1.\nfn f() {}\n";
+                  nor (b.md, One title); [a link](a.md#one-title); design 02, D1. (a.md, A long \
+                  wrapped title) (a.md, Nested)\nfn f() {}\n";
     let documents = BTreeMap::from([
         (
             "a.md".to_owned(),
             Some(titles(
-                "# A\n\n- **One title.** Text.\n- **Two title,** text.\n",
+                "# A\n\n- **One title.** Text.\n- **Two title,** text.\n- **A long\n  wrapped \
+                 title.** Text.\n  - **Nested.** Text.\n- **Never closed. Text.\n\n- **Four.** x\n",
             )),
         ),
         ("b.md".to_owned(), None),
@@ -180,6 +218,7 @@ fn a_citation_names_a_decision_its_document_holds() {
     assert_eq!(
         broken(&[SourceFile::new("s.rs", sample)], &documents),
         [
+            "a.md: a bold lead that never closes: \"Never closed. Text.\"",
             "s.rs: a.md holds no \"Three\"",
             "s.rs: no b.md",
             "s.rs: a design cited by its number",

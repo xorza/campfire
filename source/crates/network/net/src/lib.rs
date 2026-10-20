@@ -87,7 +87,7 @@ pub use crate::sim_server::server_dir::ServerDir;
 pub use crate::sim_server::server_layout::ServerLayout;
 pub use crate::sim_server::server_setup::ServerSetup;
 pub use crate::sim_server::session_dir::error::{
-    AbortError, FindError, PublishError, RestoreError, SessionCreateError, WaitingError,
+    AbortError, FindError, RestoreError, SessionCreateError, SessionPublishError, WaitingError,
 };
 pub use crate::sim_server::session_dir::{Publisher, RestoredSession, SessionDir, SessionFiles};
 pub use crate::sim_server::session_journal::SessionJournal;

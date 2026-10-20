@@ -2,7 +2,7 @@ use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::platform::os::Os;
+use crate::platform::os::Native;
 
 /// Whether the process caught the stop's signals: its handlers are the process's, as the OS
 /// keeps them, so the one check of a second catch is the process's too.
@@ -33,7 +33,7 @@ impl StopSignals {
             "a process catches the stop's signals once"
         );
         let received = Arc::new(AtomicBool::new(false));
-        Os::catch_stop(&received)?;
+        Native::catch_stop(&received)?;
         Ok(Self { received })
     }
 
@@ -47,7 +47,7 @@ impl StopSignals {
 pub(crate) mod internals {
     use std::process::{Child, Command};
 
-    use crate::platform::os::Os;
+    use crate::platform::os::Native;
     use crate::platform::stop_signals::StopSignals;
 
     impl StopSignals {
@@ -55,14 +55,14 @@ pub(crate) mod internals {
         /// ignored: on Unix, `SIGINT` and `SIGHUP`, as `nohup` and a shell's `&` leave them; on
         /// Windows, Ctrl-C, in a process group of its own, where Ctrl-Break reaches it alone.
         pub fn ignoring_terminal(command: &mut Command) -> &mut Command {
-            Os::ignore_terminal(command);
+            Native::ignore_terminal(command);
             command
         }
 
         /// Sends `child`, which `ignoring_terminal` started, the stop's signal no terminal sends:
         /// `SIGTERM` on Unix, Ctrl-Break to its group on Windows.
         pub fn stop(child: &Child) {
-            Os::stop(child.id()).unwrap();
+            Native::stop(child.id()).unwrap();
         }
     }
 }

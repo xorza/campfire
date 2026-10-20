@@ -39,6 +39,7 @@ campfire-sim = { workspace = true, features = ["internals"] }
 campfire-stats = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-test-packages.workspace = true
+campfire-threads = { workspace = true, features = ["internals"] }
 campfire-units = { workspace = true, features = ["internals"] }
 campfire-values = { workspace = true, features = ["ecs", "internals"] }
 campfire-vision = { workspace = true, features = ["internals"] }
@@ -53,7 +54,6 @@ campfire-codec = { workspace = true, features = ["internals"] }
 campfire-deliveries = { workspace = true, features = ["internals"] }
 campfire-interaction = { workspace = true, features = ["internals"] }
 campfire-projectiles = { workspace = true, features = ["internals"] }
-campfire-threads = { workspace = true, features = ["internals"] }
 campfire-verifier = { workspace = true, features = ["internals"] }
 
 [lints]
@@ -63,8 +63,6 @@ workspace = true
 name = "tests"
 path = "tests/mod.rs"
 
-[lib]
-bench = false
 
 [[bench]]
 name = "harness"

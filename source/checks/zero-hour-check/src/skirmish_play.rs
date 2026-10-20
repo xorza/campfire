@@ -18,7 +18,7 @@ use campfire_sim::StableId;
 use campfire_units::{BuildTarget, GroundPoint, Life, UnitsWorld};
 use campfire_values::ResourceId;
 
-use crate::failure::Failure;
+use crate::failure::CheckFailure;
 use crate::match_play::{CENTER, DOZER, MatchPlay};
 use crate::pins::{BOT_TYPES, BotBase, CRUSADERS, FactorySteps, FightSteps, HZ, ProductionSteps};
 
@@ -111,22 +111,22 @@ impl SkirmishPlay {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
-        failures: &mut Vec<Failure>,
+        failures: &mut Vec<CheckFailure>,
     ) -> Option<SkirmishSteps> {
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
         let options = &packages.data().options;
         let picks = match OptionPicks::named(options, &[start_money]) {
             Ok(picks) => picks,
             Err(error) => {
-                failures.push(Failure::Options(error));
+                failures.push(CheckFailure::Options(error));
                 return None;
             }
         };
-        let script = OrderScript::parse(BUILDER).map_err(Failure::BotOrders);
+        let script = OrderScript::parse(BUILDER).map_err(CheckFailure::BotOrders);
         let bot = script.and_then(|script| {
             let books = packages.name_books();
             let names = BotNames::new(&books);
-            BotScript::new(&script, &names).map_err(Failure::BotNames)
+            BotScript::new(&script, &names).map_err(CheckFailure::BotNames)
         });
         let bot = match bot {
             Ok(bot) => bot,
@@ -141,7 +141,7 @@ impl SkirmishPlay {
         let mut playing = MatchPlay::new(session.start());
         let names = playing.game().resource::<MatchNames>();
         let Some(money) = names.named::<ResourceId>("money") else {
-            failures.push(Failure::NoMoney);
+            failures.push(CheckFailure::NoMoney);
             playing.end();
             return None;
         };
@@ -164,14 +164,14 @@ impl SkirmishPlay {
 impl Play<'_> {
     /// The production steps in `play`, after its start's tick, then the factory's, then the
     /// fight.
-    fn steps(&self, play: &mut MatchPlay, bot: BotScript) -> Result<SkirmishSteps, Failure> {
+    fn steps(&self, play: &mut MatchPlay, bot: BotScript) -> Result<SkirmishSteps, CheckFailure> {
         play.step();
         play.drive_bot(1, bot)?;
         let [center] = play.owned(CENTER, 0)?[..] else {
-            return Err(Failure::ProductionStart);
+            return Err(CheckFailure::ProductionStart);
         };
         let [dozer] = play.owned(DOZER, 0)?[..] else {
-            return Err(Failure::ProductionStart);
+            return Err(CheckFailure::ProductionStart);
         };
         // The center trains a dozer: its second, once its time ends.
         let train = OrdersDirective::Slot {
@@ -198,7 +198,7 @@ impl Play<'_> {
         })?;
         let after_barracks = self.money(play);
         let [barracks] = play.owned(BARRACKS, 0)?[..] else {
-            return Err(Failure::ProductionStart);
+            return Err(CheckFailure::ProductionStart);
         };
         // The barracks trains a ranger, which needs the barracks whole.
         let ranger = OrdersDirective::Slot {
@@ -233,7 +233,7 @@ impl Play<'_> {
 
     /// The dozer `dozer` builds each of `FACTORY_CHAIN` whole in `play`, one after another; the
     /// ticks of each and the money left.
-    fn factory(&self, play: &mut MatchPlay, dozer: StableId) -> Result<FactorySteps, Failure> {
+    fn factory(&self, play: &mut MatchPlay, dozer: StableId) -> Result<FactorySteps, CheckFailure> {
         let mut ticks = [0; FACTORY_CHAIN.len()];
         for (building, ticks) in FACTORY_CHAIN.iter().zip(&mut ticks) {
             let [x, z, angle] = building.at.map(Num::int);
@@ -258,9 +258,9 @@ impl Play<'_> {
 
     /// Player 1's war factory in `play` trains `CRUSADERS`, one order a tick while its queue has
     /// room; the ticks the trains took.
-    fn train_crusaders(&self, play: &mut MatchPlay) -> Result<u64, Failure> {
+    fn train_crusaders(&self, play: &mut MatchPlay) -> Result<u64, CheckFailure> {
         let [factory] = play.owned(FACTORY, 0)?[..] else {
-            return Err(Failure::ProductionStart);
+            return Err(CheckFailure::ProductionStart);
         };
         let train = OrdersDirective::Slot {
             slot: self.slot(FACTORY, "train_americatankcrusader")?,
@@ -270,7 +270,7 @@ impl Play<'_> {
         let mut train_ticks = 0;
         while play.owned(CRUSADER, 0)?.len() < crusaders {
             if train_ticks == STEP_LIMIT {
-                return Err(Failure::ProductionStep(train));
+                return Err(CheckFailure::ProductionStep(train));
             }
             let queued = MatchUnits::of(play.game())
                 .unit(factory)
@@ -287,7 +287,7 @@ impl Play<'_> {
 
     /// How many living units of each of `BOT_TYPES` the bot owns in `play`, whole, as a site
     /// counts for no building.
-    fn bot_built(play: &MatchPlay) -> Result<[usize; BOT_TYPES.len()], Failure> {
+    fn bot_built(play: &MatchPlay) -> Result<[usize; BOT_TYPES.len()], CheckFailure> {
         let units = MatchUnits::of(play.game());
         let mut built = [0; BOT_TYPES.len()];
         for (count, name) in built.iter_mut().zip(BOT_TYPES) {
@@ -304,9 +304,9 @@ impl Play<'_> {
     /// the bot's command center; the ticks from the attack's order to the first shell's launch,
     /// to the first damage to the center, and to its death; the money left, and how the match
     /// ended by then, if it did, as the bot's other buildings count for its victory.
-    fn attack(&self, play: &mut MatchPlay, train_ticks: u64) -> Result<FightSteps, Failure> {
+    fn attack(&self, play: &mut MatchPlay, train_ticks: u64) -> Result<FightSteps, CheckFailure> {
         let [target] = play.owned(CENTER, 1)?[..] else {
-            return Err(Failure::FightStart);
+            return Err(CheckFailure::FightStart);
         };
         let money = self.money(play);
         let crusaders = play.owned(CRUSADER, 0)?;
@@ -342,7 +342,7 @@ impl Play<'_> {
                 });
             }
         }
-        Err(Failure::NoEnd)
+        Err(CheckFailure::NoEnd)
     }
 
     /// The life of `unit` in `play`, none once it is gone.
@@ -359,8 +359,8 @@ impl Play<'_> {
         play: &mut MatchPlay,
         unit: StableId,
         directive: OrdersDirective,
-        done: impl Fn(&MatchPlay) -> Result<bool, Failure>,
-    ) -> Result<u64, Failure> {
+        done: impl Fn(&MatchPlay) -> Result<bool, CheckFailure>,
+    ) -> Result<u64, CheckFailure> {
         play.order(&[Order::one(unit, directive)]);
         for ticks in 1..=STEP_LIMIT {
             play.step();
@@ -368,12 +368,12 @@ impl Play<'_> {
                 return Ok(ticks);
             }
         }
-        Err(Failure::ProductionStep(directive))
+        Err(CheckFailure::ProductionStep(directive))
     }
 
     /// The slot of `action` among the actions of the type `unit` in its slot kind `command`; a
     /// failure when the mode lacks the type or the action.
-    fn slot(&self, unit: &'static str, action: &'static str) -> Result<u8, Failure> {
+    fn slot(&self, unit: &'static str, action: &'static str) -> Result<u8, CheckFailure> {
         let command = DeclaredName::new("command").expect("a declared name");
         let at = self
             .packages
@@ -382,7 +382,7 @@ impl Play<'_> {
             .get(unit)
             .and_then(|held| held.section::<TypeSlotsData>()?.0.get(&command))
             .and_then(|slots| slots.iter().position(|held| held.as_str() == action))
-            .ok_or(Failure::NoAction { unit, action })?;
+            .ok_or(CheckFailure::NoAction { unit, action })?;
         Ok(u8::try_from(at).expect("a unit's slots fit a u8"))
     }
 

@@ -1,6 +1,6 @@
 use campfire_package_disk::StoreError;
 use campfire_protocol::LogError;
-use campfire_runner::{ReplayError, SnapshotCheckError, StartError, TermsError};
+use campfire_runner::{ReplayError, ResumeError, SnapshotCheckError, StartError, TermsError};
 use campfire_store::{PathError, ReadError};
 use thiserror::Error;
 
@@ -23,6 +23,13 @@ pub enum VerifyError {
     /// The log's match does not start on the packages it names.
     #[error("the replay does not start")]
     Start(#[source] StartError),
+    /// The log's file starts at the checkpoint of segment `segment`, and the snapshots hold no
+    /// snapshot of it, which its replay starts from.
+    #[error("the log starts at the checkpoint of segment {segment}, whose snapshot is not given")]
+    MissingSnapshot { segment: u32 },
+    /// The replay does not resume from the checkpoint the log's file starts at.
+    #[error("the replay does not resume from the log's first checkpoint")]
+    Resume(#[source] ResumeError),
     #[error("a checkpoint's snapshot does not read")]
     ReadSnapshot(#[source] PathError<ReadError>),
     #[error("a checkpoint's snapshot does not check")]

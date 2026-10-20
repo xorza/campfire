@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// The tick rates a session may choose, in ticks a second: `min ≤ default ≤ max`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,15 +40,24 @@ impl TickRange {
     }
 }
 
+/// The range as its file holds it, which reads and writes the same fields.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Fields {
+    min: NonZeroU32,
+    max: NonZeroU32,
+    default: NonZeroU32,
+}
+
+impl Serialize for TickRange {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let Self { min, max, default } = *self;
+        Fields { min, max, default }.serialize(serializer)
+    }
+}
+
 impl<'de> Deserialize<'de> for TickRange {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Fields {
-            min: NonZeroU32,
-            max: NonZeroU32,
-            default: NonZeroU32,
-        }
         let Fields { min, max, default } = Fields::deserialize(deserializer)?;
         Self::new(min, default, max)
             .ok_or_else(|| D::Error::custom("the tick rate range does not hold its default"))

@@ -13,6 +13,7 @@ use crate::mode_combat_data::ModeCombatData;
 /// nothing; and how long after its last strike an attacker counts as assisting in a death,
 /// `assist_window_ms` in ticks, without which no one assists. Package data, not state.
 #[derive(Resource, Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[component(immutable)]
 pub struct CombatBook {
     pub(crate) leech_attack: Option<StatId>,
     pub(crate) leech_other: Option<StatId>,

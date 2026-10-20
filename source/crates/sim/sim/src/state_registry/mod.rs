@@ -1,21 +1,25 @@
 use std::any::Any;
 use std::collections::VecDeque;
 
-use bevy_ecs::change_detection::{CheckChangeTicks, DetectChanges, Ref, Tick as ChangeTick};
+use bevy_ecs::change_detection::{
+    CheckChangeTicks, DetectChanges, DetectChangesMut, Ref, Tick as ChangeTick,
+};
+use bevy_ecs::entity::Entity;
 use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Allow, QueryState};
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::{Query, ResMut};
+use bevy_ecs::system::{Commands, Query, ResMut};
 use bevy_ecs::world::{Mut, World};
-use campfire_codec::{Binary, BinaryError, Sink, Taken};
+use campfire_codec::{Binary, BinaryError, Decoded, Sink};
 use campfire_common::{DomainHasher, HashDomain, Meaning, StateHash, Value32};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::host_rule::HostRule;
 use crate::id_allocator::IdAllocator;
+use crate::prediction_started::PredictionStarted;
 use crate::restoring::Restoring;
 use crate::sim_state::{SimComponent, SimResource};
 use crate::stable_id::StableId;
@@ -104,6 +108,8 @@ struct Entry {
     /// Records each removal of the type's component, at its place in the registry, in the
     /// world's `StateChanges`.
     watch: fn(&mut World, u16),
+    /// Marks the type's component of an entity changed, when it holds one.
+    mark: fn(&mut World, Entity),
     #[cfg(feature = "internals")]
     scramble: fn(&mut internals::Draws, &mut World) -> bool,
     /// Changes where a value of the type sits, as a mutation says.
@@ -127,6 +133,7 @@ impl Entry {
             copy_query: None,
             apply: |_, _, _| {},
             watch: |_, _| {},
+            mark: |_, _| {},
             #[cfg(feature = "internals")]
             scramble: internals::Draws::scramble_entities,
             #[cfg(feature = "internals")]
@@ -147,6 +154,7 @@ impl Entry {
             copy_query: Some(copy_query::<C>),
             apply: apply_component::<C>,
             watch: watch_component::<C>,
+            mark: mark_component::<C>,
             #[cfg(feature = "internals")]
             scramble: internals::Draws::scramble_component::<C>,
             #[cfg(feature = "internals")]
@@ -167,6 +175,7 @@ impl Entry {
             copy_query: None,
             apply: apply_resource::<R>,
             watch: |_, _| {},
+            mark: |_, _| {},
             #[cfg(feature = "internals")]
             scramble: internals::Draws::scramble_resource::<R>,
             #[cfg(feature = "internals")]
@@ -395,6 +404,30 @@ impl StateRegistry {
         self.check(world)
     }
 
+    /// Marks each state part of `entity` changed, as a predicting client starts to predict the
+    /// unit: its parts' change ticks aged while the client held it as sent, which no pass visits,
+    /// so each pass that follows changes takes it at once (02-engine-core.md,
+    /// Prediction's start marks the unit's state changed).
+    pub(crate) fn mark_changed(&self, world: &mut World, entity: Entity) {
+        for entry in &self.entries {
+            (entry.mark)(world, entity);
+        }
+    }
+
+    /// Marks the state of each unit a predicting client starts to predict changed, after the
+    /// commands that started it.
+    pub(crate) fn predicted(
+        started: On<'_, '_, PredictionStarted>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let entity = started.entity;
+        commands.queue(move |world: &mut World| {
+            world.resource_scope(|world, registry: Mut<'_, Self>| {
+                registry.mark_changed(world, entity);
+            });
+        });
+    }
+
     /// Checks the state of `world` as a restore checks it: each type's own rules, then the rules
     /// of it that other modules know, with its host among them.
     pub fn check(&self, world: &World) -> Result<(), SnapshotError> {
@@ -571,7 +604,7 @@ fn split_len(bytes: &[u8], len: u64) -> Result<Split<'_>, SnapshotError> {
 }
 
 /// Reads one value and the bytes after it.
-fn take<T: DeserializeOwned + Serialize>(bytes: &[u8]) -> Result<Taken<'_, T>, SnapshotError> {
+fn take<T: DeserializeOwned + Serialize>(bytes: &[u8]) -> Result<Decoded<'_, T>, SnapshotError> {
     Binary::take(bytes).map_err(|error| match error {
         BinaryError::Truncated => SnapshotError::Truncated,
         BinaryError::NotCanonical => SnapshotError::NotCanonical,
@@ -588,7 +621,7 @@ fn encode_entities(world: &World, sink: &mut dyn Sink) {
 fn decode_entities(mut body: &[u8]) -> Result<Vec<StableId>, SnapshotError> {
     let mut ids: Vec<StableId> = Vec::new();
     while !body.is_empty() {
-        let Taken { value: id, rest } = take::<StableId>(body)?;
+        let Decoded { value: id, rest } = take::<StableId>(body)?;
         if ids.last().is_some_and(|&previous| previous >= id) {
             return Err(SnapshotError::NotCanonical);
         }
@@ -626,7 +659,7 @@ fn decode_component<C: SimComponent>(
 ) -> Result<(), SnapshotError> {
     let mut values: VecDeque<(StableId, C)> = VecDeque::new();
     while !body.is_empty() {
-        let Taken {
+        let Decoded {
             value: (id, component),
             rest,
         } = take::<(StableId, C)>(body)?;
@@ -646,7 +679,7 @@ fn encode_resource<R: SimResource>(world: &World, sink: &mut dyn Sink) {
 }
 
 fn decode_resource<R: SimResource>(world: &mut World, body: &[u8]) -> Result<(), SnapshotError> {
-    let Taken { value, rest } = take::<Option<R>>(body)?;
+    let Decoded { value, rest } = take::<Option<R>>(body)?;
     if !rest.is_empty() {
         return Err(SnapshotError::Trailing);
     }
@@ -686,7 +719,7 @@ fn copy_component<C: SimComponent>(
 
 fn apply_component<C: SimComponent>(world: &mut World, mut body: &[u8], pass: Pass) {
     while !body.is_empty() {
-        let Taken {
+        let Decoded {
             value: (id, value),
             rest,
         } = take::<(StableId, Option<C>)>(body).expect("a delta decodes");
@@ -709,6 +742,18 @@ fn apply_component<C: SimComponent>(world: &mut World, mut body: &[u8], pass: Pa
             (Pass::Removals, None) => drop(world.entity_mut(entity).remove::<C>()),
             (Pass::Values, None) | (Pass::Removals, Some(_)) => {}
         }
+    }
+}
+
+/// Marks `entity`'s `C` changed, when it holds one: a change tick its passes take as a write.
+fn mark_component<C: SimComponent>(world: &mut World, entity: Entity) {
+    let Some(id) = world.component_id::<C>() else {
+        return;
+    };
+    if let Ok(mut held) = world.get_entity_mut(entity)
+        && let Ok(mut part) = held.get_mut_by_id(id)
+    {
+        part.set_changed();
     }
 }
 
@@ -747,7 +792,7 @@ fn apply_resource<R: SimResource>(world: &mut World, body: &[u8], pass: Pass) {
     if pass == Pass::Removals || body.is_empty() {
         return;
     }
-    let Taken { value, rest } = take::<Option<R>>(body).expect("a delta decodes");
+    let Decoded { value, rest } = take::<Option<R>>(body).expect("a delta decodes");
     debug_assert!(
         rest.is_empty(),
         "a resource's section holds its value alone"

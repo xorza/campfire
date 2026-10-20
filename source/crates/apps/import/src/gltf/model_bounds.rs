@@ -4,7 +4,7 @@ use gltf_json::mesh::Semantic;
 use gltf_json::validation::Checked;
 use gltf_json::{Index, Root};
 
-use crate::pose::Pose;
+use crate::pose::RigidPose;
 use crate::quaternion::Quaternion;
 
 /// What a model's top is measured from, as the client draws its glTF: each node's name, its
@@ -22,7 +22,7 @@ pub(crate) struct ModelBounds {
 struct BoundsNode {
     name: String,
     children: Vec<usize>,
-    pose: Pose,
+    pose: RigidPose,
     bounds: Vec<BoxBounds>,
 }
 
@@ -54,13 +54,15 @@ impl ModelBounds {
             BoundsNode {
                 name: node.name.clone().expect("the importer names each node"),
                 children: node.children.iter().flatten().map(Index::value).collect(),
-                pose: Pose {
+                pose: RigidPose {
                     translation: node
                         .translation
-                        .map_or(Pose::IDENTITY.translation, Vec3::from_array),
-                    rotation: node.rotation.map_or(Pose::IDENTITY.rotation, |rotation| {
-                        Quaternion::from_array(rotation.0)
-                    }),
+                        .map_or(RigidPose::IDENTITY.translation, Vec3::from_array),
+                    rotation: node
+                        .rotation
+                        .map_or(RigidPose::IDENTITY.rotation, |rotation| {
+                            Quaternion::from_array(rotation.0)
+                        }),
                 },
                 bounds: bounds.collect(),
             }
@@ -80,10 +82,10 @@ impl ModelBounds {
     /// before its look's scale: of each primitive's bounds placed by its nodes, the highest
     /// corner, each node `hidden` names hidden with all it holds; none when it draws nothing.
     pub(crate) fn top(&self, hidden: &[String]) -> Option<f32> {
-        let mut walk: Vec<(usize, Pose)> = self
+        let mut walk: Vec<(usize, RigidPose)> = self
             .roots
             .iter()
-            .map(|&root| (root, Pose::IDENTITY))
+            .map(|&root| (root, RigidPose::IDENTITY))
             .collect();
         let mut top = None::<f32>;
         while let Some((at, parent)) = walk.pop() {
@@ -103,8 +105,8 @@ impl ModelBounds {
 
     /// The height of the highest corner of the box of `bounds` placed by `pose`: its center's
     /// height and its half extents along the rotation's row of the vertical, in a fixed order, as
-    /// `Pose` computes.
-    fn bounds_top(pose: Pose, BoxBounds { min, max }: BoxBounds) -> f32 {
+    /// `RigidPose` computes.
+    fn bounds_top(pose: RigidPose, BoxBounds { min, max }: BoxBounds) -> f32 {
         let rise = pose.rotation.up_row();
         let center = Vec3::from_array([0, 1, 2].map(|axis| f32::midpoint(min[axis], max[axis])));
         let half = (max - min) * 0.5;
@@ -134,7 +136,7 @@ mod tests {
         BoundsNode {
             name: name.to_owned(),
             children: children.to_vec(),
-            pose: Pose {
+            pose: RigidPose {
                 translation: Vec3::from_array(translation),
                 rotation: Quaternion::from_array(rotation),
             },
@@ -155,7 +157,7 @@ mod tests {
         // 1 m deep.
         let quarter = std::f32::consts::FRAC_1_SQRT_2;
         let about_x = [quarter, 0.0, 0.0, quarter];
-        let identity = Pose::IDENTITY.rotation.to_array();
+        let identity = RigidPose::IDENTITY.rotation.to_array();
         let model = ModelBounds {
             nodes: vec![
                 node(

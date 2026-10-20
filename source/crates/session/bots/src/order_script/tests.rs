@@ -10,7 +10,7 @@ use super::*;
 use crate::location::{Location, MarkerLocation};
 
 /// The order of `directive`, with names, at `tick`, to the avatar.
-const fn order(tick: u64, directive: Directive<Named>) -> ScriptedOrder {
+const fn order(tick: u64, directive: Directive<NamedRefs>) -> ScriptedOrder {
     ScriptedOrder {
         tick: Tick::new(tick),
         units: ScriptedUnits::Avatar,

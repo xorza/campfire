@@ -18,7 +18,7 @@ use crate::signature::Signature;
 pub(super) struct LogEntries {
     inputs: PagedVec<LoggedInput>,
     payloads: PagedBytes,
-    packets: PagedVec<Packet>,
+    packets: PagedVec<SignedInputs>,
     server: PagedVec<LoggedServer>,
     /// The packets and the server inputs, in the order they were logged.
     entries: PagedVec<Entry>,
@@ -51,7 +51,7 @@ struct LoggedInput {
 
 /// A player's packet: its inputs, and the signature over the chain head after the last.
 #[derive(Debug)]
-pub(super) struct Packet {
+pub(super) struct SignedInputs {
     pub(super) inputs: Range<u32>,
     pub(super) signature: Signature,
 }
@@ -140,6 +140,22 @@ impl LogEntries {
         self.tick_ends.push(end);
     }
 
+    /// Starts the entries at the boundary before `tick`, a checkpoint's, as a log file that
+    /// starts there holds none before it: the ticks before `tick` hold no end, but the one before
+    /// it, where the entries since start.
+    pub(super) fn start_at(&mut self, tick: Tick) {
+        debug_assert!(
+            self.entries.len() == 0 && self.tick_ends.len() == 0,
+            "entries start at a boundary before any is logged"
+        );
+        let before = tick
+            .get()
+            .checked_sub(1)
+            .expect("a checkpoint's boundary after tick 0");
+        self.tick_ends = PagedVec::starting_at(usize::try_from(before).expect("tick fits usize"));
+        self.tick_ends.push(0);
+    }
+
     /// Where its buffers end now.
     pub(super) fn at(&self) -> EntriesAt {
         EntriesAt {
@@ -201,7 +217,7 @@ impl LogEntries {
         self.entries.range(at(range.start)..at(range.end)).copied()
     }
 
-    pub(super) fn packet(&self, index: u32) -> &Packet {
+    pub(super) fn packet(&self, index: u32) -> &SignedInputs {
         &self.packets[at(index)]
     }
 
@@ -251,7 +267,7 @@ impl LogEntries {
     /// Logs the packet of the inputs at `inputs`, signed by `signature`, as the next entry.
     pub(super) fn push_packet(&mut self, inputs: Range<u32>, signature: Signature) {
         self.entries.push(Entry::Packet(offset(self.packets.len())));
-        self.packets.push(Packet { inputs, signature });
+        self.packets.push(SignedInputs { inputs, signature });
     }
 
     /// Logs `served`, signed by `signature`, as the next entry.

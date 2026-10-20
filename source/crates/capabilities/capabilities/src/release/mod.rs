@@ -68,6 +68,8 @@ pub(crate) mod match_setup;
 #[cfg(feature = "internals")]
 mod module_sets;
 #[cfg(feature = "internals")]
+mod predicted_parts;
+#[cfg(feature = "internals")]
 mod resource_audit;
 mod section_list;
 mod stage_span_systems;
@@ -376,7 +378,8 @@ pub(crate) mod internals {
         StateCopy, StateRegistry,
     };
     use campfire_states::{Replication, StateTypes};
-    use campfire_units::{EntityKinds, ScriptBook, UnitTypes, Units, UnitsWorld};
+    use campfire_stats::ModifierBook;
+    use campfire_units::{EntityKinds, ScriptBook, UnitTypeBook, UnitTypes, Units, UnitsWorld};
     use campfire_values::{Speed, TextId};
 
     use crate::books::Books;
@@ -458,6 +461,18 @@ pub(crate) mod internals {
         /// schedule (02-engine-core.md, A test's match installs at its first tick).
         pub(super) fn finish_open(mut sim: SimWorldBuilder<'_>) {
             Units::seal_once(sim.world());
+            // The modifiers of the test tags load with the books, before the install reads them,
+            // so a test may hold a tag at any tick (02-engine-core.md, A test's match installs at
+            // its first tick).
+            let world = sim.world();
+            let (first, _) = &Units::test_tags()[0];
+            let declared = world
+                .resource::<UnitTypeBook>()
+                .tags()
+                .named(first.as_str());
+            if world.contains_resource::<ModifierBook>() && declared.is_some() {
+                Units::load_test_modifiers(world);
+            }
             let facts = sim.world().resource::<MatchFacts>().clone();
             let install = InstallFacts {
                 called: Self::called(facts.set, &facts.role),

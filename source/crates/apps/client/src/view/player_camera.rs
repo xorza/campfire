@@ -1,6 +1,6 @@
 use bevy::app::{App, Plugin, Startup, Update};
 use bevy::camera::{Camera3d, PerspectiveProjection, Projection};
-use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::message::MessageReader;
 use bevy::ecs::query::{Changed, With};
@@ -16,7 +16,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window};
 
 use crate::input_map::{Act, InputMap};
 use crate::view::ViewSystems;
-use crate::view::camera_rig::{CameraRig, ScreenPoint, Turn, Zoom};
+use crate::view::camera_rig::{CameraRig, CameraTurn, ScreenPoint, Zoom};
 use crate::view::client_data::ClientData;
 use crate::view::float_num::FloatNum;
 use crate::view::ground_heights::GroundHeights;
@@ -58,7 +58,7 @@ impl Plugin for PlayerCameraPlugin {
 }
 
 impl PlayerCameraPlugin {
-    fn spawn(data: Res<'_, ClientData>, mut commands: Commands<'_, '_>) {
+    fn spawn(data: Res<'_, ClientData>, input: Res<'_, InputMap>, mut commands: Commands<'_, '_>) {
         let file = data.camera.unwrap_or(CameraRig::DEFAULT);
         let grid = data.heights.as_ref().map(GroundHeights::grid);
         let bounds = grid.map(|grid| {
@@ -70,11 +70,13 @@ impl PlayerCameraPlugin {
             ]
         });
         let pivot = bounds.map_or(Vec2::ZERO, |[least, most]| (least + most) / 2.0);
-        let rig = CameraRig::new(file, pivot, bounds);
-        // No tonemapping: the default one needs lookup tables the client does not build with.
+        let rig = CameraRig::new(file, pivot, bounds).with_press(input.press());
+        // No tonemapping: the default one needs lookup tables the client does not build with. With
+        // none, Bevy dithers nothing, so the dither its camera requires goes too.
         commands.spawn((
             Camera3d::default(),
             Tonemapping::None,
+            DebandDither::Disabled,
             EXPOSURE,
             rig.transform(0.0),
         ));
@@ -126,8 +128,8 @@ impl PlayerCameraPlugin {
             _ => {}
         }
         match (held(Act::TurnLeft), held(Act::TurnRight)) {
-            (true, false) => rig.turn_key(Turn::Clockwise, seconds),
-            (false, true) => rig.turn_key(Turn::Counterclockwise, seconds),
+            (true, false) => rig.turn_key(CameraTurn::Clockwise, seconds),
+            (false, true) => rig.turn_key(CameraTurn::Counterclockwise, seconds),
             _ => {}
         }
         if input.pressed(Act::ResetCamera, &keys) {

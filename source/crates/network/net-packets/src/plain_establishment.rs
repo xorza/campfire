@@ -1,9 +1,12 @@
-use campfire_net_core::Instant;
 use core::net::SocketAddr;
+
+use campfire_net_core::Instant;
 
 use crate::connection_id::ConnectionId;
 use crate::datagram_io::Datagram;
-use crate::establish::{ClientEstablish, Establish, Established, Establishing, ServerEstablish};
+use crate::establish::{
+    ClientEstablish, Establish, Established, Establishing, PathCheck, ReadCost, ServerEstablish,
+};
 use crate::protection::Protection;
 
 /// Plain packet sessions with no handshake, for an IO in one process: a client's packet session
@@ -27,21 +30,14 @@ impl PlainEstablishment {
 }
 
 impl Establish for PlainEstablishment {
-    fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) {}
+    fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) -> ReadCost {
+        ReadCost::Light
+    }
 
     fn poll(&mut self, _: Instant, _: &mut Establishing) {}
 
     fn next_deadline(&self) -> Option<Instant> {
         None
-    }
-
-    fn routes_by_prefix(&self) -> bool {
-        false
-    }
-
-    /// Never asked: a plain packet session routes by address, so its peer never moves.
-    fn challenge(&mut self) -> [u8; 8] {
-        unreachable!("a packet session routed by address has no candidate path")
     }
 
     fn ended(&mut self, _: Option<ConnectionId>) {}
@@ -62,5 +58,10 @@ impl ServerEstablish for PlainEstablishment {
 
     fn set_accepting(&mut self, accepting: bool) {
         self.accepting = accepting;
+    }
+
+    /// None: a plain packet session routes by address, so its peer never moves.
+    fn path_check(&mut self) -> Option<&mut dyn PathCheck> {
+        None
     }
 }

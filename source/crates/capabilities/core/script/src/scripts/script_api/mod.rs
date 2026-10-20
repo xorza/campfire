@@ -6,6 +6,7 @@ use rhai::Engine;
 
 use crate::script_host::ScriptHost;
 use crate::scripts::api_holder::ApiHolder;
+use crate::scripts::given_names::GivenNames;
 use crate::scripts::hook::Hook;
 use crate::scripts::member_decl::{ArgKinds, MemberDecl};
 use crate::scripts::member_kind::MemberKind;
@@ -17,7 +18,6 @@ use crate::scripts::script_api::enum_record::EnumRecord;
 use crate::scripts::script_api::hook_status::HookStatus;
 use crate::scripts::script_api::tag_property_status::TagPropertyStatus;
 use crate::scripts::status::Status;
-use campfire_values::NameKind;
 
 pub(crate) mod api_builder;
 pub(crate) mod api_member;
@@ -210,10 +210,10 @@ impl ScriptApi {
         Some(&self.members[at])
     }
 
-    /// The kind of name the field or method `name` of any handle gives, as `kind` says which;
-    /// none for a value that names nothing: every handle with a getter or method of that name
-    /// gives the same kind, so a script's comparison is checked whatever value it reads it on.
-    pub fn returned(&self, name: &str, kind: MemberKind) -> Option<NameKind> {
+    /// The names the field or method `name` of any handle gives, as `kind` says which; none for
+    /// a value that names nothing: every handle with a getter or method of that name gives the
+    /// same names, so a script's comparison is checked whatever value it reads it on.
+    pub fn returned(&self, name: &str, kind: MemberKind) -> Option<GivenNames> {
         self.members
             .iter()
             .filter(|member| {

@@ -14,8 +14,8 @@ use campfire_units::PoolCost;
 use campfire_values::{
     Distance, FilterData, Number, PackagePath, Param, Rank, Ranked, Scalar, TextId,
 };
-use serde::Deserialize;
 use serde::de::Error;
+use serde::{Deserialize, Serialize};
 
 use crate::action_data::error::ActionField;
 use crate::action_kind::ActionKind;
@@ -127,39 +127,108 @@ impl PartialEq for ActionData {
 
 impl Eq for ActionData {}
 
-/// The keys of an action's table that serde reads, every kind's: its kind's name, which picks the
-/// reader of its section, and the fields of `ActionData` but its section and its lists, which read
-/// with the release's readers.
-#[derive(Debug, Deserialize)]
+/// The keys of an action's table that the pipeline reads, every kind's: its kind's name, which
+/// picks the reader of its section, and the fields of `ActionData` but its section and its lists,
+/// which read with the release's readers. A tool writes an action through them, beside its
+/// kind's section (03-game-scripting.md, A section has a partial form).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PipelineKeys {
-    name: Option<TextId>,
+pub struct ActionKeys {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<TextId>,
     #[serde(default)]
-    kind: ActionKind,
-    script: Option<PackagePath>,
-    targeting: Targeting,
-    range: Option<Ranked<RangeField>>,
-    cooldown_ms: Option<Ranked<Number>>,
-    #[serde(default)]
-    cost: BTreeMap<DeclaredName, Ranked<Number>>,
-    windup_ms: Option<Ranked<Number>>,
-    #[serde(default)]
-    clamp_to_range: bool,
-    toggle: Option<Toggle>,
-    channel: Option<ChannelData>,
-    hold: Option<DeclaredName>,
-    charges: Option<ChargesData>,
-    charging: Option<ChargeUpData>,
-    passive_modifier: Option<DeclaredName>,
-    #[serde(default)]
-    passive_while_ready: bool,
-    delivery: Option<DeliveryData>,
-    #[serde(default)]
-    params: BTreeMap<DeclaredName, Param>,
+    pub kind: ActionKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub script: Option<PackagePath>,
+    pub targeting: Targeting,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<Ranked<RangeField>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cooldown_ms: Option<Ranked<Number>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub cost: BTreeMap<DeclaredName, Ranked<Number>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub windup_ms: Option<Ranked<Number>>,
+    #[serde(default, skip_serializing_if = "is_off")]
+    pub clamp_to_range: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub toggle: Option<Toggle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<ChannelData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hold: Option<DeclaredName>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub charges: Option<ChargesData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub charging: Option<ChargeUpData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub passive_modifier: Option<DeclaredName>,
+    #[serde(default, skip_serializing_if = "is_off")]
+    pub passive_while_ready: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<DeliveryData>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<DeclaredName, Param>,
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's test of a field to skip takes it by reference"
+)]
+const fn is_off(flag: &bool) -> bool {
+    !*flag
+}
+
+impl ActionKeys {
+    /// The keys of an action of `kind` that targets as `targeting`, and gives no other key.
+    pub const fn new(kind: ActionKind, targeting: Targeting) -> Self {
+        Self {
+            name: None,
+            kind,
+            script: None,
+            targeting,
+            range: None,
+            cooldown_ms: None,
+            cost: BTreeMap::new(),
+            windup_ms: None,
+            clamp_to_range: false,
+            toggle: None,
+            channel: None,
+            hold: None,
+            charges: None,
+            charging: None,
+            passive_modifier: None,
+            passive_while_ready: false,
+            delivery: None,
+            params: BTreeMap::new(),
+        }
+    }
+
+    /// The table of the action of these keys and `section`, the fields of its kind's own, side
+    /// by side, as `ActionData::read` takes them apart.
+    pub fn table<K: KindSection + Serialize>(&self, section: &K) -> TomlTable {
+        debug_assert_eq!(
+            self.kind,
+            section.kind(),
+            "an action's section is of its kind"
+        );
+        let mut table: TomlTable = TomlValue::of(self).read().expect("the keys write a table");
+        let fields: TomlTable = TomlValue::of(section)
+            .read()
+            .expect("a kind's section writes a table");
+        for (key, value) in fields.into_entries() {
+            debug_assert!(
+                !table.holds(&key),
+                "`{key}` is the pipeline's or the kind's"
+            );
+            table.insert(key, value);
+        }
+        table
+    }
 }
 
 /// A toggle's cost, in each pool of the caster it names.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Toggle {
     CostPerAttack(BTreeMap<DeclaredName, Ranked<Number>>),
@@ -168,7 +237,7 @@ pub enum Toggle {
 
 /// A channel, which starts after `on_resolve` and calls `on_channel_tick` every `tick_ms`; with
 /// `damage_interrupts`, damage of more than 0 to its unit cuts it.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChannelData {
     pub duration_ms: Ranked<Number>,
@@ -179,7 +248,7 @@ pub struct ChannelData {
 
 /// An action's `charges`: the uses it stores, at most `max`, each coming back `recharge_ms`
 /// after it is spent.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChargesData {
     pub max: Ranked<Number>,
@@ -188,7 +257,7 @@ pub struct ChargesData {
 
 /// An action's `charge`: a cast that charges from its start, in place of its windup, and
 /// resolves when its order is given again or at `max_ms`, whichever is first.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChargeUpData {
     pub max_ms: Ranked<Number>,
@@ -518,7 +587,7 @@ impl ActionData {
     /// The keys of an action's table that the pipeline reads, every kind's, its lists among
     /// them; its kind's section reads the rest.
     pub fn pipeline_keys() -> impl Iterator<Item = &'static str> {
-        let keys = StructFields::of::<PipelineKeys>().iter().copied();
+        let keys = StructFields::of::<ActionKeys>().iter().copied();
         keys.chain(Self::LISTS)
     }
 
@@ -532,8 +601,8 @@ impl ActionData {
                 .map_or(Ok(Vec::new()), |list| EffectData::read_list(list, readers))
         };
         let [on_resolve, on_hit, on_end] = Self::LISTS.map(&mut list);
-        let keys = table.take_keys(StructFields::of::<PipelineKeys>().iter().copied());
-        let PipelineKeys {
+        let keys = table.take_keys(StructFields::of::<ActionKeys>().iter().copied());
+        let ActionKeys {
             name,
             kind,
             script,

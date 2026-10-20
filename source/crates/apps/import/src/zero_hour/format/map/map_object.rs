@@ -31,7 +31,7 @@ pub(crate) struct Waypoint {
 /// An object placed on the ground plane: its `[x, z]`, its height above the ground, and its angle
 /// in degrees, counter-clockwise seen from above.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Placement {
+pub(crate) struct ObjectPlace {
     pub(crate) ground: [Num; 2],
     pub(crate) height: Num,
     pub(crate) degrees: Num,
@@ -126,8 +126,8 @@ impl MapObject {
     /// is counter-clockwise seen from above. `None` past the world's bound, or for an angle the
     /// game's own normalization never ends on. A waypoint takes its ground point alone, as the
     /// game reads neither its height nor its angle.
-    pub(crate) fn placement(&self) -> Option<Placement> {
-        Some(Placement {
+    pub(crate) fn placement(&self) -> Option<ObjectPlace> {
+        Some(ObjectPlace {
             ground: self.ground()?,
             height: game_float::to_num(self.position[2]).ok()?,
             degrees: Self::degrees(Self::normalized(self.angle)?)?,

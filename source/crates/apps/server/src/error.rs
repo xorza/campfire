@@ -14,7 +14,7 @@ use crate::opening::error::OpeningError;
 /// Why the server's start ends before the server runs: each of its refusals, which the server
 /// logs in one place, and its exit code.
 #[derive(Debug, Error)]
-pub(crate) enum StartError {
+pub(crate) enum LaunchError {
     /// The command line asked for help, or does not read; its parser printed why.
     #[error("the command line ends the start")]
     CommandLine(ExitStatus),
@@ -41,7 +41,7 @@ pub(crate) enum StartError {
     BotNames(#[from] BotScriptError),
 }
 
-impl StartError {
+impl LaunchError {
     /// The exit code it ends the start with: a usage error's for a bot's orders, a storage
     /// error's for a journal that keeps no files, a failure's for any other.
     pub(crate) const fn status(&self) -> ExitStatus {

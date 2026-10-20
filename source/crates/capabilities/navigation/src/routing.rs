@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_common::Tick;
-use campfire_sim::{DueIndex, DueUnit, Position, Removals, SimTick, StableId, Unpredicted};
+use campfire_sim::{DueIndex, DueUnit, Position, Removals, SimTick, StableId};
 use campfire_units::{Body, Dead, Destination};
 
 use crate::body_index::BodyIndex;
@@ -11,7 +11,7 @@ use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
 use crate::route::{Route, RouteAsk, RouteDues, RouteMut};
-use crate::route_asks::{Ask, AskingUnits, Member, RouteAsks, RouteSearch};
+use crate::route_asks::{Ask, AskingUnits, PlanWalker, RouteAsks, RouteSearch};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::segment::Segment;
 use crate::walker::Walker;
@@ -30,8 +30,8 @@ impl Routing {
     /// walker that asks or forgets its route forgets its progress. One on its path asks as one
     /// of its spawn group's party, to its goal. A walker's route follows from its destination and
     /// its route alone: so a run visits the walkers whose destination or route changed since its
-    /// last, and those that lived again or that a predicting client predicts again, `returned`,
-    /// a buffer it keeps, whose parts kept their ticks while hidden.
+    /// last, as a unit a predicting client predicts again counts its parts changed, and those that
+    /// lived again, `returned`, a buffer it keeps, whose parts kept their ticks while dead.
     pub(super) fn route_units(
         tick: Res<'_, SimTick>,
         statics: Res<'_, BodyIndex>,
@@ -50,16 +50,12 @@ impl Routing {
             ),
             Without<Dead>,
         >,
-        (mut lived, mut predicted, mut returned): (
-            Removals<'_, '_, Dead>,
-            Removals<'_, '_, Unpredicted>,
-            Local<'_, Vec<Entity>>,
-        ),
+        (mut lived, mut returned): (Removals<'_, '_, Dead>, Local<'_, Vec<Entity>>),
         mut asks: ResMut<'_, DueIndex<Route>>,
     ) {
         let now = tick.start();
         returned.clear();
-        returned.extend(lived.read().chain(predicted.read()));
+        returned.extend(lived.read());
         returned.sort_unstable();
         for ((entity, &id), &at, destination, mut route, mut progress, body, path) in &mut units {
             let changed = destination.is_changed() || route.is_changed();
@@ -140,7 +136,7 @@ impl Routing {
             Ask {
                 tick: route.asked().expect("a walker that asks"),
                 party: route.party(),
-                member: Member {
+                member: PlanWalker {
                     id,
                     entity,
                     position: at.get(),

@@ -16,7 +16,7 @@ use campfire_values::{NameId, PackageIndex, UnitType};
 
 use crate::view::client_data::ClientData;
 use crate::view::match_colors::Paint;
-use crate::view::package_source::PackageSource;
+use crate::view::package_source::PackageAssets;
 
 /// Each unit type's look, as its package's client data gives it, by type: none for a type of no
 /// look, drawn as the engine's own shapes are.
@@ -118,7 +118,7 @@ impl LookModel {
                     })
                     .load(
                         GltfAssetLabel::Scene(0)
-                            .from_asset(PackageSource::asset_path(package, &model.model)),
+                            .from_asset(PackageAssets::asset_path(package, &model.model)),
                     ),
                 nodes: LookNodes {
                     hide: model.hide.as_slice().into(),

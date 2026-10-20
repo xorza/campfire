@@ -7,7 +7,7 @@ use crate::out_of_play::OutOfPlay;
 use crate::player::Player;
 use crate::player_resources::PlayerResources;
 use crate::players_world::PlayersWorld;
-use crate::seated::{Seated, Seating};
+use crate::seated::{SeatHolder, Seated};
 
 /// The players' part of a call: their resources as the call sees them, by seat, none in a match
 /// with no mode, and whether the call changed them, which commit once its effects applied; whether
@@ -20,7 +20,7 @@ pub struct PlayersCall {
     /// made at the first call.
     players: Option<QueryState<PlayerParts>>,
     resources: Vec<PlayerResources>,
-    seatings: Vec<Seating>,
+    holders: Vec<SeatHolder>,
     outs: Vec<bool>,
     written: bool,
 }
@@ -49,8 +49,8 @@ impl PlayersCall {
 
     /// Whether a player or a bot held `seat` as the match started; `None` for a player the
     /// session lacks, or in a match with no mode.
-    pub fn seating(&self, seat: Seat) -> Option<Seating> {
-        self.seatings.get(seat.index()).copied()
+    pub fn holder(&self, seat: Seat) -> Option<SeatHolder> {
+        self.holders.get(seat.index()).copied()
     }
 
     /// Whether player `seat` is out of play, as the last tick's end derived it; `None` for a
@@ -79,19 +79,23 @@ impl CallExtension for PlayersCall {
                 self.resources
                     .resize_with(at + 1, || PlayerResources::new(0));
             }
-            if at >= self.seatings.len() {
-                self.seatings.resize(at + 1, Seating::Open);
+            if at >= self.holders.len() {
+                self.holders.resize(at + 1, SeatHolder::Open);
                 self.outs.resize(at + 1, false);
             }
             self.resources[at].clone_from(held);
-            self.seatings[at] = if seated { Seating::Held } else { Seating::Open };
+            self.holders[at] = if seated {
+                SeatHolder::Held
+            } else {
+                SeatHolder::Open
+            };
             self.outs[at] = out;
             count += 1;
             seats = seats.max(at + 1);
         }
         debug_assert_eq!(count, seats, "the players hold the seats from the first on");
         self.resources.truncate(count);
-        self.seatings.truncate(count);
+        self.holders.truncate(count);
         self.outs.truncate(count);
         Ok(())
     }

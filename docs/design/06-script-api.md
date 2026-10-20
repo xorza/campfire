@@ -61,3 +61,4 @@ The rules of the script API. Every name, with its roles, capability and status, 
 - **Every time counts at the fastest rate.** Each time and think period counts in ticks at the fastest rate the manifest allows, so it counts at every rate a session may choose, and a match start fails only on its terms.
 - **Every modifier application gives its params,** at every rank it applies at.
 - **Every unit type spawns sound.** Each type that stands makes a unit at level 1 whose pools' maxima are positive.
+- **A name's kind reaches lists, hook arguments and variables,** and the load refuses only what it proves wrong. Refused: typed handles, which A returned name is checked where a script compares it refuses.

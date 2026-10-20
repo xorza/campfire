@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::zero_hour::format::error::Short;
+use crate::zero_hour::format::error::CutShort;
 
 /// Why a W3D file's bytes are no model the importer converts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -37,8 +37,8 @@ pub enum W3dError {
     Stages,
 }
 
-impl From<Short> for W3dError {
-    fn from(_: Short) -> Self {
+impl From<CutShort> for W3dError {
+    fn from(_: CutShort) -> Self {
         Self::Short
     }
 }

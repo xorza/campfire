@@ -17,7 +17,7 @@ use campfire_net_socket::ClientSocket;
 use campfire_package::ModePackages;
 use tracing::error;
 
-use crate::command_line::{Args, Server};
+use crate::command_line::{Args, PlayedServer};
 
 /// The server the client plays on, once it is open, with the client's data directory: a remote
 /// one, by its pin and its address, or a local one, running, its data in the directory. Dropped, a
@@ -56,7 +56,7 @@ impl Connection {
         pace: &Arc<Pace>,
     ) -> Result<Self, ExitCode> {
         match &args.server {
-            Server::Remote {
+            PlayedServer::Remote {
                 address,
                 tls_key,
                 key,
@@ -71,7 +71,7 @@ impl Connection {
                 address: *address,
                 data: data.as_deref().map(Self::open_dir).transpose()?,
             }),
-            Server::Local {
+            PlayedServer::Local {
                 bots,
                 options,
                 data,

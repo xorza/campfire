@@ -1,4 +1,4 @@
-use campfire_bots::{Named, OrderUnsent};
+use campfire_bots::{NamedRefs, OrderUnsent};
 use campfire_capabilities::Directive;
 use campfire_common::Seat;
 use campfire_log::{JsonText, LogEvent, LogLine};
@@ -13,7 +13,7 @@ pub(crate) struct BotOrderUnsent {
     #[serde(deserialize_with = "LogLine::json")]
     pub cause: OrderUnsent,
     #[serde(deserialize_with = "LogLine::json")]
-    pub directive: Directive<Named>,
+    pub directive: Directive<NamedRefs>,
 }
 
 impl LogEvent for BotOrderUnsent {

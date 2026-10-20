@@ -9,6 +9,7 @@ use campfire_values::{ActionId, ModifierId, UnitType};
 /// which it owns a living, complete unit, and player modifiers, one run of each after another.
 /// Package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[component(immutable)]
 pub struct RequirementBook {
     /// By action, as the book loads them in order.
     needs: Vec<Needs>,

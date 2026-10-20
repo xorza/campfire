@@ -38,7 +38,7 @@ use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
 use crate::view::glide::{Follows, FrameClock, Glide, Spot};
 use crate::view::ground_heights::GroundHeights;
-use crate::view::look::{Condition, Look, Pose, Shape, ShapeKind};
+use crate::view::look::{Condition, Look, PickShape, Pose, ShapeKind};
 use crate::view::match_colors::{MatchColors, Paint};
 use crate::view::scene_lights::{SceneLights, Sun};
 use crate::view::unit_looks::UnitLooks;
@@ -320,7 +320,7 @@ impl ViewPlugin {
                         yaw: yaw(facing),
                     };
                     // A model is as tall as it is drawn, whatever its unit's kind.
-                    let mut shape = Shape::of(ShapeKind::of(avatar, walks), body);
+                    let mut shape = PickShape::of(ShapeKind::of(avatar, walks), body);
                     if let Some(top) = looks.top(unit_type) {
                         shape.height = top.max(0.0);
                     }
@@ -342,7 +342,7 @@ impl ViewPlugin {
                 }
                 None => {}
             }
-            let shape = Shape::of(ShapeKind::of(avatar, walks), body);
+            let shape = PickShape::of(ShapeKind::of(avatar, walks), body);
             let mesh = match shape.footing {
                 Footing::Circle(_) => capsules
                     .entry([shape.radius.to_bits(), shape.length().to_bits()])
@@ -467,7 +467,7 @@ impl ViewPlugin {
         index: Res<'_, EntityIndex>,
         (started, attackers): (Started<'_, '_>, Attackers<'_, '_>),
         drawn: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
-        roots: Query<'_, '_, (&Transform, Option<&Look>, &Shape), Without<Figure>>,
+        roots: Query<'_, '_, (&Transform, Option<&Look>, &PickShape), Without<Figure>>,
         mut figures: Query<'_, '_, &mut Transform, With<Figure>>,
         mut leaning: Local<'_, Vec<Entity>>,
     ) {
@@ -510,7 +510,7 @@ impl ViewPlugin {
         died: Query<'_, '_, Entity, (Added<Dead>, Allow<Unpredicted>)>,
         mut revived: RemovedComponents<'_, '_, Dead>,
         units: Query<'_, '_, (&Drawing, Has<Dead>), Allow<Unpredicted>>,
-        roots: Query<'_, '_, (&Look, &Shape)>,
+        roots: Query<'_, '_, (&Look, &PickShape)>,
         mut figures: Query<
             '_,
             '_,

@@ -88,7 +88,7 @@ fn a_feature_installs_its_passes_only_in_a_match_whose_books_have_it() {
         added.remove(at.expect("a mode of every fact installs every system of none"));
     }
     let passes = [
-        "campfire_abilities::channels::Channels::predict_channels",
+        "campfire_abilities::channels::Channeling::predict_channels",
         "campfire_abilities::toggles::Toggles::run_toggles",
         "campfire_combat::attacks::Attacks::land_held",
         "campfire_combat::attacks::Attacks::pay_attack_toggles",

@@ -9,6 +9,7 @@ use crate::slot_kinds::SlotKinds;
 /// The mode's kinds of slot, which the `learn` order reads; none before a mode declares them.
 /// Package data, not state. A clone shares the kinds, as the script view reads them.
 #[derive(Resource, Debug, Clone, PartialEq, Eq)]
+#[component(immutable)]
 pub struct SlotKindBook(pub Arc<SlotKinds>);
 
 impl SlotKindBook {

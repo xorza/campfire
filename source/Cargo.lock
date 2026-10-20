@@ -2181,6 +2181,7 @@ dependencies = [
  "clap",
  "fluent-bundle",
  "fluent-syntax",
+ "naga",
  "secp256k1",
  "serde",
  "thiserror 2.0.21",
@@ -2379,6 +2380,7 @@ dependencies = [
  "campfire-package-disk",
  "campfire-production",
  "campfire-projectiles",
+ "campfire-script",
  "campfire-sim",
  "campfire-stats",
  "campfire-store",
@@ -3524,7 +3526,6 @@ dependencies = [
 name = "campfire-visibility"
 version = "0.1.0"
 dependencies = [
- "bevy_ecs",
  "campfire-codec",
  "campfire-common",
  "serde",

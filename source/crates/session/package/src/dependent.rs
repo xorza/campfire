@@ -11,9 +11,9 @@ use crate::error::{ContentError, LoadError, PackageRef};
 use crate::files::avatar_file::{AvatarFile, AvatarSeed};
 use crate::files::loadout_file::{LoadoutFile, LoadoutSeed};
 use crate::files::manifest::Manifest;
-use crate::files::mode_file::ModeFile;
 use crate::files::package_name::PackageName;
 use crate::files::rules_manifest::RulesNeeds;
+use crate::files::script_list::ScriptOrder;
 use crate::package::Package;
 use crate::package_files::PackageFiles;
 use crate::rules_package::RulesPackage;
@@ -74,7 +74,7 @@ impl Dependent {
                 };
                 let readers = Release::sections();
                 let content_keys = PackageContent::keys(&readers);
-                let own = iter::once(ModeFile::SCRIPTS).chain(content_keys);
+                let own = iter::once(ScriptOrder::KEY).chain(content_keys);
                 if let Some(key) = own.into_iter().find(|&key| data.holds(key)) {
                     return Err(fail(LoadProblem::RulesKey(key.to_owned())));
                 }

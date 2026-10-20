@@ -39,6 +39,9 @@ disallowed-types = [
     { path = "std::collections::HashMap", reason = "randomly seeded; use a fixed-hasher map" },
     { path = "std::collections::HashSet", reason = "randomly seeded; use a fixed-hasher set" },
     { path = "std::hash::RandomState", reason = "randomly seeded" },
+    # Banned everywhere: each runs a system's work on other threads, as `par_iter` does (02-engine-core.md, No query runs in parallel).
+    { path = "bevy_ecs::system::ParallelCommands", reason = "queue commands through Commands; a parallel pass is a decision with its measurement" },
+    { path = "bevy_utils::Parallel", reason = "keep one value; a parallel pass is a decision with its measurement" },
 ]
 
 disallowed-methods = [

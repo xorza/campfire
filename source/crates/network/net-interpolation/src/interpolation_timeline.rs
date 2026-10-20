@@ -7,6 +7,7 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use campfire_net_core::TickInstant;
 use campfire_net_core::TickSpan;
+use campfire_net_sync::Deficit;
 use campfire_net_sync::SyncHysteresis;
 use campfire_net_sync::SyncSample;
 use campfire_net_sync::SyncSetup;
@@ -23,6 +24,9 @@ pub struct InterpolationTimeline(Timeline<InterpolationSetup>);
 
 impl TimelineSync for InterpolationTimeline {
     type Setup = InterpolationSetup;
+
+    /// A step would show as a jump, and a presentation behind only shows older states.
+    const DEFICIT: Deficit = Deficit::Slew;
 
     fn sync_hysteresis(&mut self) -> &mut SyncHysteresis {
         &mut self.state.hysteresis

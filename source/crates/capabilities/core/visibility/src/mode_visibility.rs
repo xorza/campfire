@@ -1,8 +1,11 @@
 use std::fmt;
 
+use campfire_common::NamedEnum;
 use serde::de::{Error, MapAccess, Visitor};
-use serde::{Deserialize, Deserializer};
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::recipients::Recipients;
 use crate::setting::error::VisibilityError;
 use crate::setting::{Setting, SettingValue};
 use crate::visibility::Visibility;
@@ -37,6 +40,9 @@ impl Default for ModeVisibility {
 }
 
 impl ModeVisibility {
+    /// The key of the settings it leaves to the host.
+    const HOST: &'static str = "host";
+
     /// The mode's own settings, which admit no spectator.
     pub const fn settings(&self) -> &Visibility {
         &self.settings
@@ -78,6 +84,30 @@ impl ModeVisibility {
     }
 }
 
+/// Each setting the mode may set by its name and value, then the settings it leaves to the host,
+/// which `Deserialize` reads back to it.
+impl Serialize for ModeVisibility {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let kinds = Visibility::settable_kinds();
+        let mut map = serializer.serialize_map(Some(kinds.clone().count() + 3))?;
+        for kind in kinds {
+            // A mode sets the part of the audience its kind lets it set; the rest is fixed.
+            let fixed = Recipients::ALL.without(kind.settable());
+            let set = self.settings.audience(kind).without(fixed);
+            let names: Vec<&str> = set.names().collect();
+            map.serialize_entry(kind.name(), &names)?;
+        }
+        map.serialize_entry(
+            Setting::Spectators.name(),
+            self.settings.spectators().name(),
+        )?;
+        map.serialize_entry(Setting::Out.name(), self.settings.out().name())?;
+        let host: Vec<&str> = self.host.iter().map(|setting| setting.name()).collect();
+        map.serialize_entry(Self::HOST, &host)?;
+        map.end()
+    }
+}
+
 /// Each name a setting's, each setting once, each value one its setting takes, as
 /// `VisibilityError` names a flaw; `host` a list of settings a mode may set, each once.
 impl<'de> Deserialize<'de> for ModeVisibility {
@@ -102,9 +132,9 @@ impl<'de> Visitor<'de> for ModeVisibilityVisitor {
         let mut host = None;
         let mut set = Vec::new();
         while let Some(name) = map.next_key::<String>()? {
-            if name == "host" {
+            if name == ModeVisibility::HOST {
                 if host.is_some() {
-                    return Err(A::Error::duplicate_field("host"));
+                    return Err(A::Error::duplicate_field(ModeVisibility::HOST));
                 }
                 let mut settings = Vec::new();
                 for name in map.next_value::<Vec<String>>()? {

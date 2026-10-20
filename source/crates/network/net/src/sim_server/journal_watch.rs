@@ -6,7 +6,7 @@ use campfire_runner::Session;
 use campfire_store::AppendWatch;
 
 use crate::events::journal_sync_slow::JournalSyncSlow;
-use crate::faults::Faults;
+use crate::faults::WorkerFaults;
 use crate::faults::fault::Fault;
 use crate::sim_server::session_journal::SessionJournal;
 
@@ -36,14 +36,16 @@ impl JournalWatch {
         watch
     }
 
-    /// Reports to `Faults` the journal's failure, when a write or a sync failed since the last
+    /// Reports to `WorkerFaults` the journal's failure, when a write or a sync failed since the last
     /// frame.
     pub(crate) fn report_failure(world: &mut World) {
         let failure = world
             .get_resource::<Self>()
             .and_then(|journal| journal.0.take_failure());
         if let Some(error) = failure {
-            world.resource_mut::<Faults>().report(Fault::Journal(error));
+            world
+                .resource_mut::<WorkerFaults>()
+                .report(Fault::Journal(error));
         }
     }
 

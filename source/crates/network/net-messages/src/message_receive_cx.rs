@@ -1,7 +1,7 @@
 use crate::receive_map_view::ReceiveMapView;
 use crate::serialize_fns::ErasedSerializeFns;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::ParallelCommands;
+use bevy_ecs::system::Commands;
 use campfire_net_bytes::Reader;
 use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::MessageId;
@@ -10,7 +10,7 @@ use campfire_net_core::PeerId;
 
 /// What a typed receive fn reads one received message with, and where it delivers it.
 pub(crate) struct MessageReceiveCx<'a, 'w, 's> {
-    pub(crate) commands: &'a ParallelCommands<'w, 's>,
+    pub(crate) commands: &'a mut Commands<'w, 's>,
     /// The link the message arrived on.
     pub(crate) link: Entity,
     pub(crate) peer: PeerId,

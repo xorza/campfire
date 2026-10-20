@@ -10,7 +10,7 @@ use campfire_store::{DirEntries, EntryKind, InputFile};
 
 use super::*;
 
-/// The most bytes a pinned file may hold: `minimal` takes 3,619.
+/// The most bytes a pinned file may hold: `minimal` takes 3,627.
 const MAX_LEN: usize = 1 << 16;
 
 fn pinned_dir() -> PathBuf {

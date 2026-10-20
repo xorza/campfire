@@ -31,8 +31,6 @@ pub struct CameraFile {
     pub zoom_key: f32,
     /// Pixels from the window's edge within which the cursor scrolls it.
     pub edge: f32,
-    /// Seconds within which a press of a button that does not drag is a click.
-    pub click: f32,
 }
 
 /// The least and the most height of a camera.
@@ -51,7 +49,7 @@ impl CameraFile {
 
     /// The camera, unless a value is one no camera takes: a pitch not above 0° or not below 90°,
     /// a field of view not above 0° or not below 180°, a least height not above 0 or past the
-    /// most, a yaw, a speed, an edge or a click's time not finite, or one of them negative.
+    /// most, a yaw, a speed or an edge not finite, or one of them negative.
     pub fn checked(self) -> Option<Self> {
         self.holds().then_some(self)
     }
@@ -65,7 +63,6 @@ impl CameraFile {
             self.zoom_notch,
             self.zoom_key,
             self.edge,
-            self.click,
         ];
         self.pitch > 0.0
             && self.pitch < 90.0
@@ -97,7 +94,6 @@ impl<'de> Deserialize<'de> for CameraFile {
             zoom_notch: f32,
             zoom_key: f32,
             edge: f32,
-            click: f32,
         }
         let Fields {
             pitch,
@@ -110,7 +106,6 @@ impl<'de> Deserialize<'de> for CameraFile {
             zoom_notch,
             zoom_key,
             edge,
-            click,
         } = Fields::deserialize(deserializer)?;
         let file = Self {
             pitch,
@@ -123,7 +118,6 @@ impl<'de> Deserialize<'de> for CameraFile {
             zoom_notch,
             zoom_key,
             edge,
-            click,
         };
         if file.holds() {
             Ok(file)
@@ -145,7 +139,7 @@ mod tests {
     fn a_camera_reads_only_with_values_a_camera_takes() {
         let text = |pitch: &str, least: &str| {
             format!(
-                "pitch = {pitch}\nyaw = 0.0\nfield_of_view = 50.0\nheight = {{ least = {least}, most = 310.0 }}\nscroll = [700.0, 875.0]\nturn = 3.0\ndrag_turn = 0.01\nzoom_notch = 10.0\nzoom_key = 300.0\nedge = 3.0\nclick = 0.167\n"
+                "pitch = {pitch}\nyaw = 0.0\nfield_of_view = 50.0\nheight = {{ least = {least}, most = 310.0 }}\nscroll = [700.0, 875.0]\nturn = 3.0\ndrag_turn = 0.01\nzoom_notch = 10.0\nzoom_key = 300.0\nedge = 3.0\n"
             )
         };
         let file = Toml::parse::<CameraFile>(&text("37.5", "120.0")).unwrap();
@@ -156,17 +150,18 @@ mod tests {
                 most: 310.0,
             }
         );
-        assert_eq!((file.edge, file.click), (3.0, 0.167));
+        assert_eq!(file.edge, 3.0);
         assert_eq!(
             Toml::parse::<CameraFile>(&Toml::write(&file)).unwrap(),
             file
         );
-        // A negative edge or click's time is no camera, nor a file that gives neither.
+        // A negative edge is no camera, nor a file that gives none, nor one that gives a click's
+        // time, which is the press's of `client/keys.toml`.
         let shipped = text("37.5", "120.0");
         for wrong in [
             shipped.replace("edge = 3.0", "edge = -1.0"),
-            shipped.replace("click = 0.167", "click = -0.1"),
             shipped.replace("edge = 3.0\n", ""),
+            shipped.replace("edge = 3.0\n", "edge = 3.0\nclick = 0.167\n"),
         ] {
             assert!(Toml::parse::<CameraFile>(&wrong).is_err(), "{wrong}");
         }

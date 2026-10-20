@@ -1,3 +1,4 @@
+use crate::scripts::given_names::GivenNames;
 use crate::scripts::script_args::ScriptArgs;
 use crate::scripts::script_role::ScriptRole;
 
@@ -19,6 +20,8 @@ pub struct Hook {
     pub name: &'static str,
     pub role: ScriptRole,
     pub param_names: &'static [&'static str],
+    /// The names each argument its call passes is, by place, `ctx` first.
+    pub param_kinds: &'static [Option<GivenNames>],
 }
 
 impl Hook {
@@ -41,6 +44,7 @@ impl Hook {
             name: H::NAME,
             role: H::ROLE,
             param_names: H::PARAMS,
+            param_kinds: <H::Args as ScriptArgs>::NAMES,
         }
     }
 

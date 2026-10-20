@@ -88,9 +88,11 @@ pub(crate) mod internals {
     use serde::de::DeserializeOwned;
 
     use crate::release::Release;
+    use crate::release::client_holds::ClientHolds;
     use crate::release::r#match::Match;
     use crate::release::match_kind::MatchKind;
     use crate::release::match_setup::MatchSetup;
+    use crate::release::predicted_parts::PredictedParts;
 
     impl Match {
         /// The match, which fails the test that holds it on any warning `log`, started before
@@ -164,11 +166,22 @@ pub(crate) mod internals {
         }
 
         /// A predicting client's match at `TEST_RATE` of `declared`: each of its sim's queries
-        /// skips the units it holds as the server sent them, `Unpredicted`.
+        /// skips the units it holds as the server sent them, `Unpredicted`, and each unit it
+        /// predicts takes the server's parts its owner's client receives, as replication brings
+        /// them, which a client's spawn does not give.
         pub fn predicting(declared: &[Capability]) -> Self {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
             let setup = MatchSetup::new(SegmentSeed::ZERO, Self::TEST_RATE, Role::Client).set(set);
             let mut started = Self::test_of(setup);
+            let holds = ClientHolds::of(&mut started, set);
+            let world = &mut *started;
+            Release::declare(
+                set,
+                &mut PredictedParts {
+                    world,
+                    holds: &holds,
+                },
+            );
             Players::start_without_mode(&mut started, [], 0);
             started
         }

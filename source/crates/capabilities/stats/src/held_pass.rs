@@ -158,7 +158,7 @@ impl HeldPass {
                 let relation = relations.between(projection.team, other);
                 let at = Placed::point(projection.at);
                 if campfire_units::lives(false, life)
-                    && map.metric.reaches(at, projection.radius, entry.body)
+                    && map.metric().reaches(at, projection.radius, entry.body)
                     && projection.selects(target, relation, tags)
                 {
                     held.push(Held {

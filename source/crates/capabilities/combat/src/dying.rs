@@ -12,6 +12,8 @@ use campfire_sim::{DueIndex, DueUnit, Keyed, Ordered, Position, SimTick, StableI
 use campfire_stats::UnitPools;
 use campfire_units::{Avatar, Dead, Life, Owner, SpawnPoint};
 use campfire_units::{Deaths, Fallen};
+use campfire_values::TagSet;
+use campfire_values::UnitTags;
 use campfire_values::{Team, UnitType};
 
 /// Units that die at zero life, the dead that despawn, and the dead whose respawn is due.
@@ -37,6 +39,7 @@ impl Dying {
                 Option<&Team>,
                 Option<&Owner>,
                 Has<Avatar>,
+                Option<&UnitTags>,
             ),
             (Without<Dead>, Changed<Life>),
         >,
@@ -49,7 +52,7 @@ impl Dying {
             .filter(|(_, _, life, ..)| life.is_empty())
             .map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { entity, id } in order.sort(dying) {
-            let (_, _, _, progress, team, owner, avatar) =
+            let (_, _, _, progress, team, owner, avatar, tags) =
                 units.get_mut(entity).expect("a dying unit of the order");
             if let Some(mut progress) = progress {
                 let dues = &mut indexes.of(id, entity);
@@ -64,6 +67,7 @@ impl Dying {
                     team: team.copied(),
                     owner: owner.map(|owner| owner.seat()),
                     avatar,
+                    tags: tags.map_or(TagSet::NONE, |tags| tags.tags),
                 };
                 deaths.push(fallen, None, []);
             }

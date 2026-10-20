@@ -6,6 +6,11 @@ fail-fast = false
 # wait, and nextest ends it, as libtest can end no test.
 slow-timeout = { period = "1s", terminate-after = 5 }
 
+# Each test's outcome and time, in `target/nextest/default/junit.xml`, so a run names the test that
+# ran past its bound.
+[profile.default.junit]
+path = "junit.xml"
+
 # A mode's scripted match is the one test exempt from the bound of 1 s: it gathers every rule of
 # its mode into one run (02-engine-core.md, One scripted match for each mode). Each sits in a
 # module named `scripted_match`, so its path shows the exemption, and a new mode's joins it with no
@@ -14,6 +19,12 @@ slow-timeout = { period = "1s", terminate-after = 5 }
 filter = 'test(/(^|::)scripted_match::/)'
 slow-timeout = { period = "15s", terminate-after = 4 }
 
+# The 3v3's scripted match replays its 16 segments in parallel, one on each core
+# (02-engine-core.md, A match's replay test replays its segments).
+[[profile.default.overrides]]
+filter = 'package(campfire-harness) & test(/^runner::match_3v3::scripted_match::/)'
+threads-required = "num-cpus"
+
 # The swarm and the canary run their seeds in parallel, one thread for each core
 # (11-net-stack/testing.md, A test runs in 1 s or less): each takes every core while it runs, so no
 # two of them, nor other tests, share the cores they count on.
@@ -21,24 +32,41 @@ slow-timeout = { period = "15s", terminate-after = 4 }
 filter = 'package(campfire-net-stack) & test(/^scenario::tests::(each_seed_of_the_swarm|one_seed_repeats)/)'
 threads-required = "num-cpus"
 
+# The proving match's sweeps of flawed snapshots run their cases on every core, as the swarm does
+# (02-engine-core.md, A sweep runs on every core).
+[[profile.default.overrides]]
+filter = 'package(campfire-harness) & test(/^runner::proving_match::sweep::/)'
+threads-required = "num-cpus"
+
 # The wire cost cases run in parallel, a thread for each of its five.
 [[profile.default.overrides]]
 filter = 'package(campfire-net-stack) & test(=scenario::wire_cost::tests::each_case_puts_exact_counts_on_the_wire)'
 threads-required = 5
 
-# CI's runners run the suite 3.5 to 6 times slower than an M5, and share their cores: the 3v3's
-# resume, 0.79 s alone on an M5, took 4.5 s on Windows. So a test ends at 30 s there, and a scripted
+# CI's runners run the suite 3.5 to 6 times slower than an M5, and share their cores: a test of
+# 0.79 s alone on an M5, the 3v3's resume of then, took 4.5 s on Windows. So a test ends at 30 s there, and a scripted
 # match at 3 min.
 [profile.ci]
 fail-fast = false
 slow-timeout = { period = "1s", terminate-after = 30 }
+
+[profile.ci.junit]
+path = "junit.xml"
 
 [[profile.ci.overrides]]
 filter = 'test(/(^|::)scripted_match::/)'
 slow-timeout = { period = "15s", terminate-after = 12 }
 
 [[profile.ci.overrides]]
+filter = 'package(campfire-harness) & test(/^runner::match_3v3::scripted_match::/)'
+threads-required = "num-cpus"
+
+[[profile.ci.overrides]]
 filter = 'package(campfire-net-stack) & test(/^scenario::tests::(each_seed_of_the_swarm|one_seed_repeats)/)'
+threads-required = "num-cpus"
+
+[[profile.ci.overrides]]
+filter = 'package(campfire-harness) & test(/^runner::proving_match::sweep::/)'
 threads-required = "num-cpus"
 
 [[profile.ci.overrides]]

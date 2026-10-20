@@ -1,5 +1,6 @@
 use bevy_app::{App, Plugin, PluginGroup, PluginGroupBuilder, TaskPoolOptions, TaskPoolPlugin};
 use bevy_ecs::schedule::Schedules;
+use bevy_tasks::{AsyncComputeTaskPool, ComputeTaskPool, IoTaskPool, TaskPool, block_on};
 use campfire_schedule::OneThreadSchedule;
 
 /// The plugins of an app of one thread, a server's, a bot's client's or a test's: Bevy's task
@@ -23,12 +24,27 @@ impl PluginGroup for OneThreadPlugins {
     }
 }
 
-/// Runs each schedule of the app on its single-threaded executor.
+/// Runs each schedule of the app on its single-threaded executor, and holds the app's finish
+/// until each pool's thread runs.
 #[derive(Debug)]
 struct OneThreadExecutorPlugin;
 
 impl Plugin for OneThreadExecutorPlugin {
     fn build(&self, _: &mut App) {}
+
+    /// Waits until each pool's thread runs a task, as a thread allocates as it starts, before its
+    /// first task, and the OS starts it when it will (02-engine-core.md, An app's threads are one
+    /// plan).
+    fn finish(&self, _: &mut App) {
+        let pools: [&TaskPool; 3] = [
+            ComputeTaskPool::get(),
+            AsyncComputeTaskPool::get(),
+            IoTaskPool::get(),
+        ];
+        for started in pools.map(|pool| pool.spawn(async {})) {
+            block_on(started);
+        }
+    }
 
     fn cleanup(&self, app: &mut App) {
         OneThreadSchedule::apply_all(&mut app.world_mut().resource_mut::<Schedules>());
@@ -43,7 +59,6 @@ mod tests {
     use bevy_ecs::resource::Resource;
     use bevy_ecs::schedule::ScheduleLabel;
     use bevy_ecs::system::ResMut;
-    use bevy_tasks::{AsyncComputeTaskPool, ComputeTaskPool, IoTaskPool};
 
     use super::*;
 
@@ -56,7 +71,8 @@ mod tests {
     }
 
     /// Each schedule of the app runs on the thread that updates it, whichever features the
-    /// test's build turns on, and each of Bevy's pools holds one thread.
+    /// test's build turns on, and each of Bevy's pools holds one thread of its own, which runs
+    /// its tasks.
     #[test]
     fn an_app_of_one_thread_runs_every_schedule_on_its_thread() {
         let mut app = App::new();
@@ -79,5 +95,14 @@ mod tests {
             IoTaskPool::get().thread_num(),
         ];
         assert_eq!(threads, [1; 3]);
+        let pools: [&TaskPool; 3] = [
+            ComputeTaskPool::get(),
+            AsyncComputeTaskPool::get(),
+            IoTaskPool::get(),
+        ];
+        for pool in pools {
+            let ran = block_on(pool.spawn(async { thread::current().id() }));
+            assert_ne!(ran, here);
+        }
     }
 }

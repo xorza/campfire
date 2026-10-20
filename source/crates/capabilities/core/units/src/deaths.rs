@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use campfire_common::{Seat, Tick};
 use campfire_declarations::{Report, Role};
 use campfire_sim::StableId;
-use campfire_values::Team;
+use campfire_values::{TagSet, Team};
 
 /// The units that died in the tick `tick`, in the order they died, each with its team, its owner,
 /// its killer and the units that assisted: what the mode receives in `on_unit_death`, and what the
@@ -29,14 +29,16 @@ struct Death {
     assisters: Range<usize>,
 }
 
-/// A unit that died, as it was when it died: its team, the player who owned it, if any, and
-/// whether it was that player's avatar.
+/// A unit that died, as it was when it died: its team, the player who owned it, if any, whether
+/// it was that player's avatar, and its tags, which a death rewrites and a despawn takes, so a
+/// reward reads what the victim was (04-capabilities/combat.md, A death records its victim).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fallen {
     pub id: StableId,
     pub team: Option<Team>,
     pub owner: Option<Seat>,
     pub avatar: bool,
+    pub tags: TagSet,
 }
 
 /// A death as `Deaths` gives it.
@@ -137,6 +139,7 @@ mod tests {
             team: None,
             owner: None,
             avatar: false,
+            tags: TagSet::NONE,
         };
         let mut deaths = Deaths::default();
         deaths.clear(Tick::new(1));

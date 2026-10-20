@@ -7,7 +7,7 @@ use campfire_math::{Num, Rounding};
 use campfire_script::UnknownName;
 use campfire_values::{Article, DamageKind, NameId, NameKind, NameScope, Named, Names};
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// An armor: the share of each damage kind's damage a unit of it takes, by kind, the whole of a
 /// kind it does not name, as Warcraft III's table of attack and armor types holds it
@@ -58,6 +58,13 @@ impl ArmorShare {
 
 impl PerType for Armor {
     const SCRIPTS_ONLY: bool = false;
+}
+
+/// As its number, which `Deserialize` reads.
+impl Serialize for ArmorShare {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
 }
 
 /// A package is untrusted, so a share below 0, which would heal by damage, fails to read.

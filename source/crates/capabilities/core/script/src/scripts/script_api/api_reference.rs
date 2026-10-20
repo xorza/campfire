@@ -4,6 +4,7 @@ use campfire_sim::Capability;
 
 use crate::scripts::api_holder::ApiHolder;
 use crate::scripts::data_table::DataTable;
+use crate::scripts::given_names::NameShape;
 use crate::scripts::member_kind::MemberKind;
 use crate::scripts::planned_capability::PlannedCapability;
 use crate::scripts::role_set::RoleSet;
@@ -78,8 +79,12 @@ impl ApiReference<'_> {
                         forms.join(" or ") + member.name_args_text().as_str()
                     }
                 };
-                if let Some(kind) = member.output.and_then(|output| output.names) {
-                    write!(form, ", gives {} {kind}", kind.article())?;
+                if let Some(names) = member.output.and_then(|output| output.names) {
+                    let kind = names.kind;
+                    match names.shape {
+                        NameShape::One => write!(form, ", gives {} {kind}", kind.article())?,
+                        NameShape::List => write!(form, ", gives a list of {kind} names")?,
+                    }
                 }
                 let roles = if ctx && spec.own_script {
                     format!(" {}'s own script |", roles(spec.roles))

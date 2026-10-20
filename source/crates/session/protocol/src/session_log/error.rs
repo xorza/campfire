@@ -120,6 +120,11 @@ pub enum CheckpointError {
     /// The log began no checkpoint that the record would complete.
     #[error("no checkpoint begun for the record")]
     NotBegun,
+    /// The record a log file starts at carries no state a log holds at a boundary: another count
+    /// of seats than the header's, a delegation of another session, or an input of no seat or
+    /// due before the boundary.
+    #[error("checkpoint carries no state a log holds")]
+    BadCarry,
 }
 
 /// Why the log refused a result. The server signs only what it means to log, so each is a fault

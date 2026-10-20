@@ -10,7 +10,7 @@ use campfire_net_core::Instant;
 use campfire_net_core::Random;
 use campfire_net_packets::{
     ClientEstablish, ConnectionId, Datagram, Establish, Established, Establishing, Outbound,
-    Protection,
+    Protection, ReadCost,
 };
 use campfire_net_payload::UnlinkReason;
 use rustls::pki_types::ServerName;
@@ -99,10 +99,10 @@ impl ClientSide {
             finished: None,
         }
     }
-}
 
-impl Establish for ClientSide {
-    fn receive(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing) {
+    /// Reads a datagram of the server's: a Retry, a refusal, an alert or a step of its
+    /// handshake, which may end it.
+    fn read(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing) {
         let Datagram { from, payload } = datagram;
         let Some(packet) = HandshakePacket::read(payload) else {
             return;
@@ -202,6 +202,13 @@ impl Establish for ClientSide {
             }
         }
     }
+}
+
+impl Establish for ClientSide {
+    fn receive(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing) -> ReadCost {
+        self.read(now, datagram, out);
+        ReadCost::Light
+    }
 
     /// Sends the `Initial` again while the server is silent, and fails a handshake that waited
     /// longer than its patience.
@@ -227,10 +234,6 @@ impl Establish for ClientSide {
         }
     }
 
-    fn challenge(&mut self) -> [u8; 8] {
-        self.random.array()
-    }
-
     fn next_deadline(&self) -> Option<Instant> {
         let attempt = self.attempt.as_ref().map(|attempt| {
             let give_up = attempt.started + self.patience;
@@ -242,10 +245,6 @@ impl Establish for ClientSide {
         });
         let finished = self.finished.as_ref().map(|finished| finished.until);
         attempt.into_iter().chain(finished).min()
-    }
-
-    fn routes_by_prefix(&self) -> bool {
-        false
     }
 
     fn ended(&mut self, _: Option<ConnectionId>) {}

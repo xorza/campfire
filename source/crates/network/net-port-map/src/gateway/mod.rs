@@ -3,7 +3,7 @@ use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use crate::error::MapError;
+use crate::error::PortMapError;
 use crate::facing_socket::FacingSocket;
 use crate::nat_pmp_map::{NatPmpMap, NatPmpMapping, NatPmpReply};
 use crate::pcp_map::{MapNonce, PcpMap, PcpReply};
@@ -43,7 +43,7 @@ pub(crate) struct Mapping {
 /// What a map asks of a gateway or a router: `internal_port` for `lifetime`, anew, or `renewed`
 /// again at its port outside.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Ask<'a> {
+pub(crate) struct MapAsk<'a> {
     pub(crate) internal_port: u16,
     /// What the mapping is for, in a UPnP router's list of them.
     pub(crate) name: &'static str,
@@ -97,8 +97,8 @@ impl Gateway {
 
     /// Maps as `ask` says. A PCP grant names its address outside; a NAT-PMP one does not, and
     /// `address` reads it.
-    pub(crate) fn map(&mut self, ask: Ask<'_>, wait: Wait<'_>) -> Result<Mapping, MapError> {
-        let Ask {
+    pub(crate) fn map(&mut self, ask: MapAsk<'_>, wait: Wait<'_>) -> Result<Mapping, PortMapError> {
+        let MapAsk {
             internal_port,
             renewed,
             lifetime,
@@ -122,7 +122,7 @@ impl Gateway {
                     });
                 }
                 PcpReply::Refused { refusal, lasts } => {
-                    return Err(MapError::PcpRefused { refusal, lasts });
+                    return Err(PortMapError::PcpRefused { refusal, lasts });
                 }
                 PcpReply::NatPmpOnly => self.nat_pmp_only = true,
             }
@@ -134,7 +134,7 @@ impl Gateway {
         };
         let granted = match self.nat_pmp(&request, wait)? {
             NatPmpReply::Granted(granted) => granted,
-            NatPmpReply::Refused(refusal) => return Err(MapError::NatPmpRefused(refusal)),
+            NatPmpReply::Refused(refusal) => return Err(PortMapError::NatPmpRefused(refusal)),
         };
         Ok(Mapping {
             external_port: granted.external_port,
@@ -145,20 +145,20 @@ impl Gateway {
     }
 
     /// The gateway's address outside, by NAT-PMP.
-    pub(crate) fn address(&self, wait: Wait<'_>) -> Result<Ipv4Addr, MapError> {
+    pub(crate) fn address(&self, wait: Wait<'_>) -> Result<Ipv4Addr, PortMapError> {
         let address = self.exchange(&NatPmpMap::ADDRESS_REQUEST, wait, |reply| {
             NatPmpMap::decode_address(reply).ok()
         })?;
         match address {
             NatPmpReply::Granted(address) => Ok(address.address),
-            NatPmpReply::Refused(refusal) => Err(MapError::NatPmpRefused(refusal)),
+            NatPmpReply::Refused(refusal) => Err(PortMapError::NatPmpRefused(refusal)),
         }
     }
 
     /// Deletes the mapping of `internal_port` by the protocol the gateway speaks, which granted
     /// the mapping it holds, as a renewal maps again by NAT-PMP once PCP says it speaks NAT-PMP
     /// alone: one request, its answer awaited `wait`.
-    pub(crate) fn delete(&self, internal_port: u16, wait: Duration) -> Result<(), MapError> {
+    pub(crate) fn delete(&self, internal_port: u16, wait: Duration) -> Result<(), PortMapError> {
         // A deletion comes as the map stops, which no stop cuts short.
         let running = AtomicBool::new(false);
         let once = Wait {
@@ -176,7 +176,7 @@ impl Gateway {
             };
             match self.nat_pmp(&request, once)? {
                 NatPmpReply::Granted(_) => Ok(()),
-                NatPmpReply::Refused(refusal) => Err(MapError::NatPmpRefused(refusal)),
+                NatPmpReply::Refused(refusal) => Err(PortMapError::NatPmpRefused(refusal)),
             }
         } else {
             let request = PcpMap {
@@ -189,16 +189,16 @@ impl Gateway {
             match self.pcp(&request, once)? {
                 PcpReply::Granted(_) => Ok(()),
                 PcpReply::Refused { refusal, lasts } => {
-                    Err(MapError::PcpRefused { refusal, lasts })
+                    Err(PortMapError::PcpRefused { refusal, lasts })
                 }
-                PcpReply::NatPmpOnly => Err(MapError::NatPmpOnly),
+                PcpReply::NatPmpOnly => Err(PortMapError::NatPmpOnly),
             }
         }
     }
 
     /// A PCP request's answer: a reply that grants another mapping than the request's, or that
     /// does not read, answers some other request.
-    fn pcp(&self, request: &PcpMap, wait: Wait<'_>) -> Result<PcpReply, MapError> {
+    fn pcp(&self, request: &PcpMap, wait: Wait<'_>) -> Result<PcpReply, PortMapError> {
         self.exchange(&request.encode(), wait, |reply| {
             match PcpReply::decode(reply) {
                 Ok(PcpReply::Granted(granted))
@@ -216,7 +216,7 @@ impl Gateway {
         &self,
         request: &NatPmpMap,
         wait: Wait<'_>,
-    ) -> Result<NatPmpReply<NatPmpMapping>, MapError> {
+    ) -> Result<NatPmpReply<NatPmpMapping>, PortMapError> {
         self.exchange(&request.encode(), wait, |reply| {
             match NatPmpMap::decode(reply) {
                 Ok(NatPmpReply::Granted(granted))
@@ -236,12 +236,12 @@ impl Gateway {
         request: &[u8],
         wait: Wait<'_>,
         mut answer: impl FnMut(&[u8]) -> Option<T>,
-    ) -> Result<T, MapError> {
+    ) -> Result<T, PortMapError> {
         let mut buffer = [0; MESSAGE_MAX];
         let mut awaited = wait.tries.first;
         for _ in 0..wait.tries.count {
             if wait.stop.load(Ordering::SeqCst) {
-                return Err(MapError::Stopped);
+                return Err(PortMapError::Stopped);
             }
             self.socket.send(request).map_err(Self::fault)?;
             let deadline = Instant::now() + awaited;
@@ -252,7 +252,7 @@ impl Gateway {
                 }
                 self.socket
                     .set_read_timeout(Some(left))
-                    .map_err(MapError::Io)?;
+                    .map_err(PortMapError::Io)?;
                 match self.socket.recv(&mut buffer) {
                     Ok(len) => {
                         if let Some(answer) = answer(&buffer[..len]) {
@@ -269,15 +269,15 @@ impl Gateway {
             }
             awaited *= 2;
         }
-        Err(MapError::NoAnswer)
+        Err(PortMapError::NoAnswer)
     }
 
     /// A socket error as the mapping's: the ICMP answer of a port no server listens on reaches a
     /// connected socket as a refused or reset connection, as each OS names it.
-    fn fault(error: io::Error) -> MapError {
+    fn fault(error: io::Error) -> PortMapError {
         match error.kind() {
-            ErrorKind::ConnectionRefused | ErrorKind::ConnectionReset => MapError::NoServer,
-            _ => MapError::Io(error),
+            ErrorKind::ConnectionRefused | ErrorKind::ConnectionReset => PortMapError::NoServer,
+            _ => PortMapError::Io(error),
         }
     }
 }

@@ -93,7 +93,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
             seen.any(position, reach, |unit| {
                 rule.filter
                     .selects(relations.between(team, unit.team), unit.tags)
-                    && map.metric.reaches(
+                    && map.metric().reaches(
                         Placed::new(position, body.shape()),
                         rule.distance,
                         Placed::new(unit.position, Body::shape_of(unit.body)),

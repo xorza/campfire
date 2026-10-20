@@ -7,14 +7,9 @@ license.workspace = true
 [package.metadata.campfire]
 kind = "problem"
 
-[features]
-# `Resource` on the view of a player out of play, for the ECS crates that hold it as one
-ecs = ["dep:bevy_ecs"]
-
 [dependencies]
 campfire-common.workspace = true
 
-bevy_ecs = { workspace = true, features = ["std"], optional = true }
 serde = { workspace = true, features = ["derive", "rc", "std"] }
 thiserror = { workspace = true, features = ["std"] }
 

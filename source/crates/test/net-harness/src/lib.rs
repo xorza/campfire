@@ -8,6 +8,6 @@
 
 mod in_process_match;
 
-pub use crate::in_process_match::{End, InProcessMatch, InProcessSetup, LinkLayout};
+pub use crate::in_process_match::{AppliedInput, End, InProcessMatch, InProcessSetup, LinkLayout};
 
 pub mod bench;

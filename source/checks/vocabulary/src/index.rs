@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 /// A list of the index, by what its entries name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Section {
+pub(crate) enum IndexSection {
     /// Structs, enums, unions, traits and type aliases, an associated type among them.
     Types,
     /// Functions and methods but tests, and `macro_rules!` macros.
@@ -15,7 +15,7 @@ pub(crate) enum Section {
     Values,
 }
 
-impl Section {
+impl IndexSection {
     const ALL: [Self; 5] = [
         Self::Types,
         Self::Functions,
@@ -37,7 +37,7 @@ impl Section {
 
 /// A name a Rust file declares.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Entry {
+pub(crate) struct NameListing {
     pub(crate) name: String,
     /// What follows the name: `: ` and the type of a field or a value, else nothing.
     pub(crate) detail: String,
@@ -48,7 +48,7 @@ pub(crate) struct Entry {
     pub(crate) location: String,
 }
 
-impl Entry {
+impl NameListing {
     /// The index's order: by name with case aside, then by name, owner, location and detail.
     fn order(&self, other: &Self) -> Ordering {
         let lower = self.name.chars().flat_map(char::to_lowercase);
@@ -69,12 +69,12 @@ impl Entry {
 /// layout hold each word.
 #[derive(Debug, Default)]
 pub(crate) struct Index {
-    sections: [Vec<Entry>; Section::ALL.len()],
+    sections: [Vec<NameListing>; IndexSection::ALL.len()],
     words: BTreeMap<String, u32>,
 }
 
 impl Index {
-    pub(crate) fn add(&mut self, section: Section, entry: Entry) {
+    pub(crate) fn add(&mut self, section: IndexSection, entry: NameListing) {
         self.add_words(&entry.name);
         self.sections[section as usize].push(entry);
     }
@@ -93,11 +93,11 @@ impl Index {
 
     /// Writes each section, its entries by name, case aside, then each word with its count.
     pub(crate) fn write(&self, text: &mut String) {
-        for section in Section::ALL {
+        for section in IndexSection::ALL {
             let entries = &self.sections[section as usize];
             writeln!(text, "\n== {} ({}) ==\n", section.title(), entries.len())
                 .expect("a String takes every write");
-            let mut sorted: Vec<&Entry> = entries.iter().collect();
+            let mut sorted: Vec<&NameListing> = entries.iter().collect();
             sorted.sort_by(|a, b| a.order(b));
             for entry in sorted {
                 writeln!(
@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     fn the_index_lists_each_section_by_name_and_counts_each_word() {
-        let entry = |name: &str, detail: &str, owner: &str| Entry {
+        let entry = |name: &str, detail: &str, owner: &str| NameListing {
             name: name.to_owned(),
             detail: detail.to_owned(),
             owner: owner.to_owned(),
@@ -179,13 +179,16 @@ mod tests {
         };
         let mut index = Index::default();
         index.add(
-            Section::Fields,
+            IndexSection::Fields,
             entry("unit_id", ": UnitId", "struct Order"),
         );
-        index.add(Section::Fields, entry("id", ": PlayerId", "struct Player"));
-        index.add(Section::Types, entry("unit", "", "struct"));
-        index.add(Section::Types, entry("Order", "", "struct"));
-        index.add(Section::Functions, entry("r#type", "", "impl Unit"));
+        index.add(
+            IndexSection::Fields,
+            entry("id", ": PlayerId", "struct Player"),
+        );
+        index.add(IndexSection::Types, entry("unit", "", "struct"));
+        index.add(IndexSection::Types, entry("Order", "", "struct"));
+        index.add(IndexSection::Functions, entry("r#type", "", "impl Unit"));
         index.add_words("unit_kind");
         // A word a name holds twice counts once.
         index.add_words("UnitOfUnits");

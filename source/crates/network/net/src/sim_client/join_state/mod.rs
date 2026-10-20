@@ -13,7 +13,6 @@ use campfire_protocol::{
 };
 use campfire_runner::SessionRules;
 use campfire_values::Team;
-use campfire_visibility::Visibility;
 
 use crate::error::ReceiptRefusal;
 use crate::hosting::Hosting;
@@ -21,7 +20,7 @@ use crate::match_clock::MatchClock;
 use crate::net_protocol::dismissed::Dismissed;
 use crate::net_protocol::join::{Join, JoinRole};
 use crate::net_protocol::match_start::{MatchStart, SeatChain};
-use crate::net_protocol::offer::Offer;
+use crate::net_protocol::offer::SessionOffer;
 use crate::net_protocol::watch_start::WatchStart;
 use crate::session_times::SessionTimes;
 use crate::sim_client::chain_history::ChainHistory;
@@ -110,8 +109,6 @@ pub(crate) struct Joining {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct JoinedSession {
     pub(crate) id: SessionId,
-    /// The visibility of its terms, which the client's check of them gave.
-    pub(crate) visibility: Visibility,
     pub(crate) inputs: InputRules,
 }
 
@@ -180,7 +177,7 @@ struct Rejoining {
 
 /// What a match start did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Started {
+pub(crate) enum StartEffect {
     /// The client was not waiting for one.
     No,
     /// The player plays from the server's copy of their chain; the inputs of theirs it did not
@@ -232,20 +229,6 @@ impl JoinState {
             Step::Watching(watching) => Some(watching.clock),
             _ => None,
         }
-    }
-
-    /// The visibility of the session the client answered, as its check of the terms gave it;
-    /// `None` before it answered, and once it left or stopped.
-    pub(crate) const fn visibility(&self) -> Option<&Visibility> {
-        let member = match &self.step {
-            Step::Answered(Answered { member, .. })
-            | Step::Playing(Playing { member, .. })
-            | Step::Watching(Watching { member, .. })
-            | Step::Leaving(Leaving { member, .. })
-            | Step::Rejoining(Rejoining { member, .. }) => member,
-            Step::Waiting | Step::Refused(_) | Step::Left | Step::Lost(_) => return None,
-        };
-        Some(&member.session.visibility)
     }
 
     /// The seat the player plays; `None` while they play none.
@@ -321,25 +304,21 @@ impl JoinState {
     /// offer; `None` for an offer it does not wait for.
     pub(crate) fn answer(
         &mut self,
-        offer: &Offer,
+        offer: &SessionOffer,
         binding: &ChannelBinding,
         signer: &mut Signer,
         now: u64,
     ) -> Option<Result<Join, TermsMismatch>> {
         let answered = match mem::replace(&mut self.step, Step::Left) {
             Step::Waiting => {
-                let visibility = match self.player.fits(&offer.terms) {
-                    Ok(visibility) => visibility,
-                    Err(mismatch) => {
-                        self.step = Step::Refused(mismatch.clone());
-                        return Some(Err(mismatch));
-                    }
-                };
+                if let Err(mismatch) = self.player.fits(&offer.terms) {
+                    self.step = Step::Refused(mismatch.clone());
+                    return Some(Err(mismatch));
+                }
                 Answered {
                     member: Member {
                         session: JoinedSession {
                             id: offer.terms.session_id(),
-                            visibility,
                             inputs: offer.terms.inputs,
                         },
                         delegation: self.player.delegate(&offer.terms, signer, now),
@@ -393,12 +372,12 @@ impl JoinState {
     /// a local server takes it: only a local server loads a save, so only the match start of a
     /// server `hosting` says is local is taken as a load. Sim tick `start.first` is network tick
     /// `start.start_tick`.
-    pub(crate) fn start(&mut self, start: MatchStart, hosting: Hosting) -> Started {
+    pub(crate) fn start(&mut self, start: MatchStart, hosting: Hosting) -> StartEffect {
         let answered = match mem::replace(&mut self.step, Step::Left) {
             Step::Answered(answered) if self.player.role == JoinRole::Play => answered,
             other => {
                 self.step = other;
-                return Started::No;
+                return StartEffect::No;
             }
         };
         let mut member = answered.member;
@@ -424,7 +403,7 @@ impl JoinState {
             (SeatChain::Held(head), Some(mut history)) => {
                 if history.head_at(head.next_seq) != Some(head.head) {
                     self.step = Step::Lost(Loss::Rewritten);
-                    return Started::Rewritten;
+                    return StartEffect::Rewritten;
                 }
                 let discarded = history.cut(head.next_seq);
                 let chain = InputChain::resume(start.seat, head.head, head.next_seq);
@@ -443,7 +422,7 @@ impl JoinState {
             history,
             last_stamp,
         });
-        Started::Playing { discarded }
+        StartEffect::Playing { discarded }
     }
 
     /// Watches the match `start` names, for a client that answered to watch: sim tick
@@ -625,19 +604,18 @@ impl Playing {
 
 impl Joining {
     /// Whether `terms` name the server and rate the player means to reach, and a session of the
-    /// client's mode: the visibility its rules admit of them.
-    fn fits(&self, terms: &SessionTerms) -> Result<Visibility, TermsMismatch> {
+    /// client's mode, whose rules admit them.
+    fn fits(&self, terms: &SessionTerms) -> Result<(), TermsMismatch> {
         if terms.server_key != self.server.key {
             return Err(TermsMismatch::OtherServer);
         }
-        let visibility = SessionRules::of(&self.packages)
+        SessionRules::of(&self.packages)
             .check(terms)
-            .map_err(TermsMismatch::Terms)?
-            .visibility;
+            .map_err(TermsMismatch::Terms)?;
         if terms.tick_hz != self.server.tick_hz {
             return Err(TermsMismatch::OtherTickRate);
         }
-        Ok(visibility)
+        Ok(())
     }
 
     /// A delegation of `signer`'s session key in the session of `terms`, made at `now`, with a

@@ -24,7 +24,7 @@ use crate::Abilities;
 pub(crate) struct ChannelDue(Keyed);
 
 #[derive(Debug)]
-pub struct Channels;
+pub struct Channeling;
 
 /// `on_channel_tick(ctx, caster, target)`: a channel's tick, at the target it aims at.
 #[derive(Debug)]
@@ -48,7 +48,7 @@ impl HookDecl for OnInterrupt {
     type Args = (Ctx, Unit, ScriptValue);
 }
 
-impl Channels {
+impl Channeling {
     /// Runs each unit's channel in Hit, in the order of its stable id, after the casts resolve: a
     /// cut one's `on_interrupt`, then a due tick's `on_channel_tick`, each a call of the channel's
     /// action at its rank from the unit, in its player's pool; and one at its end ends. A unit

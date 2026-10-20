@@ -8,8 +8,8 @@ use campfire_sim::{MatchRate, SimWorld};
 use crate::match_build::MatchBuild;
 use crate::replay::error::ReplayError;
 use crate::session::Session;
-use crate::session::error::{SnapshotCheckError, StartError};
-use crate::session::session_source::{SessionSource, UncheckedSource};
+use crate::session::error::{ResumeError, SnapshotCheckError, StartError};
+use crate::session::session_source::{ResumeAt, SessionSource, UncheckedSource};
 use crate::session::session_world::SessionWorld;
 
 pub(crate) mod error;
@@ -55,6 +55,36 @@ impl<'p> Replay<'p> {
         })
     }
 
+    /// The replay of `published` from its checkpoint `at`, with the log's own randomness, on
+    /// `packages`: the checkpoint's snapshot restored once it checks against the record, as
+    /// `Session::resume` restores it, and the ticks from the checkpoint's boundary to replay. A
+    /// log whose file starts at a checkpoint replays from it alone
+    /// (08-sessions.md, A log file may start at a checkpoint). An error as `of` and
+    /// `Session::resume` give one.
+    pub fn from_checkpoint(
+        published: SessionLog,
+        at: ResumeAt<'_>,
+        packages: &'p ModePackages,
+    ) -> Result<Self, ResumeError> {
+        let seeds = published
+            .revealed_seeds()
+            .ok_or(ResumeError::Start(StartError::Seed(SeedError::NotRevealed)))?;
+        let ticks = published.next_tick();
+        let source = SessionSource::check(UncheckedSource {
+            log: published,
+            seeds,
+            packages,
+            signer: None,
+        })
+        .map_err(|error| ResumeError::Start(StartError::Terms(error)))?;
+        Ok(Replay {
+            game: Session::resume_match(source, at)?,
+            target: None,
+            packages,
+            ticks,
+        })
+    }
+
     /// Runs every tick the log holds after those that ran.
     pub fn run(&mut self) -> Result<(), ReplayError> {
         self.run_each(|_| {})
@@ -62,15 +92,39 @@ impl<'p> Replay<'p> {
 
     /// Runs every tick the log holds after those that ran, as `run` does, and gives `ran` the
     /// world after each.
-    pub fn run_each(&mut self, mut ran: impl FnMut(&World)) -> Result<(), ReplayError> {
+    pub fn run_each(&mut self, ran: impl FnMut(&World)) -> Result<(), ReplayError> {
+        self.run_to(self.ticks, ran)
+    }
+
+    /// Runs the ticks of the segment the replay stands in, as `run_each` runs them: to the
+    /// boundary where the next starts, whose checkpoint it checks, or after the last, to the
+    /// log's end and its result. So the segments of one log replay apart, each from its own
+    /// checkpoint, as a verifier on many threads replays them.
+    pub fn run_segment_each(&mut self, ran: impl FnMut(&World)) -> Result<(), ReplayError> {
         let start = self.game.session().next_tick();
-        self.game.replay_to(self.ticks, |world| {
+        let log = self.game.session().log();
+        let next = log
+            .checkpoints()
+            .map(|record| record.tick)
+            .find(|&tick| tick > start);
+        self.run_to(next.unwrap_or(self.ticks), ran)
+    }
+
+    /// Runs the ticks the log holds before `end`, after those that ran, giving `ran` the world
+    /// after each, and checks each checkpoint on the way, the one at `end` too, and the result
+    /// when `end` is the log's end.
+    fn run_to(&mut self, end: Tick, mut ran: impl FnMut(&World)) -> Result<(), ReplayError> {
+        let start = self.game.session().next_tick();
+        self.game.replay_to(end, |world| {
             if world.session().next_tick() > start {
                 ran(world);
             }
             Replay::check_checkpoint(world)
         })?;
-        self.game.check_result().map_err(ReplayError::Result)
+        if end == self.ticks {
+            self.game.check_result().map_err(ReplayError::Result)?;
+        }
+        Ok(())
     }
 
     /// Whether the state of `world` at its boundary is the one the checkpoint there, if the log

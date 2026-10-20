@@ -11,7 +11,7 @@ use campfire_mode::{InputValue, Mode, ModeInput};
 use campfire_navigation::PathWalker;
 use campfire_orders::OrdersDirective;
 use campfire_progression::ProgressionDirective;
-use campfire_protocol::{InputRules, SeatPlan, ServerInput, ServerSeeds};
+use campfire_protocol::{InputRules, SeatPlan, ServerInput};
 use campfire_sim::{Position, StableId};
 use campfire_test_packages::TestMode;
 use campfire_units::{Dead, GroundPoint, Life};
@@ -20,7 +20,7 @@ use campfire_values::{ItemId, Names, Team};
 use crate::fixed_session::FixedSession;
 use crate::fixed_session::fixed_match::FixedMatch;
 use crate::match_units::MatchUnits;
-use crate::scripted::{Aim, Plan, Scripted, TICK_HZ};
+use crate::scripted::{CastAim, Plan, Scripted, TICK_HZ};
 use crate::scripted_mode::ScriptedMode;
 
 pub(crate) mod bench;
@@ -47,9 +47,9 @@ pub enum Moba3v3 {
     /// The hero attacks player `seat`'s hero.
     AttackHero { seat: u32 },
     /// The hero casts the action in `slot` at `aim`.
-    Cast { slot: u8, aim: Aim },
+    Cast { slot: u8, aim: CastAim },
     /// The hero uses the item `item` it carries in its first slot of it.
-    Use { item: ItemId, aim: Aim },
+    Use { item: ItemId, aim: CastAim },
     /// The hero learns the next rank of the ability in `slot`.
     Learn { slot: u8 },
     /// The hero learns the next rank of its basic ability of fewest ranks, the first of them on a
@@ -124,12 +124,12 @@ const SKIRMISH: [Scripted<Moba3v3>; 45] = {
         Scripted::new(1200, 4, Moba3v3::Move { x: 0, z: -20 }),
         Scripted::new(1200, 3, Moba3v3::Move { x: -38, z: 12 }),
         Scripted::new(1200, 5, Moba3v3::Move { x: 38, z: 8 }),
-        Scripted::new(1200, 2, cast(HASTE, Aim::Nothing)),
+        Scripted::new(1200, 2, cast(HASTE, CastAim::Nothing)),
         Scripted::new(1201, 2, Moba3v3::Move { x: -34, z: 4 }),
         Scripted::new(1700, 0, Moba3v3::AttackHero { seat: 4 }),
         Scripted::new(1700, 1, Moba3v3::AttackHero { seat: 4 }),
         Scripted::new(1700, 4, Moba3v3::AttackHero { seat: 1 }),
-        Scripted::new(1880, 1, cast(MEND, Aim::Nothing)),
+        Scripted::new(1880, 1, cast(MEND, CastAim::Nothing)),
         Scripted::new(1880, 0, Moba3v3::Move { x: -36, z: 10 }),
         Scripted::new(2000, 4, Moba3v3::Move { x: -18, z: 24 }),
         Scripted::new(2160, 2, Moba3v3::AttackHero { seat: 3 }),
@@ -173,7 +173,7 @@ const fn farm_at((x, z): (i16, i16)) -> Moba3v3 {
     Moba3v3::Farm { x, z }
 }
 
-const fn cast(slot: u8, aim: Aim) -> Moba3v3 {
+const fn cast(slot: u8, aim: CastAim) -> Moba3v3 {
     Moba3v3::Cast { slot, aim }
 }
 
@@ -251,50 +251,50 @@ impl Moba3v3 {
     /// them; Rime strikes Husk with Chill Arrows on, then walks back to her place, which
     /// ends her attack.
     fn showcase(item: &impl Fn(&str) -> ItemId) -> Vec<(u32, Self)> {
-        let hero = |slot| Aim::Hero { slot };
-        let at = |slot| Aim::HeroPoint { slot };
+        let hero = |slot| CastAim::Hero { slot };
+        let at = |slot| CastAim::HeroPoint { slot };
         let using = |name, aim| Self::Use {
             item: item(name),
             aim,
         };
         vec![
-            (2, using("stoneplate", Aim::Nothing)),
-            (4, using("health_potion", Aim::Nothing)),
-            (5, using("health_potion", Aim::Nothing)),
-            (0, using("mana_potion", Aim::Nothing)),
-            (1, using("sight_ward", Aim::Point { x: 0, z: -23 })),
-            (1, using("vision_ward", Aim::Point { x: 1, z: -23 })),
-            (0, using("elixir_of_sight", Aim::Nothing)),
+            (2, using("stoneplate", CastAim::Nothing)),
+            (4, using("health_potion", CastAim::Nothing)),
+            (5, using("health_potion", CastAim::Nothing)),
+            (0, using("mana_potion", CastAim::Nothing)),
+            (1, using("sight_ward", CastAim::Point { x: 0, z: -23 })),
+            (1, using("vision_ward", CastAim::Point { x: 1, z: -23 })),
+            (0, using("elixir_of_sight", CastAim::Nothing)),
             (5, cast(FIRST, hero(1))),
             (1, cast(SECOND, hero(3))),
-            (3, using("quicksilver", Aim::Nothing)),
-            (5, cast(SECOND, Aim::Nothing)),
+            (3, using("quicksilver", CastAim::Nothing)),
+            (5, cast(SECOND, CastAim::Nothing)),
             (1, cast(THIRD, hero(2))),
-            (5, cast(THIRD, Aim::Nothing)),
+            (5, cast(THIRD, CastAim::Nothing)),
             (1, cast(FIRST, at(4))),
             (1, cast(FIRST, at(4))),
             (5, cast(ULTIMATE, hero(1))),
-            (1, cast(ULTIMATE, Aim::Nothing)),
+            (1, cast(ULTIMATE, CastAim::Nothing)),
             (0, cast(FIRST, at(3))),
-            (2, cast(SECOND, Aim::Nothing)),
-            (4, cast(FIRST, Aim::Nothing)),
+            (2, cast(SECOND, CastAim::Nothing)),
+            (4, cast(FIRST, CastAim::Nothing)),
             (4, Self::AttackHero { seat: 2 }),
             (3, cast(FIRST, hero(0))),
             (4, walk_to(ARENA[4])),
             (0, cast(SECOND, at(4))),
-            (2, cast(THIRD, Aim::Nothing)),
+            (2, cast(THIRD, CastAim::Nothing)),
             (4, cast(SECOND, at(2))),
-            (3, cast(SECOND, Aim::Nothing)),
+            (3, cast(SECOND, CastAim::Nothing)),
             (0, cast(THIRD, hero(5))),
-            (2, cast(SECOND, Aim::Nothing)),
-            (4, cast(FIRST, Aim::Nothing)),
+            (2, cast(SECOND, CastAim::Nothing)),
+            (4, cast(FIRST, CastAim::Nothing)),
             (2, cast(FIRST, at(5))),
-            (4, cast(THIRD, Aim::Point { x: 0, z: 15 })),
-            (3, cast(THIRD, Aim::Nothing)),
-            (2, cast(ULTIMATE, Aim::Nothing)),
+            (4, cast(THIRD, CastAim::Point { x: 0, z: 15 })),
+            (3, cast(THIRD, CastAim::Nothing)),
+            (2, cast(ULTIMATE, CastAim::Nothing)),
             (0, cast(ULTIMATE, hero(3))),
             (4, cast(ULTIMATE, at(2))),
-            (3, cast(ULTIMATE, Aim::Nothing)),
+            (3, cast(ULTIMATE, CastAim::Nothing)),
         ]
     }
 
@@ -323,11 +323,6 @@ impl Moba3v3 {
             let team = Team::new(u8::from(unit % 4 >= 2));
             Mode::spawn_typed(world, CREEPS[unit % 2], position, team, ());
         }
-    }
-
-    /// Every segment's seed, as the server knows them.
-    pub fn seeds() -> ServerSeeds {
-        FixedSession::seeds()
     }
 }
 

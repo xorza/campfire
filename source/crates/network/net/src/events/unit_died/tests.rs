@@ -1,5 +1,6 @@
 use campfire_log::internals::round_trip;
 use campfire_sim::IdAllocator;
+use campfire_values::TagSet;
 
 use super::*;
 
@@ -41,6 +42,7 @@ fn a_death_logs_its_unit_as_it_fell_and_its_killer() {
         team: Some(Team::new(1)),
         owner: Some(Seat::new(0)),
         avatar: true,
+        tags: TagSet::NONE,
     };
     let death = DeathView {
         fallen,

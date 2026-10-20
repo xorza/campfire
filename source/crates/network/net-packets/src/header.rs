@@ -6,7 +6,7 @@
 use campfire_net_payload::PayloadKind;
 use core::time::Duration;
 
-use crate::header_error::HeaderError;
+use crate::header_error::PacketHeaderError;
 
 /// The first bit, which the packet session leaves 0 and its IO uses for packets of its own
 /// (11-net-stack/packet-session.md, The first bit of each datagram is the IO's).
@@ -142,26 +142,26 @@ impl Header {
     }
 
     /// Reads the header at the start of `bytes`; its `len` tells where it ends.
-    pub(crate) fn read(bytes: &[u8]) -> Result<Self, HeaderError> {
+    pub(crate) fn read(bytes: &[u8]) -> Result<Self, PacketHeaderError> {
         let [flags, high, low, rest @ ..] = bytes else {
-            return Err(HeaderError::Truncated);
+            return Err(PacketHeaderError::Truncated);
         };
         if flags & IO_BIT != 0 {
-            return Err(HeaderError::IoPacket);
+            return Err(PacketHeaderError::IoPacket);
         }
         if flags & RESERVED_BIT != 0 {
-            return Err(HeaderError::Reserved);
+            return Err(PacketHeaderError::Reserved);
         }
         let type_bits = (flags & TYPE_MASK) >> TYPE_SHIFT;
         let packet_type = PacketType::ALL
             .into_iter()
             .find(|packet_type| packet_type.bits() == type_bits)
-            .ok_or(HeaderError::UnknownType(type_bits))?;
+            .ok_or(PacketHeaderError::UnknownType(type_bits))?;
         let acks = if flags & ACKS_BIT == 0 {
             None
         } else {
             let [l0, l1, b0, b1, b2, b3, delay, ..] = *rest else {
-                return Err(HeaderError::Truncated);
+                return Err(PacketHeaderError::Truncated);
             };
             Some(AckFields {
                 largest: u16::from_be_bytes([l0, l1]),
@@ -176,7 +176,7 @@ impl Header {
             acks,
         };
         if !header.is_well_formed() {
-            return Err(HeaderError::Shape);
+            return Err(PacketHeaderError::Shape);
         }
         Ok(header)
     }
@@ -257,27 +257,30 @@ mod tests {
     /// A datagram that is not a well-formed header is refused, each for its reason.
     #[test]
     fn a_malformed_header_is_refused() {
-        assert_eq!(Header::read(&[0, 0]), Err(HeaderError::Truncated));
-        assert_eq!(Header::read(&[IO_BIT, 0, 0]), Err(HeaderError::IoPacket));
+        assert_eq!(Header::read(&[0, 0]), Err(PacketHeaderError::Truncated));
+        assert_eq!(
+            Header::read(&[IO_BIT, 0, 0]),
+            Err(PacketHeaderError::IoPacket)
+        );
         assert_eq!(
             Header::read(&[RESERVED_BIT, 0, 0]),
-            Err(HeaderError::Reserved)
+            Err(PacketHeaderError::Reserved)
         );
         assert_eq!(
             Header::read(&[0x60, 0, 0]),
-            Err(HeaderError::UnknownType(6))
+            Err(PacketHeaderError::UnknownType(6))
         );
         // Acknowledgements announced and cut short.
         assert_eq!(
             Header::read(&[ACKS_BIT, 0, 0, 0]),
-            Err(HeaderError::Truncated)
+            Err(PacketHeaderError::Truncated)
         );
         // An ACK-only packet with no acknowledgements; a ping with a payload kind; a ping with
         // acknowledgements.
         for flags in [0x10, 0x20 | 0x04, 0x20 | ACKS_BIT] {
             assert_eq!(
                 Header::read(&[flags, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                Err(HeaderError::Shape),
+                Err(PacketHeaderError::Shape),
                 "{flags:#x}"
             );
         }

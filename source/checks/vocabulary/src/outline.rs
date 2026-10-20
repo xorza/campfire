@@ -6,7 +6,7 @@ use syn::{
     ReturnType, Safety, Signature, StaticMutability, TraitItem, Visibility,
 };
 
-use crate::index::{Entry, Index, Section};
+use crate::index::{Index, IndexSection, NameListing};
 use crate::token_text;
 
 /// The items of one Rust file as lines of the layout, each item's own one deeper, and the
@@ -49,8 +49,8 @@ impl<'a> Outline<'a> {
                     ),
                 );
                 self.index.add(
-                    Section::Values,
-                    Entry {
+                    IndexSection::Values,
+                    NameListing {
                         detail: format!(": {ty}"),
                         ..self.entry(&item.ident, "const")
                     },
@@ -113,8 +113,8 @@ impl<'a> Outline<'a> {
                     ),
                 );
                 self.index.add(
-                    Section::Values,
-                    Entry {
+                    IndexSection::Values,
+                    NameListing {
                         detail: format!(": {ty}"),
                         ..self.entry(&item.ident, "static")
                     },
@@ -133,7 +133,7 @@ impl<'a> Outline<'a> {
                     ),
                 );
                 self.index
-                    .add(Section::Types, self.entry(&item.ident, "struct"));
+                    .add(IndexSection::Types, self.entry(&item.ident, "struct"));
                 let owner = format!("struct {}", item.ident);
                 self.fields(&item.fields, &owner, depth + 1);
             }
@@ -151,7 +151,7 @@ impl<'a> Outline<'a> {
                     ),
                 );
                 self.index
-                    .add(Section::Types, self.entry(&item.ident, "trait"));
+                    .add(IndexSection::Types, self.entry(&item.ident, "trait"));
             }
             Item::Type(item) => {
                 self.line(
@@ -166,7 +166,7 @@ impl<'a> Outline<'a> {
                     ),
                 );
                 self.index
-                    .add(Section::Types, self.entry(&item.ident, "type"));
+                    .add(IndexSection::Types, self.entry(&item.ident, "type"));
             }
             Item::Union(item) => {
                 self.line(
@@ -180,7 +180,7 @@ impl<'a> Outline<'a> {
                     ),
                 );
                 self.index
-                    .add(Section::Types, self.entry(&item.ident, "union"));
+                    .add(IndexSection::Types, self.entry(&item.ident, "union"));
                 let owner = format!("union {}", item.ident);
                 for field in &item.fields.named {
                     self.field(field, &owner, depth + 1);
@@ -206,7 +206,7 @@ impl<'a> Outline<'a> {
             ),
         );
         self.index
-            .add(Section::Types, self.entry(&item.ident, "enum"));
+            .add(IndexSection::Types, self.entry(&item.ident, "enum"));
         let owner = format!("enum {}", item.ident);
         for variant in &item.variants {
             let discriminant = variant
@@ -225,7 +225,7 @@ impl<'a> Outline<'a> {
                 ),
             );
             self.index
-                .add(Section::Variants, self.entry(&variant.ident, &owner));
+                .add(IndexSection::Variants, self.entry(&variant.ident, &owner));
             let owner = format!("variant {}::{}", item.ident, variant.ident);
             self.fields(&variant.fields, &owner, depth + 2);
         }
@@ -259,8 +259,8 @@ impl<'a> Outline<'a> {
                         ),
                     );
                     self.index.add(
-                        Section::Values,
-                        Entry {
+                        IndexSection::Values,
+                        NameListing {
                             detail: format!(": {ty}"),
                             ..self.entry(&member.ident, &header)
                         },
@@ -284,7 +284,7 @@ impl<'a> Outline<'a> {
                         ),
                     );
                     self.index
-                        .add(Section::Types, self.entry(&member.ident, &header));
+                        .add(IndexSection::Types, self.entry(&member.ident, &header));
                 }
                 ImplItem::Macro(member) => self.line(
                     depth + 1,
@@ -330,7 +330,7 @@ impl<'a> Outline<'a> {
             ),
         );
         self.index
-            .add(Section::Types, self.entry(&item.ident, "trait"));
+            .add(IndexSection::Types, self.entry(&item.ident, "trait"));
         let owner = format!("trait {}", item.ident);
         for member in &item.items {
             match member {
@@ -341,8 +341,8 @@ impl<'a> Outline<'a> {
                         format_args!("{}const {}: {ty}", gates(&member.attrs), member.ident),
                     );
                     self.index.add(
-                        Section::Values,
-                        Entry {
+                        IndexSection::Values,
+                        NameListing {
                             detail: format!(": {ty}"),
                             ..self.entry(&member.ident, &owner)
                         },
@@ -369,7 +369,7 @@ impl<'a> Outline<'a> {
                         ),
                     );
                     self.index
-                        .add(Section::Types, self.entry(&member.ident, &owner));
+                        .add(IndexSection::Types, self.entry(&member.ident, &owner));
                 }
                 TraitItem::Macro(member) => self.line(
                     depth + 1,
@@ -408,8 +408,8 @@ impl<'a> Outline<'a> {
                     ),
                 );
                 self.index.add(
-                    Section::Values,
-                    Entry {
+                    IndexSection::Values,
+                    NameListing {
                         detail: format!(": {ty}"),
                         ..self.entry(&item.ident, abi)
                     },
@@ -426,7 +426,8 @@ impl<'a> Outline<'a> {
                         generics(&item.generics)
                     ),
                 );
-                self.index.add(Section::Types, self.entry(&item.ident, abi));
+                self.index
+                    .add(IndexSection::Types, self.entry(&item.ident, abi));
             }
             ForeignItem::Macro(item) => self.line(
                 depth,
@@ -442,7 +443,8 @@ impl<'a> Outline<'a> {
     /// The entry of a function, which a test has none of.
     fn add_function(&mut self, attrs: &[Attribute], name: &Ident, owner: &str) {
         if !attrs.iter().any(is_test) {
-            self.index.add(Section::Functions, self.entry(name, owner));
+            self.index
+                .add(IndexSection::Functions, self.entry(name, owner));
         }
     }
 
@@ -468,8 +470,8 @@ impl<'a> Outline<'a> {
             ),
         );
         self.index.add(
-            Section::Fields,
-            Entry {
+            IndexSection::Fields,
+            NameListing {
                 detail: format!(": {ty}"),
                 ..self.entry(ident, owner)
             },
@@ -481,8 +483,8 @@ impl<'a> Outline<'a> {
     }
 
     /// The entry of `name`, which `owner` declares here, with no detail.
-    fn entry(&self, name: &Ident, owner: &str) -> Entry {
-        Entry {
+    fn entry(&self, name: &Ident, owner: &str) -> NameListing {
+        NameListing {
             name: name.to_string(),
             detail: String::new(),
             owner: owner.to_owned(),

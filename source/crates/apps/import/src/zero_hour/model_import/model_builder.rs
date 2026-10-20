@@ -10,12 +10,12 @@ use gltf_json::validation::Checked;
 use gltf_json::{Accessor, Extras, Index, Material, Mesh, Node};
 
 use crate::gltf::glb_builder::GlbBuilder;
-use crate::pose::Pose;
+use crate::pose::RigidPose;
 use crate::zero_hour::axes;
 use crate::zero_hour::error::ModelError;
 use crate::zero_hour::format::w3d::hierarchy::Hierarchy;
 use crate::zero_hour::format::w3d::hlod::SubObject;
-use crate::zero_hour::format::w3d::w3d_mesh::{Pass, Stage, VertexMaterial, W3dMesh};
+use crate::zero_hour::format::w3d::w3d_mesh::{MaterialPass, Stage, VertexMaterial, W3dMesh};
 use crate::zero_hour::game_path;
 use crate::zero_hour::model_import::model_textures::ModelTextures;
 use crate::zero_hour::model_import::w3d_material::{
@@ -179,20 +179,20 @@ impl ModelBuilder {
     pub(super) fn mesh(
         &mut self,
         mesh: &W3dMesh,
-        poses: Option<&[Pose]>,
+        poses: Option<&[RigidPose]>,
         textures: &ModelTextures,
     ) -> Result<Index<Mesh>, ModelError> {
         // A glTF mesh needs a primitive; none of the shipped meshes a model draws lacks one.
         if mesh.triangles.is_empty() {
             return Err(ModelError::Empty(mesh.name.clone()));
         }
-        let pose_of = |vertex: usize| -> Result<Pose, ModelError> {
+        let pose_of = |vertex: usize| -> Result<RigidPose, ModelError> {
             match (&mesh.bones, poses) {
                 (Some(bones), Some(poses)) => poses
                     .get(usize::from(bones[vertex]))
                     .copied()
                     .ok_or(ModelError::Pivot),
-                _ => Ok(Pose::IDENTITY),
+                _ => Ok(RigidPose::IDENTITY),
             }
         };
         let mut positions = Vec::with_capacity(mesh.positions.len());
@@ -339,7 +339,7 @@ impl ModelBuilder {
     /// the colors times the diffuse color and opacity, which glTF's colors times its base color
     /// are. With emissive light, the game moves them to another channel. A mesh whose shaders
     /// draw their textures alone uses no vertex colors, so it needs none of this.
-    pub(super) fn colors_are_diffuse(mesh: &W3dMesh, pass: &Pass) -> bool {
+    pub(super) fn colors_are_diffuse(mesh: &W3dMesh, pass: &MaterialPass) -> bool {
         let used = |vertex: usize| mesh.material(pass.materials.get(vertex));
         let materials: Vec<&VertexMaterial> = (0..mesh.positions.len()).map(used).collect();
         let lit = |color: fn(&VertexMaterial) -> [u8; 3]| {

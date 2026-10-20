@@ -3,13 +3,13 @@ use std::num::NonZeroU8;
 use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
 use campfire_values::TextId;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A choice of the mode's `[choices]`: the message of the name players see, what it offers, how
 /// many values a player chooses, whether
 /// no two players may choose one value, and for loadout entries, the slot kind they fill, whose
 /// ranks they have.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChoiceData {
     pub name: TextId,
@@ -23,7 +23,7 @@ pub struct ChoiceData {
 
 /// What a choice offers: the avatar packages the mode depends on, or the entries of its loadout
 /// packages.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Offers {
     Avatars,

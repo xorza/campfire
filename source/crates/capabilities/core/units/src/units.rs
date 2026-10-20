@@ -323,11 +323,10 @@ impl AudienceCall for HoldsClass<'_> {
 pub(crate) mod internals {
     use std::collections::BTreeMap;
 
-    use bevy_ecs::change_detection::Mut;
     use bevy_ecs::world::World;
     use campfire_common::{DeclaredName, NamedEnum};
-    use campfire_declarations::ByType;
     use campfire_declarations::internals::BookLoad;
+    use campfire_declarations::{ByType, PerType};
     use campfire_script::{
         CallError, Ctx, MatchNames, ScriptError, ScriptHost, ScriptId, ScriptValue,
     };
@@ -375,7 +374,7 @@ pub(crate) mod internals {
             world: &mut World,
             change: impl FnOnce(&mut World, &mut UnitTypes) -> R,
         ) -> R {
-            let mut types = world.resource_mut::<UnitTypeBook>().take_loading();
+            let mut types = UnitTypeBook::amend(world, |_, book| book.take_loading());
             let changed = change(world, &mut types);
             let states = types.state_book();
             types.into_book().load_into(world);
@@ -387,8 +386,7 @@ pub(crate) mod internals {
         /// effects `data` gives them by name, as a match's books take them once its packages
         /// load: after it, no type loads.
         pub fn seal_types(world: &mut World, data: &BTreeMap<DeclaredName, TagData>) {
-            let types = world.resource_mut::<UnitTypeBook>().take_loading();
-            let books = types.finish(data);
+            let books = UnitTypeBook::amend(world, |_, book| book.take_loading()).finish(data);
             books.types.load_into(world);
             books.tags.load_into(world);
             books.origins.load_into(world);
@@ -444,12 +442,8 @@ pub(crate) mod internals {
         }
 
         /// Gives `unit_type` `value` in its book, as the books of a mode's type do.
-        pub fn give_type<T: Send + Sync + 'static>(
-            world: &mut World,
-            unit_type: UnitType,
-            value: T,
-        ) {
-            world.resource_mut::<ByType<T>>().set(unit_type, value);
+        pub fn give_type<T: PerType>(world: &mut World, unit_type: UnitType, value: T) {
+            ByType::<T>::amend(world, |_, book| book.set(unit_type, value));
         }
 
         /// `probe(ctx, of)` in `source`, run on the units as they are now.
@@ -477,7 +471,7 @@ pub(crate) mod internals {
         /// test match has no package load to read them.
         pub fn compile_hooked(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
             let script = Self::compile(world, source)?;
-            world.resource_scope(|world, mut scripts: Mut<'_, ScriptBook>| {
+            ScriptBook::amend(world, |world, scripts| {
                 assert_eq!(script.index(), scripts.len(), "the book holds every script");
                 scripts.push(world.non_send::<ScriptHost>().functions(script));
             });

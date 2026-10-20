@@ -15,6 +15,7 @@ fn a_script_defines_a_hook_only_by_its_name_and_its_count_of_parameters() {
         name,
         role,
         param_names,
+        param_kinds: &[],
     };
     let resolve = hook("on_resolve", ScriptRole::Action, &["ctx", "unit", "target"]);
     let hit = hook(

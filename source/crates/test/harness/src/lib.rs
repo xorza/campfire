@@ -27,7 +27,7 @@ pub use crate::match_record::MatchRecord;
 pub use crate::match_units::MatchUnits;
 pub use crate::moba_3v3::Moba3v3;
 pub use crate::proving_match::ProvingMatch;
-pub use crate::scripted::{Aim, Plan};
+pub use crate::scripted::{CastAim, Plan};
 pub use crate::scripted_mode::ScriptedMode;
 
 pub mod bench;

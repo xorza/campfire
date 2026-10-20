@@ -15,20 +15,13 @@ use campfire_common::ChannelBinding;
 /// other side (11-net-stack/api.md, A state the code cannot reach is a type).
 pub trait Establish: Send + core::fmt::Debug + 'static {
     /// Takes a datagram whose first bit is the IO's own: a handshake's.
-    fn receive(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing);
+    fn receive(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing) -> ReadCost;
 
     /// Runs the establishment's timers due at `now`.
     fn poll(&mut self, now: Instant, out: &mut Establishing);
 
     /// The earliest moment a timer of `poll` is due.
     fn next_deadline(&self) -> Option<Instant>;
-
-    /// Whether a packet session datagram to this endpoint starts with the connection ID that routes
-    /// it, as a client's datagrams to a sealed server do.
-    fn routes_by_prefix(&self) -> bool;
-
-    /// The 8 random bytes of a path challenge, which a peer on a spoofed address cannot guess.
-    fn challenge(&mut self) -> [u8; 8];
 
     /// The packet session it established, routed by `route`, left the endpoint.
     fn ended(&mut self, route: Option<ConnectionId>);
@@ -49,6 +42,28 @@ pub trait ServerEstablish: Establish {
 
     /// Whether it takes new peers, from the server's start to its stop.
     fn set_accepting(&mut self, accepting: bool);
+
+    /// Its check of a peer's new path, when it routes each client's datagrams by the connection
+    /// ID it gave, so a peer moves; none when it routes them by address, where no peer moves
+    /// (11-net-stack/packet-session.md, A path check is a server's capability).
+    fn path_check(&mut self) -> Option<&mut dyn PathCheck>;
+}
+
+/// A server's check of a peer's new path, which only an establishment that routes by connection ID
+/// makes.
+pub trait PathCheck {
+    /// The 8 random bytes of a path challenge, which a peer on a spoofed address cannot guess.
+    fn challenge(&mut self) -> [u8; 8];
+}
+
+/// What an establishment's read of one datagram cost the endpoint's hold of its lock, which ends
+/// after a handshake's start (11-net-stack/packet-session.md, A hold starts at most one handshake).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadCost {
+    /// It started a handshake, whose first flight costs as much as a batch of datagrams.
+    Handshake,
+    /// Less: a Retry, a refusal, a step or the end of a handshake, or nothing.
+    Light,
 }
 
 /// What an establishment hands its endpoint back.

@@ -56,6 +56,9 @@ pub enum GroundLoadError {
     /// The map gives a `[ground]` but no height grid.
     #[error("a [ground] with no height grid")]
     NoHeights,
+    /// A spatial map gives a `[ground]`, which the sim of a spatial map reads none of.
+    #[error("a [ground] on a spatial map")]
+    Spatial,
     /// The height grid and the `[ground]` make no ground.
     #[error(transparent)]
     Ground(GroundError),

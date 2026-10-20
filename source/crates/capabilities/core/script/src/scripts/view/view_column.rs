@@ -4,7 +4,7 @@ use std::ops::Range;
 
 use bevy_ecs::world::World;
 
-use crate::scripts::type_slots::{Slot, TypeSlots};
+use crate::scripts::typed_list::{TypedItem, TypedList};
 use crate::scripts::view::kept_rows::AnyKeptRows;
 
 /// A part of the script view that a capability, or the action pipeline, owns: what it reads of
@@ -22,7 +22,7 @@ pub trait ViewColumn: Any + fmt::Debug {
 }
 
 /// A column of any type, as the view holds it: what the view does with every column's rows.
-trait AnyColumn: Slot + fmt::Debug {
+trait AnyColumn: TypedItem + fmt::Debug {
     /// Takes what its rows derive from besides the units' parts, as a read of `world` starts.
     /// Whether every row must be filled again.
     fn begin(&mut self, world: &World) -> bool;
@@ -65,7 +65,7 @@ impl<C: ViewColumn> AnyColumn for C {
 
 /// The columns of the view, each of its own type, in the order they were added.
 #[derive(Debug, Default)]
-pub struct ViewColumns(TypeSlots<dyn AnyColumn>);
+pub struct ViewColumns(TypedList<dyn AnyColumn>);
 
 impl ViewColumns {
     pub fn add<C: ViewColumn>(&mut self, column: C) {

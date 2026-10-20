@@ -7,7 +7,7 @@ use std::time::Duration;
 use bevy_ecs::query::With;
 use campfire_actions::ActionTarget;
 use campfire_bots::{
-    BotBuffers, BotNames, BotScript, BotSink, HeldBotView, Named, OrderScript, OrderUnsent,
+    BotBuffers, BotNames, BotScript, BotSink, HeldBotView, NamedRefs, OrderScript, OrderUnsent,
 };
 use campfire_capabilities::{Directive, Order};
 use campfire_common::{AfterLeave, Seat, StateHash, Tick};
@@ -38,7 +38,7 @@ impl BotSink for Heard {
         self.sent.push(payload.to_vec());
     }
 
-    fn unsent(&mut self, _: Seat, _: &Directive<Named>, cause: OrderUnsent) {
+    fn unsent(&mut self, _: Seat, _: &Directive<NamedRefs>, cause: OrderUnsent) {
         self.unsent.push(cause);
     }
 }

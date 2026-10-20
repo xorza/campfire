@@ -8,8 +8,8 @@ use campfire_common::ErrorReport;
 use campfire_net_core::Random;
 use tracing::{debug, info, warn};
 
-use crate::error::MapError;
-use crate::gateway::{Ask, Gateway, Mapping, Tries, Wait};
+use crate::error::PortMapError;
+use crate::gateway::{Gateway, MapAsk, Mapping, Tries, Wait};
 use crate::pcp_map::MapNonce;
 use crate::ssdp_announcement::SsdpAnnouncement;
 use crate::upnp_gateway::{SSDP, UpnpGateway};
@@ -97,8 +97,8 @@ enum Mapper {
 /// Why a turn mapped no port: PCP's and NAT-PMP's error, and UPnP's.
 #[derive(Debug)]
 struct Unmapped {
-    pmp: MapError,
-    upnp: MapError,
+    pmp: PortMapError,
+    upnp: PortMapError,
 }
 
 impl MapTimes {
@@ -119,15 +119,15 @@ impl MapTimes {
 }
 
 impl Routes {
-    fn pcp(self) -> Result<SocketAddrV4, MapError> {
+    fn pcp(self) -> Result<SocketAddrV4, PortMapError> {
         match self {
             Self::System => {
                 // `netdev` gives only a message, which goes to the log; the error names the case.
                 let gateway = netdev::get_default_gateway().map_err(|message| {
                     debug!(%message, "the OS names no default gateway");
-                    MapError::NoGateway
+                    PortMapError::NoGateway
                 })?;
-                let address = gateway.ipv4.first().ok_or(MapError::NoIpv4Gateway)?;
+                let address = gateway.ipv4.first().ok_or(PortMapError::NoIpv4Gateway)?;
                 Ok(SocketAddrV4::new(*address, PCP_PORT))
             }
             #[cfg(test)]
@@ -199,7 +199,7 @@ impl PortMapper {
                     let lifetime = held.mapping.lifetime;
                     return Self::renewal(lifetime, self.draw());
                 }
-                Err(MapError::Stopped) => return Duration::ZERO,
+                Err(PortMapError::Stopped) => return Duration::ZERO,
                 Err(error) => {
                     warn!(error = %ErrorReport::of(&error), "the router did not renew the server's port mapping; the port is mapped anew");
                     self.held = None;
@@ -226,7 +226,7 @@ impl PortMapper {
                     self.told = true;
                 }
                 match unmapped.pmp {
-                    MapError::PcpRefused { lasts, .. } => {
+                    PortMapError::PcpRefused { lasts, .. } => {
                         lasts.clamp(RENEWAL_MIN, self.times.lifetime.max(RENEWAL_MIN))
                     }
                     _ => self.times.retry,
@@ -277,11 +277,11 @@ impl PortMapper {
         }
     }
 
-    fn map_by_pmp(&mut self, stop: &AtomicBool) -> Result<Held, MapError> {
+    fn map_by_pmp(&mut self, stop: &AtomicBool) -> Result<Held, PortMapError> {
         let pcp = self.routes.pcp()?;
         let mut gateway =
-            Gateway::connect(pcp, MapNonce::random(&mut self.random)).map_err(MapError::Io)?;
-        let ask = Ask {
+            Gateway::connect(pcp, MapNonce::random(&mut self.random)).map_err(PortMapError::Io)?;
+        let ask = MapAsk {
             internal_port: self.request.internal_port,
             name: self.request.name,
             renewed: None,
@@ -301,19 +301,19 @@ impl PortMapper {
     /// Maps the port through the router a search finds, else through the last that announced
     /// itself, whose answer a host firewall may have dropped (11-net-stack/port-map.md, A server
     /// maps its own port).
-    fn map_by_upnp(&mut self, stop: &AtomicBool) -> Result<Held, MapError> {
+    fn map_by_upnp(&mut self, stop: &AtomicBool) -> Result<Held, PortMapError> {
         if stop.load(Ordering::SeqCst) {
-            return Err(MapError::Stopped);
+            return Err(PortMapError::Stopped);
         }
         let router = match UpnpGateway::search(self.routes.ssdp(), self.times.search, stop) {
             Ok(router) => router,
-            Err(MapError::Stopped) => return Err(MapError::Stopped),
+            Err(PortMapError::Stopped) => return Err(PortMapError::Stopped),
             Err(searched) => match &self.heard {
                 Some(heard) => UpnpGateway::announced(heard, self.times.search, stop)?,
                 None => return Err(searched),
             },
         };
-        let ask = Ask {
+        let ask = MapAsk {
             internal_port: self.request.internal_port,
             name: self.request.name,
             renewed: None,
@@ -377,8 +377,8 @@ impl Held {
         times: MapTimes,
         stop: &AtomicBool,
         random: &mut Random,
-    ) -> Result<(), MapError> {
-        let ask = Ask {
+    ) -> Result<(), PortMapError> {
+        let ask = MapAsk {
             internal_port: request.internal_port,
             name: request.name,
             renewed: Some(&self.mapping),
@@ -413,7 +413,7 @@ impl Held {
         };
         match address {
             Ok(address) => self.mapping.address = Some(address),
-            Err(MapError::Stopped) => {}
+            Err(PortMapError::Stopped) => {}
             Err(error) => {
                 warn!(error = %ErrorReport::of(&error), external_port = self.mapping.external_port, "the router forwards the server's port, but its address outside did not read; the map renews the mapping");
             }

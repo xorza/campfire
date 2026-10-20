@@ -36,7 +36,7 @@ enum Cue<P> {
 
 /// Where a scripted cast aims.
 #[derive(Debug, Clone, Copy)]
-pub enum Aim {
+pub enum CastAim {
     Nothing,
     Point {
         x: i64,
@@ -117,7 +117,7 @@ impl<P: Plan> Scripted<P> {
     }
 }
 
-impl Aim {
+impl CastAim {
     /// The target this aim names, with the units' stable ids in `units`.
     pub(crate) fn target(self, units: MatchUnits<'_>) -> ActionTarget {
         match self {

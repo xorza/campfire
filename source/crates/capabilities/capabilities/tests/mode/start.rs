@@ -2,6 +2,7 @@ use campfire_common::Tick;
 use campfire_mode::internals::MarkerOf;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Position;
+use campfire_units::MapSpace;
 use campfire_units::{
     CellSplit, CoarseSpan, Ground, GroundData, GroundError, GroundLoadError, HeightGrid,
 };
@@ -153,7 +154,7 @@ fn on_input(ctx, player, name, value) {
     let mut files = mode_files();
     files.map = raised(files.map, 3);
     let mut game = start_match(script, ScriptLimits::ROOMY, &files).unwrap();
-    assert_eq!(game.resource::<MapBook>().metric, Metric::Spatial);
+    assert_eq!(game.resource::<MapBook>().metric(), Metric::Spatial);
     let up = |x| Vec3::new(Num::int(x), Num::int(3), Num::ZERO);
     let walkers = |game: &Match| <[_; 3]>::try_from(&Mode::placed_units(game)[1..]).unwrap();
     assert_eq!(
@@ -231,7 +232,10 @@ fn a_maps_ground_is_its_height_grid_as_its_ground_section_reads_it() {
             Some(ground) => map.with(ground),
             None => map,
         };
-        MapBook::of(map.sections(), heights).map(|book| book.ground)
+        MapBook::of(map.sections(), heights).map(|book| match book.space {
+            MapSpace::Planar(ground) => ground,
+            MapSpace::Spatial => unreachable!("the test's maps are planar"),
+        })
     };
     let read = |split, cell| GroundData {
         split,

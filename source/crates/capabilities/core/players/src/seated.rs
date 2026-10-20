@@ -19,16 +19,16 @@ pub(crate) struct Seated;
 
 /// Whether a player or a bot held a seat as the match started.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Seating {
+pub enum SeatHolder {
     Held,
     Open,
 }
 
 /// A seat as the match starts: its team, and whether a player or a bot holds it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SeatStart {
+pub struct StartingSeat {
     pub team: Team,
-    pub seating: Seating,
+    pub holder: SeatHolder,
 }
 
 impl SimComponent for Seated {

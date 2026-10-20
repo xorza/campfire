@@ -64,7 +64,7 @@ fn failed() -> ProcessOutcome {
     outcome
 }
 
-fn found(verdict: &Verdict) -> Vec<Failure> {
+fn found(verdict: &Verdict) -> Vec<CheckFailure> {
     verdict.failures().cloned().collect()
 }
 
@@ -159,25 +159,25 @@ fn a_match_fails_by_each_flaw_it_has() {
     assert_eq!(
         found(&verdict),
         [
-            Failure::NeverListened,
-            Failure::OrderCount {
+            CheckFailure::NeverListened,
+            CheckFailure::OrderCount {
                 bot: 0,
                 sent: 3,
                 scripted: 2
             },
-            Failure::NoSeat { bot: 1 },
-            Failure::Moved {
+            CheckFailure::NoSeat { bot: 1 },
+            CheckFailure::Moved {
                 seat,
                 stamp: Tick::new(20),
                 tick: Tick::new(21)
             },
-            Failure::Unlogged {
+            CheckFailure::Unlogged {
                 seat,
                 stamp: Tick::new(50),
                 sent: 2,
                 logged: 1
             },
-            Failure::OtherHash {
+            CheckFailure::OtherHash {
                 session: SessionKind::Lan,
                 host: hash("aa"),
                 verifier: hash("bb")
@@ -190,17 +190,17 @@ fn a_match_fails_by_each_flaw_it_has() {
     let lan = SessionKind::Lan;
     verdict.hash(lan, None, Some(&verified(hash("aa"))));
     verdict.hash(lan, Some(&written(hash("aa"))), None);
-    let no_log = Failure::NoLog { session: lan };
+    let no_log = CheckFailure::NoLog { session: lan };
     assert_eq!(
         found(&verdict),
-        [no_log.clone(), Failure::NotVerified { session: lan }]
+        [no_log.clone(), CheckFailure::NotVerified { session: lan }]
     );
     // Neither follows from a verifier that failed but the first; both follow from a server
     // that overran, which alone the verdict names.
     let empty = |process| ProcessLog::empty(process);
     let failed = failed();
     verdict.process(Process::Verifier, failed, &empty(Process::Verifier));
-    let verifier_failed = Failure::Ended {
+    let verifier_failed = CheckFailure::Ended {
         process: Process::Verifier,
         outcome: failed,
     };
@@ -208,7 +208,7 @@ fn a_match_fails_by_each_flaw_it_has() {
     // The server that writes the log is the one the check started again.
     let again = Process::ServerAgain;
     verdict.process(again, ProcessOutcome::Overran, &empty(again));
-    let server_overran = Failure::Ended {
+    let server_overran = CheckFailure::Ended {
         process: again,
         outcome: ProcessOutcome::Overran,
     };
@@ -232,7 +232,7 @@ fn the_impostor_and_each_process_fail_by_their_own_flaws() {
     verdict.impostor(failed, &[lost(timed_out)]);
     assert_eq!(
         found(&verdict),
-        [Failure::ImpostorNotWrongKey { cause: timed_out }]
+        [CheckFailure::ImpostorNotWrongKey { cause: timed_out }]
     );
     for outcome in [
         ProcessOutcome::Succeeded,
@@ -244,8 +244,8 @@ fn the_impostor_and_each_process_fail_by_their_own_flaws() {
         assert_eq!(
             found(&verdict),
             [
-                Failure::ImpostorNotRefused { outcome },
-                Failure::ImpostorSilent
+                CheckFailure::ImpostorNotRefused { outcome },
+                CheckFailure::ImpostorSilent
             ],
             "{outcome:?}"
         );
@@ -264,11 +264,11 @@ fn the_impostor_and_each_process_fail_by_their_own_flaws() {
     assert_eq!(
         found(&verdict),
         [
-            Failure::Ended {
+            CheckFailure::Ended {
                 process: Process::Server,
                 outcome: ProcessOutcome::Overran
             },
-            Failure::Warned {
+            CheckFailure::Warned {
                 process: Process::Server,
                 level: LogLevel::Warn,
                 target: "campfire_net::lobby".to_owned(),
@@ -301,7 +301,7 @@ fn a_bot_the_check_stops_and_starts_again_counts_its_orders_once_across_both() {
     verdict.stopped(Process::Bot(1), ProcessOutcome::Succeeded, &empty);
     assert_eq!(
         found(&verdict),
-        [Failure::NotStopped {
+        [CheckFailure::NotStopped {
             process: Process::Bot(1),
             outcome: ProcessOutcome::Succeeded
         }]
@@ -314,17 +314,20 @@ fn a_bot_the_check_stops_and_starts_again_counts_its_orders_once_across_both() {
     verdict.hash(local, None, None);
     let empty = ProcessLog::empty(Process::Server);
     verdict.process(Process::Server, ProcessOutcome::Overran, &empty);
-    let server_overran = Failure::Ended {
+    let server_overran = CheckFailure::Ended {
         process: Process::Server,
         outcome: ProcessOutcome::Overran,
     };
     assert_eq!(
         found(&verdict),
-        [Failure::NoLog { session: local }, server_overran.clone()]
+        [
+            CheckFailure::NoLog { session: local },
+            server_overran.clone()
+        ]
     );
     let empty = ProcessLog::empty(Process::Local);
     verdict.process(Process::Local, ProcessOutcome::Overran, &empty);
-    let local_overran = Failure::Ended {
+    let local_overran = CheckFailure::Ended {
         process: Process::Local,
         outcome: ProcessOutcome::Overran,
     };

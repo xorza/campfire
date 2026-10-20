@@ -14,7 +14,7 @@ pub struct Binary;
 
 /// A value decoded from the front of bytes, and the bytes after it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Taken<'a, T> {
+pub struct Decoded<'a, T> {
     pub value: T,
     pub rest: &'a [u8],
 }
@@ -85,19 +85,19 @@ impl Binary {
     /// Replicon's diffs: its decode makes no check that the bytes are the value's one encoding.
     pub fn take_unchecked<'a, T: Deserialize<'a>>(
         bytes: &'a [u8],
-    ) -> Result<Taken<'a, T>, BinaryError> {
+    ) -> Result<Decoded<'a, T>, BinaryError> {
         let (value, rest) = postcard::take_from_bytes::<T>(bytes)?;
-        Ok(Taken { value, rest })
+        Ok(Decoded { value, rest })
     }
 
     /// The value at the front of `bytes`, and the bytes after it.
     pub fn take<'a, T: Deserialize<'a> + Serialize>(
         bytes: &'a [u8],
-    ) -> Result<Taken<'a, T>, BinaryError> {
+    ) -> Result<Decoded<'a, T>, BinaryError> {
         let (value, rest) = postcard::take_from_bytes::<T>(bytes)?;
         let read = &bytes[..bytes.len() - rest.len()];
         match postcard::serialize_with_flavor(&value, Compare::new(read)) {
-            Ok(matched) if matched == read.len() => Ok(Taken { value, rest }),
+            Ok(matched) if matched == read.len() => Ok(Decoded { value, rest }),
             _ => Err(BinaryError::NotCanonical),
         }
     }

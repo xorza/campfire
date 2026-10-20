@@ -4,7 +4,7 @@ use derive_more::Display;
 use miniz_oxide::inflate::TINFLStatus;
 use thiserror::Error;
 
-use crate::zero_hour::format::error::Short;
+use crate::zero_hour::format::error::CutShort;
 use crate::zero_hour::format::ref_pack::error::RefPackError;
 
 /// Why a map's bytes are no map the game reads.
@@ -154,8 +154,8 @@ impl fmt::Display for Chunk {
     }
 }
 
-impl From<Short> for MapReadError {
-    fn from(_: Short) -> Self {
+impl From<CutShort> for MapReadError {
+    fn from(_: CutShort) -> Self {
         Self::Short
     }
 }

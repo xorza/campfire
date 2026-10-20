@@ -8,7 +8,7 @@ use campfire_values::{
 };
 
 use crate::scripts::script_names::ScriptNames;
-use crate::scripts::type_slots::{Slot, TypeSlots};
+use crate::scripts::typed_list::{TypedItem, TypedList};
 use crate::scripts::view::tag_names::TagNames;
 use crate::scripts::view::teams::Teams;
 
@@ -19,7 +19,7 @@ use crate::scripts::view::teams::Teams;
 #[derive(Resource, Debug, Default)]
 pub struct MatchNames {
     /// The names of each kind of id, a `Table<I>` by the id's type `I`.
-    tables: TypeSlots<dyn AnyTable>,
+    tables: TypedList<dyn AnyTable>,
     tags: TagNames,
     /// The match's teams; none before a mode sets them.
     teams: Option<Arc<Teams>>,
@@ -34,7 +34,7 @@ pub struct MatchNames {
 struct Table<I: NameId>(Arc<Names<I>>);
 
 /// A table of the names of one kind of id, as `MatchNames` holds it among the others.
-pub(crate) trait AnyTable: Slot + fmt::Debug + Send + Sync {
+pub(crate) trait AnyTable: TypedItem + fmt::Debug + Send + Sync {
     /// The table as scripts read it, each name a script string.
     fn script_names(&self) -> Box<dyn AnyNames>;
 
@@ -42,7 +42,7 @@ pub(crate) trait AnyTable: Slot + fmt::Debug + Send + Sync {
 }
 
 /// A table of the names of one kind of id as scripts read it, among the others.
-pub(crate) trait AnyNames: Slot + fmt::Debug {}
+pub(crate) trait AnyNames: TypedItem + fmt::Debug {}
 
 impl<I: NameId + 'static> AnyTable for Table<I>
 where
@@ -61,7 +61,7 @@ impl<I: NameId + 'static> AnyNames for ScriptNames<I> {}
 
 impl Clone for MatchNames {
     fn clone(&self) -> Self {
-        let mut tables = TypeSlots::default();
+        let mut tables = TypedList::default();
         for table in &self.tables {
             tables.add(table.clone_table());
         }

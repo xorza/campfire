@@ -4,7 +4,7 @@ use campfire_sim::StableId;
 use campfire_values::{ActionId, ActionStart, Rank};
 use serde::{Deserialize, Serialize};
 
-use crate::action_call::{ActionCall, Started};
+use crate::action_call::{ActionCall, StartedOrder};
 use crate::channel_call::ChannelCall;
 use crate::slot_aim::SlotAim;
 
@@ -50,7 +50,7 @@ pub enum InProgress {
 pub enum OrderPhase {
     Ordered,
     Approaching,
-    Started(Started),
+    Started(StartedOrder),
 }
 
 impl InProgress {
@@ -119,7 +119,7 @@ impl InProgress {
         match self {
             Self::Order {
                 aim,
-                phase: OrderPhase::Started(Started { resolves_at, start }),
+                phase: OrderPhase::Started(StartedOrder { resolves_at, start }),
             } if resolves_at <= now => Some(ActionCall { aim, start }),
             _ => None,
         }
@@ -130,7 +130,7 @@ impl InProgress {
         match self {
             Self::Attack { resolves_at, .. }
             | Self::Order {
-                phase: OrderPhase::Started(Started { resolves_at, .. }),
+                phase: OrderPhase::Started(StartedOrder { resolves_at, .. }),
                 ..
             } => Some(resolves_at),
             Self::Order {

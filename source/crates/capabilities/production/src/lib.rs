@@ -81,7 +81,7 @@ pub use crate::builder::{BuildOrder, Builder};
 pub use crate::completed_sites::{CompletedSites, OnSiteComplete};
 pub use crate::construct_data::ConstructData;
 pub use crate::construction::Construction;
-pub use crate::construction::step::{Start, Step};
+pub use crate::construction::step::{StartingBuild, Step};
 pub use crate::drop_off_data::DropOffData;
 pub use crate::error::{PointPastBound, ProductionDataError, ProductionRefusal};
 pub use crate::frame_point::FramePoint;
@@ -370,7 +370,9 @@ pub mod internals {
 
     impl Production {
         /// Adds a train of `unit_type` that takes `time` and costs `resource_cost`, no pool and no
-        /// cooldown, to the match's action book and its trains' book.
+        /// cooldown, to the match's action book and, in a match that runs production, its
+        /// trains' book; in one that does not, it is an action of the train kind alone, which no
+        /// pass trains.
         pub fn add_train(
             world: &mut World,
             unit_type: UnitType,
@@ -382,8 +384,10 @@ pub mod internals {
                 ..TestAction::new(ActionKind::Train, Aim::None, ActionRange::Global, time)
             };
             let id = Actions::add(world, "train", action);
-            let mut trains = world.get_resource_or_init::<ByAction<TrainSpec>>();
-            trains.set(id, TrainSpec { unit_type });
+            if world.contains_resource::<ByAction<TrainSpec>>() {
+                let spec = TrainSpec { unit_type };
+                ByAction::<TrainSpec>::amend(world, |_, book| book.set(id, spec));
+            }
             id
         }
 
@@ -402,8 +406,9 @@ pub mod internals {
             let names = world.resource::<MatchNames>();
             let unit_type = names.named((scope, train.unit_type.as_str()));
             let unit_type = unit_type.expect("a test's train makes a type of its package");
-            let mut trains = world.get_resource_or_init::<ByAction<TrainSpec>>();
-            trains.set(action, TrainSpec { unit_type });
+            ByAction::<TrainSpec>::amend(world, |_, book| {
+                book.set(action, TrainSpec { unit_type });
+            });
         }
 
         /// Adds `build`, aimed at a point, no pool and no cooldown, to the match's action book
@@ -419,9 +424,7 @@ pub mod internals {
                 )
             };
             let id = Actions::add(world, "build", action);
-            world
-                .get_resource_or_init::<BuildBook>()
-                .push(id, build.build);
+            BuildBook::amend(world, |_, book| book.push(id, build.build));
             id
         }
 
@@ -441,9 +444,7 @@ pub mod internals {
                 time,
             );
             let id = Actions::add(world, "gather", action);
-            world
-                .get_resource_or_init::<ByAction<GatherSpec>>()
-                .set(id, spec);
+            ByAction::<GatherSpec>::amend(world, |_, book| book.set(id, spec));
             id
         }
 

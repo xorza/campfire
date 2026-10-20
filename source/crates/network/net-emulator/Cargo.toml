@@ -24,8 +24,6 @@ bevy_platform = { workspace = true, features = ["std"] }
 [dev-dependencies]
 campfire-net-emulator = { workspace = true, features = ["internals"] }
 
-[lib]
-bench = false
 
 [[bench]]
 name = "net-emulator"

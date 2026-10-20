@@ -41,7 +41,7 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
     let log = SessionLog::new(header).unwrap();
     let journal = SessionJournal(AppendWriter::failing_sync(ThreadName::fixture("journal")));
     let mut world = World::new();
-    world.init_resource::<Faults>();
+    world.init_resource::<WorkerFaults>();
     world.insert_resource(State::new(ServerPhase::Lobby));
     world.init_resource::<NextState<ServerPhase>>();
     world.insert_resource(JournalWatch(journal.watch()));

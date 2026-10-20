@@ -38,7 +38,7 @@ pub(crate) struct RouteAsks {
     /// The places in `waiting` of the asks of parties, by party and goal, then stable id.
     parties: Vec<u32>,
     /// The members of the party being planned, by stable id.
-    members: Vec<Member>,
+    members: Vec<PlanWalker>,
     /// The shared routes of the party being planned, one for each layer, one after another.
     shared: Vec<Vec3>,
     layers: Vec<SharedRoute>,
@@ -52,7 +52,7 @@ pub(crate) struct RouteAsks {
 pub(crate) struct Ask {
     pub(crate) tick: Tick,
     pub(crate) party: Option<Party>,
-    pub(crate) member: Member,
+    pub(crate) member: PlanWalker,
 }
 
 /// An ask that waits, and whether the tick's plan answered it.
@@ -64,7 +64,7 @@ struct Waiting {
 
 /// A walker a plan answers: its unit, where it stands, its kind of walker and its own goal.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Member {
+pub(crate) struct PlanWalker {
     pub id: StableId,
     pub(crate) entity: Entity,
     pub position: Vec3,
@@ -119,7 +119,7 @@ impl RouteAsks {
     pub(crate) fn plan(
         &mut self,
         search: Option<RouteSearch<'_>>,
-        answer: &mut impl FnMut(Member, &[Vec3], bool),
+        answer: &mut impl FnMut(PlanWalker, &[Vec3], bool),
     ) {
         let Some(mut search) = search else {
             for waiting in &self.waiting {
@@ -198,7 +198,7 @@ impl RouteAsks {
         &mut self,
         search: &mut RouteSearch<'_>,
         run: Range<usize>,
-        answer: &mut impl FnMut(Member, &[Vec3], bool),
+        answer: &mut impl FnMut(PlanWalker, &[Vec3], bool),
     ) -> Planning {
         let party = self.waiting[self.parties[run.start] as usize]
             .ask
@@ -227,7 +227,7 @@ impl RouteAsks {
     fn plan_members(
         &mut self,
         search: &mut PartySearch<'_, '_>,
-        answer: &mut impl FnMut(Member, &[Vec3], bool),
+        answer: &mut impl FnMut(PlanWalker, &[Vec3], bool),
     ) -> Planning {
         debug_assert!(self.members.len() >= 2);
         debug_assert!(self.members.is_sorted_by_key(|member| member.id));
@@ -295,8 +295,8 @@ impl RouteAsks {
     fn follow(
         &mut self,
         search: &mut PartySearch<'_, '_>,
-        member: Member,
-        answer: &mut impl FnMut(Member, &[Vec3], bool),
+        member: PlanWalker,
+        answer: &mut impl FnMut(PlanWalker, &[Vec3], bool),
     ) {
         let PartySearch { search, party } = search;
         let shared = self

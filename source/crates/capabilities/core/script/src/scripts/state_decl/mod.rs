@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use campfire_math::{Num, Vec3};
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_value::ScriptValue;
@@ -24,7 +24,7 @@ pub struct StateDecl {
 }
 
 /// A default as data writes it: the field's type turns it into its first value.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StateDefault {
     Bool(bool),
@@ -147,22 +147,59 @@ impl StateDecl {
     }
 }
 
+/// A declared field as data writes it, which reads and writes the same keys.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeclFields {
+    #[serde(rename = "type")]
+    pub(crate) kind: StateType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) default: Option<StateDefault>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) values: Option<Vec<String>>,
+}
+
+impl StateDecl {
+    /// Its fields as data writes them: its first value as its default, but of a type that takes
+    /// none, and an enum's members, which `of` reads back to it.
+    pub(crate) fn fields(&self) -> DeclFields {
+        let default = match &self.initial {
+            StateValue::Int(value) => Some(StateDefault::Int(*value)),
+            StateValue::Num(value) => Some(StateDefault::Text(value.to_string())),
+            StateValue::Bool(value) => Some(StateDefault::Bool(*value)),
+            StateValue::Text(text) => Some(StateDefault::Text(text.to_string())),
+            StateValue::Unit(_)
+            | StateValue::UnitList(_)
+            | StateValue::Vec(_)
+            | StateValue::IntList(_)
+            | StateValue::NumList(_)
+            | StateValue::BoolList(_)
+            | StateValue::TextList(_) => None,
+        };
+        let values = (self.kind == StateType::Enum)
+            .then(|| self.members.iter().map(ToString::to_string).collect());
+        DeclFields {
+            kind: self.kind,
+            default,
+            values,
+        }
+    }
+}
+
+impl Serialize for StateDecl {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.fields().serialize(serializer)
+    }
+}
+
 /// A default not of its field's type fails to read, where the data enters.
 impl<'de> Deserialize<'de> for StateDecl {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Fields {
-            #[serde(rename = "type")]
-            kind: StateType,
-            default: Option<StateDefault>,
-            values: Option<Vec<String>>,
-        }
-        let Fields {
+        let DeclFields {
             kind,
             default,
             values,
-        } = Fields::deserialize(deserializer)?;
+        } = DeclFields::deserialize(deserializer)?;
         Self::of::<D::Error>(kind, default, values)
     }
 }

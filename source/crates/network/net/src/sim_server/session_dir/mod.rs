@@ -27,7 +27,7 @@ use crate::sim_server::error::MatchBeginError;
 use crate::sim_server::journal_watch::{JournalFrom, JournalWatch};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::session_dir::error::{
-    AbortError, FindError, PublishError, RestoreError, SessionCreateError, WaitingError,
+    AbortError, FindError, RestoreError, SessionCreateError, SessionPublishError, WaitingError,
 };
 use crate::sim_server::session_journal::SessionJournal;
 use crate::sim_server::snapshot_dir::SnapshotDir;
@@ -241,7 +241,7 @@ impl SessionDir {
         data: &ServerDir,
         session: SessionId,
         revealed: &ServerSeed,
-    ) -> Result<PathBuf, PublishError> {
+    ) -> Result<PathBuf, SessionPublishError> {
         let dir = Self {
             session,
             path: data.layout().session_dir(session),
@@ -253,9 +253,9 @@ impl SessionDir {
                 return;
             }
             let streamed = InputFile::stream(&journal)
-                .map_err(PublishError::Read)
+                .map_err(SessionPublishError::Read)
                 .and_then(|stream| {
-                    JournalFrames::stream(stream, visit).map_err(PublishError::Journal)
+                    JournalFrames::stream(stream, visit).map_err(SessionPublishError::Journal)
                 });
             if let Err(error) = streamed {
                 failed = Some(error);

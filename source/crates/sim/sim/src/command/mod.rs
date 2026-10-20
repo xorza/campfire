@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use campfire_codec::{Binary, Taken};
+use campfire_codec::{Binary, Decoded};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::capability::Capability;
@@ -33,7 +33,7 @@ impl<'a> Command<'a> {
     /// client can send any bytes, so a reader of a payload with a flaw keeps none of the commands
     /// it was given.
     pub fn read(payload: &'a [u8], mut read: impl FnMut(Self, Range<usize>)) -> bool {
-        let Ok(Taken {
+        let Ok(Decoded {
             value: count,
             mut rest,
         }) = Binary::take::<u64>(payload)
@@ -41,7 +41,7 @@ impl<'a> Command<'a> {
             return false;
         };
         for _ in 0..count {
-            let Ok(Taken {
+            let Ok(Decoded {
                 value: command,
                 rest: after,
             }) = Binary::take::<Command<'_>>(rest)

@@ -2,7 +2,7 @@
 //! it measures, which `golden.toml` pins.
 
 use campfire_common::PackageFingerprint;
-use campfire_import::{DropCause, WeaponDrop};
+use campfire_import::{ButtonDropCause, WeaponDrop};
 use campfire_mode::MatchResult;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
@@ -157,7 +157,7 @@ pub(crate) struct FoughtCounts {
 }
 
 /// How many trains and builds the import converts from every command set, and how many buttons it
-/// drops for each cause, in the order of `DropCause::ALL` (09-zero-hour.md, Every command set's
+/// drops for each cause, in the order of `ButtonDropCause::ALL` (09-zero-hour.md, Every command set's
 /// trains and builds are imported).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display("{trains} trains, {builds} builds, dropped {:?}", dropped)]
@@ -165,7 +165,7 @@ pub(crate) struct FoughtCounts {
 pub(crate) struct ProducedCounts {
     pub(crate) trains: usize,
     pub(crate) builds: usize,
-    pub(crate) dropped: [usize; DropCause::ALL.len()],
+    pub(crate) dropped: [usize; ButtonDropCause::ALL.len()],
 }
 
 /// How many ground quads, overlays, texture copies and border wraps a terrain file holds.

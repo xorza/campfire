@@ -1,3 +1,4 @@
+use crate::deficit::Deficit;
 use crate::sync_hysteresis::SyncHysteresis;
 use crate::sync_sample::SyncSample;
 use crate::sync_setup::SyncSetup;
@@ -118,6 +119,10 @@ impl LocalTimelineSync {
 
 impl TimelineSync for LocalTimelineSync {
     type Setup = InputTimelineSetup;
+
+    /// A timeline behind sends late inputs, which the server applies late or drops, so it steps;
+    /// one ahead costs only latency, so it slews.
+    const DEFICIT: Deficit = Deficit::Step;
 
     fn sync_hysteresis(&mut self) -> &mut SyncHysteresis {
         &mut self.controller

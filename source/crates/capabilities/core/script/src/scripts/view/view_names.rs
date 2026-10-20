@@ -4,7 +4,7 @@ use campfire_values::NameId;
 
 use crate::scripts::id_name::IdName;
 use crate::scripts::script_names::ScriptNames;
-use crate::scripts::type_slots::TypeSlots;
+use crate::scripts::typed_list::TypedList;
 use crate::scripts::view::match_names::{AnyNames, MatchNames};
 
 /// The names scripts read, as the script view derives them from the match's `MatchNames` as a
@@ -14,13 +14,13 @@ use crate::scripts::view::match_names::{AnyNames, MatchNames};
 pub struct ViewNames {
     names: MatchNames,
     /// The names of each kind of id as scripts read them, a `ScriptNames<I>` by the id's type `I`.
-    texts: TypeSlots<dyn AnyNames>,
+    texts: TypedList<dyn AnyNames>,
 }
 
 impl ViewNames {
     /// The names of `names`, each a script string.
     pub(crate) fn of(names: &MatchNames) -> Self {
-        let mut texts = TypeSlots::default();
+        let mut texts = TypedList::default();
         for table in names.script_tables() {
             texts.add(table);
         }

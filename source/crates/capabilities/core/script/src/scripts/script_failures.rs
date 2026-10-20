@@ -115,6 +115,7 @@ mod tests {
             name: "on_think",
             role: ScriptRole::Ai,
             param_names: &["ctx", "unit"],
+            param_kinds: &[None, None],
         };
         failures.record(None, think, &error);
         let [failure] = failures.get() else {

@@ -8,7 +8,7 @@ use campfire_sim::SimWorld;
 use tracing::{Span, error, info_span};
 
 use crate::events::session_written::SessionWritten;
-use crate::faults::Faults;
+use crate::faults::WorkerFaults;
 use crate::faults::error::SnapshotWriteError;
 use crate::faults::fault::Fault;
 use crate::sim_server::checkpoints::Checkpoints;
@@ -39,7 +39,7 @@ pub trait SimServerWorld {
     /// its data, which restores the match from it.
     fn is_reload_wanted(&self) -> bool;
 
-    /// How the server of the session exits in this frame, when it does: as `Faults`
+    /// How the server of the session exits in this frame, when it does: as `WorkerFaults`
     /// says, once a worker failed, which for its journal or a checkpoint's snapshot is with
     /// `ExitStatus::Storage`; before the match started, at once when `stop` asks it to. Once the
     /// match started, when `stop` asks it to or every player left, it ends the session, as the
@@ -134,7 +134,7 @@ impl SimServerWorld for World {
 
     fn exit_due(&mut self, stop: StopRequest) -> Option<AppExit> {
         JournalWatch::report_failure(self);
-        if let Some(exit) = Faults::apply(self) {
+        if let Some(exit) = WorkerFaults::apply(self) {
             return Some(exit);
         }
         if !matches!(
@@ -149,13 +149,14 @@ impl SimServerWorld for World {
                 return None;
             }
             if let Err(error) = self.end_session() {
-                self.resource_mut::<Faults>().report(Fault::Snapshot(error));
-                return Faults::apply(self);
+                self.resource_mut::<WorkerFaults>()
+                    .report(Fault::Snapshot(error));
+                return WorkerFaults::apply(self);
             }
         }
         self.session_mut().close_journal();
         JournalWatch::report_failure(self);
-        if let Some(exit) = Faults::apply(self) {
+        if let Some(exit) = WorkerFaults::apply(self) {
             return Some(exit);
         }
         let log = self.resource::<Session>().log();
@@ -204,7 +205,7 @@ pub(crate) mod internals {
     use campfire_common::{Seat, Tick};
     use campfire_runner::SessionWorld;
 
-    use crate::faults::Faults;
+    use crate::faults::WorkerFaults;
     use crate::faults::fault::Fault;
     use crate::sim_server::bot_driver::BotDriver;
     use crate::sim_server::checkpoints::Checkpoints;
@@ -258,7 +259,8 @@ pub(crate) mod internals {
 
         fn settle_checkpoint(&mut self) {
             if let Err(error) = Checkpoints::settle(self) {
-                self.resource_mut::<Faults>().report(Fault::Snapshot(error));
+                self.resource_mut::<WorkerFaults>()
+                    .report(Fault::Snapshot(error));
             }
         }
 

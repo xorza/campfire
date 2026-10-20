@@ -26,9 +26,10 @@ pub(crate) mod fixed_match;
 pub struct FixedSession {
     packages: ModePackages,
     terms: SessionTerms,
+    chain: SeedChain,
 }
 
-/// The seed chain of every fixed session, of room for a few checkpoints.
+/// The seed chain of a fixed session, of room for a few checkpoints, which `segments` lengthens.
 const SEED_CHAIN: SeedChain = TestKey::seed_chain(NonZeroU32::new(4).unwrap());
 fn server_key() -> XOnlyPublicKey {
     TestKey::server().x_only_public_key().0
@@ -77,7 +78,21 @@ impl FixedSession {
                 picks: &picks,
             })
             .unwrap();
-        Self { packages, terms }
+        Self {
+            packages,
+            terms,
+            chain: SEED_CHAIN,
+        }
+    }
+
+    /// The session on a seed chain of `segments` segments, for a match that checkpoints up to
+    /// `segments` − 1 times. The chain's first seed, which the terms commit to, is another than
+    /// the default chain's, so a match's draws change with it.
+    #[must_use]
+    pub fn segments(mut self, segments: NonZeroU32) -> Self {
+        self.chain = TestKey::seed_chain(segments);
+        self.terms.seed_commitment = self.chain.commitment();
+        self
     }
 
     /// The session, of the values at `places` among its mode's options' values picked, as its
@@ -124,13 +139,13 @@ impl FixedSession {
     }
 
     /// The seed of the log's segment `segment`.
-    pub fn seed(segment: u32) -> ServerSeed {
-        SEED_CHAIN.seed(segment)
+    pub fn seed(&self, segment: u32) -> ServerSeed {
+        self.chain.seed(segment)
     }
 
     /// Every segment's seed, as the server knows them.
-    pub fn seeds() -> ServerSeeds {
-        SEED_CHAIN.seeds()
+    pub fn seeds(&self) -> ServerSeeds {
+        self.chain.seeds()
     }
 
     /// A match at tick 0, its players joined, none of their inputs sent yet.
@@ -145,7 +160,7 @@ impl FixedSession {
             .collect();
         let source = SessionSource::check(UncheckedSource {
             log: self.log(),
-            seeds: Self::seeds(),
+            seeds: self.seeds(),
             packages: &self.packages,
             signer: Some(Arc::new(Self::server_signer())),
         })

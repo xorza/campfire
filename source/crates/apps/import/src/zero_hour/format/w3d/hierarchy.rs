@@ -1,6 +1,6 @@
 use bevy_math::Vec3;
 
-use crate::pose::Pose;
+use crate::pose::RigidPose;
 use crate::quaternion::Quaternion;
 use crate::zero_hour::format::w3d::error::W3dError;
 use crate::zero_hour::format::w3d::w3d_chunks::W3dChunks;
@@ -35,8 +35,8 @@ const PIVOT: usize = NAME + 4 + 12 + 12 + 16;
 
 impl Hierarchy {
     /// The placement of each pivot in the model's frame: its parent's, then its own.
-    pub(crate) fn poses(&self) -> Vec<Pose> {
-        let mut poses: Vec<Pose> = Vec::with_capacity(self.pivots.len());
+    pub(crate) fn poses(&self) -> Vec<RigidPose> {
+        let mut poses: Vec<RigidPose> = Vec::with_capacity(self.pivots.len());
         for pivot in &self.pivots {
             let local = pivot.pose();
             let pose = match pivot.parent {
@@ -107,8 +107,8 @@ impl Hierarchy {
 
 impl Pivot {
     /// Its placement in its parent's frame.
-    pub(crate) const fn pose(&self) -> Pose {
-        Pose {
+    pub(crate) const fn pose(&self) -> RigidPose {
+        RigidPose {
             translation: Vec3::from_array(self.translation),
             rotation: Quaternion::from_array(self.rotation),
         }

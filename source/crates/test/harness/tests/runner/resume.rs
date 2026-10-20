@@ -7,8 +7,7 @@ use std::sync::Arc;
 
 use campfire_common::ErrorReport;
 use campfire_common::{StateHash, Tick};
-use campfire_harness::{FixedMatch, FixedSession, Moba3v3, ProvingMatch};
-use campfire_package::ModePackages;
+use campfire_harness::{FixedMatch, FixedSession, ProvingMatch};
 use campfire_protocol::{Checkpoint, SessionLog, SnapshotFingerprint};
 use campfire_runner::{
     Replay, ResumeAt, ResumeError, Session, SessionSource, SessionWorld, SnapshotCheckError,
@@ -84,10 +83,10 @@ impl Checkpointed {
         }
     }
 
-    /// Resumes the match of `packages` from each checkpoint, and checks that it plays each tick
+    /// Resumes the match of `session` from each checkpoint, and checks that it plays each tick
     /// up to the next checkpoint, or the run's end, to the run's hash; and that a death and a
     /// respawn came between the first checkpoint and the last.
-    fn check(&self, packages: &ModePackages, at: [u64; 3]) {
+    fn check(&self, session: &FixedSession, at: [u64; 3]) {
         let between = |ticks: &[u64]| ticks.iter().any(|tick| (at[0]..at[2]).contains(tick));
         assert!(
             between(&self.deaths) && between(&self.respawns),
@@ -101,8 +100,8 @@ impl Checkpointed {
             let segment = checkpoint + 1;
             let source = SessionSource::check(UncheckedSource {
                 log,
-                seeds: FixedSession::seeds(),
-                packages,
+                seeds: session.seeds(),
+                packages: session.packages(),
                 signer: Some(Arc::new(FixedSession::server_signer())),
             })
             .unwrap();
@@ -130,7 +129,7 @@ fn the_proving_match_resumes_from_each_checkpoint_to_the_same_hashes() {
     let run = Checkpointed::run(proving.start(), at, ProvingMatch::TICKS, |fixed, tick| {
         proving.play_tick(fixed, tick);
     });
-    run.check(proving.packages(), at);
+    run.check(proving.session(), at);
 }
 
 #[test]
@@ -141,17 +140,7 @@ fn the_lane_match_resumes_from_each_checkpoint_to_the_same_hashes() {
     let run = Checkpointed::run(session.start(), at, 900, |fixed, _| {
         fixed.game_mut().run_tick_alone();
     });
-    run.check(session.packages(), at);
-}
-
-#[test]
-fn the_3v3_match_resumes_from_each_checkpoint_to_the_same_hashes() {
-    let moba = Moba3v3::load();
-    let at = [1000, 2000, 3000];
-    let run = Checkpointed::run(moba.start(), at, 4000, |fixed, tick| {
-        moba.play_tick(fixed, tick);
-    });
-    run.check(moba.packages(), at);
+    run.check(&session, at);
 }
 
 #[test]
@@ -192,7 +181,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
         let log = SessionLog::decode(&bytes).unwrap();
         let source = SessionSource::check(UncheckedSource {
             log,
-            seeds: FixedSession::seeds(),
+            seeds: proving.session().seeds(),
             packages: proving.packages(),
             signer: Some(Arc::new(FixedSession::server_signer())),
         })

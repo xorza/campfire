@@ -9,6 +9,7 @@ use campfire_script::{Hook, HookSet, MatchNames, ScriptId, ScriptRole};
 /// host. The package load builds it from what it read of each script, and a match installs a
 /// copy.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[component(immutable)]
 pub struct ScriptBook {
     /// The hooks of the script API, which a script may define.
     api: Arc<[Hook]>,

@@ -9,7 +9,7 @@ use campfire_units::Layer;
 
 use super::*;
 use crate::pathing_grid::PathingGrid;
-use crate::terrain::Terrain;
+use crate::terrain::WallGrid;
 use crate::walker::Walker;
 use crate::walker_kinds::WalkerKinds;
 
@@ -44,7 +44,7 @@ fn walled(rows: &[&str]) -> Walled {
     let mut grid = PathingGrid::new(
         Grid::new(Num::ONE, bounds.unwrap()).unwrap(),
         WalkerKinds::from([walker()]),
-        &Terrain::default(),
+        &WallGrid::default(),
     );
     let mut ids = IdAllocator::default();
     let mut posts = Vec::new();

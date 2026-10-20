@@ -18,6 +18,7 @@ use crate::victory_data::{Defeat, VictoryData};
 /// The mode's victory by the last unit of a tag, as its `[victory]` gives it; none for a mode of
 /// no `[victory]`. Package data, not state.
 #[derive(Resource, Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[component(immutable)]
 pub struct VictoryBook(Option<Victory>);
 
 /// The tag of the units by which a player stays in play, and what its defeat does.

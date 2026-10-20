@@ -6,7 +6,7 @@ use bevy_ecs::world::World;
 use campfire_capabilities::Match;
 use campfire_common::{AfterLeave, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
-use campfire_players::Seating;
+use campfire_players::SeatHolder;
 use campfire_protocol::{
     Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Journal, LogLoadError,
     LogReplay, PlayerPacket, RecordSink, ResultError, SeatStart, SeedError, ServerInput,
@@ -309,12 +309,12 @@ impl Session {
     /// Whether a player or a bot held each seat of the session, in order, as the match started:
     /// as its log's header gives it, whatever a later change made of the seat, so a replay of a
     /// published log starts as the run did.
-    fn seatings(&self) -> Vec<Seating> {
+    fn holders(&self) -> Vec<SeatHolder> {
         let starts = self.log.header().seats.iter();
         starts
             .map(|start| match start {
-                SeatStart::Player(_) | SeatStart::Bot => Seating::Held,
-                SeatStart::Open => Seating::Open,
+                SeatStart::Player(_) | SeatStart::Bot => SeatHolder::Held,
+                SeatStart::Open => SeatHolder::Open,
             })
             .collect()
     }
@@ -327,15 +327,21 @@ impl Session {
     /// outside the mode's range, or more seats than the mode's teams have, when the seeds are not
     /// those of the chain the header commits to or do not reach the log's last segment, when a
     /// change of a seat's controller the log holds, as a published log replayed does, breaks the
-    /// mode's `[players]`, or when the packages do not load into the match.
+    /// mode's `[players]`, when the packages do not load into the match, or when the log's file
+    /// starts at a checkpoint, whose snapshot a resume starts from.
     pub fn start(world: &mut World, source: SessionSource<'_>) -> Result<(), StartError> {
+        if let Some(record) = source.log.starts_at() {
+            return Err(StartError::AtCheckpoint {
+                segment: record.segment,
+            });
+        }
         let session = Self::build(world, source, 0)?;
         assert_eq!(
             session.next_tick(),
             Tick::new(0),
             "a session starts before its first tick"
         );
-        Mode::start(world, &session.seatings()).map_err(StartError::MatchStart)?;
+        Mode::start(world, &session.holders()).map_err(StartError::MatchStart)?;
         world.insert_resource(session);
         Ok(())
     }

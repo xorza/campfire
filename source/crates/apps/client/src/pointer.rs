@@ -19,7 +19,7 @@ use crate::own_player::OwnPlayer;
 use crate::view::client_data::ClientData;
 use crate::view::drawing::Drawing;
 use crate::view::footing;
-use crate::view::look::Shape;
+use crate::view::look::PickShape;
 
 /// What the cursor points at, as the player sees the match: the ground point under it, and the
 /// living unit whose drawing the cursor's ray meets first, as Zero Hour picks a drawable by the
@@ -30,7 +30,7 @@ pub(crate) struct Pointer<'w, 's> {
     camera: Single<'w, 's, (&'static Camera, &'static GlobalTransform)>,
     own: OwnPlayer<'w, 's>,
     units: LivingUnits<'w, 's>,
-    drawings: Query<'w, 's, (&'static Transform, &'static Shape)>,
+    drawings: Query<'w, 's, (&'static Transform, &'static PickShape)>,
     data: Res<'w, ClientData>,
     hovers: Res<'w, HoverMap>,
     nodes: Query<'w, 's, (), With<Node>>,
@@ -122,7 +122,7 @@ impl Pointer<'_, '_> {
     }
 
     /// Each living unit with a drawing: where the drawing stands, and its shape.
-    fn drawn(&self) -> impl Iterator<Item = (Pointed, Vec3, Shape)> {
+    fn drawn(&self) -> impl Iterator<Item = (Pointed, Vec3, PickShape)> {
         self.units.iter().filter_map(|(&id, &team, owner, drawn)| {
             let (transform, shape) = self.drawings.get(drawn.root()).ok()?;
             let unit = Pointed {
@@ -163,7 +163,7 @@ fn shown_within(
 fn nearest_hit(
     origin: Vec3,
     direction: Vec3,
-    drawings: impl Iterator<Item = (Pointed, Vec3, Shape)>,
+    drawings: impl Iterator<Item = (Pointed, Vec3, PickShape)>,
 ) -> Option<Pointed> {
     drawings
         .filter_map(|(unit, base, shape)| Some((unit, entry(origin, direction, base, shape)?)))
@@ -174,7 +174,7 @@ fn nearest_hit(
 /// How far along the ray from `origin` along `direction` it first meets the drawing that stands
 /// at `base` with `shape`: its footing raised `shape.height`, a circle's as a cylinder, a box's as
 /// a box; none when it misses, or meets it only behind the origin.
-fn entry(origin: Vec3, direction: Vec3, base: Vec3, shape: Shape) -> Option<f32> {
+fn entry(origin: Vec3, direction: Vec3, base: Vec3, shape: PickShape) -> Option<f32> {
     let from = Vec2::new(origin.x - base.x, origin.z - base.z);
     let way = Vec2::new(direction.x, direction.z);
     let flat = shape.footing.crossed(from, way)?;
@@ -209,7 +209,7 @@ mod tests {
             team: Team::new(0),
             owner: None,
         };
-        let circle = |radius, height| Shape {
+        let circle = |radius, height| PickShape {
             radius,
             height,
             footing: Footing::Circle(radius),
@@ -222,7 +222,7 @@ mod tests {
             (creep, Vec3::new(0.0, 0.0, -3.0), circle(0.5, 2.0)),
             (twin, Vec3::ZERO, circle(0.5, 2.0)),
         ];
-        let pick = |origin: Vec3, direction: Vec3, drawings: &[(Pointed, Vec3, Shape)]| {
+        let pick = |origin: Vec3, direction: Vec3, drawings: &[(Pointed, Vec3, PickShape)]| {
             nearest_hit(origin, direction, drawings.iter().copied())
         };
         // A ray at 1 m along -z from z = 10 meets the avatar's side at z = 0.5, 9.5 along, and
@@ -264,7 +264,7 @@ mod tests {
         // wall at z = 2, 18 along, where its footing lies under no ground point the ray crosses,
         // and the creep behind it is hidden.
         let building = unit();
-        let tall = Shape {
+        let tall = PickShape {
             radius: 2.0,
             height: 10.0,
             footing: Footing::Box {
@@ -280,7 +280,7 @@ mod tests {
         assert_eq!(pick(Vec3::new(0.0, 11.0, 20.0), Vec3::NEG_Z, &city), None);
         // Turned a quarter, a box of half sides 2 and 0.5 reaches 2 along z and 0.5 along x: a
         // ray along x at z = 1.9 meets it, one at z = 2.1 passes by.
-        let turned = Shape {
+        let turned = PickShape {
             radius: 2.0,
             height: 1.0,
             footing: Footing::Box {

@@ -1,21 +1,19 @@
-use campfire_declarations::{Section, SectionTable};
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
+use campfire_declarations::{PatchError, Patched, Section, SectionTable};
 use campfire_script::{DataSection, DataTable, UnknownName};
 use campfire_units::PoolId;
 use campfire_values::{Named, Names, Stat};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::armor::ArmorShare;
 
 /// The mode's `[combat]` section: its damage kinds, its assist window, the pool that is life,
 /// the stats its damage rules read, and its armors.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModeCombatData {
     /// The kinds of damage its scripts deal and its `calc_damage` weighs.
-    #[serde(default)]
     pub damage_kinds: Vec<DeclaredName>,
     /// How long after damage a unit counts as having assisted a kill.
     pub assist_window_ms: Option<u64>,
@@ -25,13 +23,51 @@ pub struct ModeCombatData {
     /// The stat that scales the heals its unit receives, by one plus its value.
     pub heal_scale: Option<Stat>,
     /// Its armors by name, each a share of damage by damage kind, which a unit type names.
-    #[serde(default)]
     pub armors: BTreeMap<DeclaredName, BTreeMap<DeclaredName, ArmorShare>>,
+}
+
+/// The mode's `[combat]` as a tool writes it in part, over the rules package's it lies on.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModeCombatPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub damage_kinds: Option<Vec<DeclaredName>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assist_window_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub life: Option<DeclaredName>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub leech: Option<LeechData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heal_scale: Option<Stat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub armors: Option<BTreeMap<DeclaredName, BTreeMap<DeclaredName, ArmorShare>>>,
+}
+
+impl Patched for ModeCombatData {
+    type Patch = ModeCombatPatch;
+
+    fn from_patch(patch: ModeCombatPatch) -> Result<Self, PatchError> {
+        Ok(Self {
+            damage_kinds: patch.damage_kinds.unwrap_or_default(),
+            assist_window_ms: patch.assist_window_ms,
+            life: patch.life,
+            leech: patch.leech,
+            heal_scale: patch.heal_scale,
+            armors: patch.armors.unwrap_or_default(),
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ModeCombatData {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::read_patch(deserializer)
+    }
 }
 
 /// The stats by which a source heals from the life its damage took: `attack` from an attack's,
 /// `other` from any other damage's.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LeechData {
     pub attack: Option<Stat>,

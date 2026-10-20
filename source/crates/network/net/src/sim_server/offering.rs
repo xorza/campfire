@@ -27,7 +27,7 @@ use crate::net_protocol::MatchChannel;
 use crate::net_protocol::dismissed::Dismissed;
 use crate::net_protocol::join::{Join, JoinRole};
 use crate::net_protocol::joined::Joined;
-use crate::net_protocol::offer::Offer;
+use crate::net_protocol::offer::SessionOffer;
 use crate::session_times::SessionTimes;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::server_setup::ServerSetup;
@@ -151,7 +151,7 @@ pub(crate) type OfferLinks<'w, 's> = Query<
         Entity,
         Option<&'static mut Offered>,
         Option<&'static LinkBinding>,
-        &'static mut MessageSender<Offer>,
+        &'static mut MessageSender<SessionOffer>,
     ),
     (
         With<Connected>,
@@ -254,7 +254,7 @@ impl Offering {
                     challenge
                 }
             };
-            sender.send::<MatchChannel>(Offer {
+            sender.send::<MatchChannel>(SessionOffer {
                 terms: Arc::clone(&self.terms),
                 times: self.times,
                 challenge,

@@ -13,6 +13,7 @@
 
 mod client_sync_plugin;
 mod client_sync_plugins;
+mod deficit;
 #[cfg(feature = "internals")]
 mod fixtures;
 mod input_delay_setup;
@@ -36,6 +37,7 @@ mod timeline_sync;
 mod timeline_sync_plugin;
 
 pub use crate::client_sync_plugins::ClientSyncPlugins;
+pub use crate::deficit::Deficit;
 pub use crate::input_delay_setup::InputDelaySetup;
 pub use crate::input_timeline_setup::InputTimelineSetup;
 pub use crate::link_estimate::LinkEstimate;

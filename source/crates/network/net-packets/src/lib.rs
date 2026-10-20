@@ -47,7 +47,7 @@ pub use crate::endpoint_pieces::EndpointPieces;
 pub use crate::endpoint_runtime::{EndpointRuntime, PassScratch};
 pub use crate::endpoint_setup::EndpointSetup;
 pub use crate::establish::{
-    ClientEstablish, Establish, Established, Establishing, ServerEstablish,
+    ClientEstablish, Establish, Established, Establishing, PathCheck, ReadCost, ServerEstablish,
 };
 pub use crate::io_failed::IoFailed;
 pub use crate::open_error::OpenError;
@@ -61,6 +61,8 @@ pub use crate::stateless_reset::{MIN_LEN as MIN_RESET_LEN, TOKEN_LEN as RESET_TO
 /// fixtures and measurements.
 #[cfg(feature = "internals")]
 pub mod internals {
+    pub use crate::endpoint_runtime::internals::HOLD_BATCH;
+    pub use crate::fixtures::hold_clock::HoldClock;
     pub use crate::fixtures::plain_host::{CLIENT, HostLink, PlainHost};
     pub use crate::packet_session::internals::PacketSessionCounts;
 }

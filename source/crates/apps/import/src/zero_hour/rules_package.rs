@@ -1,15 +1,28 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
+use std::num::{NonZeroU32, NonZeroU64};
 
-use campfire_codec::Toml;
-use campfire_common::DeclaredName;
-use campfire_math::Num;
-use serde::Serialize;
+use campfire_actions::ActionsData;
+use campfire_codec::{Toml, TomlTable, TomlValue};
+use campfire_combat::{ModeCombatData, ModeCombatPatch};
+use campfire_common::{DeclaredName, Version};
+use campfire_declarations::SectionWriter;
+use campfire_mode::{
+    ListEntry, ModeData, ModeParam, ModePatch, OptionData, TeamData, TeamManifest,
+};
+use campfire_package::{
+    Dependency, DependencyPath, Language, ModeManifest, PackageHeader, PackageName, ScriptOrder,
+    ScriptSource, TickRange,
+};
+use campfire_script::{ApiVersion, ScriptLimits};
+use campfire_sim::Capability;
+use campfire_values::{PackagePath, Scalar, Speed, TextId};
 
-use crate::zero_hour::combat_import::{CombatImport, ImportedWeapon};
+use crate::zero_hour::ZeroHour;
+use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
 use crate::zero_hour::map_import::SLOTS;
-use crate::zero_hour::production_import::{ImportedAction, ProductionImport};
+use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::skirmish_start::SkirmishStart;
 
 /// Zero Hour's rules package as the importer ships it, `source/packages/zero-hour/`: each file but
@@ -32,31 +45,50 @@ pub(crate) const RULES_FILES: [(&str, &[u8]); 3] = [
 /// The imported package's manifest: a mode of eight players, each on a team of its own, beside the
 /// `neutral` team every placed object stands on, whose units drive, are made and fight with shells:
 /// of `stats`, `orders`, `navigation`, `abilities`, `production`, `combat` and `projectiles`, no
-/// unit faster than `max_move_speed` meters a second, at the game's 30 logic frames a second,
-/// depending on the rules package beside it.
-pub(crate) fn mode_manifest(max_move_speed: Num) -> String {
-    let teams: Vec<String> = (1..=SLOTS)
-        .map(|player| format!("{{ name = \"player_{player}\", seats = 1 }}"))
-        .chain(["{ name = \"neutral\", seats = 0 }".to_owned()])
+/// unit faster than `max_move_speed`, at the game's 30 logic frames a second, depending on the
+/// rules package beside it (03-game-scripting.md, The manifest writes as it reads).
+pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capability>> {
+    let team = |name: &str, seats| TeamManifest {
+        name: DeclaredName::new(name).expect("a team's name is a declared name"),
+        seats,
+    };
+    let teams = (1..=SLOTS)
+        .map(|player| team(&format!("player_{player}"), 1))
+        .chain([team("neutral", 0)])
         .collect();
-    format!(
-        r#"# Zero Hour, imported from the player's install: its units drive, are made and fight on its maps.
-name = "zero-hour-game"
-version = "0.1.0"
-api = "1.0"
-language = "en"
-kind = "mode"
-capabilities = ["stats", "orders", "navigation", "abilities", "production", "combat", "projectiles"]
-tick_hz = {{ min = 30, max = 30, default = 30 }}
-teams = [{teams}]
-max_move_speed = "{max_move_speed}"
-script_limits = {{ per_call = 1000, player = 1000, think = 1000, mode = 1000 }}
-
-[dependencies]
-zero-hour = {{ path = "../zero-hour" }}
-"#,
-        teams = teams.join(", "),
-    )
+    let package = |name| PackageName::new(name).expect("a package's name");
+    let logic_frames = NonZeroU32::new(30).expect("30 is no zero");
+    let dependency = Dependency {
+        path: DependencyPath::parse("../zero-hour").expect("a path beside the package"),
+    };
+    ModeManifest {
+        header: PackageHeader {
+            name: package("zero-hour-game"),
+            version: Version::new(0, 1, 0),
+            api: ApiVersion::RELEASE,
+            language: Language::parse("en").expect("English is a language"),
+        },
+        capabilities: vec![
+            Capability::Stats,
+            Capability::Orders,
+            Capability::Navigation,
+            Capability::Abilities,
+            Capability::Production,
+            Capability::Combat,
+            Capability::Projectiles,
+        ],
+        tick_hz: TickRange::new(logic_frames, logic_frames, logic_frames)
+            .expect("a range of one rate holds it"),
+        teams,
+        max_move_speed,
+        script_limits: ScriptLimits {
+            per_call: NonZeroU64::new(1000).expect("1000 is no zero"),
+            player: 1000,
+            think: 1000,
+            mode: 1000,
+        },
+        dependencies: BTreeMap::from([(package("zero-hour"), dependency)]),
+    }
 }
 
 /// What the mode's data is made of: the skirmish's start, the trains and builds, the weapons and
@@ -90,102 +122,66 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
             .all(|name| !production.actions.contains_key(name)),
         "a weapon and a train or build share no name, as one table holds both"
     );
+    let declared = |name: &str| DeclaredName::new(name).expect("a name the import gives");
+    let text = |id: &str| TextId::new(id).expect("a message id the import gives");
     let teams = (1..=SLOTS)
         .map(|player| (format!("player_{player}"), format!("team-player-{player}")))
         .chain([(String::from("neutral"), String::from("team-neutral"))])
-        .map(|(team, name)| (team, TeamToml { name }))
+        .map(|(team, name)| (declared(&team), TeamData { name: text(&name) }))
         .collect();
-    Toml::write(&ModeToml {
-        name: "mode-name",
-        scripts: [ScriptToml {
-            package: "zero-hour",
-            path: "scripts/mode.rhai",
-        }],
-        teams,
-        params: ParamsToml {
-            start_building: &start.building,
-            start_units: &start.units,
-            start_offset: start.offset,
-        },
-        options: OptionsToml {
-            start_money: MoneyToml {
-                values: &start_money.values,
-                default: start_money.default,
-            },
-        },
-        combat: (!combat.armors.is_empty()).then_some(CombatToml {
-            armors: &combat.armors,
-        }),
-        actions: (!combat.actions.is_empty() || !production.actions.is_empty()).then_some(
-            ActionsToml {
-                weapons: &combat.actions,
-                trains: &production.actions,
-            },
+    let units = start
+        .units
+        .iter()
+        .map(|unit| ListEntry::Text(unit.to_string()));
+    let params = BTreeMap::from([
+        (
+            declared("start_building"),
+            ModeParam::Text(start.building.to_string()),
         ),
-    })
-}
-
-/// The imported package's mode data, `data/mode.toml`.
-#[derive(Debug, Serialize)]
-struct ModeToml<'a> {
-    name: &'static str,
-    scripts: [ScriptToml; 1],
-    teams: BTreeMap<String, TeamToml>,
-    params: ParamsToml<'a>,
-    options: OptionsToml<'a>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    combat: Option<CombatToml<'a>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    actions: Option<ActionsToml<'a>>,
-}
-
-/// A script of the mode, by its package and its path.
-#[derive(Debug, Serialize)]
-struct ScriptToml {
-    package: &'static str,
-    path: &'static str,
-}
-
-/// A team, by the message of its name.
-#[derive(Debug, Serialize)]
-struct TeamToml {
-    name: String,
-}
-
-/// The mode script's params of what each player starts with.
-#[derive(Debug, Serialize)]
-struct ParamsToml<'a> {
-    start_building: &'a DeclaredName,
-    start_units: &'a [DeclaredName],
-    start_offset: Num,
-}
-
-/// The mode's options: the money each player starts with.
-#[derive(Debug, Serialize)]
-struct OptionsToml<'a> {
-    start_money: MoneyToml<'a>,
-}
-
-/// An option of the money a player starts with: its values, and the one the host gets first.
-#[derive(Debug, Serialize)]
-struct MoneyToml<'a> {
-    values: &'a [u32],
-    default: u32,
-}
-
-/// The armors of `[combat]`, each a share by damage kind.
-#[derive(Debug, Serialize)]
-struct CombatToml<'a> {
-    armors: &'a BTreeMap<DeclaredName, BTreeMap<DeclaredName, Num>>,
-}
-
-/// The mode data's `[actions]`: the weapons, and the trains and builds, in one table.
-#[derive(Debug, Serialize)]
-struct ActionsToml<'a> {
-    #[serde(flatten)]
-    weapons: &'a BTreeMap<DeclaredName, ImportedWeapon>,
-    #[serde(flatten)]
-    trains: &'a BTreeMap<DeclaredName, ImportedAction>,
+        (declared("start_units"), ModeParam::List(units.collect())),
+        (
+            declared("start_offset"),
+            ModeParam::Value(Scalar::Decimal(start.offset)),
+        ),
+    ]);
+    let money = start_money
+        .values
+        .iter()
+        .map(|&value| Scalar::Int(i64::from(value)));
+    let money = OptionData::new(money.collect(), Scalar::Int(i64::from(start_money.default)))
+        .expect("the multiplayer settings' read checks that their choices make an option");
+    let rules = ScriptSource::Rules {
+        package: PackageName::new(ZeroHour::RULES).expect("the rules package's name"),
+        path: PackagePath::parse("scripts/mode.rhai").expect("the rules' mode script's path"),
+    };
+    let mut writer = SectionWriter::default();
+    writer.key(ScriptOrder::KEY, &ScriptOrder::one(rules));
+    writer.own::<ModeData>(&ModePatch {
+        name: Some(text("mode-name")),
+        teams: Some(teams),
+        params: Some(params),
+        options: Some(BTreeMap::from([(declared("start_money"), money)])),
+        ..ModePatch::default()
+    });
+    if !combat.armors.is_empty() {
+        writer.patch::<ModeCombatData>(&ModeCombatPatch {
+            armors: Some(combat.armors.clone()),
+            ..ModeCombatPatch::default()
+        });
+    }
+    let weapons = combat
+        .actions
+        .iter()
+        .map(|(id, weapon)| (id, weapon.table()));
+    let trains = production
+        .actions
+        .iter()
+        .map(|(id, train)| (id, train.table()));
+    let actions: BTreeMap<&DeclaredName, TomlTable> = weapons.chain(trains).collect();
+    if !actions.is_empty() {
+        writer.value::<ActionsData>(TomlValue::of(&actions));
+    }
+    Toml::write(&writer.into_table())
 }
 
 /// The imported package's text in its own language: the names its mode data gives, and each of
@@ -248,6 +244,8 @@ mod tests {
     use fluent_syntax::ast::{Entry, Expression, InlineExpression, PatternElement};
     use fluent_syntax::parser;
     use serde::de::IgnoredAny;
+
+    use campfire_math::Num;
 
     use super::*;
     use crate::zero_hour::format::ini::damage_type::DamageType;

@@ -11,7 +11,7 @@ use campfire_package::ModePackages;
 use campfire_sim::Position;
 use campfire_units::{Body, Destination, GroundPoint, WallBook};
 
-use crate::failure::Failure;
+use crate::failure::CheckFailure;
 use crate::match_play::{CENTER, DOZER, MatchPlay};
 use crate::pins::HZ;
 
@@ -37,7 +37,7 @@ impl StartDrive {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
-        failures: &mut Vec<Failure>,
+        failures: &mut Vec<CheckFailure>,
     ) -> Option<Self> {
         let mut play = MatchPlay::new(FixedSession::new(packages, rate, 1).start());
         let start = |name| {
@@ -49,7 +49,7 @@ impl StartDrive {
             Mode::marker_point(play.game(), of)
         };
         let (Some(start), Some(goal)) = (start("Player_1_Start"), start("Player_2_Start")) else {
-            failures.push(Failure::NoStarts);
+            failures.push(CheckFailure::NoStarts);
             play.end();
             return None;
         };
@@ -69,12 +69,12 @@ impl StartDrive {
     fn play(
         play: &mut MatchPlay,
         [start, goal]: [Vec3; 2],
-        failures: &mut Vec<Failure>,
-    ) -> Result<Self, Failure> {
+        failures: &mut Vec<CheckFailure>,
+    ) -> Result<Self, CheckFailure> {
         play.step();
         let (buildings, dozers) = (play.owned(CENTER, 0)?, play.owned(DOZER, 0)?);
         let (&[building], &[dozer]) = (buildings.as_slice(), dozers.as_slice()) else {
-            return Err(Failure::StartUnits {
+            return Err(CheckFailure::StartUnits {
                 buildings: buildings.len(),
                 dozers: dozers.len(),
             });
@@ -82,7 +82,7 @@ impl StartDrive {
         let units = MatchUnits::of(play.game());
         let center = units.position(building);
         if [center.x, center.z] != [start.x, start.z] {
-            failures.push(Failure::BuildingPlace(center));
+            failures.push(CheckFailure::BuildingPlace(center));
         }
         let shape = |id| Body::shape_of(units.unit(id).get::<Body>());
         let clear = match (shape(building), shape(dozer)) {
@@ -92,7 +92,7 @@ impl StartDrive {
             _ => false,
         };
         if !clear {
-            failures.push(Failure::DozerInBuilding(units.position(dozer)));
+            failures.push(CheckFailure::DozerInBuilding(units.position(dozer)));
         }
         let layer = Body::layer_of(units.unit(dozer).get::<Body>());
         let walls: Vec<Polygon> = (play.game().resource::<WallBook>().walls().iter())
@@ -122,7 +122,7 @@ impl StartDrive {
                 .iter()
                 .any(|wall| wall.holds_inside([position.x, position.z]))
             {
-                return Err(Failure::DozerInWall { tick, position });
+                return Err(CheckFailure::DozerInWall { tick, position });
             }
             let walking = unit
                 .get::<Destination>()
@@ -136,6 +136,6 @@ impl StartDrive {
                 });
             }
         }
-        Err(Failure::NeverArrived)
+        Err(CheckFailure::NeverArrived)
     }
 }

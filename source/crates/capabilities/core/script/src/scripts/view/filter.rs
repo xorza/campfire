@@ -89,6 +89,13 @@ impl Filter {
     pub const fn selects(self, relation: Relation, tags: TagSet) -> bool {
         self.relations.selects(relation) && tags.covers(self.all) && !tags.meets(self.none)
     }
+
+    /// Whether a filter of every relation, as a `TagFilterData` resolves, selects a unit with
+    /// `tags`.
+    pub fn selects_tags(self, tags: TagSet) -> bool {
+        debug_assert_eq!(self.relations, RelationSet::All, "a filter of tags alone");
+        tags.covers(self.all) && !tags.meets(self.none)
+    }
 }
 
 impl Named for Filter {

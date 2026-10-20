@@ -116,6 +116,18 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let mut ordered = ActionProgress::default();
     ordered.order(1, ActionTarget::None, &mut LooseDues::default().dues());
     assert!(!ordered.check_against(&slots(strike, 1), &game));
+    // A death ends what is under way and the attack target, so a dead grunt holds neither.
+    let mut aiming = ActionProgress::default();
+    aiming.set_attack_target(Some(id), &mut LooseDues::default().dues());
+    assert_eq!(checked_with(&mut game, grunt, aiming), Ok(()));
+    game.entity_mut(grunt).insert(Dead);
+    assert_eq!(
+        checked_with(&mut game, grunt, aiming),
+        invalid("actions.progress")
+    );
+    let ended = ActionProgress::default();
+    assert_eq!(checked_with(&mut game, grunt, ended), Ok(()));
+    game.entity_mut(grunt).remove::<Dead>();
     // Times of each slot the grunt has, one; a charge only on an action with them, which strike
     // is not.
     let times = game.get::<SlotTimes>(grunt).unwrap();

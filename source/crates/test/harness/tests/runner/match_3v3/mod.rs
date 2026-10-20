@@ -5,9 +5,12 @@
 //! farm to level 6, the shop, and a showcase in which each hero uses its items and casts each of
 //! its abilities. Each rule's result is computed from the mode's numbers. The test pins the
 //! content's units and values, so a change to the content changes it, by design. It plays a
-//! match long enough for every hero to learn its ultimate, and takes several seconds.
+//! match long enough for every hero to learn its ultimate, and takes several seconds. The match
+//! checkpoints as a server does, and each segment replays from its own checkpoint.
 
 mod showcase;
+
+use std::num::NonZeroU32;
 
 use bevy_ecs::world::World;
 use campfire_actions::{ActionProgress, ActionSlot, ActionSlots, SlotKind};
@@ -38,11 +41,19 @@ const SKIRMISH: u64 = 3200;
 /// The ticks the match plays: the skirmish, the farm, the shop, and the showcase's casts, with
 /// the window of its last.
 const TICKS: u64 = Moba3v3::SHOWCASE + Moba3v3::CAST_EVERY * Moba3v3::CASTS;
+/// The ticks between two checkpoints, which the match takes before each multiple of it: 15 in
+/// its 15,780 ticks.
+const CHECKPOINT_EVERY: u64 = 1000;
+/// The segments the match's seed chain holds: one before its first checkpoint and one after
+/// each.
+const SEGMENTS: NonZeroU32 = NonZeroU32::new(16).unwrap();
 
 #[derive(Debug)]
 struct Run<'p> {
     fixed: FixedMatch,
     record: MatchRecord<'p>,
+    /// The snapshot of each checkpoint, in order.
+    snapshots: Vec<Vec<u8>>,
     /// Each unit after the tick the heroes spawn in, and after the one the first wave spawns in.
     at_pick_end: Vec<Unit>,
     at_first_wave: Vec<Unit>,
@@ -176,7 +187,13 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
     let mut seen = Seen::default();
     let mut showcase = Showcase::default();
     let mut watch = ArchetypeWatch::of(fixed.game_mut());
+    let mut snapshots = Vec::new();
     for tick in 0..TICKS {
+        if tick > 0 && tick % CHECKPOINT_EVERY == 0 {
+            let mut snapshot = Vec::new();
+            fixed.checkpoint(&mut snapshot);
+            snapshots.push(snapshot);
+        }
         moba.play_tick(&mut fixed, tick);
         record.tick(fixed.game_mut());
         watch.tick(fixed.game(), tick);
@@ -213,6 +230,7 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
     Run {
         fixed,
         record,
+        snapshots,
         at_pick_end,
         at_first_wave,
         deaths,
@@ -294,8 +312,8 @@ mod scripted_match {
     use super::*;
 
     #[test]
-    fn a_3v3_match_replays_to_the_same_hashes() {
-        let moba = Moba3v3::load();
+    fn a_3v3_match_replays_each_segment_to_the_same_hashes() {
+        let moba = Moba3v3::load().segments(SEGMENTS);
         let run = run(&moba);
         run.record.check("3v3");
         let melee = assert_start(&moba, &run);
@@ -307,7 +325,9 @@ mod scripted_match {
         showcase::assert_shop(&moba, &run.showcase);
         let world = run.fixed.game();
         showcase::assert_casts(&moba, &run.showcase, world, TICKS);
-        run.record.assert_replays(run.fixed.game().session().log());
+        let log = run.fixed.game().session().log();
+        assert_eq!(log.segment(), 15);
+        run.record.assert_segments_replay(log, &run.snapshots);
     }
 }
 

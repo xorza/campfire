@@ -12,6 +12,7 @@ use crate::per_action::PerAction;
 /// owns its section). A clone shares the values, so a reader keeps the book itself, not a copy of
 /// what it holds; `ByActionBuilder` builds it.
 #[derive(Resource, Debug, PartialEq, Eq)]
+#[component(immutable)]
 pub struct ByAction<T: Send + Sync + 'static> {
     entries: Arc<[Option<T>]>,
 }

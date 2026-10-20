@@ -6,11 +6,11 @@ use campfire_actions::ByAction;
 use campfire_common::Seat;
 use campfire_math::Num;
 use campfire_script::{
-    AnyKeptRows, Checked, ColumnRows, KeptRows, RowFill, ScriptList, ScriptText, ScriptValue, Unit,
+    AnyKeptRows, Checked, ColumnRows, IdNames, KeptRows, RowFill, ScriptText, ScriptValue, Unit,
     View, ViewColumn,
 };
 use campfire_units::Owner;
-use campfire_values::ActionId;
+use campfire_values::{ActionId, UnitType};
 
 use crate::gatherer::Gatherer;
 use crate::mode_supply_data::ModeSupplyData;
@@ -186,13 +186,13 @@ impl ProductionColumn {
 
     /// `unit.queue`: the unit types of the trains `unit` queued, by name, first the one under way;
     /// none for no queue, or in a view with no production.
-    pub(crate) fn queue(unit: &Unit) -> Checked<ScriptList> {
+    pub(crate) fn queue(unit: &Unit) -> Checked<IdNames<UnitType>> {
         let row = unit.row_index()?;
         let view = unit.view();
         let queue = view.column(|column: &Self| {
             let names = column.rows.now().queue(row).iter().map(|&action| {
                 let train = column.trains.get(action).expect("a queue holds trains");
-                ScriptValue::of(ScriptText::from(view.names().name(train.unit_type)))
+                ScriptText::from(view.names().name(train.unit_type))
             });
             names.collect()
         });

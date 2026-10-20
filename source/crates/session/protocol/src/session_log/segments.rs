@@ -4,15 +4,18 @@ use campfire_common::Tick;
 
 use crate::checkpoint::Checkpoint;
 use crate::checkpoint::checkpoint_begun::CheckpointBegun;
-use crate::session_log::input_schedule::Due;
+use crate::session_log::input_schedule::InputOrder;
 use crate::session_log::log_entries::EntriesAt;
 use crate::session_log::{at, offset};
 use crate::signature::Signature;
 
 /// A session's segments, in order: the first from tick 0, every other from its checkpoint, and
-/// the checkpoints begun that have no record yet.
+/// the checkpoints begun that have no record yet. A log whose file starts at a checkpoint holds
+/// the segments from that one's on.
 #[derive(Debug)]
 pub(super) struct Segments {
+    /// The number of the first segment it holds.
+    first: u32,
     starts: Vec<SegmentStart>,
     /// The checkpoints that start the last segments, oldest first, while their records have not
     /// come; the records come in that order.
@@ -39,7 +42,7 @@ pub(super) struct Boundary {
     pub(super) head_signers: Vec<Option<u32>>,
     /// The inputs logged before it still to apply from it on, which a replay from it starts
     /// with.
-    pub(super) pending: Vec<Due>,
+    pub(super) pending: Vec<InputOrder>,
     pub(super) file_len: u64,
 }
 
@@ -53,6 +56,7 @@ impl Default for Segments {
     /// The first segment, from tick 0.
     fn default() -> Self {
         Self {
+            first: 0,
             starts: vec![SegmentStart {
                 tick: Tick::new(0),
                 checkpoint: None,
@@ -64,14 +68,33 @@ impl Default for Segments {
 }
 
 impl Segments {
-    /// How many segments the session has.
-    pub(super) const fn len(&self) -> usize {
-        self.starts.len()
+    /// The segments from `segment`'s on, which starts at `start`, as a log file that starts at
+    /// its checkpoint holds them.
+    pub(super) fn from_checkpoint(segment: u32, start: SegmentStart) -> Self {
+        debug_assert!(
+            segment > 0 && start.checkpoint.is_some() && start.boundary.is_some(),
+            "a file starts at a checkpoint's segment with its record"
+        );
+        Self {
+            first: segment,
+            starts: vec![start],
+            begun: VecDeque::new(),
+        }
+    }
+
+    /// The first segment it holds: 0, or the one whose checkpoint its log's file starts at.
+    pub(super) const fn first(&self) -> u32 {
+        self.first
+    }
+
+    /// The segment a checkpoint begun next starts.
+    pub(super) fn next(&self) -> u32 {
+        self.first + offset(self.starts.len())
     }
 
     /// The last segment, which the next tick runs in.
     pub(super) fn last(&self) -> u32 {
-        offset(self.starts.len() - 1)
+        self.next() - 1
     }
 
     /// Where the last segment starts.
@@ -79,27 +102,28 @@ impl Segments {
         self.starts.last().expect("a session has a segment")
     }
 
-    /// The start of segment `segment`.
+    /// The start of segment `segment`; none for one it does not hold.
     pub(super) fn get(&self, segment: u32) -> Option<&SegmentStart> {
-        self.starts.get(at(segment))
+        self.starts.get(at(segment.checked_sub(self.first)?))
     }
 
-    /// The first `count` segments' starts.
-    pub(super) fn first(&self, count: usize) -> &[SegmentStart] {
-        &self.starts[..count]
+    /// The starts of the segments from `segment` on, each with its number.
+    pub(super) fn since(&self, segment: u32) -> impl Iterator<Item = (u32, &SegmentStart)> {
+        let skip = at(segment - self.first);
+        (segment..).zip(&self.starts[skip..])
     }
 
-    /// The segment that starts at `tick`, its record come or not; none at tick 0, where the
-    /// first starts from no checkpoint.
+    /// The segment that starts at `tick` from a checkpoint, its record come or not; none at
+    /// tick 0, where segment 0 starts from none.
     pub(super) fn starting(&self, tick: Tick) -> Option<u32> {
         let at = self.starts.partition_point(|segment| segment.tick < tick);
         self.starts
             .get(at)
-            .filter(|segment| at > 0 && segment.tick == tick)?;
-        Some(offset(at))
+            .filter(|segment| segment.tick == tick && segment.boundary.is_some())?;
+        Some(self.first + offset(at))
     }
 
-    /// Every checkpoint record and its signature, by segment from the second.
+    /// Every checkpoint record it holds and its signature, by segment.
     pub(super) fn checkpoints(&self) -> impl Iterator<Item = &LoggedCheckpoint> {
         self.starts
             .iter()
@@ -124,7 +148,7 @@ impl Segments {
     /// Starts a segment at `begun`'s tick, whose checkpoint is begun, the log at `boundary`
     /// there.
     pub(super) fn begin(&mut self, begun: CheckpointBegun, boundary: Boundary) {
-        debug_assert_eq!(begun.segment, offset(self.starts.len()), "the next segment");
+        debug_assert_eq!(begun.segment, self.next(), "the next segment");
         self.starts.push(SegmentStart {
             tick: begun.tick,
             checkpoint: None,
@@ -140,7 +164,7 @@ impl Segments {
             .begun
             .pop_front()
             .expect("a record of the checkpoint begun");
-        let start = &mut self.starts[at(begun.segment)];
+        let start = &mut self.starts[at(begun.segment - self.first)];
         start.checkpoint = Some(logged);
         let boundary = start
             .boundary
@@ -150,14 +174,14 @@ impl Segments {
         begun.segment
     }
 
-    /// Keeps the first `count` segments, and none of the checkpoints begun after them, as a load
-    /// of the last of them does.
-    pub(super) fn truncate(&mut self, count: usize) {
+    /// Keeps the segments up to `segment`, and none of the checkpoints begun after them, as a
+    /// load of `segment` does.
+    pub(super) fn truncate_after(&mut self, segment: u32) {
         debug_assert!(
-            self.begun.iter().all(|begun| at(begun.segment) >= count),
+            self.begun.iter().all(|begun| begun.segment > segment),
             "a load drops only checkpoints begun after its save"
         );
-        self.starts.truncate(count);
+        self.starts.truncate(at(segment - self.first) + 1);
         self.begun.clear();
     }
 }

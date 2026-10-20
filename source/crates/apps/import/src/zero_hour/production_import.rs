@@ -1,12 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::num::NonZeroU8;
 
-use campfire_actions::{ActionKind, ActionRange, RangeField, Targeting};
+use campfire_actions::{ActionKeys, ActionKind, ActionRange, RangeField, Targeting};
+use campfire_codec::TomlTable;
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::{Num, Rounding};
-use campfire_production::{BuildData, BuildStart, ConstructData, RequiresData, TrainData};
+use campfire_production::{
+    BuildData, BuildStart, ConstructData, FramePoint, ProductionData, RequiresData, TrainData,
+};
 use campfire_values::{Number, Ranked, Share, TextId};
-use serde::Serialize;
 
 use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::game_float;
@@ -16,7 +18,6 @@ use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, Prerequisit
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ProductionNames;
 use crate::zero_hour::imported_type::{ImportedType, MONEY};
-use crate::zero_hour::unit_types::ProductionSection;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's trains and builds (09-zero-hour.md, Every command set's trains and builds are
@@ -34,43 +35,44 @@ pub(crate) struct ProductionImport {
     /// its command set's order.
     pub(crate) commands: BTreeMap<ImportName, Vec<DeclaredName>>,
     /// Each producer's `production` section, by its type's name.
-    pub(crate) sections: BTreeMap<ImportName, ProductionSection>,
+    pub(crate) sections: BTreeMap<ImportName, ProductionData>,
 }
 
-/// A train or a build as the mode's data writes it, `[actions.<id>]`: the pipeline's fields it
+/// A train or a build as the mode's data writes it, `[actions.<id>]`: the pipeline's keys it
 /// gives, and its kind's section.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedAction {
-    name: TextId,
-    kind: ActionKind,
-    targeting: Targeting,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    cost: BTreeMap<DeclaredName, Ranked<Number>>,
-    windup_ms: Ranked<Number>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    range: Option<Ranked<RangeField>>,
-    #[serde(flatten)]
+    keys: ActionKeys,
     made: MadeSection,
 }
 
 /// The section of what a train or a build makes, of its kind.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum MadeSection {
     Train(TrainData),
     Build(BuildData),
+}
+
+impl ImportedAction {
+    /// Its table under `[actions]`.
+    pub(crate) fn table(&self) -> TomlTable {
+        match &self.made {
+            MadeSection::Train(train) => self.keys.table(train),
+            MadeSection::Build(build) => self.keys.table(build),
+        }
+    }
 }
 
 /// A button the import drops, by its name, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DroppedButton {
     pub button: String,
-    pub cause: DropCause,
+    pub cause: ButtonDropCause,
 }
 
 /// Why the import drops a button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
-pub enum DropCause {
+pub enum ButtonDropCause {
     /// No file defines the button, or its object, or an object its prerequisites name.
     NoObject,
     /// Its object's prerequisites need a science.
@@ -156,7 +158,7 @@ impl ProductionImport {
             None
         };
         let Some(button) = rules.buttons.get(button_name) else {
-            return drop(DropCause::NoObject);
+            return drop(ButtonDropCause::NoObject);
         };
         let making = match button.command {
             ButtonCommand::UnitBuild => Making::Train,
@@ -168,7 +170,7 @@ impl ProductionImport {
             .as_deref()
             .and_then(|object| rules.objects.object(object.as_bytes()));
         let Some(made) = made else {
-            return drop(DropCause::NoObject);
+            return drop(ButtonDropCause::NoObject);
         };
         let build = made.build();
         let requires = match Self::requires(rules, build) {
@@ -176,32 +178,32 @@ impl ProductionImport {
             Err(cause) => return drop(cause),
         };
         let Ok(imported) = ImportedType::of(made, &rules.locomotors) else {
-            return drop(DropCause::NoType);
+            return drop(ButtonDropCause::NoType);
         };
         match making {
-            Making::Train if !imported.walks() => return drop(DropCause::NoWalker),
-            Making::Build if !imported.is_box() => return drop(DropCause::NoBox),
+            Making::Train if !imported.walks() => return drop(ButtonDropCause::NoWalker),
+            Making::Build if !imported.is_box() => return drop(ButtonDropCause::NoBox),
             _ => {}
         }
         let section = match making {
             Making::Train => match Self::section(producer.build()) {
                 Some(section) => Some(section),
-                None => return drop(DropCause::NoQueue),
+                None => return drop(ButtonDropCause::NoQueue),
             },
             Making::Build => None,
         };
         let Some(windup_ms) = Self::windup_ms(build.time) else {
-            return drop(DropCause::BadTime);
+            return drop(ButtonDropCause::BadTime);
         };
         let mut units = Vec::with_capacity(requires.len());
         for required in requires {
             let Ok(typed) = names.unit_type(required, &rules.locomotors) else {
-                return drop(DropCause::NoType);
+                return drop(ButtonDropCause::NoType);
             };
             units.push(typed.name);
         }
         let Ok(typed) = names.unit_type(made, &rules.locomotors) else {
-            return drop(DropCause::NoType);
+            return drop(ButtonDropCause::NoType);
         };
         let kind = match making {
             Making::Train => ActionKind::Train,
@@ -235,21 +237,24 @@ impl ProductionImport {
         let money = DeclaredName::new(MONEY).expect("a resource is a declared name");
         let cost = (build.cost > 0).then(|| (money, Self::number(i64::from(build.cost))));
         let windup_ms = i64::try_from(windup_ms).expect("a windup of an `Int` of frames fits");
-        self.actions
-            .entry(id.clone())
-            .or_insert_with(|| ImportedAction {
-                name: TextId::new(&message).expect("an action's message is a message id"),
-                kind,
-                targeting: match making {
-                    Making::Train => Targeting::None,
-                    Making::Build => Targeting::Point,
-                },
+        self.actions.entry(id.clone()).or_insert_with(|| {
+            let targeting = match making {
+                Making::Train => Targeting::None,
+                Making::Build => Targeting::Point,
+            };
+            let keys = ActionKeys {
+                name: Some(TextId::new(&message).expect("an action's message is a message id")),
                 cost: cost.into_iter().collect(),
-                windup_ms: Self::number(windup_ms),
+                windup_ms: Some(Self::number(windup_ms)),
                 range: (making == Making::Build)
                     .then(|| Ranked::One(RangeField::Range(ActionRange::meters(BUILD_RANGE)))),
+                ..ActionKeys::new(kind, targeting)
+            };
+            ImportedAction {
+                keys,
                 made: made_section,
-            });
+            }
+        });
         let commands = self
             .commands
             .entry(ImportName::object(producer))
@@ -268,35 +273,36 @@ impl ProductionImport {
     fn requires<'a>(
         rules: &'a ZeroHourRules,
         build: &IniBuild,
-    ) -> Result<Vec<&'a IniObject>, DropCause> {
+    ) -> Result<Vec<&'a IniObject>, ButtonDropCause> {
         build
             .prerequisites
             .iter()
             .map(|line| match line {
-                Prerequisite::Science(_) => Err(DropCause::Science),
+                Prerequisite::Science(_) => Err(ButtonDropCause::Science),
                 Prerequisite::Objects(objects) => match objects.as_slice() {
                     [object] => rules
                         .objects
                         .object(object.as_bytes())
-                        .ok_or(DropCause::NoObject),
-                    _ => Err(DropCause::EitherOr),
+                        .ok_or(ButtonDropCause::NoObject),
+                    _ => Err(ButtonDropCause::EitherOr),
                 },
             })
             .collect()
     }
 
     /// The `production` section of a producer of `build`: its queue, and its exit's points in
-    /// the engine's frame, the game's `y` its `−z`, as a map's places turn; none for no
-    /// `ProductionUpdate`, or a queue past 1 to 255.
-    fn section(build: &IniBuild) -> Option<ProductionSection> {
+    /// the engine's frame, the game's `y` its `−z`, as a map's places turn, each none for a number
+    /// the engine does not hold or a point past its bound; none for no `ProductionUpdate`, or a
+    /// queue past 1 to 255.
+    fn section(build: &IniBuild) -> Option<ProductionData> {
         let queue = u8::try_from(build.queue?).ok().and_then(NonZeroU8::new)?;
         let frame = |[x, y]: [f32; 2]| {
             let x = game_float::to_num(x).ok()?;
             let y = game_float::to_num(y).ok()?;
-            Some([x, y.checked_neg()?])
+            FramePoint::new([x, y.checked_neg()?])
         };
         let exit = build.exit;
-        Some(ProductionSection {
+        Some(ProductionData {
             queue,
             exit: exit.and_then(|exit| frame(exit.create)),
             rally: exit.and_then(|exit| frame(exit.rally)),

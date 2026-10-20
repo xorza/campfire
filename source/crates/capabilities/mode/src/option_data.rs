@@ -1,7 +1,9 @@
 use campfire_script::{DataSection, DataTable};
 use campfire_values::Scalar;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::error::OptionDataError;
 
 /// An option of the mode's `[options]` (03-game-scripting.md, A mode declares its options): a
 /// param whose value a session's host picks among `values`, in their order, and the place among
@@ -15,6 +17,23 @@ pub struct OptionData {
 impl OptionData {
     /// The most values an option holds, as a session's terms give a pick's place in a byte.
     pub const MAX_VALUES: usize = 1 << u8::BITS;
+
+    /// The option of `values`, in their order, which a session of no pick takes `default` of; an
+    /// error for no value, more than `MAX_VALUES`, one value twice, or a default that is none of
+    /// them.
+    pub fn new(values: Vec<Scalar>, default: Scalar) -> Result<Self, OptionDataError> {
+        if values.is_empty() || values.len() > Self::MAX_VALUES {
+            return Err(OptionDataError::Count);
+        }
+        for (at, &value) in values.iter().enumerate() {
+            if values[..at].iter().any(|&held| alike(held, value)) {
+                return Err(OptionDataError::Repeated);
+            }
+        }
+        let option = Self { values, default: 0 };
+        let default = option.place(default).ok_or(OptionDataError::NoDefault)?;
+        Ok(Self { default, ..option })
+    }
 
     /// Its values, in their order.
     pub fn values(&self) -> &[Scalar] {
@@ -39,30 +58,30 @@ impl OptionData {
     }
 }
 
+/// An option as data writes it, which reads and writes the same fields: its default by its value.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Fields {
+    values: Vec<Scalar>,
+    default: Scalar,
+}
+
+impl Serialize for OptionData {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        Fields {
+            values: self.values.clone(),
+            default: self.values[usize::from(self.default)],
+        }
+        .serialize(serializer)
+    }
+}
+
 /// Data is untrusted, so an option of no value, of more than `MAX_VALUES`, of one value twice, or
 /// whose default is none of its values, fails to read.
 impl<'de> Deserialize<'de> for OptionData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Fields {
-            values: Vec<Scalar>,
-            default: Scalar,
-        }
         let Fields { values, default } = Fields::deserialize(deserializer)?;
-        if values.is_empty() || values.len() > Self::MAX_VALUES {
-            return Err(D::Error::custom("an option holds from 1 to 256 values"));
-        }
-        for (at, &value) in values.iter().enumerate() {
-            if values[..at].iter().any(|&held| alike(held, value)) {
-                return Err(D::Error::custom("an option holds each value once"));
-            }
-        }
-        let option = Self { values, default: 0 };
-        let default = option
-            .place(default)
-            .ok_or_else(|| D::Error::custom("an option's default is one of its values"))?;
-        Ok(Self { default, ..option })
+        Self::new(values, default).map_err(D::Error::custom)
     }
 }
 
@@ -97,6 +116,14 @@ mod tests {
         assert_eq!(money.value(4), None);
         let half = read("values = [\"0.5\", 2]\ndefault = \"0.5\"").unwrap();
         assert_eq!(half.default_place(), 0);
+        // Each writes its default as its value, and reads back to itself; `new` makes the same.
+        for option in [&money, &half] {
+            assert_eq!(read(&Toml::write(option)).as_ref(), Ok(option));
+        }
+        assert_eq!(
+            OptionData::new(values.to_vec(), Scalar::Int(10000)),
+            Ok(money)
+        );
         // 256 values read, 257 do not.
         let many = |count: i64| {
             let values: Vec<String> = (0..count).map(|value| value.to_string()).collect();

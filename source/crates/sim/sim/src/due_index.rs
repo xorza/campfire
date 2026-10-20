@@ -1,3 +1,4 @@
+use std::any;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::marker::PhantomData;
@@ -191,9 +192,10 @@ impl<P: TimedProcess> DueIndex<P> {
             let held = index.due_at(id);
             assert!(
                 held.is_some_and(|held| held <= at),
-                "{} is due at {at:?} but its index holds {held:?}: a pass set its time and pushed \
-                 none",
-                id.get()
+                "{} is due to {} at {at:?} but its index holds {held:?}: a pass set its time and \
+                 pushed none",
+                id.get(),
+                any::type_name::<P>()
             );
         }
     }

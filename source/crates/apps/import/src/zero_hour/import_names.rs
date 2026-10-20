@@ -8,7 +8,7 @@ use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
 use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::imported_type::ImportedType;
-use crate::zero_hour::unit_types::UnitTypes;
+use crate::zero_hour::unit_types::ImportedTypes;
 
 /// The name each object of the original takes in the package, for its look and for its unit
 /// type, with the object that took it, so a look and a unit type of one name are of one object:
@@ -161,8 +161,8 @@ impl ShellNames {
     }
 
     /// The closed set of the unit types the stages made, which no stage after adds to.
-    pub(crate) fn close(self) -> UnitTypes {
-        UnitTypes::new(self.0.placed)
+    pub(crate) fn close(self) -> ImportedTypes {
+        ImportedTypes::new(self.0.placed)
     }
 }
 

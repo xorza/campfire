@@ -16,7 +16,7 @@ use crate::spill::Spill;
 pub(super) struct InputSchedule {
     rules: InputRules,
     /// Inputs applied in a tick not yet sealed, earliest first.
-    pending: BinaryHeap<Reverse<Due>>,
+    pending: BinaryHeap<Reverse<InputOrder>>,
     /// Indices of the inputs applied in the tick last sealed.
     due: Vec<u32>,
     /// Each seat's spill, by seat. A spill counts its controller's inputs alone: a change of
@@ -28,7 +28,7 @@ pub(super) struct InputSchedule {
 /// their chain's order, whatever order the players' inputs arrived in, so the host cannot choose
 /// who acts first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) struct Due {
+pub(super) struct InputOrder {
     pub(super) tick: Tick,
     pub(super) seat: Seat,
     pub(super) index: u32,
@@ -73,7 +73,7 @@ impl InputSchedule {
         };
         let seat = input.seat;
         let tick = self.spills[seat.index()].take(earliest, self.rules.max_per_tick);
-        self.pending.push(Reverse(Due { tick, seat, index }));
+        self.pending.push(Reverse(InputOrder { tick, seat, index }));
         Applied::At(tick)
     }
 
@@ -115,7 +115,7 @@ impl InputSchedule {
     pub(super) fn restored(
         rules: InputRules,
         spills: Vec<Spill>,
-        pending: impl IntoIterator<Item = Due>,
+        pending: impl IntoIterator<Item = InputOrder>,
     ) -> Self {
         Self {
             rules,
@@ -131,8 +131,8 @@ impl InputSchedule {
     }
 
     /// The inputs still to apply, earliest first, then by seat and in the order logged.
-    pub(super) fn pending(&self) -> Vec<&Due> {
-        let mut due: Vec<&Due> = self.pending.iter().map(|Reverse(due)| due).collect();
+    pub(super) fn pending(&self) -> Vec<&InputOrder> {
+        let mut due: Vec<&InputOrder> = self.pending.iter().map(|Reverse(due)| due).collect();
         due.sort_unstable();
         due
     }

@@ -7,38 +7,25 @@ use campfire_client_files::{
 };
 use campfire_codec::{Binary, Toml};
 use campfire_common::DeclaredName;
+use campfire_declarations::SectionWriter;
 use campfire_geometry::Bounds;
 use campfire_math::Num;
-use campfire_mode::{MarkerData, ModeParam, PlacedUnitData};
+use campfire_mode::{MapData, MapPatch, MarkerData, ModeParam, PlacedUnitData};
 use campfire_navigation::MapNavigationData;
 use campfire_units::{BoundsData, CellSplit, CoarseSpan, Ground, GroundData, HeightGrid, MapPoint};
-use serde::Serialize;
 
 use crate::zero_hour::cliff_walls::{CellFrame, CliffWalls};
 use crate::zero_hour::error::MapError;
 use crate::zero_hour::format::ini::object_ini::PlacedAs;
 use crate::zero_hour::format::look_conditions::LookConditions;
-use crate::zero_hour::format::map::map_file::{GameLight, MapFile, MapHeights};
-use crate::zero_hour::format::map::map_object::Placement;
+use crate::zero_hour::format::map::map_file::{GameLight, MapHeights, ZeroHourMap};
+use crate::zero_hour::format::map::map_object::ObjectPlace;
 use crate::zero_hour::format::map::terrain::Terrain;
 use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::terrain_atlas::{ClassTexture, TerrainAtlas};
 use crate::zero_hour::terrain_cells::TerrainCells;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
-
-/// A map's `map/<name>/map.toml` as the import writes it: a planar map of its bounds, its ground
-/// and its navigation, the sections it gives, then the units and markers of the mode's own.
-#[derive(Debug, Serialize)]
-struct MapToml {
-    bounds: BoundsData,
-    ground: GroundData,
-    navigation: MapNavigationData,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    units: Vec<PlacedUnitData>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    markers: Vec<MarkerData>,
-}
 
 /// One map's files in the package: `map/<name>/map.toml`, `map/<name>/heights.bin`,
 /// `client/maps/<name>/terrain.bin`, `client/maps/<name>/lights.toml` and
@@ -162,7 +149,7 @@ impl MapImport {
     /// Cliffs are walls); and its first `lights` object lights, as the game draws
     /// `NumberGlobalLights` of each, which the terrain is lit by too; their ambient color is the
     /// first light's, as the game takes it.
-    pub(crate) fn new(file: &MapFile, sources: MapSources<'_>) -> Result<Self, MapError> {
+    pub(crate) fn new(file: &ZeroHourMap, sources: MapSources<'_>) -> Result<Self, MapError> {
         let MapSources {
             rules,
             names,
@@ -240,7 +227,7 @@ impl MapImport {
                 let Some(template) = ini.object(&object.template) else {
                     continue;
                 };
-                let Placement {
+                let ObjectPlace {
                     ground,
                     height,
                     degrees,
@@ -331,18 +318,21 @@ impl MapImport {
             rows: file.heights.depth,
         };
         let walls = CliffWalls::of(&cliffs, file.heights.width).walls(frame, bounds);
-        let map = MapToml {
-            bounds: BoundsData(bounds),
-            ground,
-            navigation: MapNavigationData {
+        // A planar map of its bounds, its ground and its navigation, the sections it gives, then
+        // the units and markers of the mode's own.
+        let mut map = SectionWriter::default();
+        map.section(&BoundsData(bounds))
+            .section(&ground)
+            .section(&MapNavigationData {
                 cell: Num::int(PATHFIND_CELL),
                 walls,
-            },
-            units: bridges,
-            markers,
-        };
+            })
+            .own::<MapData>(&MapPatch {
+                units: (!bridges.is_empty()).then_some(bridges),
+                markers: (!markers.is_empty()).then_some(markers),
+            });
         Ok(Self {
-            map: Toml::write(&map),
+            map: Toml::write(&map.into_table()),
             heights: Binary::encode(&heights),
             terrain: Binary::encode(&terrain),
             untextured,
@@ -441,7 +431,6 @@ mod tests {
     use campfire_client_files::ClientUnit;
     use campfire_codec::TomlTable;
     use campfire_declarations::SectionReaders;
-    use campfire_mode::MapData;
     use campfire_units::{GroundError, MetricData};
 
     use super::*;
@@ -468,20 +457,20 @@ mod tests {
     const UNITS_TOML: &str = r#"[units.americatankcrusader]
 pools = ["life"]
 
+[units.americatankcrusader.collision]
+height = "1"
+radius = "5"
+
+[units.americatankcrusader.combat]
+
+[units.americatankcrusader.stats.life]
+base = "400"
+
 [units.americatankcrusader.stats.move_speed]
 base = "30.5"
 
 [units.americatankcrusader.stats.turn_rate]
 base = "90"
-
-[units.americatankcrusader.stats.life]
-base = "400"
-
-[units.americatankcrusader.collision]
-radius = "5"
-height = "1"
-
-[units.americatankcrusader.combat]
 
 [units.americatankcrusader.turret]
 turn_rate = "180"
@@ -509,7 +498,7 @@ tags = ["wall"]
     /// The import of `file` of the fixture install's objects, with the looks of its client
     /// objects but the prop of no model's, drawn in `lights` lights.
     fn import(
-        file: &MapFile,
+        file: &ZeroHourMap,
         names: &mut ImportNames,
         lights: usize,
     ) -> Result<MapImport, MapError> {
@@ -544,7 +533,7 @@ tags = ["wall"]
 
     #[test]
     fn a_map_s_lights_are_its_time_of_day_s_on_the_engine_s_axes() {
-        let mut file = MapFile::read(&map(8)).unwrap();
+        let mut file = ZeroHourMap::read(&map(8)).unwrap();
         let mut names = ImportNames::default();
         let imported = import(&file, &mut names, 3).unwrap();
         // The afternoon's lights: light `l` of time 2 has ambient [2, l, 0], diffuse [2, l, 1]
@@ -576,7 +565,7 @@ tags = ["wall"]
 
     #[test]
     fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
-        let mut file = MapFile::read(&map(8)).unwrap();
+        let mut file = ZeroHourMap::read(&map(8)).unwrap();
         let mut names = ImportNames::default();
         let imported = import(&file, &mut names, 3).unwrap();
 
@@ -846,8 +835,8 @@ tags = ["wall"]
 
     #[test]
     fn a_map_whose_waypoints_or_objects_the_engine_cannot_hold_is_refused() {
-        let mut file = MapFile::read(&map(8)).unwrap();
-        let import = |file: &MapFile| import(file, &mut ImportNames::default(), 3).map(drop);
+        let mut file = ZeroHourMap::read(&map(8)).unwrap();
+        let import = |file: &ZeroHourMap| import(file, &mut ImportNames::default(), 3).map(drop);
         let waypoint = 2;
         let mut twice = file.clone();
         twice.objects.push(file.objects[waypoint].clone());

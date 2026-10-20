@@ -16,7 +16,9 @@ use crate::connection_id::ConnectionId;
 use crate::datagram_io::Datagram;
 use crate::datagram_io::Outbound;
 use crate::endpoint_pieces::EndpointSide;
-use crate::establish::{ClientEstablish, Establish, Established, Establishing, ServerEstablish};
+use crate::establish::{
+    ClientEstablish, Establish, Established, Establishing, ReadCost, ServerEstablish,
+};
 use crate::header::IO_BIT;
 use crate::packet_session::{PacketSession, PathOutcome, Received};
 use crate::packet_session_setup::PacketSessionSetup;
@@ -138,6 +140,27 @@ impl<C> Peer<C> {
     }
 }
 
+/// The most items of work a hold of the endpoint's lock takes, datagrams it routes and packet
+/// sessions it polls together, for which the frame's endpoint systems wait: quinn's
+/// `IO_LOOP_BOUND`, the lowest bound of its endpoint loop that did not lower throughput in its
+/// benchmarks (11-net-stack/packet-session.md, A pass opens a bounded batch under each hold of the
+/// lock).
+pub(crate) const HOLD_BATCH: usize = 160;
+
+/// What a hold left for its pass's next: the datagrams it took and did not route, and whether a
+/// packet session it did not poll is due.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct HoldRest {
+    pub(crate) datagrams: usize,
+    pub(crate) due: bool,
+}
+
+impl HoldRest {
+    pub(crate) const fn is_empty(self) -> bool {
+        self.datagrams == 0 && !self.due
+    }
+}
+
 /// An endpoint's packet sessions and its establishment, which a host drives through an
 /// `EndpointRuntime`, and whose packet sessions each carrier `C` of the host carries
 /// (11-net-stack/packet-session.md, The endpoint core names each packet session by its carrier).
@@ -153,13 +176,13 @@ pub struct EndpointCore<C> {
     routes: BTreeMap<RouteKey, usize>,
     /// Each packet session's next deadline, so a pass polls only the packet sessions that are due.
     timers: BinaryHeap<Reverse<PollTimer>>,
-    /// The timers a pass takes due before it polls their packet sessions.
-    due: Vec<PollTimer>,
     next_id: u64,
     news: VecDeque<News<C>>,
     /// The model the endpoint applies to each datagram the IO gives, before the packet sessions see
     /// it.
     conditioner: Option<LinkConditioner<Datagram>>,
+    /// The datagrams a hold took and left for the next, as it ended at a handshake's start.
+    backlog: VecDeque<Datagram>,
     establishing: Establishing,
     transmits: Vec<Transmit>,
     time: EndpointTime,
@@ -167,6 +190,17 @@ pub struct EndpointCore<C> {
     ended: bool,
     /// Whether a packet session opened a payload since the IO thread last asked.
     opened: bool,
+    /// What the IO thread sleeps to, as it read it under the lock.
+    sleeps_to: SleepsTo,
+}
+
+/// What an endpoint's IO thread sleeps to: nothing known before it first sleeps, a deadline, or
+/// none, idle until a datagram or a wake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SleepsTo {
+    Unknown,
+    Deadline(Instant),
+    Idle,
 }
 
 impl<C: Carrier> EndpointCore<C> {
@@ -193,15 +227,39 @@ impl<C: Carrier> EndpointCore<C> {
             free: Vec::new(),
             routes: BTreeMap::new(),
             timers: BinaryHeap::new(),
-            due: Vec::new(),
             next_id: 0,
             news: VecDeque::new(),
             conditioner,
+            backlog: VecDeque::new(),
             establishing: Establishing::default(),
             transmits: Vec::new(),
             time: EndpointTime::Driven(Instant::ZERO),
             ended: false,
             opened: false,
+            sleeps_to: SleepsTo::Unknown,
+        }
+    }
+
+    /// The deadline the IO thread sleeps to from now, which it records under the lock.
+    pub(crate) fn arm(&mut self) -> Option<Instant> {
+        let next = self.next_deadline();
+        self.sleeps_to = next.map_or(SleepsTo::Idle, SleepsTo::Deadline);
+        next
+    }
+
+    /// Whether the frame's work needs the IO thread awake: it ended the endpoint, or left it a
+    /// deadline earlier than the one the thread sleeps to, as quinn's driver moves its timer only
+    /// when `poll_timeout` changes (11-net-stack/packet-session.md, The IO thread wakes only for a
+    /// deadline it does not know).
+    pub(crate) fn is_wake_due(&self) -> bool {
+        if self.ended {
+            return true;
+        }
+        match (self.sleeps_to, self.next_deadline()) {
+            (SleepsTo::Unknown, _) => true,
+            (SleepsTo::Deadline(armed), Some(next)) => next < armed,
+            (SleepsTo::Idle, next) => next.is_some(),
+            (SleepsTo::Deadline(_), None) => false,
         }
     }
 
@@ -254,9 +312,16 @@ impl<C: Carrier> EndpointCore<C> {
         }
     }
 
-    /// One pass over `datagrams` the IO gave, then the timers: what goes out is appended to
-    /// `out`.
-    pub(crate) fn pass(&mut self, datagrams: &mut Vec<Datagram>, out: &mut Vec<Outbound>) {
+    /// One hold's pass: the datagrams it kept and `datagrams` the IO gave, in order up to a
+    /// handshake's start, then the packet sessions due, at most a batch of them together; what
+    /// goes out is appended to `out`, and what it did not reach waits for the pass's next hold
+    /// (11-net-stack/packet-session.md, A hold starts at most one handshake;
+    /// 11-net-stack/packet-session.md, A pass opens a bounded batch under each hold of the lock).
+    pub(crate) fn pass(
+        &mut self,
+        datagrams: &mut Vec<Datagram>,
+        out: &mut Vec<Outbound>,
+    ) -> HoldRest {
         let now = self.now();
         if let Some(conditioner) = &mut self.conditioner {
             for datagram in datagrams.drain(..) {
@@ -264,24 +329,54 @@ impl<C: Carrier> EndpointCore<C> {
                 conditioner.condition_packet(datagram, bytes, now);
             }
             while let Some(datagram) = conditioner.pop_packet(now) {
-                datagrams.push(datagram);
+                self.backlog.push_back(datagram);
             }
+        } else {
+            self.backlog.extend(datagrams.drain(..));
         }
-        for datagram in datagrams.drain(..) {
-            self.route(now, datagram, out);
+        let mut room = HOLD_BATCH;
+        while room > 0
+            && let Some(datagram) = self.backlog.pop_front()
+        {
+            room -= 1;
+            if self.route(now, datagram, out) == ReadCost::Handshake {
+                room = 0;
+            }
         }
         self.side.establish().poll(now, &mut self.establishing);
         self.apply_establishing(now, out);
-        // The due timers are taken first, so a pass polls each packet session once, as a timer it
-        // leaves due waits for the next pass.
-        self.due.clear();
-        while let Some(&Reverse(timer)) = self.timers.peek()
-            && timer.at <= now
-        {
-            self.timers.pop();
-            self.due.push(timer);
+        self.poll_due(now, room, out);
+        debug_assert!(
+            self.peers
+                .iter()
+                .flatten()
+                .all(|peer| peer.scheduled.is_some_and(|at| peer
+                    .packet_session
+                    .next_deadline()
+                    .is_none_or(|due| at <= due))),
+            "each packet session's timer is due at or before its next deadline"
+        );
+        HoldRest {
+            datagrams: self.backlog.len(),
+            due: self
+                .timers
+                .peek()
+                .is_some_and(|&Reverse(timer)| timer.at <= now),
         }
-        for &PollTimer { at, key } in &self.due {
+    }
+
+    /// Polls the packet sessions due at `now` in the order of their deadlines, at most `room` of
+    /// their timers. A poll leaves a packet session's next deadline after `now`, or ends it, so
+    /// a pass polls each once.
+    fn poll_due(&mut self, now: Instant, room: usize, out: &mut Vec<Outbound>) {
+        for _ in 0..room {
+            let Some(&Reverse(PollTimer { at, key })) = self.timers.peek() else {
+                break;
+            };
+            if at > now {
+                break;
+            }
+            self.timers.pop();
             let Some(slot) = self.peers.get_mut(key.slot) else {
                 continue;
             };
@@ -304,19 +399,15 @@ impl<C: Carrier> EndpointCore<C> {
                 *slot = None;
                 self.free.push(key.slot);
             } else {
+                debug_assert!(
+                    peer.packet_session
+                        .next_deadline()
+                        .is_none_or(|deadline| deadline > now),
+                    "a poll leaves a packet session's next deadline after its time"
+                );
                 Self::schedule(peer, &mut self.timers, now);
             }
         }
-        debug_assert!(
-            self.peers
-                .iter()
-                .flatten()
-                .all(|peer| peer.scheduled.is_some_and(|at| peer
-                    .packet_session
-                    .next_deadline()
-                    .is_none_or(|due| at <= due))),
-            "each packet session's timer is due at or before its next deadline"
-        );
     }
 
     /// Enters `peer`'s next deadline in `timers` when it comes before its entry: a packet session
@@ -332,19 +423,32 @@ impl<C: Carrier> EndpointCore<C> {
         }
     }
 
-    fn route(&mut self, now: Instant, datagram: Datagram, out: &mut Vec<Outbound>) {
+    /// Hands `datagram` to the establishment or to its packet session: what the read cost.
+    fn route(&mut self, now: Instant, datagram: Datagram, out: &mut Vec<Outbound>) -> ReadCost {
         let Some(&first) = datagram.payload.first() else {
-            return;
+            return ReadCost::Light;
         };
         if first & IO_BIT != 0 {
-            self.side
+            let cost = self
+                .side
                 .establish()
                 .receive(now, datagram, &mut self.establishing);
             self.apply_establishing(now, out);
-            return;
+            return cost;
         }
+        self.deliver(now, datagram, out);
+        ReadCost::Light
+    }
+
+    /// Hands a packet session's `datagram` to the packet session its route names, or one that a
+    /// server takes new.
+    fn deliver(&mut self, now: Instant, datagram: Datagram, out: &mut Vec<Outbound>) {
         let from = datagram.from;
-        let route = if self.side.establish_ref().routes_by_prefix() {
+        let routes_by_id = match &mut self.side {
+            Side::Server { establish } => establish.path_check().is_some(),
+            Side::Client { .. } => false,
+        };
+        let route = if routes_by_id {
             let Some(id) = datagram
                 .payload
                 .first_chunk()
@@ -399,9 +503,11 @@ impl<C: Carrier> EndpointCore<C> {
         if path == Path::Candidate
             && peer.candidate != Some(from)
             && received == (Received::Read { largest: true })
+            && let Side::Server { establish } = &mut self.side
+            && let Some(check) = establish.path_check()
         {
             peer.candidate = Some(from);
-            let data = self.side.establish().challenge();
+            let data = check.challenge();
             peer.packet_session
                 .start_challenge(now, data, &mut self.transmits);
         }

@@ -11,7 +11,7 @@ use campfire_units::{BodyUnit, Life, UnitsNear};
 use campfire_values::{Team, UnitType};
 
 use crate::flight_state::FlightState;
-use crate::flights::{Aloft, Flights};
+use crate::flights::{Aloft, TickFlights};
 use crate::projectile::{Flight, Projectile};
 use crate::projectile_spec::ProjectileSpec;
 use crate::struck_units::StruckUnits;
@@ -45,7 +45,7 @@ impl Flying {
         }
     }
 
-    /// Flies each projectile a step, in the order of their stable ids, as `Flights::fly` says. Its
+    /// Flies each projectile a step, in the order of their stable ids, as `TickFlights::fly` says. Its
     /// hits and its end join the tick's deliveries, which combat answers for an attack's and
     /// whose hooks run for an action's, and an
     /// ended projectile despawns after them. A line's hits are kept while it flies, and a cast's,
@@ -81,7 +81,7 @@ impl Flying {
             .iter()
             .any(|(.., projectile, _, _, _)| !matches!(projectile.flight(), Flight::Homing { .. }));
         let grid = meet.then(|| near.current());
-        let mut flights = Flights {
+        let mut flights = TickFlights {
             deliveries: &mut deliveries,
             struck: &mut struck,
             grid,

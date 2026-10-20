@@ -22,13 +22,15 @@ use crate::track_book::TrackBook;
 /// How the mode's deaths give experience, as its `[experience]` and its unit types' give it; none
 /// for a mode of no `[experience]`. Package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
-pub struct ExperienceBook(Option<Share>);
+#[component(immutable)]
+pub struct ExperienceBook(Option<ExperienceShare>);
 
 /// The track a death's experience goes to, to whom, and what each type's death gives.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Share {
+pub(crate) struct ExperienceShare {
     track: TrackId,
     to: To,
+    victim: Filter,
     gives: ByType<Gives>,
 }
 
@@ -41,7 +43,7 @@ enum To {
 
 /// Experience a death gives a unit, on the share's track.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Grant {
+pub(crate) struct ExperienceGrant {
     entity: Entity,
     id: StableId,
     amount: Num,
@@ -109,26 +111,27 @@ impl ExperienceBook {
         let (Some(mode), Some(track)) = (mode, track) else {
             return Ok(Self(None));
         };
+        let tags = cx.fact::<UnitTypes>()?.tags();
+        let resolve = |filter| {
+            Filter::resolve(filter, tags)
+                .map_err(|name| BookError::unknown(PackageIndex::MODE, at(), name))
+        };
         let to = match &mode.to {
             ExperienceTo::Killer => To::Killer,
-            ExperienceTo::Near { radius, filter } => {
-                let tags = cx.fact::<UnitTypes>()?.tags();
-                let filter = Filter::resolve(filter, tags)
-                    .map_err(|name| BookError::unknown(PackageIndex::MODE, at(), name))?;
-                To::Near {
-                    radius: *radius,
-                    filter,
-                }
-            }
+            ExperienceTo::Near { radius, filter } => To::Near {
+                radius: *radius,
+                filter: resolve(filter)?,
+            },
         };
-        Ok(Self(Some(Share {
+        Ok(Self(Some(ExperienceShare {
             track,
             to,
+            victim: resolve(mode.victim.filter())?,
             gives: gives.build(),
         })))
     }
 
-    pub(crate) const fn share(&self) -> Option<&Share> {
+    pub(crate) const fn share(&self) -> Option<&ExperienceShare> {
         self.0.as_ref()
     }
 }
@@ -157,18 +160,19 @@ impl Gives {
     }
 }
 
-impl Share {
-    /// Gives each of the tick's deaths of a type of experience its experience on the track: to
-    /// its killer, when it has the track and is no ally of the victim's, or split evenly, rounded
-    /// to the nearest, among the living units the filter selects for the victim whose bodies come
-    /// within the radius of its point and that have the track, in the order of their stable ids,
-    /// as a script's `ctx.find` finds them. Each raises its unit's level as a script's `add_xp`
-    /// does (04-capabilities/games.md, A death's experience).
+impl ExperienceShare {
+    /// Gives each of the tick's deaths of a type of experience, whose tags at its death the share's
+    /// victim filter selects, its experience on the track: to its killer, when it has the track and
+    /// is no ally of the victim's, or split evenly, rounded to the nearest, among the living units
+    /// the filter selects for the victim whose bodies come within the radius of its point and that
+    /// have the track, in the order of their stable ids, as a script's `ctx.find` finds them. Each
+    /// raises its unit's level as a script's `add_xp` does (04-capabilities/games.md, A death's
+    /// experience).
     pub(crate) fn give(
         world: &mut World,
         mut reads: Local<'_, SystemState<ShareReads>>,
-        mut grants: Local<'_, Vec<Grant>>,
-        mut near: Local<'_, Vec<Grant>>,
+        mut grants: Local<'_, Vec<ExperienceGrant>>,
+        mut near: Local<'_, Vec<ExperienceGrant>>,
     ) {
         grants.clear();
         let track = {
@@ -177,6 +181,9 @@ impl Share {
                 reads.expect("a match that shares experience holds what the share reads");
             let share = book.share().expect("the pass installs with a share");
             for death in deaths.iter() {
+                if !share.victim.selects_tags(death.fallen.tags) {
+                    continue;
+                }
                 let Some(victim) = index.get(death.fallen.id) else {
                     continue;
                 };
@@ -211,7 +218,7 @@ impl Share {
                             targets.relation(team, other) == Relation::Friendly
                         });
                         if !ally {
-                            grants.push(Grant { entity, id, amount });
+                            grants.push(ExperienceGrant { entity, id, amount });
                         }
                     }
                     To::Near { radius, filter } => {
@@ -228,7 +235,7 @@ impl Share {
                                     && filter.selects(relation, unit.tags)
                                     && holds(body.key)
                                 {
-                                    near.push(Grant {
+                                    near.push(ExperienceGrant {
                                         entity: body.key,
                                         id: unit.id,
                                         amount,
@@ -245,7 +252,7 @@ impl Share {
                             continue;
                         };
                         near.sort_unstable_by_key(|grant| grant.id);
-                        grants.extend(near.iter().map(|grant| Grant {
+                        grants.extend(near.iter().map(|grant| ExperienceGrant {
                             amount: each,
                             ..*grant
                         }));
@@ -254,7 +261,7 @@ impl Share {
             }
             share.track
         };
-        for &Grant { entity, id, amount } in &*grants {
+        for &ExperienceGrant { entity, id, amount } in &*grants {
             LevelUps::grant(world, entity, id, track, amount);
         }
     }

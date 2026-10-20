@@ -11,6 +11,7 @@ use crate::per_type::PerType;
 /// type that has it, such as its AI or a part its units spawn with. A clone shares the values,
 /// so a reader keeps the book itself, not a copy of what it holds; `ByTypeBuilder` builds it.
 #[derive(Resource, Debug, PartialEq, Eq)]
+#[component(immutable)]
 pub struct ByType<T: Send + Sync + 'static> {
     entries: Arc<[Option<T>]>,
 }

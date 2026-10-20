@@ -13,7 +13,8 @@ use crate::datagram_io::DatagramIo;
 use crate::datagram_io::Outbound;
 use crate::endpoint_core::{EndpointTime, News, PeerKey};
 use crate::endpoint_pieces::EndpointPieces;
-use crate::endpoint_runtime::{EndpointRuntime, PassScratch};
+use crate::endpoint_runtime::{EndpointRuntime, HoldTiming, PassScratch};
+use crate::fixtures::hold_clock::HoldClock;
 use campfire_common::ChannelBinding;
 
 /// The carrier of a client's one packet session: the host's own.
@@ -120,14 +121,39 @@ impl<Io: DatagramIo> PlainHost<Io> {
     /// One frame at `now`: the receive step, which accepts each opened payload and takes each
     /// fate, then the send step, as `campfire_net_endpoint`'s systems run them.
     pub fn frame(&mut self, now: Instant) {
+        self.frame_holding(now, &mut ());
+    }
+
+    /// The frame of a driven host at `now`, the time of each of its holds of the endpoint's lock
+    /// added to `clock`.
+    pub fn timed_frame(&mut self, now: Instant, clock: &mut HoldClock) {
+        assert!(
+            matches!(self.driver, Driver::Inline),
+            "a driven host's frame is timed"
+        );
+        self.frame_holding(now, clock);
+    }
+
+    /// The pass of a driven host at `now` alone, as its frame starts with, the time of each of
+    /// its holds of the endpoint's lock added to `clock`.
+    pub fn timed_pass(&mut self, now: Instant, clock: &mut HoldClock) {
+        assert!(
+            matches!(self.driver, Driver::Inline),
+            "a driven host's pass is timed"
+        );
+        self.runtime.lock().set_time(EndpointTime::Driven(now));
+        self.runtime.pass_holding(&mut self.scratch, clock);
+    }
+
+    fn frame_holding(&mut self, now: Instant, timing: &mut impl HoldTiming) {
         match &mut self.driver {
             Driver::Inline => {
                 self.runtime.lock().set_time(EndpointTime::Driven(now));
-                self.runtime.pass(&mut self.scratch);
+                self.runtime.pass_holding(&mut self.scratch, timing);
             }
             Driver::Thread(worker) => worker.check(),
         }
-        self.receive();
+        self.receive(timing);
         for link in self.links.values_mut() {
             for opened in link.queues.opened().collect::<Vec<_>>() {
                 link.queues.accept(opened.number);
@@ -135,62 +161,65 @@ impl<Io: DatagramIo> PlainHost<Io> {
             }
             link.fates.extend(link.queues.fates());
         }
-        self.send();
+        self.send(timing);
     }
 
-    fn receive(&mut self) {
-        let runtime = &self.runtime;
-        let mut core = runtime.lock();
-        while let Some(news) = core.next_news() {
-            match news {
-                News::Linked {
-                    key,
-                    address,
-                    binding,
-                } => {
-                    let carrier = if core.is_client() {
-                        CLIENT
-                    } else {
-                        let carrier = self.next_carrier;
-                        self.next_carrier += 1;
-                        carrier
-                    };
-                    let link = self.links.entry(carrier).or_default();
-                    link.binding = binding;
-                    link.linked = true;
-                    core.carry(key, carrier, runtime.io().mtu(address));
-                }
-                News::Ended { carrier, reason } => {
-                    if let Some(link) = self.links.get_mut(&carrier) {
-                        link.linked = false;
-                        link.ended = Some(reason);
+    fn receive(&mut self, timing: &mut impl HoldTiming) {
+        timing.hold(|| {
+            let mut core = self.runtime.lock();
+            while let Some(news) = core.next_news() {
+                match news {
+                    News::Linked {
+                        key,
+                        address,
+                        binding,
+                    } => {
+                        let carrier = if core.is_client() {
+                            CLIENT
+                        } else {
+                            let carrier = self.next_carrier;
+                            self.next_carrier += 1;
+                            carrier
+                        };
+                        let link = self.links.entry(carrier).or_default();
+                        link.binding = binding;
+                        link.linked = true;
+                        core.carry(key, carrier, self.runtime.io().mtu(address));
+                    }
+                    News::Ended { carrier, reason } => {
+                        if let Some(link) = self.links.get_mut(&carrier) {
+                            link.linked = false;
+                            link.ended = Some(reason);
+                        }
                     }
                 }
             }
-        }
-        self.carried.clear();
-        self.carried.extend(core.carried());
-        for &(key, carrier) in &self.carried {
-            let Some(link) = self.links.get_mut(&carrier) else {
-                continue;
-            };
-            core.hand_over(key, &mut link.queues);
-        }
+            self.carried.clear();
+            self.carried.extend(core.carried());
+            for &(key, carrier) in &self.carried {
+                let Some(link) = self.links.get_mut(&carrier) else {
+                    continue;
+                };
+                core.hand_over(key, &mut link.queues);
+            }
+        });
     }
 
-    fn send(&mut self) {
-        {
+    fn send(&mut self, timing: &mut impl HoldTiming) {
+        timing.hold(|| {
             let mut core = self.runtime.lock();
             for &(key, carrier) in &self.carried {
                 if let Some(link) = self.links.get_mut(&carrier) {
                     core.take_over(key, &mut link.queues, &mut self.outbound);
                 }
             }
-        }
-        self.runtime.send(&mut self.outbound);
+        });
         match self.driver {
-            Driver::Inline => self.runtime.pass(&mut self.scratch),
-            Driver::Thread(_) => self.runtime.io().wake(),
+            Driver::Inline => {
+                self.runtime.send(&mut self.outbound);
+                self.runtime.pass_holding(&mut self.scratch, timing);
+            }
+            Driver::Thread(_) => self.runtime.send_from_frame(&mut self.outbound),
         }
     }
 

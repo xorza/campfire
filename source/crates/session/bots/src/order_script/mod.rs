@@ -7,7 +7,7 @@ use campfire_mode::{InputValue, ModeInput};
 use campfire_store::InputFile;
 use serde::Deserialize;
 
-use crate::named::Named;
+use crate::named::NamedRefs;
 use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
 
 pub(crate) mod error;
@@ -51,7 +51,7 @@ pub enum ScriptedValue {
 pub struct ScriptedOrder {
     pub tick: Tick,
     pub units: ScriptedUnits,
-    pub directive: Directive<Named>,
+    pub directive: Directive<NamedRefs>,
 }
 
 /// The units of its player an order commands.
@@ -123,7 +123,7 @@ impl OrderScript {
         struct Entry {
             tick: u64,
             units: Option<DeclaredName>,
-            directive: Directive<Named>,
+            directive: Directive<NamedRefs>,
         }
         let file: File = Toml::parse(text).map_err(OrderScriptError::Toml)?;
         let mut orders: Vec<ScriptedOrder> = Vec::with_capacity(file.order.len());

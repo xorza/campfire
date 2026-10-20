@@ -9,12 +9,12 @@ use bevy_app::App;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_state::app::StatesPlugin;
-use bevy_time::{TimePlugin, TimeUpdateStrategy};
+use bevy_time::{Time, TimePlugin, TimeUpdateStrategy, Virtual};
 use campfire_app_threads::OneThreadPlugins;
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::{Directive, Order};
 use campfire_codec::Toml;
-use campfire_common::TlsKey;
+use campfire_common::{Seat, Tick, TlsKey};
 use campfire_log::internals::LogCheck;
 use campfire_mode::{ModeData, PlayersData, SaveBy, SavesData};
 use campfire_net::internals::TickHashes;
@@ -28,7 +28,7 @@ use campfire_net::{
 use campfire_net_connection::{Connect, Connected, Start};
 use campfire_net_core::LinkDirection;
 use campfire_net_emulator::{
-    DuplexModel, EmulatedLinkId, EmulatedNetwork, LinkModel, Phase, WireClock,
+    DirectionCounts, DuplexModel, EmulatedLinkId, EmulatedNetwork, LinkModel, Phase, WireClock,
 };
 use campfire_net_endpoint::Endpoint;
 use campfire_net_link::{LinkOf, RemoteAddress, Server, Unlink};
@@ -38,7 +38,7 @@ use campfire_net_prediction::{PredictionCounts, PredictionSetup, RollbackMode};
 use campfire_net_sync::{LocalTimelineSync, TimelineSync};
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Entropy, InputRules, SeedChain, ServerInput, Signer};
+use campfire_protocol::{Entropy, InputRules, LogReplay, SeedChain, ServerInput, Signer};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, MatchRate, SimTick, SimWorld, StableId};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
@@ -116,6 +116,15 @@ impl StepCost {
         self.clients.clear();
         self.server = Duration::ZERO;
     }
+}
+
+/// A player's input the server's log applied: its seat, its stamp, and the tick it took effect
+/// in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AppliedInput {
+    pub seat: Seat,
+    pub stamp: Tick,
+    pub tick: Tick,
 }
 
 /// An app of a match: the server's, or a client's.
@@ -727,6 +736,54 @@ impl InProcessMatch {
             .insert_resource(TimeUpdateStrategy::ManualDuration(frame));
     }
 
+    /// A stall of the whole host for `ticks` ticks, as an OS that stops every process: the wire
+    /// clock runs on while no end runs a frame. Then each client takes the stalled time in one
+    /// frame, which its virtual clock cuts to its `max_delta`, and the server in frames of at
+    /// most its own `max_delta`, as a server that woke during the stall does, so it runs every
+    /// tick it missed.
+    pub fn stall_host(&mut self, ticks: u32) {
+        self.advance(ticks);
+        let tick = MatchRate::new(self.packages.manifest().tick_hz.default()).length();
+        for client in &mut self.clients {
+            client.insert_resource(TimeUpdateStrategy::ManualDuration(tick * ticks));
+            client.update();
+            client.insert_resource(TimeUpdateStrategy::ManualDuration(tick));
+        }
+        let most = self.server.world().resource::<Time<Virtual>>().max_delta();
+        let most = u32::try_from(most.as_nanos() / tick.as_nanos()).unwrap();
+        let mut left = ticks;
+        while left > 0 {
+            let frame = left.min(most);
+            self.server
+                .insert_resource(TimeUpdateStrategy::ManualDuration(tick * frame));
+            self.server_frame();
+            left -= frame;
+        }
+        self.server
+            .insert_resource(TimeUpdateStrategy::ManualDuration(
+                tick / self.setup.server_frames,
+            ));
+    }
+
+    /// Each input of a player that the server's log applied, in the order of its ticks, from the
+    /// log's latest checkpoint on.
+    pub fn applied_inputs(&self) -> Vec<AppliedInput> {
+        let log = self.server.world().resource::<Session>().log();
+        let mut inputs = Vec::new();
+        let Some(mut replay) = LogReplay::of(log) else {
+            return inputs;
+        };
+        while !replay.is_done(log) {
+            let tick = replay.next_tick();
+            inputs.extend(replay.seal_tick(log).map(|input| AppliedInput {
+                seat: input.seat,
+                stamp: input.stamp,
+                tick,
+            }));
+        }
+        inputs
+    }
+
     /// One frame of `client` alone: one tick of it.
     pub fn client_frame(&mut self, client: usize) {
         self.clients[client].update();
@@ -880,6 +937,11 @@ impl InProcessMatch {
             .iter(world)
             .find(|(_, remote)| remote.0 == address)
             .map_or(Entity::PLACEHOLDER, |(link, _)| link)
+    }
+
+    /// What `direction` of `client`'s wire did with its packets so far.
+    pub fn wire_counts(&self, client: usize, direction: LinkDirection) -> DirectionCounts {
+        self.network.counts(self.wires[client], direction)
     }
 
     /// The pause and the speed every end follows.

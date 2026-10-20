@@ -112,6 +112,11 @@ impl MaterialKey {
             }
             Source::Detail { blend } => (blend, false, None),
         };
+        let blend = if self.team.hue_mask {
+            hue_mask_blend(blend)
+        } else {
+            blend
+        };
         let unlit = colors.is_none();
         let (lit_color, lit_emissive) = match colors {
             None => ([1.0; 4], [0.0; 3]),
@@ -246,6 +251,18 @@ pub(super) const fn pass_blend(shader: Shader) -> Option<Blend> {
     )
 }
 
+/// The blend of a material of a hue-mask texture, whose alpha is its team's mask and no
+/// transparency, as the game's recolor makes the texture opaque (`W3DAssetManager`'s
+/// `remapAlphaTexture32Bit`): a mask's tests nothing, and an alpha mask's blends by the material's
+/// opacity alone (09-zero-hour.md, A hue mask's alpha is no transparency).
+const fn hue_mask_blend(blend: Blend) -> Blend {
+    match blend {
+        Blend::Mask { .. } => Blend::Opaque,
+        Blend::AlphaMask { .. } => Blend::Alpha,
+        other => other,
+    }
+}
+
 /// The blend the detail stage of `shader` draws by over its first: none for a function that
 /// keeps the first stage alone, as with texturing off; a multiplying blend for scale and an
 /// additive one for add, the detail's color drawn alone over the first stage's lit one, as the
@@ -334,6 +351,30 @@ mod tests {
         };
         assert_eq!(extras(&plain), None);
         assert_eq!(extras(&tinted).map(|extras| extras.team), Some(tint));
+
+        // An alpha-tested pass on a hue-mask texture is opaque, with no cutoff, and its extras
+        // say so beside its paint.
+        let hue = TeamPaint {
+            tint: false,
+            hue_mask: true,
+        };
+        let tested = MaterialKey {
+            source: Source::Pass {
+                shader: Shader {
+                    alpha_test: true,
+                    ..Shader::DEFAULT
+                },
+                material: VertexMaterial::DEFAULT,
+            },
+            ..key(hue)
+        };
+        let tested = tested.convert("tested", &model).unwrap().gltf;
+        assert_eq!(tested.alpha_mode, Checked::Valid(AlphaMode::Opaque));
+        assert!(tested.alpha_cutoff.is_none());
+        assert_eq!(
+            extras(&tested).map(|extras| (extras.blend, extras.team)),
+            Some((Blend::Opaque, hue))
+        );
     }
 
     #[test]
@@ -361,5 +402,29 @@ mod tests {
         assert_eq!(blend(ONE, ONE_MINUS_SRC_COLOR, false), Some(Blend::Screen));
         assert_eq!(blend(ONE, ONE, true), None);
         assert_eq!(blend(SRC_ALPHA, ONE, false), None);
+        // A hue mask's texture tests and blends by no alpha of its own: the two blends that test
+        // lose their test, and the others stay.
+        let masked = [
+            Blend::Opaque,
+            Blend::Mask { cutoff },
+            Blend::Alpha,
+            Blend::AlphaMask { cutoff },
+            Blend::Add,
+            Blend::Multiply,
+            Blend::Screen,
+        ]
+        .map(hue_mask_blend);
+        assert_eq!(
+            masked,
+            [
+                Blend::Opaque,
+                Blend::Opaque,
+                Blend::Alpha,
+                Blend::Alpha,
+                Blend::Add,
+                Blend::Multiply,
+                Blend::Screen,
+            ]
+        );
     }
 }

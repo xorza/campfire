@@ -1,3 +1,5 @@
+use campfire_values::TagSet;
+use campfire_values::UnitTags;
 use std::sync::Arc;
 
 use bevy_app::{App, AppExit, First, FixedUpdate, Last, Plugin, PreUpdate, Update};
@@ -57,7 +59,7 @@ use crate::events::orders_sent::OrdersSent;
 use crate::events::receipt_refused::ReceiptRefused;
 use crate::events::session_refused::SessionRefused;
 use crate::events::unit_died::UnitDied;
-use crate::faults::Faults;
+use crate::faults::WorkerFaults;
 use crate::hosting::Hosting;
 use crate::net_protocol::dismissed::Dismissed;
 use crate::net_protocol::input_ack::InputAck;
@@ -65,14 +67,14 @@ use crate::net_protocol::input_message::InputMessage;
 use crate::net_protocol::join::{Join, JoinRole};
 use crate::net_protocol::leave_match::LeaveMatch;
 use crate::net_protocol::match_start::MatchStart;
-use crate::net_protocol::offer::Offer;
+use crate::net_protocol::offer::SessionOffer;
 use crate::net_protocol::save_command::SaveCommand;
 use crate::net_protocol::watch_start::WatchStart;
 use crate::net_protocol::watch_teams::WatchTeams;
 use crate::net_protocol::{InputChannel, JoinChannel, NetProtocolPlugin};
 use crate::os::Os;
 use crate::sim_client::client_dir::ClientDir;
-use crate::sim_client::join_state::{JoinState, Joining, LinkLoss, Retry, Started};
+use crate::sim_client::join_state::{JoinState, Joining, LinkLoss, Retry, StartEffect};
 use crate::sim_client::player_signer::PlayerSigner;
 use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::sent_inputs::SentInputs;
@@ -225,7 +227,7 @@ impl Plugin for SimClientPlugin {
         ));
         app.init_resource::<PendingOrders>();
         app.init_resource::<PendingSaves>();
-        app.init_resource::<Faults>();
+        app.init_resource::<WorkerFaults>();
         app.add_observer(lose_link);
         // The systems on the join state run in the order of a link's life, as one frame may bring
         // an offer and the match's start; none reads what another's commands make, so the order
@@ -247,7 +249,7 @@ impl Plugin for SimClientPlugin {
             (
                 (link, receive_input_acks, report_end, report_deaths),
                 ReceiptWriter::report_failure,
-                Faults::watch,
+                WorkerFaults::watch,
             )
                 .chain(),
         );
@@ -286,7 +288,7 @@ type Answering = (
 /// Answers the first offer, unless its terms do not fit: then the client ends its link, as it
 /// cannot play the session.
 fn answer_offer(
-    mut receivers: Query<'_, '_, &mut MessageReceiver<Offer>, With<Client>>,
+    mut receivers: Query<'_, '_, &mut MessageReceiver<SessionOffer>, With<Client>>,
     mut sender: Single<'_, '_, Answering, With<Client>>,
     mut signer: ResMut<'_, PlayerSigner>,
     os: Res<'_, Os>,
@@ -302,10 +304,6 @@ fn answer_offer(
             match state.answer(&offer, binding, &mut signer.0, os.clock.unix_now()) {
                 None => {}
                 Some(Ok(join)) => {
-                    let visibility = state
-                        .visibility()
-                        .expect("a client that answered holds its session's visibility");
-                    commands.insert_resource(visibility.out());
                     sender.send::<JoinChannel>(join);
                     info!(%session, "joined the offered session");
                 }
@@ -336,8 +334,8 @@ fn receive_match_start(
     for (client, mut receiver) in &mut receivers {
         for start in receiver.receive() {
             match state.start(start, *hosting) {
-                Started::No => {}
-                Started::Playing { discarded } => {
+                StartEffect::No => {}
+                StartEffect::Playing { discarded } => {
                     MatchStarted {
                         seat: start.seat,
                         start_tick: start.start_tick,
@@ -351,7 +349,7 @@ fn receive_match_start(
                         .log();
                     }
                 }
-                Started::Rewritten => {
+                StartEffect::Rewritten => {
                     LinkLost {
                         cause: LinkLossCause::ClientClosed(CloseCode::ChainRewritten),
                     }
@@ -579,6 +577,7 @@ type Died<'w, 's> = Query<
         Option<&'static Team>,
         Option<&'static Owner>,
         Has<Avatar>,
+        Option<&'static UnitTags>,
     ),
     (Added<Dead>, Allow<Unpredicted>),
 >;
@@ -591,12 +590,13 @@ fn report_deaths(
     died: Died<'_, '_>,
 ) {
     let tick = state.sim_tick(timeline.as_ref());
-    for (&id, team, owner, avatar) in &died {
+    for (&id, team, owner, avatar, tags) in &died {
         let fallen = Fallen {
             id,
             team: team.copied(),
             owner: owner.map(|owner| owner.seat()),
             avatar,
+            tags: tags.map_or(TagSet::NONE, |tags| tags.tags),
         };
         UnitDied::learned(tick, fallen).log();
     }

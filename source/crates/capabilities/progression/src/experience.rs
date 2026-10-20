@@ -32,7 +32,7 @@ pub struct TrackXp {
 
 /// The levels a unit's track went from and to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Raised {
+pub struct TrackRaise {
     pub from: Level,
     pub to: Level,
 }
@@ -62,7 +62,7 @@ impl Experience {
     /// Adds `amount`, not negative, to `track`, which the unit has, at most up to the largest
     /// number: its level rises to the one the experience reaches on `book`'s track, if that is
     /// higher.
-    pub fn add(&mut self, track: TrackId, amount: Num, book: &TrackBook) -> Raised {
+    pub fn add(&mut self, track: TrackId, amount: Num, book: &TrackBook) -> TrackRaise {
         debug_assert!(amount >= Num::ZERO, "experience added is not negative");
         let held = self
             .tracks
@@ -72,7 +72,7 @@ impl Experience {
         held.xp = held.xp.checked_add(amount).unwrap_or(Num::MAX);
         let from = held.level;
         held.level = from.max(book.level_at(track, held.xp));
-        Raised {
+        TrackRaise {
             from,
             to: held.level,
         }

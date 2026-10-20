@@ -19,21 +19,21 @@ const DATAGRAM: usize = 1500;
 /// What the thread waits on between its turns: the stop, and routers' announcements on their
 /// socket, when it opened.
 #[derive(Debug)]
-pub(crate) struct Listening {
+pub(crate) struct TurnWait {
     stop: Arc<ThreadStop>,
     announcements: Option<SharedPort>,
     events: Events,
     datagram: Box<[u8; DATAGRAM]>,
 }
 
-impl Listening {
+impl TurnWait {
     /// The wait of `stop`, and the announcements' socket of `routes`, non-blocking and watched;
     /// a socket that does not open is logged, and the map hears no announcement.
     pub(crate) fn open(stop: Arc<ThreadStop>, routes: Routes) -> io::Result<Self> {
         let announcements = match routes.announcements() {
             Ok(port) => {
                 port.socket().set_nonblocking(true)?;
-                // SAFETY: `Listening::drop` deletes the socket from this poller before it drops
+                // SAFETY: `TurnWait::drop` deletes the socket from this poller before it drops
                 // (11-net-stack/api.md, No `unsafe` but what an outside API requires).
                 unsafe {
                     stop.poller
@@ -111,7 +111,7 @@ impl Listening {
     }
 }
 
-impl Drop for Listening {
+impl Drop for TurnWait {
     fn drop(&mut self) {
         if let Some(port) = &self.announcements {
             self.stop.poller.delete(port.socket()).ok();

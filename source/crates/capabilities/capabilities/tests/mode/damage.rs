@@ -82,31 +82,32 @@ fn armor_takes_its_share_of_a_kind_before_calc_damage_weighs_it() {
     // `calc_damage` adds 1 to what reaches it. A grunt of no armor takes 10 physical whole: 11.
     // Its type then takes physical at 0.5 and names no magic: 10 physical is 5 before the mode
     // weighs it, 6, where a share after the mode's 11 would give 5.5; 10 magic stays 11.
-    let mut game = mode_match(
-        "fn calc_damage(ctx, d) { d.amount + 1 }",
-        ScriptLimits::ROOMY,
-    );
-    let grunt = Mode::stat_grunt(&mut game, Team::new(1), &[]);
-    Mode::tick_inputs(&mut game, &[]);
-    let life = |game: &Match| game.part::<Life>(grunt).current();
-    let start = life(&game);
-    let effect = DamageCause::Effect;
-    Mode::damage_of_kind(&mut game, None, grunt, 10, "physical", effect);
-    Mode::tick_inputs(&mut game, &[]);
-    assert_eq!(start - life(&game), Num::int(11));
     let kinds: Names<DamageKind> = DAMAGE_KINDS.into_iter().collect();
     let physical = DeclaredName::new("physical").unwrap();
     let half = ArmorShare::new(Num::HALF).unwrap();
     let armor = Armor::of(&BTreeMap::from([(physical, half)]), &kinds).unwrap();
-    let grunt_type = *game.part::<UnitType>(grunt);
-    Units::give_type(&mut game, grunt_type, armor);
-    for (kind, taken) in [("physical", 6), ("magic", 11)] {
-        let before = life(&game);
-        Mode::damage_of_kind(&mut game, None, grunt, 10, kind, effect);
+    // What a grunt takes of 10 of `kind`, its type of `armor`, which it holds from the start.
+    let taken = |armor: Option<&Armor>, kind: &str| {
+        let mut game = mode_match(
+            "fn calc_damage(ctx, d) { d.amount + 1 }",
+            ScriptLimits::ROOMY,
+        );
+        let grunt = Mode::stat_grunt(&mut game, Team::new(1), &[]);
+        if let Some(armor) = armor {
+            let grunt_type = *game.part::<UnitType>(grunt);
+            Units::give_type(&mut game, grunt_type, armor.clone());
+        }
         Mode::tick_inputs(&mut game, &[]);
-        assert_eq!(before - life(&game), Num::int(taken), "{kind}");
-    }
-    assert!(Mode::failures(&game).is_empty());
+        let life = |game: &Match| game.part::<Life>(grunt).current();
+        let before = life(&game);
+        Mode::damage_of_kind(&mut game, None, grunt, 10, kind, DamageCause::Effect);
+        Mode::tick_inputs(&mut game, &[]);
+        assert!(Mode::failures(&game).is_empty());
+        before - life(&game)
+    };
+    assert_eq!(taken(None, "physical"), Num::int(11));
+    assert_eq!(taken(Some(&armor), "physical"), Num::int(6));
+    assert_eq!(taken(Some(&armor), "magic"), Num::int(11));
 }
 
 #[test]

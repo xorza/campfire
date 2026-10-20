@@ -17,7 +17,7 @@ How the stack is tested over an emulated network; the clocks are in [Time](time.
   every app together. Refused: lockstep alone, which cannot express different frame rates, drift,
   or a stalled app whose next frame Bevy clamps to a 250 ms advance (`bevy_time`'s
   `DEFAULT_MAX_DELTA`).
-- **The emulated network is the in-process IO, in `net-emulator`.** The facade's public `sim`
+- **The emulated network is the in-process IO, in `net-emulator`.** The facade's public `emulator`
   feature adds its endpoint. Its wires carry packet sessions, as a socket does; on `WireClock::Os`
   with `LinkModel::perfect()` it is the one in-process IO. Campfire's tests run over it too.
   Refused: `internals`, which keeps it from every crate but the stack's; crossbeam as a second
@@ -118,12 +118,9 @@ How the stack is tested over an emulated network; the clocks are in [Time](time.
 - **Every gate builds the code a feature gates off.** The `ship` lint, at default features, lints
   the channels without `compression_lz4`, which the lint of every feature turns on. Refused: a
   rustdoc lane, as 02 decides (02-engine-core.md, No docs lane).
-- **Coverage is a command, and it counts each library line once.** Planned: a `cargo drive` lane
-  that builds the tests with `-C instrument-coverage` under `target/coverage`, runs them, and reads
-  `llvm-cov show` without instantiations: a line is run when any test binary ran it. Tests,
-  benches and `internals` are not library code and are left out. Refused: the line column of
-  `llvm-cov report`, which sums per function and counts a line that several functions share once
-  for each; `cargo-llvm-cov`, a tool to install for what the system LLVM tools do.
+- **No lane measures coverage,** as every lane of `cargo drive` shares one build's flags and cache,
+  and coverage needs its own. Refused: a lane over `cargo-llvm-cov`, a tool to install; a lane that
+  sets its own `RUSTFLAGS`, against the driver's one shape for each cargo command.
 - **A test has the std `#[test]` and no subscriber,** as the audits and benches run, and a test that
   reads logs holds `campfire-log`'s check, scoped to its run, as the scenarios do, which a warning
   fails as an error does. A test name states the behaviour it checks. Refused: `test-log`, a

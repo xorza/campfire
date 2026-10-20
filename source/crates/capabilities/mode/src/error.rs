@@ -196,3 +196,14 @@ impl CapabilityRefusal for ModeRefusal {
         }
     }
 }
+
+/// Why values and a default make no option. Data is untrusted, so each is an expected failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum OptionDataError {
+    #[error("an option holds from 1 to 256 values")]
+    Count,
+    #[error("an option holds each value once")]
+    Repeated,
+    #[error("an option's default is one of its values")]
+    NoDefault,
+}

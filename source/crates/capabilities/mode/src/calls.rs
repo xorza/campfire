@@ -92,18 +92,16 @@ impl<'w> Calls<'_, 'w> {
             .call_from::<H>(id, payer, |_| Some(args.clone()))
     }
 
-    /// Answers with the hook `H` and `args` in the script at `place` of the mode's list alone, as
-    /// a timer of it runs, from the mode's pool: `Break` when the call waits.
+    /// Answers with the hook `H` and the arguments `args` gives of the call's `ctx` in the script
+    /// at `place` of the mode's list alone, as a timer of it runs, from the mode's pool: `Break`
+    /// when the call waits.
     pub(crate) fn answer_in<H: HookDecl>(
         &mut self,
         place: ListPlace,
-        args: H::Args,
-    ) -> ControlFlow<()>
-    where
-        H::Args: Clone,
-    {
+        args: impl Fn(&Ctx) -> H::Args,
+    ) -> ControlFlow<()> {
         self.mode_answer(0)
-            .call_in::<H>(place, None, |_| Some(args.clone()))
+            .call_in::<H>(place, None, |ctx| Some(args(ctx)))
     }
 
     /// `calc_damage` of `damage` in `batch`, its `ctx` pure: the number it returns, an integer

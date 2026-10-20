@@ -21,6 +21,7 @@ use crate::param_table::ParamTable;
 /// The params of every action and every modifier of a match, one run each, by id: package data
 /// that the stat engine and the script frame both read, shared, never copied.
 #[derive(Resource, Debug, Clone, Default)]
+#[component(immutable)]
 pub struct ParamBook(Arc<ParamTables>);
 
 /// The two tables of a `ParamBook`, and where each action holds each param the modifiers read

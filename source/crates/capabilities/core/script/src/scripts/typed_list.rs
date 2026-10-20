@@ -4,12 +4,12 @@ use std::slice;
 
 /// A value a list by type holds, seen as `Any`, so the list finds the item of its own type. A
 /// trait object whose trait has it as a supertrait gives its item's own `Any` through its table.
-pub(crate) trait Slot: Any {
+pub(crate) trait TypedItem: Any {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
-impl<T: Any> Slot for T {
+impl<T: Any> TypedItem for T {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -21,12 +21,12 @@ impl<T: Any> Slot for T {
 
 /// Items of distinct types, in the order added, each found by a search of the list of their
 /// types, which reads no item.
-pub(crate) struct TypeSlots<T: ?Sized> {
+pub(crate) struct TypedList<T: ?Sized> {
     types: Vec<TypeId>,
     items: Vec<Box<T>>,
 }
 
-impl<T: ?Sized + Slot> TypeSlots<T> {
+impl<T: ?Sized + TypedItem> TypedList<T> {
     /// Adds `item`, of a type the list holds none of yet. Its place.
     pub(crate) fn add(&mut self, item: Box<T>) -> usize {
         let ty = (*item).as_any().type_id();
@@ -83,7 +83,7 @@ impl<T: ?Sized + Slot> TypeSlots<T> {
     }
 }
 
-impl<T: ?Sized> Default for TypeSlots<T> {
+impl<T: ?Sized> Default for TypedList<T> {
     fn default() -> Self {
         Self {
             types: Vec::new(),
@@ -92,13 +92,13 @@ impl<T: ?Sized> Default for TypeSlots<T> {
     }
 }
 
-impl<T: ?Sized + fmt::Debug> fmt::Debug for TypeSlots<T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for TypedList<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(&self.items).finish()
     }
 }
 
-impl<'a, T: ?Sized + Slot> IntoIterator for &'a TypeSlots<T> {
+impl<'a, T: ?Sized + TypedItem> IntoIterator for &'a TypedList<T> {
     type Item = &'a T;
     type IntoIter = std::iter::Map<slice::Iter<'a, Box<T>>, fn(&'a Box<T>) -> &'a T>;
 
@@ -111,7 +111,7 @@ impl<'a, T: ?Sized + Slot> IntoIterator for &'a TypeSlots<T> {
 mod tests {
     use super::*;
 
-    trait Named: Slot + fmt::Debug {
+    trait Named: TypedItem + fmt::Debug {
         fn name(&self) -> &'static str;
     }
 
@@ -135,20 +135,20 @@ mod tests {
 
     #[test]
     fn each_item_is_found_by_its_own_type_in_the_order_added() {
-        let mut slots = TypeSlots::<dyn Named>::default();
-        assert_eq!(slots.get::<First>(), None);
-        assert_eq!(slots.add(Box::new(Second(2))), 0);
-        assert_eq!(slots.add(Box::new(First(1))), 1);
+        let mut list = TypedList::<dyn Named>::default();
+        assert_eq!(list.get::<First>(), None);
+        assert_eq!(list.add(Box::new(Second(2))), 0);
+        assert_eq!(list.add(Box::new(First(1))), 1);
         // The list holds its items' types, not the boxes'.
-        assert_eq!(slots.index_of::<Second>(), Some(0));
-        assert_eq!(slots.index_of::<First>(), Some(1));
-        assert_eq!(slots.index_of::<Box<dyn Named>>(), None);
-        assert_eq!(slots.get::<First>(), Some(&First(1)));
-        slots.get_mut::<Second>().unwrap().0 = 4;
-        assert_eq!(slots.typed_mut::<Second>(0), &Second(4));
-        assert_eq!(slots.at(1).name(), "first");
-        let names: Vec<_> = (&slots).into_iter().map(Named::name).collect();
+        assert_eq!(list.index_of::<Second>(), Some(0));
+        assert_eq!(list.index_of::<First>(), Some(1));
+        assert_eq!(list.index_of::<Box<dyn Named>>(), None);
+        assert_eq!(list.get::<First>(), Some(&First(1)));
+        list.get_mut::<Second>().unwrap().0 = 4;
+        assert_eq!(list.typed_mut::<Second>(0), &Second(4));
+        assert_eq!(list.at(1).name(), "first");
+        let names: Vec<_> = (&list).into_iter().map(Named::name).collect();
         assert_eq!(names, ["second", "first"]);
-        assert_eq!(slots.iter_mut().len(), 2);
+        assert_eq!(list.iter_mut().len(), 2);
     }
 }

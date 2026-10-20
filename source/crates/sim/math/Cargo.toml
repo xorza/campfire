@@ -27,8 +27,6 @@ campfire-codec = { workspace = true, features = ["internals"] }
 campfire-math = { workspace = true, features = ["internals"] }
 proptest = { workspace = true, features = ["std"] }
 
-[lib]
-bench = false
 
 [[bench]]
 name = "math"

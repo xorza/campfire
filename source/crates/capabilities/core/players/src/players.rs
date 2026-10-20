@@ -15,7 +15,7 @@ use crate::players_call::PlayersCall;
 use crate::players_world::PlayersWorld;
 use crate::resource_book::ResourceBook;
 use crate::resources_data::ResourcesData;
-use crate::seated::{SeatStart, Seated, Seating};
+use crate::seated::{SeatHolder, Seated, StartingSeat};
 
 /// The players and the match as entities: what spawns them, under every capability.
 #[derive(Debug)]
@@ -68,7 +68,7 @@ impl Players {
     /// Spawns the match's entity, then each player's, in seat order, `seats` giving each seat's
     /// team and whether it is held, each with its named id and the parts the installed modules
     /// declare for its kind.
-    pub fn spawn_match(world: &mut World, seats: impl IntoIterator<Item = SeatStart>) {
+    pub fn spawn_match(world: &mut World, seats: impl IntoIterator<Item = StartingSeat>) {
         EntityParts::<MatchEntity>::spawn(world, (StableId::MATCH, MatchEntity));
         for (seat, start) in (0..).map(Seat::new).zip(seats) {
             Self::spawn_player(world, seat, start);
@@ -79,15 +79,15 @@ impl Players {
     /// the parts the installed modules declare for a player, and marked `Seated` when its seat is
     /// held, in one spawn, in a match whose entity spawned: no player is of a match that has
     /// none.
-    fn spawn_player(world: &mut World, seat: Seat, start: SeatStart) -> Entity {
+    fn spawn_player(world: &mut World, seat: Seat, start: StartingSeat) -> Entity {
         assert!(
             world.match_entity().is_some(),
             "players join a match that started, which holds its entity"
         );
         let core = (StableId::of_player(seat), Player::new(seat), start.team);
-        match start.seating {
-            Seating::Held => EntityParts::<Player>::spawn(world, (core, Seated)),
-            Seating::Open => EntityParts::<Player>::spawn(world, core),
+        match start.holder {
+            SeatHolder::Held => EntityParts::<Player>::spawn(world, (core, Seated)),
+            SeatHolder::Open => EntityParts::<Player>::spawn(world, core),
         }
     }
 }
@@ -102,7 +102,7 @@ pub(crate) mod internals {
     use crate::player_resources::PlayerResources;
     use crate::players::Players;
     use crate::players_world::PlayersWorld;
-    use crate::seated::{SeatStart, Seating};
+    use crate::seated::{SeatHolder, StartingSeat};
 
     impl Players {
         /// Starts the match, as a mode's start does: the match's entity spawns, of teams that
@@ -114,9 +114,9 @@ pub(crate) mod internals {
             resources: usize,
         ) {
             let teams: Vec<Team> = teams.into_iter().collect();
-            let held = |team| SeatStart {
+            let held = |team| StartingSeat {
                 team,
-                seating: Seating::Held,
+                holder: SeatHolder::Held,
             };
             Self::spawn_match(world, teams.iter().copied().map(held));
             let entity = world.match_entity().expect("the match's entity spawned");
@@ -136,9 +136,9 @@ pub(crate) mod internals {
         /// resources, as a mode's start does.
         pub fn spawn(world: &mut World, players: u32, resources: usize) {
             for seat in (0..players).map(Seat::new) {
-                let open = SeatStart {
+                let open = StartingSeat {
                     team: Team::new(0),
-                    seating: Seating::Open,
+                    holder: SeatHolder::Open,
                 };
                 let player = Self::spawn_player(world, seat, open);
                 world

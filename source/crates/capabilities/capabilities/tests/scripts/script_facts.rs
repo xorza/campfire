@@ -2,12 +2,13 @@ use std::num::NonZeroU64;
 
 use campfire_actions::SlotKind;
 use campfire_capabilities::Release;
-use campfire_mode::{ChoiceId, MarkerTag};
+use campfire_mode::{ChoiceId, MarkerTag, TimerId};
 use campfire_script::internals::Undefined;
 use campfire_script::*;
 use campfire_units::{PoolId, StatId};
 use campfire_values::{
     ActionId, DamageKind, EngineEnum, ModifierId, Named, PathId, ResourceId, Tag, Team, TrackId,
+    UnitType,
 };
 
 #[test]
@@ -180,6 +181,51 @@ fn on_damage_taken(ctx, m, d) {
         ]
     );
     assert_eq!(facts.switched, ["unit_type"]);
+
+    // A list of names counts each literal found in it, by `in` or `contains`, and its item, by
+    // an index or as a loop's variable; so does a hook's parameter of names, `on_timer`'s.
+    let lists = r#"
+fn on_timer(ctx, name, data) {
+    if name == "wave" || "west" in ctx.teams || ctx.teams.contains("east") {}
+    if ctx.teams[0] == "west" || "grunt" in ctx.unit(0).queue {}
+    for team in ctx.enemies("west") {
+        if team == "east" {}
+    }
+    for (path, at) in ctx.map.paths {
+        if path == "mid" || at == 1 {}
+    }
+}
+"#;
+    let facts = ScriptFacts::read(&host, lists, &api).unwrap();
+    assert_eq!(
+        facts.compared,
+        [
+            compared("name", TimerId::NAMES, "wave"),
+            compared("teams", team, "west"),
+            compared("teams", team, "east"),
+            compared("teams", team, "west"),
+            compared("queue", UnitType::NAMES, "grunt"),
+            compared("team", team, "east"),
+            compared("path", PathId::NAMES, "mid"),
+        ]
+    );
+    // A variable its function binds by `let` or writes, anywhere, a parameter of no hook, and
+    // a loop's counter, the check does not follow.
+    let unfollowed = r#"
+fn on_timer(ctx, name, data) {
+    name = "other";
+    if name == "wave" {}
+    for team in ctx.teams {
+        let team = "north";
+        if team == "south" {}
+    }
+}
+fn helper(ctx, name) {
+    if name == "wave" {}
+}
+"#;
+    let facts = ScriptFacts::read(&host, unfollowed, &api).unwrap();
+    assert_eq!(facts.compared, []);
 }
 
 #[test]

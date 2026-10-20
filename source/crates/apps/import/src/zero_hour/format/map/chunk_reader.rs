@@ -173,7 +173,7 @@ pub(crate) mod samples {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::error::Short;
+    use crate::zero_hour::format::error::CutShort;
 
     #[test]
     fn fields_read_little_endian_and_stop_at_the_end() {
@@ -200,7 +200,7 @@ mod tests {
         assert_eq!((chunk.id, chunk.version), (9, 4));
         assert_eq!(chunk.body.cursor.u8(), Ok(0xAA));
         assert!(chunk.body.is_empty());
-        assert_eq!(reader.cursor.u16(), Err(Short));
+        assert_eq!(reader.cursor.u16(), Err(CutShort));
         assert_eq!(reader.cursor.u8(), Ok(0xBB));
         assert!(reader.is_empty());
         // A chunk whose size runs past the bytes.

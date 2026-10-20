@@ -13,10 +13,10 @@ use std::collections::VecDeque;
 /// the first's; its messages are a range of one buffer in the same order. A fate leaves its entry
 /// empty until the entries before it are, as fates come in any order.
 #[derive(Debug, Default)]
-pub(crate) struct SentPackets {
+pub(crate) struct UnsettledPackets {
     /// The token of `packets`' first entry.
     first: u64,
-    packets: VecDeque<Option<SentPacket>>,
+    packets: VecDeque<Option<UnsettledPacket>>,
     /// The reliable messages of the packets, in token order.
     messages: VecDeque<SentMessage>,
     /// The index that `messages`' first entry has counted from the start of the transport.
@@ -25,7 +25,7 @@ pub(crate) struct SentPackets {
 
 /// A packet whose fate is not known yet.
 #[derive(Debug, Clone)]
-pub(crate) struct SentPacket {
+pub(crate) struct UnsettledPacket {
     pub(crate) tick: NetTick,
     /// Its reliable messages, as indices counted from the start of the transport.
     messages: Range<u64>,
@@ -38,7 +38,7 @@ pub(crate) struct SentMessage {
     pub(crate) key: SendMessageKey,
 }
 
-impl SentPackets {
+impl UnsettledPackets {
     /// Records the packet of `token`, the next one the transport numbered, at `tick`.
     pub(crate) fn push(&mut self, token: PayloadToken, tick: NetTick) {
         if self.packets.is_empty() {
@@ -50,7 +50,7 @@ impl SentPackets {
             "the transport numbers its packets in order"
         );
         let end = self.first_message + count(self.messages.len());
-        self.packets.push_back(Some(SentPacket {
+        self.packets.push_back(Some(UnsettledPacket {
             tick,
             messages: end..end,
         }));
@@ -69,13 +69,16 @@ impl SentPackets {
 
     /// Takes the packet of `token`, whose fate the packet session reports once; a token of a packet
     /// before a reset names none.
-    pub(crate) fn take(&mut self, token: PayloadToken) -> Option<SentPacket> {
+    pub(crate) fn take(&mut self, token: PayloadToken) -> Option<UnsettledPacket> {
         let slot = usize::try_from(token.0.checked_sub(self.first)?).ok()?;
         self.packets.get_mut(slot)?.take()
     }
 
     /// The reliable messages `packet` carried.
-    pub(crate) fn messages(&self, packet: &SentPacket) -> impl Iterator<Item = SentMessage> + '_ {
+    pub(crate) fn messages(
+        &self,
+        packet: &UnsettledPacket,
+    ) -> impl Iterator<Item = SentMessage> + '_ {
         let start = usize::try_from(packet.messages.start - self.first_message).unwrap();
         let end = usize::try_from(packet.messages.end - self.first_message).unwrap();
         self.messages.range(start..end).copied()
@@ -112,9 +115,9 @@ fn count(len: usize) -> u64 {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::sent_packets::SentPackets;
+    use crate::sent_packets::UnsettledPackets;
 
-    impl SentPackets {
+    impl UnsettledPackets {
         /// The packets whose reliable messages wait for their fate.
         pub(crate) fn with_messages(&self) -> usize {
             self.packets
@@ -143,7 +146,7 @@ mod tests {
     /// message 2. A fate taken twice, or of a token before the first, finds nothing.
     #[test]
     fn a_fate_takes_its_packet_and_releases_the_ones_before() {
-        let mut sent = SentPackets::default();
+        let mut sent = UnsettledPackets::default();
         sent.push(PayloadToken(10), NetTick(5));
         sent.push_message(message(0));
         sent.push_message(message(1));

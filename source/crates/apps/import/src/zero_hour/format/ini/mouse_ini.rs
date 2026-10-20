@@ -2,10 +2,12 @@ use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{BlockKinds, IniText};
 
 /// What the import reads of Zero Hour's `Mouse.ini` files, as `Mouse::parseIni` reads them:
-/// `DragToleranceMS`, the milliseconds within which a press that does not drag is a click, 0
-/// until a file sets it, as `Mouse::init` sets it.
+/// `DragTolerance`, the pixels along either axis past which a press drags, and
+/// `DragToleranceMS`, the milliseconds within which a press that does not drag is a click, each 0
+/// until a file sets it, as `Mouse::init` sets them.
 #[derive(Debug, Default)]
 pub(crate) struct MouseIni {
+    pub(crate) drag_tolerance: u32,
     pub(crate) drag_tolerance_ms: u32,
 }
 
@@ -19,10 +21,13 @@ impl MouseIni {
                 continue;
             }
             for line in &block.fields {
-                if line.word() == "dragtolerancems" {
-                    self.drag_tolerance_ms = u32::try_from(line.int()?)
-                        .map_err(|_| IniError::Range { line: line.number })?;
-                }
+                let field = match line.word().as_str() {
+                    "dragtolerance" => &mut self.drag_tolerance,
+                    "dragtolerancems" => &mut self.drag_tolerance_ms,
+                    _ => continue,
+                };
+                *field = u32::try_from(line.int()?)
+                    .map_err(|_| IniError::Range { line: line.number })?;
             }
         }
         Ok(())
@@ -34,12 +39,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_mouse_block_gives_the_click_time_and_a_cursor_s_block_does_not() {
+    fn the_mouse_block_gives_the_drag_and_the_click_time_and_a_cursor_s_block_does_not() {
         let mut ini = MouseIni::default();
-        assert_eq!(ini.drag_tolerance_ms, 0);
-        ini.read(b"Mouse\n  DragTolerance = 4\n  DragToleranceMS = 167\nEnd\nMouseCursor Normal\n  DragToleranceMS = 9\nEnd\n")
+        assert_eq!((ini.drag_tolerance, ini.drag_tolerance_ms), (0, 0));
+        ini.read(b"Mouse\n  DragTolerance = 4\n  DragToleranceMS = 167\nEnd\nMouseCursor Normal\n  DragTolerance = 7\n  DragToleranceMS = 9\nEnd\n")
             .unwrap();
-        assert_eq!(ini.drag_tolerance_ms, 167);
+        assert_eq!((ini.drag_tolerance, ini.drag_tolerance_ms), (4, 167));
+        assert!(matches!(
+            ini.read(b"Mouse\n  DragTolerance = -4\nEnd\n"),
+            Err(IniError::Range { line: 2 })
+        ));
         assert!(matches!(
             ini.read(b"Mouse\n  DragToleranceMS = -1\nEnd\n"),
             Err(IniError::Range { line: 2 })

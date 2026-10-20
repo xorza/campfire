@@ -1,6 +1,6 @@
 /// Why a datagram is not a packet session packet the receiver reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum HeaderError {
+pub(crate) enum PacketHeaderError {
     #[error("the datagram is shorter than its header")]
     Truncated,
     #[error("the datagram's first bit names its IO's own packet")]

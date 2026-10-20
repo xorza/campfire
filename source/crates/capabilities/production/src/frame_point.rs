@@ -1,5 +1,5 @@
 use campfire_math::{Num, SinCos, Vec3};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize, Serializer};
 
 use crate::error::PointPastBound;
 
@@ -24,6 +24,13 @@ impl FramePoint {
         let [x, z] = self.0;
         let turned = Vec3::new(x, Num::ZERO, z).rotated_y(SinCos::of_degrees(angle));
         Vec3::new(position.x + turned.x, position.y, position.z + turned.z)
+    }
+}
+
+/// As `[x, z]`, which `Deserialize` reads.
+impl Serialize for FramePoint {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
     }
 }
 

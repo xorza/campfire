@@ -17,6 +17,7 @@ use crate::error::BountyError;
 /// The mode's kill bounty, as its `[bounty]` and its unit types' give it; none for a mode of no
 /// `[bounty]`. Package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[component(immutable)]
 pub struct BountyBook(Option<Bounty>);
 
 /// The killers whose kills pay, the share each player starts with, and what each type's death
@@ -24,6 +25,7 @@ pub struct BountyBook(Option<Bounty>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Bounty {
     killer: Filter,
+    victim: Filter,
     start: Num,
     types: ByType<TypeBounty>,
 }
@@ -62,12 +64,15 @@ impl BountyBook {
             return Ok(Self(None));
         };
         let tags = cx.fact::<UnitTypes>()?.tags();
-        let killer = Filter::resolve(&mode.killer, tags).map_err(|name| {
-            let at = BookPlace::Section(ModeBountyData::KEY);
-            BookError::unknown(PackageIndex::MODE, at, name)
-        })?;
+        let resolve = |filter| {
+            Filter::resolve(filter, tags).map_err(|name| {
+                let at = BookPlace::Section(ModeBountyData::KEY);
+                BookError::unknown(PackageIndex::MODE, at, name)
+            })
+        };
         Ok(Self(Some(Bounty {
-            killer,
+            killer: resolve(&mode.killer)?,
+            victim: resolve(mode.victim.filter())?,
             start: mode.share,
             types: types.build(),
         })))
@@ -90,8 +95,9 @@ impl Book for BountyBook {
 }
 
 impl Bounty {
-    /// Pays the tick's deaths' bounties: of a victim of a type of a bounty and a killer that
-    /// passes the mode's filter from the victim's side, the killer's owner takes the type's amount,
+    /// Pays the tick's deaths' bounties: of a victim of a type of a bounty whose tags at its death
+    /// the mode's victim filter selects, and a killer that passes the mode's filter from the
+    /// victim's side, the killer's owner takes the type's amount,
     /// or its share of the type's cost, rounded up, of the type's resource. A killer gone, or of
     /// no owner, takes none, and a payment past what a resource holds is not made, as a script's
     /// `add_resource` fails (04-capabilities/games.md, A kill's bounty).
@@ -123,6 +129,9 @@ impl Bounty {
             return;
         };
         for death in deaths.iter() {
+            if !bounty.victim.selects_tags(death.fallen.tags) {
+                continue;
+            }
             let (Some(victim), Some(killer), Some(victim_team)) = (
                 index.get(death.fallen.id),
                 death.killer.and_then(|killer| index.get(killer)),

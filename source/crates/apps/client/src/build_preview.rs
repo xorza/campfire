@@ -39,7 +39,7 @@ use crate::placing::Placing;
 use crate::pointer::Pointer;
 use crate::selection::SelectionSystems;
 use crate::view::float_num::{self, FloatNum};
-use crate::view::look::Shape;
+use crate::view::look::PickShape;
 use crate::view::match_colors::{Paint, Tint};
 use crate::view::unit_looks::UnitLooks;
 
@@ -212,7 +212,7 @@ impl BuildPreviewPlugin {
         pointer: Pointer<'_, '_>,
         index: Res<'_, EntityIndex>,
         builders: Query<'_, '_, &Position, Allow<Unpredicted>>,
-        ghost: Single<'_, '_, (&mut Ghost, &mut Transform, &mut Visibility), Without<Shape>>,
+        ghost: Single<'_, '_, (&mut Ghost, &mut Transform, &mut Visibility), Without<PickShape>>,
     ) {
         let (mut ghost, mut transform, mut visibility) = ghost.into_inner();
         let ground = pointer.ground().filter(|_| !pointer.is_over_ui());

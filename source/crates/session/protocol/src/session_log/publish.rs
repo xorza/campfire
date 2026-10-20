@@ -69,6 +69,8 @@ impl SessionLog {
         out.clear();
         out.extend_from_slice(LOG_TAG);
         out.extend_from_slice(&shape.header);
+        // A published log is the whole session's: its first segment is 0.
+        put(out, &0_u32);
         put(out, &offset(shape.segments.len()));
         let mut cursor = Cursor::default();
         let mut index = 0;

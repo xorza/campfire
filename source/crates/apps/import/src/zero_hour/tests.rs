@@ -1,4 +1,4 @@
-use campfire_client_files::{ClientModel, ClientUnit, LookVariant, ModelScale, ModelTop};
+use campfire_client_files::{ClientModel, ClientUnit, LookVariant, ModelScale, ModelTop, Press};
 use campfire_codec::TomlTable;
 use campfire_common::{ContentHash, DeclaredName};
 use campfire_sim::Capability;
@@ -20,7 +20,7 @@ use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::format::map::map_file::samples::map;
 use crate::zero_hour::install::samples::{fixture, packed_map};
 use crate::zero_hour::model_import::{Converted, ModelImport};
-use crate::zero_hour::production_import::DropCause;
+use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::weapon_drop::WeaponDrop;
 
 /// The fixture install's version, as its archives hold their bytes now.
@@ -421,7 +421,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // The buttons dropped, each by its cause, in the order the sets are read: the center's,
     // the dozer's, then the barracks', which the dozer's set makes; the power plant, in both the
     // dozer's and the barracks' sets, once.
-    let dropped: Vec<(&str, DropCause)> = imported
+    let dropped: Vec<(&str, ButtonDropCause)> = imported
         .losses
         .iter()
         .filter_map(|loss| match loss {
@@ -432,15 +432,21 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     assert_eq!(
         dropped,
         [
-            ("Command_ConstructAmericaPowerPlant", DropCause::Science),
-            ("Command_ConstructAmericaFireBase", DropCause::NoBox),
-            ("Command_ConstructAmericaInfantryRanger", DropCause::NoQueue),
+            (
+                "Command_ConstructAmericaPowerPlant",
+                ButtonDropCause::Science
+            ),
+            ("Command_ConstructAmericaFireBase", ButtonDropCause::NoBox),
+            (
+                "Command_ConstructAmericaInfantryRanger",
+                ButtonDropCause::NoQueue
+            ),
             (
                 "Command_ConstructAmericaInfantryPathfinder",
-                DropCause::EitherOr
+                ButtonDropCause::EitherOr
             ),
-            ("Command_ConstructFortressWall", DropCause::NoWalker),
-            ("Command_ConstructGhost", DropCause::NoObject),
+            ("Command_ConstructFortressWall", ButtonDropCause::NoWalker),
+            ("Command_ConstructGhost", ButtonDropCause::NoObject),
         ]
     );
     let manifest = mode.manifest();
@@ -477,7 +483,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     );
     // The class whose type's texture the install holds names it, the sign's TGA of 2 × 1
     // texels; the other names none.
-    let file = MapFile::read(&map(8)).unwrap();
+    let file = ZeroHourMap::read(&map(8)).unwrap();
     let mut textures = vec![None; file.terrain.classes.len()];
     textures[0] = Some(ClassTexture {
         path: PackagePath::parse("client/textures/art/terrain/tsand.ktx2").unwrap(),
@@ -548,8 +554,14 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     });
     assert_eq!(test_dir.read_text("one/game/data/units.toml"), units.text);
     let camera = Toml::parse::<CameraFile>(&test_dir.read_text("one/game/client/camera.toml"));
-    let camera = camera.unwrap();
-    assert_eq!((camera.field_of_view, camera.click), (50.0, 0.167));
+    assert_eq!(camera.unwrap().field_of_view, 50.0);
+    // A press drags past `Mouse.ini`'s 4 pixels and clicks within its 167 ms.
+    let keys = Toml::parse::<KeysFile>(&test_dir.read_text("one/game/client/keys.toml")).unwrap();
+    let press = Press {
+        drag: 4.0,
+        click: 0.167,
+    };
+    assert_eq!(keys.press, press);
     let hud = Toml::parse::<HudFile>(&test_dir.read_text("one/game/client/hud.toml")).unwrap();
     assert_eq!(hud.bars, ShownBars::Selected);
     let colors = test_dir.read_text("one/game/client/team_colors.toml");

@@ -1,7 +1,7 @@
 use std::num::NonZeroU64;
 
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// How many operations scripts may run: in one call, and in each pool's calls of one tick together,
 /// as `Pool` gives the pools. Each player, AI and the mode draw from pools of their own, so no call
@@ -33,17 +33,37 @@ impl ScriptLimits {
     }
 }
 
+/// The limits as a manifest holds them, which reads and writes the same fields.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Fields {
+    per_call: NonZeroU64,
+    player: u64,
+    think: u64,
+    mode: u64,
+}
+
+impl Serialize for ScriptLimits {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let Self {
+            per_call,
+            player,
+            think,
+            mode,
+        } = *self;
+        Fields {
+            per_call,
+            player,
+            think,
+            mode,
+        }
+        .serialize(serializer)
+    }
+}
+
 /// A manifest's limits, refused unless each pool holds a whole call.
 impl<'de> Deserialize<'de> for ScriptLimits {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Fields {
-            per_call: NonZeroU64,
-            player: u64,
-            think: u64,
-            mode: u64,
-        }
         let Fields {
             per_call,
             player,

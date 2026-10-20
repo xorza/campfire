@@ -3,7 +3,7 @@ use std::net::{SocketAddr, SocketAddrV4, UdpSocket};
 
 use socket2::{Domain, Protocol, Socket, Type};
 
-use crate::platform::os::Os;
+use crate::platform::os::Native;
 
 /// A UDP socket on a port that other sockets of this host share, as each SSDP listener of a host
 /// binds port 1900: each takes the multicast datagrams sent to the port. On Unix,
@@ -17,7 +17,7 @@ pub struct SharedPort {
 impl SharedPort {
     pub fn bind(address: SocketAddrV4) -> io::Result<Self> {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
-        Os::share_port(&socket)?;
+        Native::share_port(&socket)?;
         socket.bind(&SocketAddr::V4(address).into())?;
         Ok(Self {
             socket: socket.into(),

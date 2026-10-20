@@ -7,6 +7,7 @@ use rhai::{Dynamic, Engine, NativeCallContext};
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::Checked;
+use crate::scripts::given_names::GivenNames;
 use crate::scripts::member_decl::{ArgKinds, MemberDecl};
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_arg::ScriptArg;
@@ -28,8 +29,8 @@ pub trait CtxFn<Args, R> {
     /// What each argument names, and the engine enum each takes, by place.
     fn args() -> ArgKinds;
 
-    /// The kind of name the value it gives is; none for a value that names nothing.
-    const NAME_KIND: Option<NameKind>;
+    /// The names the value it gives is; none for a value that names nothing.
+    const NAMES: Option<GivenNames>;
 
     /// The type of the value it gives.
     fn output() -> TypeId;
@@ -50,8 +51,8 @@ pub trait MethodFn<M, H, Args, R> {
     /// What each argument names, and the engine enum each takes, by place.
     fn args() -> ArgKinds;
 
-    /// The kind of name the value it gives is; none for a value that names nothing.
-    const NAME_KIND: Option<NameKind>;
+    /// The names the value it gives is; none for a value that names nothing.
+    const NAMES: Option<GivenNames>;
 
     /// The type of the value it gives.
     fn output() -> TypeId;
@@ -63,8 +64,8 @@ pub trait MethodFn<M, H, Args, R> {
 /// call's `ctx` before it when its marker `M` is `WithCtx`. It gives its value `O`: a value, or
 /// one that fails the call when its marker `K` is `Fallible`.
 pub trait GetFn<M, H, O, K> {
-    /// The kind of name the value it gives is; none for a value that names nothing.
-    const NAME_KIND: Option<NameKind>;
+    /// The names the value it gives is; none for a value that names nothing.
+    const NAMES: Option<GivenNames>;
 
     /// The type of the value it gives.
     fn output() -> TypeId;
@@ -112,7 +113,7 @@ where
     H: ScriptType,
     O: ScriptReturn<K>,
 {
-    const NAME_KIND: Option<NameKind> = <O::Output as ScriptOutput>::NAME_KIND;
+    const NAMES: Option<GivenNames> = <O::Output as ScriptOutput>::NAMES;
 
     fn output() -> TypeId {
         TypeId::of::<<O::Output as ScriptOutput>::Value>()
@@ -129,7 +130,7 @@ where
     H: ScriptType,
     O: ScriptReturn<K>,
 {
-    const NAME_KIND: Option<NameKind> = <O::Output as ScriptOutput>::NAME_KIND;
+    const NAMES: Option<GivenNames> = <O::Output as ScriptOutput>::NAMES;
 
     fn output() -> TypeId {
         TypeId::of::<<O::Output as ScriptOutput>::Value>()
@@ -202,7 +203,7 @@ macro_rules! script_fn {
                 args_of(&[$($arg::NAME_KIND),*], &[$($arg::ENUM),*])
             }
 
-            const NAME_KIND: Option<NameKind> = R::NAME_KIND;
+            const NAMES: Option<GivenNames> = R::NAMES;
 
             fn output() -> TypeId {
                 TypeId::of::<R::Value>()
@@ -265,7 +266,7 @@ macro_rules! script_fn {
                 args_of(&[$($arg::NAME_KIND),*], &[$($arg::ENUM),*])
             }
 
-            const NAME_KIND: Option<NameKind> = R::NAME_KIND;
+            const NAMES: Option<GivenNames> = R::NAMES;
 
             fn output() -> TypeId {
                 TypeId::of::<R::Value>()
@@ -329,7 +330,7 @@ macro_rules! script_fn {
                 args_of(&[$($arg::NAME_KIND),*], &[$($arg::ENUM),*])
             }
 
-            const NAME_KIND: Option<NameKind> = R::NAME_KIND;
+            const NAMES: Option<GivenNames> = R::NAMES;
 
             fn output() -> TypeId {
                 TypeId::of::<R::Value>()

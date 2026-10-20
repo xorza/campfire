@@ -23,12 +23,12 @@ pub(crate) struct Args {
     pub(crate) key: Option<PathBuf>,
     pub(crate) mode: PathBuf,
     pub(crate) map: Option<MapName>,
-    pub(crate) server: Server,
+    pub(crate) server: PlayedServer,
 }
 
 /// The server the client plays on.
 #[derive(Debug)]
-pub(crate) enum Server {
+pub(crate) enum PlayedServer {
     /// A server elsewhere, as its listing gives it, and the data directory, if one is named.
     Remote {
         address: SocketAddr,
@@ -116,14 +116,14 @@ struct Remote {
 impl From<CommandLine> for Args {
     fn from(line: CommandLine) -> Self {
         let server = match line.remote {
-            Some(remote) => Server::Remote {
+            Some(remote) => PlayedServer::Remote {
                 address: remote.address,
                 tls_key: remote.tls_key,
                 key: remote.server_key,
                 tick_hz: remote.tick_hz,
                 data: line.data,
             },
-            None => Server::Local {
+            None => PlayedServer::Local {
                 bots: line.server_bots,
                 options: line.options,
                 data: line.data.expect("clap takes --local only with --data"),

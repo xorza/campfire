@@ -30,7 +30,7 @@ use crate::shop_panel::ShopPanelPlugin;
 use crate::view::ViewPlugin;
 use crate::view::area_view::AreaViewPlugin;
 use crate::view::client_data::ClientFilesPlugin;
-use crate::view::package_source::PackageSource;
+use crate::view::package_source::PackageAssets;
 use crate::view::player_camera::PlayerCameraPlugin;
 use crate::view::terrain_view::TerrainViewPlugin;
 use crate::view::unit_models::UnitModelsPlugin;
@@ -175,9 +175,9 @@ impl ClientModule {
             Self::Window => {
                 // Every reader the builder makes shares the one source's bound on the models
                 // that load.
-                let source = PackageSource::of(packages);
+                let source = PackageAssets::of(packages);
                 app.register_asset_source(
-                    PackageSource::NAME,
+                    PackageAssets::NAME,
                     AssetSourceBuilder::new(move || Box::new(source.clone())),
                 );
                 let window = WindowPlugin {

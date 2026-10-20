@@ -340,7 +340,8 @@ pub(crate) mod samples {
         b"GameData\n  AdjustCliffTextures = Yes\n  Use3WayTerrainBlends = 0\nEnd\n";
 
     /// The fixture's `Mouse.ini`: a press of 167 ms or less that does not drag is a click.
-    const MOUSE: &[u8] = b"Mouse\n  DragToleranceMS = 167\nEnd\nMouseCursor Normal\nEnd\n";
+    const MOUSE: &[u8] =
+        b"Mouse\n  DragTolerance = 4\n  DragToleranceMS = 167\nEnd\nMouseCursor Normal\nEnd\n";
 
     /// The fixture map's file, packed by `RefPack` as the game ships most maps.
     pub(crate) fn packed_map() -> Vec<u8> {

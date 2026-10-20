@@ -3,7 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_actions::SlotKinds;
 use campfire_common::DeclaredName;
-use campfire_declarations::{Section, SectionReaders, SectionTable, Sections, TableRead};
+use campfire_declarations::{
+    PatchError, Patched, Section, SectionReaders, SectionTable, Sections, TableRead,
+};
 use campfire_script::{
     DataSection, DataTable, ScriptList, ScriptText, ScriptValue, StateFieldDecl,
 };
@@ -22,55 +24,109 @@ use crate::team_data::TeamData;
 /// The mode's `data/mode.toml`, but its script, which its package's load resolves, and its
 /// actions, modifiers and item types, which its package's content holds: its name, its teams'
 /// names, its player inputs, its state, its params and its options, the mode's own, and the
-/// sections of the modules that read the rest.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// sections of the modules that read the rest. It reads through its patch.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModeData {
     /// The message of the name players see.
     pub name: TextId,
     /// What its players choose before their units spawn, by name.
-    #[serde(default)]
     pub choices: BTreeMap<DeclaredName, ChoiceData>,
     /// The type of each player input, by name. An input that does not match its type never
     /// reaches the script.
-    #[serde(default)]
     pub inputs: BTreeMap<DeclaredName, InputType>,
     /// The names its script's timers take, in order.
-    #[serde(default)]
     pub timers: BTreeSet<DeclaredName>,
     /// The params of its maps' markers its scripts read, which a map of the mode may lack, as a
     /// script serves every map of its mode.
-    #[serde(default)]
     pub marker_params: BTreeSet<DeclaredName>,
     pub state_version: Option<u32>,
-    #[serde(default)]
     pub state: BTreeMap<DeclaredName, StateFieldDecl>,
     /// The fields of each player's state, by name.
-    #[serde(default)]
     pub player_state: BTreeMap<DeclaredName, StateFieldDecl>,
-    #[serde(default)]
     pub params: BTreeMap<DeclaredName, ModeParam>,
     /// The params whose values a session's host picks, by name.
-    #[serde(default)]
     pub options: BTreeMap<DeclaredName, OptionData>,
     /// Each of its manifest's teams, by name.
-    #[serde(default)]
     pub teams: BTreeMap<DeclaredName, TeamData>,
     /// How pairs of its teams regard each other; a pair not named is hostile.
-    #[serde(default)]
     pub relations: Vec<RelationData>,
     /// Who may take a slot once the match started.
-    #[serde(default)]
     pub players: PlayersData,
     /// Who may ask for a save, and how often the mode saves.
-    #[serde(default)]
     pub saves: SavesData,
     /// Who receives each kind of its state, and what it leaves to the host.
-    #[serde(default)]
     pub visibility: ModeVisibility,
     /// Read apart, by `ModeData::seed`.
-    #[serde(skip)]
     pub sections: Sections,
+}
+
+/// The mode's own keys as a tool writes them in part, over the rules package's data the mode's
+/// lies on: each of `ModeData`'s, but its sections, optional (03-game-scripting.md, A
+/// section has a partial form).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModePatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<TextId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub choices: Option<BTreeMap<DeclaredName, ChoiceData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inputs: Option<BTreeMap<DeclaredName, InputType>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timers: Option<BTreeSet<DeclaredName>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub marker_params: Option<BTreeSet<DeclaredName>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_version: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<BTreeMap<DeclaredName, StateFieldDecl>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub player_state: Option<BTreeMap<DeclaredName, StateFieldDecl>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<BTreeMap<DeclaredName, ModeParam>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<BTreeMap<DeclaredName, OptionData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub teams: Option<BTreeMap<DeclaredName, TeamData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relations: Option<Vec<RelationData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub players: Option<PlayersData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saves: Option<SavesData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<ModeVisibility>,
+}
+
+impl Patched for ModeData {
+    type Patch = ModePatch;
+
+    fn from_patch(patch: ModePatch) -> Result<Self, PatchError> {
+        Ok(Self {
+            name: patch.name.ok_or(PatchError::Missing("name"))?,
+            choices: patch.choices.unwrap_or_default(),
+            inputs: patch.inputs.unwrap_or_default(),
+            timers: patch.timers.unwrap_or_default(),
+            marker_params: patch.marker_params.unwrap_or_default(),
+            state_version: patch.state_version,
+            state: patch.state.unwrap_or_default(),
+            player_state: patch.player_state.unwrap_or_default(),
+            params: patch.params.unwrap_or_default(),
+            options: patch.options.unwrap_or_default(),
+            teams: patch.teams.unwrap_or_default(),
+            relations: patch.relations.unwrap_or_default(),
+            players: patch.players.unwrap_or_default(),
+            saves: patch.saves.unwrap_or_default(),
+            visibility: patch.visibility.unwrap_or_default(),
+            sections: Sections::default(),
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ModeData {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::read_patch(deserializer)
+    }
 }
 
 impl ModeData {
@@ -135,7 +191,7 @@ impl<'de> DeserializeSeed<'de> for ModeSeed<'_> {
 }
 
 /// The type of a player input.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InputType {
     String,

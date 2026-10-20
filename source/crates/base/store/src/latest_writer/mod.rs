@@ -18,12 +18,12 @@ pub struct LatestWriter<T, E> {
 /// What the caller and the worker share.
 #[derive(Debug)]
 struct LatestShared<T, E> {
-    slot: WorkerLock<Slot<T, E>>,
+    latest: WorkerLock<Latest<T, E>>,
     wake: Condvar,
 }
 
 #[derive(Debug)]
-struct Slot<T, E> {
+struct Latest<T, E> {
     /// The newest value the worker has not taken yet.
     newest: Option<T>,
     /// The newest failure the holder has not taken yet.
@@ -38,7 +38,7 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
         mut write: impl FnMut(&T) -> Result<(), E> + Send + 'static,
     ) -> Self {
         let shared = Arc::new(LatestShared {
-            slot: WorkerLock::new(Slot {
+            latest: WorkerLock::new(Latest {
                 newest: None,
                 failure: None,
                 closing: false,
@@ -48,16 +48,16 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
         let writing = Arc::clone(&shared);
         let worker = Worker::start(name, move || {
             loop {
-                let mut slot = writing.slot.lock();
-                while slot.newest.is_none() && !slot.closing {
-                    slot = writing.slot.wait(&writing.wake, slot);
+                let mut latest = writing.latest.lock();
+                while latest.newest.is_none() && !latest.closing {
+                    latest = writing.latest.wait(&writing.wake, latest);
                 }
-                let Some(value) = slot.newest.take() else {
+                let Some(value) = latest.newest.take() else {
                     return;
                 };
-                drop(slot);
+                drop(latest);
                 if let Err(error) = write(&value) {
-                    writing.slot.lock().failure = Some(error);
+                    writing.latest.lock().failure = Some(error);
                 }
             }
         });
@@ -69,13 +69,13 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
 
     /// Hands `value` to the worker, in place of one it has not taken yet.
     pub fn give(&self, value: T) {
-        self.shared.slot.lock().newest = Some(value);
+        self.shared.latest.lock().newest = Some(value);
         self.shared.wake.notify_one();
     }
 
     /// The newest write that failed since the last call, if one did.
     pub fn take_failure(&self) -> Option<E> {
-        self.shared.slot.lock().failure.take()
+        self.shared.latest.lock().failure.take()
     }
 
     /// Closes the writer, as a drop does, once the worker wrote the value it held; the newest
@@ -83,15 +83,15 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
     pub fn stop(self) -> Option<E> {
         let shared = Arc::clone(&self.shared);
         drop(self);
-        shared.slot.lock().failure.take()
+        shared.latest.lock().failure.take()
     }
 }
 
 impl<T, E> Drop for LatestWriter<T, E> {
     fn drop(&mut self) {
-        let mut slot = self.shared.slot.lock_to_close();
-        slot.closing = true;
-        drop(slot);
+        let mut latest = self.shared.latest.lock_to_close();
+        latest.closing = true;
+        drop(latest);
         self.shared.wake.notify_one();
     }
 }

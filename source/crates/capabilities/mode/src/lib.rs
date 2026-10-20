@@ -20,7 +20,7 @@ use campfire_declarations::{ByType, Declarations, InstallCx, Module, ModuleSyste
 use campfire_navigation::{
     ModeNavigationData, Navigation, NavigationBook, OnPath, PathArrivals, WalkerOnPath,
 };
-use campfire_players::{MatchEntity, Player, Players, PlayersWorld, SeatStart, Seating};
+use campfire_players::{MatchEntity, Player, Players, PlayersWorld, SeatHolder, StartingSeat};
 use campfire_production::{CompletedSites, ProductionSystems, TrainedUnits};
 use campfire_progression::LevelUps;
 use campfire_script::{
@@ -120,17 +120,18 @@ pub use crate::choice_data::{ChoiceData, Offers};
 pub use crate::choice_id::ChoiceId;
 pub use crate::choices::Choices;
 pub use crate::error::{
-    BountyError, ModeDataError, ModeError, ModeRefusal, OptionValueError, PickError,
+    BountyError, ModeDataError, ModeError, ModeRefusal, OptionDataError, OptionValueError,
+    PickError,
 };
 pub use crate::loadout_setup::LoadoutSetup;
-pub use crate::map_data::{MapData, MapSeed, MarkerData, PlacedUnitData};
+pub use crate::map_data::{MapData, MapPatch, MapSeed, MarkerData, PlacedUnitData};
 pub use crate::marker::{Marker, MarkerInfo};
 pub use crate::marker_spec::MarkerSpec;
 pub use crate::marker_tag::MarkerTag;
 pub use crate::match_end::{MatchEnd, MatchResult};
 pub use crate::match_mode::MatchMode;
 pub use crate::mode_core::ModeCore;
-pub use crate::mode_data::{InputType, ListEntry, ModeData, ModeParam, ModeSeed};
+pub use crate::mode_data::{InputType, ListEntry, ModeData, ModeParam, ModePatch, ModeSeed};
 pub use crate::mode_input::{InputValue, ModeInput};
 pub use crate::mode_inputs::ModeInputs;
 pub use crate::mode_load::ModeLoad;
@@ -440,24 +441,24 @@ impl Mode {
     }
 
     /// Starts the match, before its first tick: the players spawn, each seat held or open as
-    /// `seatings` gives it, one for each seat in order; the map's placed units spawn, on their
+    /// `holders` gives it, one for each seat in order; the map's placed units spawn, on their
     /// paths and walking them as they name; then `on_match_start` runs. A timer it sets counts
     /// from the start. An error when the call fails: a match its mode cannot start would run
     /// without its rules.
-    pub fn start(world: &mut World, seatings: &[Seating]) -> Result<(), CallError> {
+    pub fn start(world: &mut World, holders: &[SeatHolder]) -> Result<(), CallError> {
         let book = world.resource::<MatchMode>().clone();
         let teams = &book.teams;
         assert_eq!(
-            seatings.len(),
+            holders.len(),
             usize::try_from(teams.players()).expect("seats fit usize"),
-            "a start gives each seat of the session its seating"
+            "a start gives each seat of the session its holder"
         );
-        let seats = (0..teams.players()).map(Seat::new).zip(seatings);
+        let seats = (0..teams.players()).map(Seat::new).zip(holders);
         Players::spawn_match(
             world,
-            seats.map(|(seat, &seating)| SeatStart {
+            seats.map(|(seat, &holder)| StartingSeat {
                 team: teams.of(seat).expect("every player has a team"),
-                seating,
+                holder,
             }),
         );
         for placed in &book.placed {
@@ -506,7 +507,7 @@ pub mod internals {
     use campfire_common::Seat;
     use campfire_math::{Num, Vec3};
     use campfire_navigation::{PathEnd, PathWalker};
-    use campfire_players::Seating;
+    use campfire_players::SeatHolder;
     use campfire_script::FailureKind;
     use campfire_script::{
         CallError, CallStart, Ctx, MatchNames, ScriptFailures, ScriptRole, ScriptValue, StateValue,
@@ -613,7 +614,7 @@ pub mod internals {
 
         /// Starts the match as `start` does, every seat held.
         pub fn start_held(world: &mut World) -> Result<(), CallError> {
-            Self::start(world, &vec![Seating::Held; Self::seats(world)])
+            Self::start(world, &vec![SeatHolder::Held; Self::seats(world)])
         }
 
         /// How many seats the session of the installed mode has.
@@ -723,8 +724,14 @@ pub mod internals {
         }
 
         /// A grunt of the mode's on `team`, of 1000 health in place of its type's, whose modifier
-        /// adds `stats` by name.
+        /// adds `stats` by name; with no stats, it carries no modifier, and the match's books stay
+        /// as they are, so a grunt spawns at any tick.
         pub fn stat_grunt(world: &mut World, team: Team, stats: &[(&str, Num)]) -> StableId {
+            let grunt = Units::type_named(world, "grunt").unwrap();
+            let life = Life::full(Num::int(1000));
+            if stats.is_empty() {
+                return Self::spawn(world, grunt, Vec3::ZERO, team, life);
+            }
             let book = world.resource::<StatBook>();
             let changes: Vec<_> = stats
                 .iter()
@@ -744,9 +751,7 @@ pub mod internals {
                 ..NewInstance::bare(id, None)
             };
             let modifiers = Modifiers::bundle([Application::refresh(instance)]);
-            let grunt = Units::type_named(world, "grunt").unwrap();
-            let parts = (Life::full(Num::int(1000)), modifiers);
-            Self::spawn(world, grunt, Vec3::ZERO, team, parts)
+            Self::spawn(world, grunt, Vec3::ZERO, team, (life, modifiers))
         }
 
         /// Queues `amount` of damage of the kind `kind` from `source` to `target`, dealt by

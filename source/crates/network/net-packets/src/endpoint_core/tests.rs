@@ -5,7 +5,9 @@ use campfire_net_payload::{OutgoingPayload, PayloadKind, PayloadToken};
 use core::net::{IpAddr, Ipv4Addr};
 use core::time::Duration;
 
+use crate::establish::PathCheck;
 use crate::header::{Header, PacketType};
+use crate::plain_establishment::PlainEstablishment;
 use crate::protection::Protection;
 
 impl<C: Carrier> EndpointCore<C> {
@@ -31,20 +33,14 @@ fn address(port: u16) -> SocketAddr {
 struct RoutedEstablishment;
 
 impl Establish for RoutedEstablishment {
-    fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) {}
+    fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) -> ReadCost {
+        ReadCost::Light
+    }
 
     fn poll(&mut self, _: Instant, _: &mut Establishing) {}
 
     fn next_deadline(&self) -> Option<Instant> {
         None
-    }
-
-    fn routes_by_prefix(&self) -> bool {
-        true
-    }
-
-    fn challenge(&mut self) -> [u8; 8] {
-        [3; 8]
     }
 
     fn ended(&mut self, _: Option<ConnectionId>) {}
@@ -63,6 +59,16 @@ impl ServerEstablish for RoutedEstablishment {
     }
 
     fn set_accepting(&mut self, _: bool) {}
+
+    fn path_check(&mut self) -> Option<&mut dyn PathCheck> {
+        Some(self)
+    }
+}
+
+impl PathCheck for RoutedEstablishment {
+    fn challenge(&mut self) -> [u8; 8] {
+        [3; 8]
+    }
 }
 
 /// The client's packet session, whose datagrams start with the server's ID 7, and one payload of
@@ -114,6 +120,47 @@ fn a_hand_over_sizes_its_payload_by_the_carried_mtu() {
         core.hand_over(key, &mut queues);
         assert_eq!(queues.max_payload(), mtu - Header::MAX_LEN);
     }
+}
+
+/// A server that routes by address checks no path: a packet from a new address is a new peer's,
+/// which it takes as its first, and the first peer stays where it was, with no challenge sent.
+#[test]
+fn a_server_routed_by_address_takes_a_new_address_as_a_new_peer_and_challenges_none() {
+    let mut establish = PlainEstablishment::default();
+    establish.set_accepting(true);
+    let mut core = EndpointCore::<u32>::new(
+        PacketSessionSetup::default(),
+        EndpointSide::Server {
+            establish: Box::new(establish),
+        },
+        None,
+    );
+    let mut client = PacketSession::new(
+        Protection::Plain,
+        None,
+        PacketSessionSetup::default(),
+        at(0),
+    );
+    let mut out = Vec::new();
+    let mut linked = Vec::new();
+    for (tick, from) in [(0, address(1)), (10, address(2))] {
+        let payload = client_payload(&mut client, at(tick));
+        core.set_time(EndpointTime::Driven(at(tick)));
+        core.pass(&mut vec![Datagram { from, payload }], &mut out);
+        while let Some(news) = core.next_news() {
+            if let News::Linked { key, address, .. } = news {
+                linked.push((key, address));
+            }
+        }
+    }
+    let addresses: Vec<SocketAddr> = linked.iter().map(|&(_, address)| address).collect();
+    assert_eq!(addresses, [address(1), address(2)]);
+    assert_eq!(core.address(linked[0].0), Some(address(1)));
+    // Each peer gets the one answer to its first packet, the same bytes; a challenge would be a
+    // third datagram, to address 2.
+    let sent: Vec<SocketAddr> = out.iter().map(|outbound| outbound.to).collect();
+    assert_eq!(sent, [address(1), address(2)]);
+    assert_eq!(out[0].datagram, out[1].datagram);
 }
 
 /// A peer routed by its ID whose newer packet comes from a new address is checked there: the
@@ -209,20 +256,14 @@ struct ResetEstablishment;
 const TOKEN: [u8; stateless_reset::TOKEN_LEN] = [9; stateless_reset::TOKEN_LEN];
 
 impl Establish for ResetEstablishment {
-    fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) {}
+    fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) -> ReadCost {
+        ReadCost::Light
+    }
 
     fn poll(&mut self, _: Instant, _: &mut Establishing) {}
 
     fn next_deadline(&self) -> Option<Instant> {
         None
-    }
-
-    fn routes_by_prefix(&self) -> bool {
-        false
-    }
-
-    fn challenge(&mut self) -> [u8; 8] {
-        [0; 8]
     }
 
     fn ended(&mut self, _: Option<ConnectionId>) {}

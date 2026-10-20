@@ -13,6 +13,7 @@ use crate::build_start::BuildStart;
 /// What each build places, when it starts and how its site grows, by action, its rates and its
 /// placement's rules one run after another: package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[component(immutable)]
 pub struct BuildBook {
     /// By action, as the book loads them in order.
     specs: Vec<Stored>,

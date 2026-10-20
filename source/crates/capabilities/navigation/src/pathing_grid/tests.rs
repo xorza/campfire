@@ -50,7 +50,7 @@ fn grid() -> PathingGrid {
             ground(Num::HALF),
             ground(Num::HALF),
         ]),
-        &Terrain::default(),
+        &WallGrid::default(),
     )
 }
 
@@ -158,7 +158,7 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
         layer: Layer::FIRST,
         area: area.unwrap(),
     };
-    let terrain = Terrain::new(&cells, &[wall]);
+    let terrain = WallGrid::new(&cells, &[wall]);
     let walkers = WalkerKinds::from([
         air(),
         ground(Num::ZERO),
@@ -231,7 +231,7 @@ fn the_walls_test_visits_and_finds_what_a_walk_cell_by_cell_does() {
             area: Polygon::new(points).unwrap(),
         })
         .collect();
-    let terrain = Terrain::new(&cells, &walls);
+    let terrain = WallGrid::new(&cells, &walls);
     let walkers = WalkerKinds::from([ground(Num::ZERO), ground(Num::HALF), ground(Num::ONE)]);
     let grid = PathingGrid::new(cells, walkers.clone(), &terrain);
     let mut state = 0x3A11_u64;

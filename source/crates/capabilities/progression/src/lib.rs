@@ -15,7 +15,7 @@ use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
 use campfire_stats::StatsSystems;
 use campfire_units::{BodyUnit, UnitGrid};
 
-use crate::experience_book::Share;
+use crate::experience_book::ExperienceShare;
 use crate::progression_column::RowReads;
 
 mod error;
@@ -39,7 +39,7 @@ mod type_tracks_data;
 mod xp_effect_data;
 
 pub use crate::error::{ExperienceError, ProgressionRefusal, TrackError};
-pub use crate::experience::{Experience, Raised, TrackXp};
+pub use crate::experience::{Experience, TrackRaise, TrackXp};
 pub use crate::experience_book::ExperienceBook;
 pub use crate::experience_data::{ExperienceData, ExperienceTo, Gives, ModeExperienceData};
 pub use crate::learn_orders::LearnOrders;
@@ -132,7 +132,7 @@ impl Module for Progression {
         {
             cx.server(
                 ProgressionSystems::Share,
-                UnitGrid::before_reading(Share::give),
+                UnitGrid::before_reading(ExperienceShare::give),
             );
         }
     }

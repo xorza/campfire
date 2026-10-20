@@ -6,6 +6,7 @@ fn a_set_holds_exactly_its_hooks() {
         name,
         role,
         param_names: &["ctx"],
+        param_kinds: &[None],
     };
     let timer = hook("on_timer", ScriptRole::Mode);
     let died = hook("on_unit_death", ScriptRole::Mode);

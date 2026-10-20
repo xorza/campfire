@@ -21,6 +21,7 @@ use crate::release::match_setup::MatchSetup;
 
 /// A book no module declares.
 #[derive(Resource, Debug, Default)]
+#[component(immutable)]
 struct StrayBook;
 
 impl Book for StrayBook {

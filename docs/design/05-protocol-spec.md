@@ -96,8 +96,9 @@ SessionLog
            seat plan: player, bot or open per seat, visibility settings, option picks
            (the session id is their hash, and is not written)
     seats: each seat's start: a player's session key delegation, bot or open
-  segments[]
-    checkpoint (every segment but the first): segment, tick, state hash,
+  first segment: 0, or the one whose checkpoint the file starts at
+  segments[] from the first
+    checkpoint (every segment but segment 0): segment, tick, state hash,
                 snapshot fingerprint, log carry, server signature
     ticks[]: entries[] logged before the tick ran, each one of:
              player packet: seat, inputs[]: stamp tick, payload,
@@ -108,8 +109,8 @@ SessionLog
   result (optional): tick, outcome, final state hash, server signature
 ```
 
-- **File.** A log file starts with the tag `campfire/session-log/v6`, then postcard: the header; the `u32` count of segments, each its checkpoint record and 64-byte signature but the first; the `u64` count of its ticks and the entries logged before each; the entries after the last tick; the seed reveal and the result as options. Entries go as a `u32` count, each as its kind's `u8`: a player packet, 0, as `u32 seat`, its inputs as a `u32` count of `u64 stamp tick, payload bytes`, and the 64-byte signature; a server input, 1, as the input and its signature. A reader accepts only the canonical encoding, so one log has one fingerprint, and refuses every older tag.
-- **Checkpoints and results.** A checkpoint record is `{u32 segment, u64 tick, state hash, snapshot fingerprint, log carry}`, signed over `"campfire/checkpoint/v1" ‖ session id ‖ postcard of the record`. The log carry is the log's own state at the boundary, so a segment can verify from its checkpoint alone; that verification is planned. The result is `{u64 tick, outcome, final state hash}`, the outcome `won` with a team's index, `draw` or `aborted`, signed over `"campfire/result/v1" ‖ session id ‖ postcard of the result`.
+- **File.** A log file starts with the tag `campfire/session-log/v7`, then postcard: the header; the `u32` number of its first segment, 0 for a file of the whole session, or a later one for a file a host kept from that segment's checkpoint on; the `u32` count of its segments, each its checkpoint record and 64-byte signature but segment 0; the `u64` count of its ticks and the entries logged before each; the entries after the last tick; the seed reveal and the result as options. Entries go as a `u32` count, each as its kind's `u8`: a player packet, 0, as `u32 seat`, its inputs as a `u32` count of `u64 stamp tick, payload bytes`, and the 64-byte signature; a server input, 1, as the input and its signature. A reader accepts only the canonical encoding, so one log has one fingerprint, and refuses every older tag.
+- **Checkpoints and results.** A checkpoint record is `{u32 segment, u64 tick, state hash, snapshot fingerprint, log carry}`, signed over `"campfire/checkpoint/v1" ‖ session id ‖ postcard of the record`. The log carry is the log's own state at the boundary, so a file that starts at the checkpoint verifies from it alone, the snapshot's fingerprint and state hash checked against the record before the replay. The result is `{u64 tick, outcome, final state hash}`, the outcome `won` with a team's index, `draw` or `aborted`, signed over `"campfire/result/v1" ‖ session id ‖ postcard of the result`.
 
 ### Input sources
 
@@ -151,8 +152,8 @@ SessionLog
 1. Check every delegation, chain link and signature, every bot and external input signature, and every applied tick against the delay rule.
 2. Fetch the release the header names, checked against release events from at least k keys of the pinned set, or build it from its tag.
 3. Fetch each package's index by fingerprint, or import each imported package from one's own copy, and check the fingerprints.
-4. Check the seed reveal against the commitment, and each snapshot against its checkpoint.
-5. Replay the inputs tick by tick from tick 0, each segment with its own seed.
+4. Check the seed reveal against the commitment, and each snapshot against its checkpoint: the first segment's, required, for a file that starts at a checkpoint.
+5. Replay the inputs tick by tick from tick 0, or from the first segment's snapshot, each segment with its own seed.
 6. Compare the state hash at each checkpoint and the final hash and outcome with the records.
 
 - **A check proves** that the result and every checkpoint follow from the logged inputs on the named release and packages, that every player input was signed by its player, that no input is missing before a player's last logged chain head, and that every applied tick keeps the delay rule.

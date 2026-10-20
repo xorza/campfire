@@ -25,7 +25,7 @@ use crate::builder::{BuildOrder, Builder};
 use crate::completed_sites::CompletedSites;
 use crate::construction::build_view::{BuildFootprint, BuildView};
 use crate::construction::building_at::BuildingAt;
-use crate::construction::step::{Start, Step};
+use crate::construction::step::{StartingBuild, Step};
 use crate::order_dues::{self, OrderDues};
 use crate::site::{Site, SiteProgress, SiteStart};
 
@@ -153,7 +153,7 @@ impl Construction {
     fn spawn_site<F: RoleForm>(
         world: &mut World,
         entity: Entity,
-        start: Start,
+        start: StartingBuild,
         paid: &mut Vec<ResourceAmount>,
     ) {
         let now = world.resource::<SimTick>().start();
@@ -339,7 +339,7 @@ impl Construction {
                 body: *site_body,
             };
             let builder = Placed::new(from.get(), Body::shape_of(body));
-            let reaches = placed.reached_by(map.metric, builder, range);
+            let reaches = placed.reached_by(map.metric(), builder, range);
             if reaches
                 && !tags.is_some_and(|tags| tags.properties.blocks(ActionKind::Build.block()))
             {

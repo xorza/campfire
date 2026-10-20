@@ -12,7 +12,9 @@ use super::*;
 use crate::texture::srgb;
 use crate::zero_hour::format::w3d::hierarchy::Pivot;
 use crate::zero_hour::format::w3d::w3d_mesh::samples::GRADIENT_MODULATE;
-use crate::zero_hour::format::w3d::w3d_mesh::{Ids, Pass, Shader, Stage, Texture, VertexMaterial};
+use crate::zero_hour::format::w3d::w3d_mesh::{
+    Indexing, MaterialPass, Shader, Stage, Texture, VertexMaterial,
+};
 use crate::zero_hour::install::Install;
 use crate::zero_hour::install::samples::fixture;
 use crate::zero_hour::model_nodes::LookSubObject;
@@ -410,9 +412,9 @@ fn vertex_colors_convert_only_as_the_diffuse_color() {
     ];
     for (materials, diffuse) in cases {
         let ids = if materials.len() == 1 {
-            Ids::One(0)
+            Indexing::One(0)
         } else {
-            Ids::Each(vec![0, 1])
+            Indexing::Each(vec![0, 1])
         };
         let mut mesh = W3dMesh {
             positions: vec![[0.0; 3]; 2],
@@ -458,12 +460,12 @@ fn a_shader_of_no_primary_gradient_draws_its_texture_alone_unlit() {
                 flags: 0,
             })
             .into(),
-        passes: vec![Pass {
-            materials: Ids::One(0),
-            shaders: Ids::One(0),
+        passes: vec![MaterialPass {
+            materials: Indexing::One(0),
+            shaders: Indexing::One(0),
             colors: Some(vec![[10, 20, 30, 40]; 4]),
             stage: Some(Stage {
-                textures: Ids::Each(vec![0, 1]),
+                textures: Indexing::Each(vec![0, 1]),
                 coordinates: vec![[0.0; 2]; 4],
             }),
             detail: None,
@@ -596,13 +598,13 @@ fn a_triangle_of_no_texture_draws_what_its_shader_makes_of_the_null_vector() {
             emissive: [255, 0, 0],
             ..VertexMaterial::DEFAULT
         }],
-        passes: vec![Pass {
-            materials: Ids::One(0),
-            shaders: Ids::Each(vec![0, 1, 2, 3, 4, 5, 6]),
+        passes: vec![MaterialPass {
+            materials: Indexing::One(0),
+            shaders: Indexing::Each(vec![0, 1, 2, 3, 4, 5, 6]),
             colors: None,
             stage: None,
             detail: Some(Stage {
-                textures: Ids::One(Stage::NONE),
+                textures: Indexing::One(Stage::NONE),
                 coordinates: vec![[0.0; 2]; 3],
             }),
         }],
@@ -656,11 +658,11 @@ fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
     let assets = ModelAssets::new(&install).unwrap();
     let mut builder = ModelBuilder::new("layers");
     let stage = |coordinates: Vec<[f32; 2]>| Stage {
-        textures: Ids::One(0),
+        textures: Indexing::One(0),
         coordinates,
     };
-    let pass = |shaders, colors, stage, detail| Pass {
-        materials: Ids::One(0),
+    let pass = |shaders, colors, stage, detail| MaterialPass {
+        materials: Indexing::One(0),
         shaders,
         colors,
         stage,
@@ -690,12 +692,17 @@ fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
         }],
         passes: vec![
             pass(
-                Ids::Each(vec![0, 1]),
+                Indexing::Each(vec![0, 1]),
                 None,
                 Some(stage(vec![[0.0, 0.0]; 4])),
                 Some(stage(vec![[0.5, 0.25]; 4])),
             ),
-            pass(Ids::One(2), None, Some(stage(vec![[2.0, 0.0]; 4])), None),
+            pass(
+                Indexing::One(2),
+                None,
+                Some(stage(vec![[2.0, 0.0]; 4])),
+                None,
+            ),
         ],
         ..W3dMesh::named("glow")
     };
@@ -718,8 +725,13 @@ fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
         triangles: vec![[0, 1, 2]],
         shaders: vec![untextured, blended],
         passes: vec![
-            pass(Ids::One(0), None, None, None),
-            pass(Ids::One(1), Some(vec![[255, 255, 255, 64]; 3]), None, None),
+            pass(Indexing::One(0), None, None, None),
+            pass(
+                Indexing::One(1),
+                Some(vec![[255, 255, 255, 64]; 3]),
+                None,
+                None,
+            ),
         ],
         ..W3dMesh::named("fade")
     };

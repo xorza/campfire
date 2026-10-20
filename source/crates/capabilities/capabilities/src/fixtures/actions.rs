@@ -1,4 +1,3 @@
-use bevy_ecs::change_detection::Mut;
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionData, ActionError, ActionNames, ActionParts, Actions, CostTarget,
@@ -6,6 +5,7 @@ use campfire_actions::{
 };
 use campfire_combat::Combat;
 use campfire_common::DeclaredName;
+use campfire_declarations::internals::BookLoad;
 use campfire_declarations::{Book, ByType};
 use campfire_production::Production;
 use campfire_projectiles::ProjectileSpec;
@@ -110,7 +110,7 @@ impl ActionsFixtures for Actions {
         let rate = *world.resource::<MatchRate>();
         let names = WorldActionNames::new(world);
         let parts = ActionParts::of(data, package, ranks, rate, &names)?;
-        let id = world.resource_scope(|world, mut actions: Mut<'_, ActionBook>| {
+        let id = ActionBook::amend(world, |world, actions| {
             // A match that runs no scripts holds no script book, and its actions none.
             let none = ScriptBook::default();
             let scripts = world.get_resource::<ScriptBook>().unwrap_or(&none);

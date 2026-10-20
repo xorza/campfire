@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use campfire_package::ModePackages;
 
 use crate::fixed_session::FixedSession;
@@ -19,6 +21,17 @@ impl<P: Plan> ScriptedMode<P> {
 
     pub const fn packages(&self) -> &ModePackages {
         self.session.packages()
+    }
+
+    pub const fn session(&self) -> &FixedSession {
+        &self.session
+    }
+
+    /// The mode on a seed chain of `segments` segments, as `FixedSession::segments` gives it.
+    #[must_use]
+    pub fn segments(mut self, segments: NonZeroU32) -> Self {
+        self.session = self.session.segments(segments);
+        self
     }
 
     /// A match at tick 0, after what the plan sends at the start.

@@ -11,7 +11,7 @@ use crate::navigation_book::NavigationBook;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::Walkable;
 use crate::segment::Segment;
-use crate::terrain::Terrain;
+use crate::terrain::WallGrid;
 use crate::walker_kinds::WalkerKinds;
 
 /// What a map's walk check reads: its ground, with the bounds; its paths, walls and pathing cells,
@@ -78,7 +78,7 @@ impl WalkCheck<'_> {
             return Ok(());
         };
         let walkers = self.walkers;
-        let terrain = Terrain::new(&cells, self.walls.walls());
+        let terrain = WallGrid::new(&cells, self.walls.walls());
         let widest_radius = walkers.iter().map(|walker| walker.radius).max();
         let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
         statics.update(&structures);

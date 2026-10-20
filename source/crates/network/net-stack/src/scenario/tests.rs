@@ -19,7 +19,7 @@ use campfire_threads::internals::Parallel;
 
 use crate::fixtures::full_stack::FullStack;
 use crate::scenario::Scenario;
-use crate::scenario::faults::{Faults, Latency, Loss, Outage};
+use crate::scenario::faults::{Faults, GilbertLoss, Latency, Outage};
 use campfire_log::internals::LogCheck;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
@@ -97,7 +97,7 @@ fn every_fault() -> Faults {
             latency: Duration::from_millis(80),
             jitter: Duration::from_millis(15),
         }),
-        loss: Some(Loss {
+        loss: Some(GilbertLoss {
             mean: per_mille(50),
             burst: Num::int(3),
         }),

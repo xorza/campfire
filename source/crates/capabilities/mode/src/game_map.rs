@@ -3,8 +3,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
-use campfire_script::{ScriptHandle, ScriptList, ScriptText, ScriptValue, plain_script_arg};
-use campfire_values::{NameId, Names};
+use campfire_script::{
+    IdNames, ScriptHandle, ScriptList, ScriptText, ScriptValue, plain_script_arg,
+};
+use campfire_values::{NameId, Names, PathId};
 
 use crate::marker::{Marker, MarkerInfo};
 use crate::marker_spec::MarkerSpec;
@@ -86,8 +88,8 @@ impl GameMap {
     }
 
     /// The paths' names, by path.
-    pub(crate) fn paths(&self) -> ScriptList {
-        self.0.paths.clone()
+    pub(crate) fn paths(&self) -> IdNames<PathId> {
+        IdNames::of_list(self.0.paths.clone())
     }
 
     /// The markers with tag `tag`, in the map's order.

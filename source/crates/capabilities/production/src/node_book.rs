@@ -7,6 +7,7 @@ use crate::resource_set::ResourceSet;
 
 /// What each node type holds, and what each drop-off type takes: package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[component(immutable)]
 pub struct NodeBook {
     pub nodes: ByType<ResourceId>,
     pub drop_offs: ByType<ResourceSet>,

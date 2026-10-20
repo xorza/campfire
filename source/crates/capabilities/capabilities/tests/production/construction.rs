@@ -83,7 +83,7 @@ impl Yard {
         Shop::give(game, depot, form);
         Shop::give(game, depot, Life::full(Num::int(100)));
         let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
-        game.resource_mut::<MapBook>().bounds = bounds;
+        MapBook::amend(game, |_, map| map.bounds = bounds);
         let walker = Walker {
             layer: Layer::FIRST,
             radius: Num::HALF,

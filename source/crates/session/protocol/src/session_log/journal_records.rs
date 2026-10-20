@@ -179,8 +179,7 @@ impl SessionLog {
         self.put_header(&mut out);
         journal.append(&out);
         let mut start = 0;
-        let starts = self.segments.first(self.segments.len());
-        let mut segments = (1..).zip(starts.iter().skip(1)).peekable();
+        let mut segments = self.segments.since(0).skip(1).peekable();
         for (tick, end) in (0..).zip(self.entries.tick_ends()) {
             if let Some((number, segment)) =
                 segments.next_if(|(_, segment)| segment.tick == Tick::new(tick))

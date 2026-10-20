@@ -11,13 +11,15 @@ use campfire_harness::{ArchetypeWatch, FixedMatch, FixedSession, MatchRecord, Ma
 use campfire_math::Num;
 use campfire_navigation::PathWalker;
 use campfire_package::ModePackages;
+use campfire_production::Production;
 use campfire_progression::{Experience, Points};
 use campfire_runner::{ScriptCallFailed, SessionWorld};
 use campfire_script::ScriptFailures;
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimWorld, StableId};
 use campfire_stats::Level;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::{Dead, Deaths, Units};
+use campfire_units::{Dead, Deaths, StatusTags, Units};
 use campfire_values::{Rank, Team, TrackId, UnitType};
 
 /// The walker's learning and progress as a tick left them: the ranks of its basic abilities and
@@ -284,4 +286,50 @@ fn a_kill_gives_its_killer_the_victims_experience_and_an_allys_kill_gives_none()
     assert_eq!(fell(&mut fixed, enemy), Num::int(60));
     let ally = creep_of(&fixed, true);
     assert_eq!(fell(&mut fixed, ally), Num::int(60));
+}
+
+/// A victim the mode's `[experience]` victim filter leaves out gives no experience: an enemy creep
+/// marked as a site, `constructing`, gives the walker none under `all:!constructing`, and its 60
+/// with no filter.
+#[test]
+fn a_victim_the_experience_filter_leaves_out_gives_none() {
+    let xp_of_a_site_kill = |filtered: bool| {
+        let mut tree = PackageTree::of(TestMode::Lane);
+        if filtered {
+            tree.edit(
+                "modes/lane/data/mode.toml",
+                Edit::Set("experience.victim", "\"all:!constructing\""),
+            );
+        }
+        let session = FixedSession::new(tree.load().unwrap(), NonZeroU32::new(30).unwrap(), 2);
+        let mut fixed = session.start();
+        fixed.game_mut().run_tick_alone();
+        let walker = MatchUnits::of(fixed.game()).hero(0);
+        let creep = Units::type_named(fixed.game(), "creep").unwrap();
+        let ours = *MatchUnits::of(fixed.game())
+            .unit(walker)
+            .get::<Team>()
+            .unwrap();
+        let enemy = MatchUnits::of(fixed.game())
+            .all()
+            .find(|(_, unit)| {
+                unit.get::<UnitType>() == Some(&creep) && unit.get::<Team>() != Some(&ours)
+            })
+            .map(|(id, _)| id)
+            .unwrap();
+        let site = StatusTags::from([Production::CONSTRUCTING]);
+        fixed.game_mut().insert_parts(enemy, site);
+        fixed.game_mut().run_tick_alone();
+        Combat::damage(
+            fixed.game_mut(),
+            Some(walker),
+            enemy,
+            100_000,
+            DamageCause::Effect,
+        );
+        fixed.game_mut().run_tick_alone();
+        Progress::of(&fixed, walker).xp
+    };
+    assert_eq!(xp_of_a_site_kill(true), Num::ZERO);
+    assert_eq!(xp_of_a_site_kill(false), Num::int(60));
 }

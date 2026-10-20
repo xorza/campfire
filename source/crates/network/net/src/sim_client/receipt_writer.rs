@@ -7,7 +7,7 @@ use campfire_protocol::SignedReceipt;
 use campfire_store::{DurableDir, DurableFile, LatestWriter};
 use campfire_threads::Job;
 
-use crate::faults::Faults;
+use crate::faults::WorkerFaults;
 use crate::faults::error::ReceiptWriteError;
 use crate::faults::fault::Fault;
 use crate::sim_client::client_dir::ClientDir;
@@ -40,8 +40,11 @@ impl ReceiptWriter {
         self.0.give(receipt);
     }
 
-    /// Reports to `Faults` the newest write that failed since the last frame.
-    pub(crate) fn report_failure(writer: Option<Res<'_, Self>>, mut faults: ResMut<'_, Faults>) {
+    /// Reports to `WorkerFaults` the newest write that failed since the last frame.
+    pub(crate) fn report_failure(
+        writer: Option<Res<'_, Self>>,
+        mut faults: ResMut<'_, WorkerFaults>,
+    ) {
         if let Some(failure) = writer.and_then(|writer| writer.0.take_failure()) {
             faults.report(Fault::Receipt(failure));
         }
@@ -55,9 +58,9 @@ impl ReceiptWriter {
         };
         if let Some(failure) = writer.0.stop() {
             world
-                .resource_mut::<Faults>()
+                .resource_mut::<WorkerFaults>()
                 .report(Fault::Receipt(failure));
-            Faults::watch(world);
+            WorkerFaults::watch(world);
         }
     }
 }

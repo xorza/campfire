@@ -41,6 +41,14 @@ impl HashTrail {
         Ok(trail)
     }
 
+    /// The state after each tick of the segment `replay` stands in, as it runs them: the trail
+    /// of that segment alone, which the trails of the others continue.
+    pub fn of_segment(replay: &mut Replay<'_>) -> Result<Self, ReplayError> {
+        let mut trail = Self::default();
+        replay.run_segment_each(|world| trail.record(world))?;
+        Ok(trail)
+    }
+
     /// Records the state of `world`, where a session runs, after a tick.
     pub fn record(&mut self, world: &World) {
         let mut types = mem::take(&mut self.scratch);
@@ -107,6 +115,27 @@ impl HashTrail {
             .filter(|(_, (live, replayed))| live != replayed)
             .map(|(&name, _)| name)
             .collect()
+    }
+}
+
+/// The trails of runs one after another, in order, as one: the segments of a match, each
+/// replayed apart, as the trail of the whole match.
+impl FromIterator<Self> for HashTrail {
+    fn from_iter<I: IntoIterator<Item = Self>>(trails: I) -> Self {
+        let mut whole = Self::default();
+        for trail in trails {
+            if whole.totals.is_empty() {
+                whole.names = trail.names;
+            } else {
+                assert!(
+                    trail.totals.is_empty() || trail.names == whole.names,
+                    "the runs of one match keep its state types"
+                );
+            }
+            whole.types.extend(trail.types);
+            whole.totals.extend(trail.totals);
+        }
+        whole
     }
 }
 

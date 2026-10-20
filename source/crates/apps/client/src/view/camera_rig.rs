@@ -3,19 +3,18 @@ use std::f32::consts::PI;
 use bevy::ecs::resource::Resource;
 use bevy::math::{Quat, Vec2, Vec3};
 use bevy::transform::components::Transform;
-use campfire_client_files::{CameraFile, CameraHeight};
-
-use crate::press;
+use campfire_client_files::{CameraFile, CameraHeight, Press};
 
 /// The player's camera: it looks down at a pitch at a point of the ground, its pivot, from a
 /// height above it, turned about it by a yaw. Keys and the screen's edges scroll the pivot across
 /// and along the screen, the wheel and keys zoom the height between its least and its most, and
 /// keys turn it. A drag pans it, keeping the ground it grabbed under the cursor, or orbits it,
 /// turning it and tilting it; a click of the drag's button, short and still, sets the pitch, the
-/// yaw and the height back to their start, its file's.
+/// yaw and the height back to their start, its file's, as its press's rule says.
 #[derive(Resource, Debug, Clone, PartialEq)]
 pub(crate) struct CameraRig {
     file: CameraFile,
+    press: Press,
     /// On the ground plane, `[x, z]`.
     pivot: Vec2,
     /// Radians down from level, between `PITCH_LEAST` and `PITCH_MOST`.
@@ -47,7 +46,7 @@ pub(crate) enum Zoom {
 
 /// Which way a key turns the camera, seen from above.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Turn {
+pub(crate) enum CameraTurn {
     Clockwise,
     Counterclockwise,
 }
@@ -102,7 +101,6 @@ impl CameraRig {
         zoom_notch: 1.0,
         zoom_key: 12.0,
         edge: 3.0,
-        click: 0.2,
     };
 
     /// The camera of `file`, looking at `pivot` at its start's yaw and its most height, within
@@ -110,6 +108,7 @@ impl CameraRig {
     pub(crate) fn new(file: CameraFile, pivot: Vec2, bounds: Option<[Vec2; 2]>) -> Self {
         let mut rig = Self {
             file,
+            press: Press::default(),
             pivot,
             pitch: 0.0,
             yaw: 0.0,
@@ -120,6 +119,13 @@ impl CameraRig {
         rig.reset();
         rig.pivot = rig.bounded(pivot);
         rig
+    }
+
+    /// The camera whose presses are a drag and a click by `press`'s rule.
+    #[must_use]
+    pub(crate) const fn with_press(mut self, press: Press) -> Self {
+        self.press = press;
+        self
     }
 
     pub(crate) const fn pivot(&self) -> Vec2 {
@@ -168,11 +174,11 @@ impl CameraRig {
 
     /// Turns `turn`, seen from above, for `seconds` of a key: the game's left key turns the
     /// camera clockwise, so the world turns left on the screen.
-    pub(crate) fn turn_key(&mut self, turn: Turn, seconds: f32) {
+    pub(crate) fn turn_key(&mut self, turn: CameraTurn, seconds: f32) {
         let by = self.file.turn * seconds;
         self.turn_to(match turn {
-            Turn::Clockwise => self.yaw - by,
-            Turn::Counterclockwise => self.yaw + by,
+            CameraTurn::Clockwise => self.yaw - by,
+            CameraTurn::Counterclockwise => self.yaw + by,
         });
     }
 
@@ -219,7 +225,7 @@ impl CameraRig {
             return;
         };
         let moved = cursor - drag.from;
-        drag.moved |= press::drags(drag.from, cursor);
+        drag.moved |= self.press.drags(drag.from, cursor);
         match drag.kind {
             DragKind::Pan {
                 pivot,
@@ -273,12 +279,12 @@ impl CameraRig {
         self.drag.is_some()
     }
 
-    /// Ends the drag, `now` seconds: a click, a press within its file's click time that did not
-    /// drag, sets the pitch, the yaw and the height back to their start.
+    /// Ends the drag, `now` seconds: a click, a press that did not drag and that its press's
+    /// rule takes as one, sets the pitch, the yaw and the height back to their start.
     pub(crate) fn release(&mut self, now: f64) {
         if let Some(drag) = self.drag.take()
             && !drag.moved
-            && now - drag.since <= f64::from(self.file.click)
+            && self.press.clicks(now - drag.since)
         {
             self.reset();
         }
@@ -328,6 +334,10 @@ mod tests {
         zoom_notch: 10.0,
         zoom_key: 300.0,
         edge: 3.0,
+    };
+    /// A click of up to 167 ms, the shipped `Mouse.ini`'s.
+    const PRESS: Press = Press {
+        drag: 4.0,
         click: 0.167,
     };
 
@@ -353,7 +363,7 @@ mod tests {
         // The forward is (0, −sin 37.5°, −cos 37.5°): looking north and down.
         // A quarter turn counter-clockwise from above, looking west: back is now east, +x.
         let mut turned = rig.clone();
-        turned.turn_key(Turn::Counterclockwise, PI / 2.0 / 3.0);
+        turned.turn_key(CameraTurn::Counterclockwise, PI / 2.0 / 3.0);
         let eye = turned.transform(20.0);
         assert!(near(
             eye.translation,
@@ -370,7 +380,7 @@ mod tests {
 
     #[test]
     fn zoom_stops_at_each_limit_and_a_click_sets_the_view_back() {
-        let mut rig = CameraRig::new(SHIPPED, Vec2::ZERO, None);
+        let mut rig = CameraRig::new(SHIPPED, Vec2::ZERO, None).with_press(PRESS);
         // Out from the most stays at it; 20 notches in, 200 m, stop at the least, 120 m.
         rig.wheel(-1.0);
         assert_eq!(rig.height, 310.0);
@@ -403,12 +413,12 @@ mod tests {
         rig.press_orbit(Vec2::ZERO, 12.0);
         rig.release(12.2);
         assert_eq!(rig.height, 290.0);
-        // A file of a click of 0.5 s takes that press as a click.
-        let slow = CameraFile {
+        // A press of a click of 0.5 s takes that press as a click.
+        let slow = Press {
             click: 0.5,
-            ..SHIPPED
+            ..PRESS
         };
-        let mut rig = CameraRig::new(slow, Vec2::ZERO, None);
+        let mut rig = CameraRig::new(SHIPPED, Vec2::ZERO, None).with_press(slow);
         rig.wheel(2.0);
         rig.press_orbit(Vec2::ZERO, 12.0);
         rig.release(12.2);

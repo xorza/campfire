@@ -48,7 +48,7 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
         let read = ServerInput::take(&bytes).unwrap();
         assert_eq!(
             read,
-            Taken {
+            Decoded {
                 value: input.clone(),
                 rest: &[9][..],
             }

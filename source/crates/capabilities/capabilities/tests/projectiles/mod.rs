@@ -6,6 +6,7 @@ use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, OnDeath, ROLL_STREAM, RecentAttack, RecentAttackers};
 use campfire_common::{SegmentSeed, Tick};
 use campfire_declarations::ByType;
+use campfire_declarations::internals::BookLoad;
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
@@ -506,7 +507,7 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
     let bounds = Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
     Vision::load_grid(&mut game, Grid::new(Num::ONE, bounds).unwrap(), &[], 2);
     let sight = Sight::new(Num::ONE).unwrap();
-    game.resource_mut::<ByType<Sight>>().set(scout, sight);
+    ByType::<Sight>::amend(&mut game, |_, book| book.set(scout, sight));
     let source = Mode::spawn(&mut game, volley.target, (0, 0, -9), Team::new(0), ());
     let enemy = Mode::spawn(&mut game, volley.target, (5, 0, 0), Team::new(1), ());
     Projectiles::fire_line(&mut game, source, scout, ALONG_X);
@@ -546,10 +547,10 @@ fn a_line_that_reaches_the_bounds_ends_on_their_edge_and_its_sight_stays_within_
     let volley = Volley::place(&mut game);
     let scout = volley.scout;
     let bounds = Bounds::new([Num::int(-5), Num::int(-5)], [Num::int(3), Num::int(5)]).unwrap();
-    game.resource_mut::<MapBook>().bounds = bounds;
+    MapBook::amend(&mut game, |_, map| map.bounds = bounds);
     Vision::load_grid(&mut game, Grid::new(Num::ONE, bounds).unwrap(), &[], 2);
     let sight = Sight::new(Num::ONE).unwrap();
-    game.resource_mut::<ByType<Sight>>().set(scout, sight);
+    ByType::<Sight>::amend(&mut game, |_, book| book.set(scout, sight));
     let source = Mode::spawn(&mut game, volley.target, (0, 0, -4), Team::new(0), ());
     let slant = Vec3::new(
         Num::from_bits(10_066_330),

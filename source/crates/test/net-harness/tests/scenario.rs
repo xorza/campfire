@@ -559,6 +559,32 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     assert_eq!(ran(&mut local, 60), 9);
     order(&mut local, away);
     ends(&mut local, away);
+    // A stall of the whole host for 17 ticks, as the CI run's macOS runner stalled the server and
+    // both bots for 0.55 s: the server runs the 17 it missed, and each client's virtual clock
+    // gives it 250 ms of them, its `max_delta`, 7.5 ticks, 9.5 fewer than the server ran. Of the
+    // 12 orders a client sends from then on, one each 5 frames, the first goes out in its first
+    // frame, before the third sample of its deficit, and takes effect 5 ticks late; then its input
+    // timeline steps to its objective, and each later order takes effect in the tick it was
+    // stamped for (11-net-stack/time.md, A client behind steps, a client ahead slews). A
+    // timeline that slews its deficit sends each of them late, by 5 ticks to 2.
+    let stalled = local.next_tick(End::Server);
+    local.stall_host(17);
+    for frame in 0..60 {
+        if frame % 5 == 0 {
+            order(&mut local, targets);
+        }
+        local.step();
+    }
+    let late: Vec<u64> = local
+        .applied_inputs()
+        .into_iter()
+        .filter(|input| input.stamp.get() >= stalled)
+        .map(|input| input.tick.get() - input.stamp.get())
+        .collect();
+    let mut expected = vec![5, 5];
+    expected.resize(2 * 12, 0);
+    assert_eq!(late, expected);
+    ends(&mut local, targets);
 }
 
 #[test]

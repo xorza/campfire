@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 
 use derive_more::Display;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use unic_langid::LanguageIdentifier;
 
 /// A language, as a Unicode language identifier in its canonical spelling, such as `en` or
@@ -60,6 +60,13 @@ impl Ord for Language {
 impl Hash for Language {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.text.hash(state);
+    }
+}
+
+/// As its spelling, which `Deserialize` reads.
+impl Serialize for Language {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.text)
     }
 }
 

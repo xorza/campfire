@@ -15,6 +15,7 @@ use crate::action_parts::ActionParts;
 /// restore loads it from the packages, as a new match does. A clone shares the actions, as the
 /// script view reads them; `ActionBookBuilder` loads it.
 #[derive(Resource, Debug, Clone)]
+#[component(immutable)]
 pub struct ActionBook {
     actions: Arc<[Action]>,
     /// Each action's name in its package.

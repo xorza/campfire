@@ -176,7 +176,7 @@ pub(crate) mod samples {
     use crate::zero_hour::format::w3d::w3d_file::samples::{box_chunk, emitter_chunk};
     use crate::zero_hour::format::w3d::w3d_mesh::samples::SKIN_GEOMETRY;
     use crate::zero_hour::format::w3d::w3d_mesh::{
-        Ids, Pass, Shader, Stage, TWO_SIDED, Texture, VertexMaterial, W3dMesh,
+        Indexing, MaterialPass, Shader, Stage, TWO_SIDED, Texture, VertexMaterial, W3dMesh,
     };
 
     /// `Tank.w3d`: the HLOD `TANK` on its hierarchy of a root, a turret a half turn about `z` at
@@ -252,12 +252,12 @@ pub(crate) mod samples {
                 name: "Rock.tga".to_owned(),
                 flags: 0x8,
             }],
-            passes: vec![Pass {
-                materials: Ids::One(0),
-                shaders: Ids::One(0),
+            passes: vec![MaterialPass {
+                materials: Indexing::One(0),
+                shaders: Indexing::One(0),
                 colors: Some(vec![[10, 20, 30, 40]; 4]),
                 stage: Some(Stage {
-                    textures: Ids::Each(vec![0, Stage::NONE]),
+                    textures: Indexing::Each(vec![0, Stage::NONE]),
                     coordinates: vec![
                         [0.0, 0.0],
                         [1.0, 0.0],
@@ -298,12 +298,12 @@ pub(crate) mod samples {
                 name: "Gone.tga".to_owned(),
                 flags: 0,
             }],
-            passes: vec![Pass {
-                materials: Ids::One(0),
-                shaders: Ids::One(0),
+            passes: vec![MaterialPass {
+                materials: Indexing::One(0),
+                shaders: Indexing::One(0),
                 colors: None,
                 stage: Some(Stage {
-                    textures: Ids::One(0),
+                    textures: Indexing::One(0),
                     coordinates: Vec::new(),
                 }),
                 detail: None,

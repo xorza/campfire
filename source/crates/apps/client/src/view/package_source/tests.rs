@@ -31,7 +31,7 @@ fn a_path_reads_its_packages_file_checked_against_its_index() {
         "other",
         &[("client/models/tank.glb", b"glTF other")],
     );
-    let source = PackageSource::new(vec![mode, other]);
+    let source = PackageAssets::new(vec![mode, other]);
     let read = |path: &str| {
         block_on(async {
             let mut reader = source.read(Path::new(path)).await?;
@@ -64,7 +64,7 @@ fn a_path_reads_its_packages_file_checked_against_its_index() {
     // The asset path of a package's file names the source.
     let path = PackagePath::parse("client/models/tank.glb").unwrap();
     assert_eq!(
-        PackageSource::asset_path(PackageIndex::new(1), &path),
+        PackageAssets::asset_path(PackageIndex::new(1), &path),
         "package://1/client/models/tank.glb"
     );
 }
@@ -109,7 +109,7 @@ fn bevys_ktx2_loader_reads_the_imports_textures_with_their_levels() {
 }
 
 /// Five models and a texture, of one package.
-fn models(test_dir: &TestDir) -> PackageSource {
+fn models(test_dir: &TestDir) -> PackageAssets {
     let files: Vec<(String, &[u8])> = ["a", "b", "c", "d", "e"]
         .iter()
         .map(|name| (format!("client/models/{name}.glb"), &b"glTF"[..]))
@@ -119,7 +119,7 @@ fn models(test_dir: &TestDir) -> PackageSource {
         .iter()
         .map(|(path, bytes)| (path.as_str(), *bytes))
         .collect();
-    PackageSource::new(vec![package(test_dir, "mode", &files)])
+    PackageAssets::new(vec![package(test_dir, "mode", &files)])
 }
 
 #[test]
@@ -189,7 +189,7 @@ fn bevy_keeps_a_models_reader_and_its_permit_for_the_whole_load() {
     let gate = Arc::new(Semaphore::new(0));
     let mut app = App::new();
     app.register_asset_source(
-        PackageSource::NAME,
+        PackageAssets::NAME,
         AssetSourceBuilder::new(move || Box::new(source.clone())),
     );
     app.add_plugins((OneThreadPlugins, AssetPlugin::default()));

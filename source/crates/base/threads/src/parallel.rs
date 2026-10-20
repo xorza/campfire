@@ -12,10 +12,25 @@ impl Parallel {
     /// What `run` gave for each index below `count`, by index. A thread takes the next index as
     /// it ends the last one, so a slow job holds no other back; a job's panic passes on.
     pub fn map<T: Send>(count: usize, run: impl Fn(usize) -> T + Sync) -> Vec<T> {
-        Self::spread(count, &run)
+        Self::spread(count, &|| (), &|(), index| run(index))
     }
 
-    fn spread<T: Send>(count: usize, run: &(dyn Fn(usize) -> T + Sync)) -> Vec<T> {
+    /// As `map`, each thread with a state of its own that `init` makes as the thread takes its
+    /// first index and `run` takes with each index, as rayon's `map_init`: a fixture too slow to
+    /// build for each job is built once for each thread.
+    pub fn map_init<S, T: Send>(
+        count: usize,
+        init: impl Fn() -> S + Sync,
+        run: impl Fn(&mut S, usize) -> T + Sync,
+    ) -> Vec<T> {
+        Self::spread(count, &init, &run)
+    }
+
+    fn spread<S, T: Send>(
+        count: usize,
+        init: &(dyn Fn() -> S + Sync),
+        run: &(dyn Fn(&mut S, usize) -> T + Sync),
+    ) -> Vec<T> {
         let width = thread::available_parallelism()
             .map_or(1, NonZero::get)
             .min(count);
@@ -26,12 +41,14 @@ impl Parallel {
                 .map(|_| {
                     scope.spawn(|| {
                         let mut done = Vec::new();
+                        let mut state = None;
                         loop {
                             let index = next.fetch_add(1, Ordering::Relaxed);
                             if index >= count {
                                 break done;
                             }
-                            done.push((index, run(index)));
+                            let state = state.get_or_insert_with(init);
+                            done.push((index, run(state, index)));
                         }
                     })
                 })
@@ -94,6 +111,31 @@ mod tests {
                 "job {index} shares a thread"
             );
         }
+    }
+
+    /// Each thread makes its state once, at its first index, and each index meets the state of
+    /// the thread that ran it: as many states as threads that took an index, never more.
+    #[test]
+    fn each_thread_makes_its_state_once() {
+        let made = AtomicUsize::new(0);
+        let cores = thread::available_parallelism().map_or(1, NonZero::get);
+        let seen = Parallel::map_init(
+            100,
+            || (made.fetch_add(1, Ordering::Relaxed), Vec::new()),
+            |(state, indices), index| {
+                indices.push(index);
+                (*state, indices.len())
+            },
+        );
+        let states = made.into_inner();
+        assert!((1..=cores.min(100)).contains(&states), "{states} states");
+        // Each state's indices count up from 1, so each index met its thread's one state.
+        let mut counts = vec![0; states];
+        for (state, count) in seen {
+            counts[state] += 1;
+            assert_eq!(count, counts[state]);
+        }
+        assert_eq!(counts.iter().sum::<usize>(), 100);
     }
 
     #[test]

@@ -1,4 +1,6 @@
+use campfire_combat::{CombatData, CombatPatch, TurretData, TurretPatch};
 use campfire_common::DeclaredName;
+use campfire_declarations::SectionWriter;
 use campfire_geometry::BodyBox;
 use campfire_math::Num;
 use campfire_mode::{BountyData, Pays};
@@ -6,7 +8,6 @@ use campfire_projectiles::{CurveData, ProjectileData, ProjectileHits};
 use campfire_stats::{StatValue, StatsData, TypePoolsData};
 use campfire_units::{BodyForm, CollisionData, TypeTagsData};
 use campfire_values::{EngineStat, FilterData, Stat};
-use serde::Serialize;
 
 use crate::zero_hour::error::TypeError;
 use crate::zero_hour::format::game_float;
@@ -33,40 +34,19 @@ use crate::zero_hour::weapon_drop::{self, WeaponDrop};
 /// is Zero Hour's rules data, `[defaults]`, which lies under each type's own (03-game-scripting.md,
 /// Defaults under each unit type). A shell's type is a projectile alone (09-zero-hour.md, The
 /// import converts shells, splash, scatter, pitch, turrets and slow weapons).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedType {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pools: Option<TypePoolsData>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     tags: Option<TypeTagsData>,
-    #[serde(skip_serializing_if = "StatsData::is_empty")]
     stats: StatsData,
-    #[serde(skip_serializing_if = "Option::is_none")]
     collision: Option<CollisionData>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    combat: Option<WrittenCombat>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    turret: Option<WrittenTurret>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// The armor of its starting armor set, the one field of its `combat` the install gives; the
+    /// engine's own load completes it from the rules data's defaults.
+    combat: Option<CombatPatch>,
+    /// Its turn rate, the one field of its `turret` the install gives, completed as `combat` is.
+    turret: Option<TurretPatch>,
     bounty: Option<BountyData>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     projectile: Option<ProjectileData>,
-}
-
-/// A type's `combat` as the import writes it: the armor of its starting armor set, the one field
-/// the install gives; the engine's own load of what the import wrote completes it from the rules
-/// data's defaults, and refuses a key its section does not read.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(crate) struct WrittenCombat {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    armor: Option<DeclaredName>,
-}
-
-/// A type's `turret` as the import writes it: its turn rate in degrees a second, positive, the one
-/// field the install gives, which the engine's own load completes as it does a `combat`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(crate) struct WrittenTurret {
-    turn_rate: Num,
 }
 
 /// The player resource every cost is in.
@@ -146,10 +126,11 @@ impl ImportedType {
         if let Some(life) = life {
             stats.push((Self::life_stat(), StatValue::flat(life)));
         }
-        let combat = life.map(|_| WrittenCombat {
+        let combat = life.map(|_| CombatPatch {
             armor: fight
                 .starting_armor()
                 .map(|armor| ImportName::latin(armor).declared()),
+            ..CombatPatch::default()
         });
         let kinds = [
             (object.counts_for_victory(), VICTORY),
@@ -170,7 +151,10 @@ impl ImportedType {
                 let turn_rate = num(turret.turn_rate)?;
                 let turns = turn_rate > Num::ZERO;
                 turns
-                    .then_some(WrittenTurret { turn_rate })
+                    .then(|| TurretPatch {
+                        turn_rate: Some(turn_rate),
+                        ..TurretPatch::default()
+                    })
                     .ok_or(TypeError::Turret)
             })
             .transpose()?;
@@ -189,6 +173,35 @@ impl ImportedType {
             bounty,
             projectile: None,
         })
+    }
+
+    /// Writes each section it gives into `writer`, a unit type's table: whole, or the patch of
+    /// what the install gives.
+    pub(crate) fn write(&self, writer: &mut SectionWriter) {
+        if let Some(pools) = &self.pools {
+            writer.section(pools);
+        }
+        if let Some(tags) = &self.tags {
+            writer.section(tags);
+        }
+        if !self.stats.is_empty() {
+            writer.section(&self.stats);
+        }
+        if let Some(collision) = &self.collision {
+            writer.section(collision);
+        }
+        if let Some(combat) = &self.combat {
+            writer.patch::<CombatData>(combat);
+        }
+        if let Some(turret) = &self.turret {
+            writer.patch::<TurretData>(turret);
+        }
+        if let Some(bounty) = &self.bounty {
+            writer.section(bounty);
+        }
+        if let Some(projectile) = &self.projectile {
+            writer.section(projectile);
+        }
     }
 
     /// The type of a shell, of `projectile` alone: it has no life, no body and no tag.
@@ -635,8 +648,9 @@ End
                 .then(|| TypeTagsData(tags.into_iter().map(declared).collect())),
             stats: StatsData::from([(ImportedType::life_stat(), StatValue::flat(Num::int(life)))]),
             collision: None,
-            combat: Some(WrittenCombat {
+            combat: Some(CombatPatch {
                 armor: armor.map(|armor| DeclaredName::new(armor).unwrap()),
+                ..CombatPatch::default()
             }),
             turret: None,
             bounty: None,
@@ -680,8 +694,9 @@ End
             );
         }
         // The gunner's turret turns 60° a second; a turret of no weapon, or of no turn, is none.
-        let turret = WrittenTurret {
-            turn_rate: Num::int(60),
+        let turret = TurretPatch {
+            turn_rate: Some(Num::int(60)),
+            ..TurretPatch::default()
         };
         assert_eq!(of("Gunner").turret, Some(turret));
         assert_eq!((of("Idle").turret, of("Fixed").turret), (None, None));

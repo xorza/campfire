@@ -16,6 +16,7 @@ use crate::track_data::TrackData;
 /// state: a restore loads it from the packages, as a new match does. A clone shares the tracks,
 /// as the script view reads them.
 #[derive(Resource, Debug, Clone)]
+#[component(immutable)]
 pub struct TrackBook(Arc<Tracks>);
 
 /// The tracks of a `TrackBook`.

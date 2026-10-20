@@ -29,7 +29,7 @@ use std::hash::DefaultHasher;
 use crate::fixtures::full_stack::FullStack;
 use crate::scenario::faults::Faults;
 use crate::scenario::message_log::MessageLog;
-use crate::scenario::outcome::Outcome;
+use crate::scenario::outcome::ScenarioOutcome;
 use crate::scenario::replication_workload::ReplicationWorkload;
 use campfire_log::internals::{LogCheck, Scoped};
 use campfire_net_stepper::ClientKind;
@@ -70,7 +70,7 @@ impl Scenario {
     }
 
     /// The run's outcome, each warning or error it logged a failure of it.
-    pub(crate) fn run(&self) -> Outcome {
+    pub(crate) fn run(&self) -> ScenarioOutcome {
         let Scoped {
             value: mut outcome,
             check,
@@ -82,7 +82,7 @@ impl Scenario {
         outcome
     }
 
-    fn run_unchecked(&self) -> Outcome {
+    fn run_unchecked(&self) -> ScenarioOutcome {
         let mut setup = StepperSetup::with_clients(vec![self.kind; self.clients]);
         setup.seed = self.seed;
         let mut stepper = Stepper::new(FullStack, setup);
@@ -151,7 +151,7 @@ impl Scenario {
             .running = false;
     }
 
-    fn check(&self, stepper: &mut Stepper<FullStack>) -> Outcome {
+    fn check(&self, stepper: &mut Stepper<FullStack>) -> ScenarioOutcome {
         let mut failures = Vec::new();
         self.check_backlogs(stepper, &mut failures);
         let mut digest = DefaultHasher::new();
@@ -195,7 +195,7 @@ impl Scenario {
             }
         }
         stepper.server_tick().0.hash(&mut digest);
-        Outcome {
+        ScenarioOutcome {
             failures,
             digest: digest.finish(),
             dropped,

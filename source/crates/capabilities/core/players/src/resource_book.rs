@@ -10,6 +10,7 @@ use crate::resources_data::ResourcesData;
 /// The names of the players' resources, by resource, which an action's costs and the script view
 /// name them by.
 #[derive(Resource, Debug, Clone)]
+#[component(immutable)]
 pub struct ResourceBook(pub Arc<Names<ResourceId>>);
 
 impl ResourceBook {

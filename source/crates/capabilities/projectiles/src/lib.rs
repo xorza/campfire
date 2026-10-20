@@ -186,7 +186,7 @@ impl Projectiles {
         let Some(at) = target.position(world) else {
             return;
         };
-        let offset = world.resource::<MapBook>().metric.offset(from, at);
+        let offset = world.resource::<MapBook>().metric().offset(from, at);
         let Some(aim) = offset.normalized() else {
             return;
         };
@@ -283,6 +283,7 @@ pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::ShotDamage;
     use campfire_declarations::ByType;
+    use campfire_declarations::internals::BookLoad;
     use campfire_math::{Num, Vec3};
     use campfire_sim::{EntityIndex, MatchRate, Position, StableId};
     use campfire_units::{MapBook, UnitTypeBook, Units};
@@ -303,9 +304,7 @@ pub mod internals {
             let tags = world.resource::<UnitTypeBook>().tags();
             let spec = ProjectileSpec::of(data, tags, rate)
                 .expect("a test's projectile hits tags its match has");
-            world
-                .resource_mut::<ByType<ProjectileSpec>>()
-                .set(unit_type, spec);
+            ByType::<ProjectileSpec>::amend(world, |_, book| book.set(unit_type, spec));
         }
 
         /// Launches a projectile of the line type `unit_type` from `source` at the origin along

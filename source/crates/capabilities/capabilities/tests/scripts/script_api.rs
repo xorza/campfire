@@ -35,7 +35,7 @@ use campfire_stats::{AuraData, ModifierData, ModifierHandle};
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
 use campfire_units::{CollisionData, PoolId, TagData};
-use campfire_values::{ActionId, DamageKind, Named, PathId, TagProperty, Team};
+use campfire_values::{ActionId, DamageKind, Named, PathId, TagProperty, Team, UnitType};
 use campfire_vision::VisionData;
 use serde::Deserialize;
 
@@ -175,9 +175,12 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
     // order bound: a dash goes to a point or after a unit.
     let dash = api.member(ApiHolder::CTX, "dash").unwrap();
     assert_eq!(dash.types[1], ["Vector", "Unit"]);
-    // A form's value says the kind of name it is: a team's from a call or a field, a damage
-    // kind's, an action's, or a path's, which may be none; a number names nothing.
+    // A form's value says the names it is: a team's from a call or a field, a damage kind's, an
+    // action's, or a path's, which may be none; a list of teams', of paths' or of unit types';
+    // a number names nothing.
     let names = |holder, name| api.member(holder, name).unwrap().output.unwrap().names;
+    let one = |kind| Some(GivenNames::one(kind));
+    let list = |kind| Some(GivenNames::list(kind));
     assert_eq!(
         [
             names(ApiHolder::of::<PlayerHandle>(), "team"),
@@ -185,14 +188,22 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
             names(ApiHolder::of::<DamageHandle>(), "kind"),
             names(ApiHolder::of::<HealHandle>(), "action"),
             names(ApiHolder::of::<Unit>(), "path"),
+            names(ApiHolder::CTX, "teams"),
+            names(ApiHolder::CTX, "enemies"),
+            api.returned("paths", MemberKind::Field),
+            names(ApiHolder::of::<Unit>(), "queue"),
             names(ApiHolder::CTX, "damage"),
         ],
         [
-            Some(Team::NAMES),
-            Some(Team::NAMES),
-            Some(DamageKind::NAMES),
-            Some(ActionId::NAMES),
-            Some(PathId::NAMES),
+            one(Team::NAMES),
+            one(Team::NAMES),
+            one(DamageKind::NAMES),
+            one(ActionId::NAMES),
+            one(PathId::NAMES),
+            list(Team::NAMES),
+            list(Team::NAMES),
+            list(PathId::NAMES),
+            list(UnitType::NAMES),
             None,
         ]
     );
@@ -206,7 +217,7 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
             api.returned("team", method),
             api.returned("is_action", method),
         ],
-        [Some(Team::NAMES), Some(ActionId::NAMES), None, None, None]
+        [one(Team::NAMES), one(ActionId::NAMES), None, None, None]
     );
     let timer = api.member(ApiHolder::CTX, "after").unwrap();
     assert_eq!(timer.decl.roles, RoleSet::MODE);
@@ -370,7 +381,7 @@ fn a_binding_records_its_spec_once_and_whole() {
                         ..team.decl
                     },
                     output: Some(FormOutput {
-                        names: Some(PoolId::NAMES),
+                        names: Some(GivenNames::one(PoolId::NAMES)),
                         ..output
                     }),
                     ..team

@@ -8,7 +8,7 @@ use core::time::Duration;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Faults {
     pub(crate) latency: Option<Latency>,
-    pub(crate) loss: Option<Loss>,
+    pub(crate) loss: Option<GilbertLoss>,
     pub(crate) duplicate: Option<Num>,
     pub(crate) reorder: Option<Num>,
     pub(crate) rate: Option<RateLimit>,
@@ -17,7 +17,7 @@ pub(crate) struct Faults {
 
 /// The Simple Gilbert model's mean loss and mean burst length.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Loss {
+pub(crate) struct GilbertLoss {
     pub(crate) mean: Num,
     pub(crate) burst: Num,
 }
@@ -47,7 +47,7 @@ impl Faults {
             latency: millis(&mut rng, 10, 150),
             jitter: millis(&mut rng, 0, 30),
         });
-        let loss = flags[1].then(|| Loss {
+        let loss = flags[1].then(|| GilbertLoss {
             mean: upto(&mut rng, per_mille(100)),
             burst: Num::ONE + upto(&mut rng, Num::int(7)),
         });

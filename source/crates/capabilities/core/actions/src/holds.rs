@@ -2,9 +2,7 @@ use bevy_ecs::change_detection::{DetectChanges, Mut, Ref};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_common::Tick;
-use campfire_sim::{
-    DueIndex, DueUnit, Removals, SimTick, StableId, TimedKept, TimedProcess, TimedRuns, Unpredicted,
-};
+use campfire_sim::{DueIndex, DueUnit, SimTick, StableId, TimedKept, TimedProcess, TimedRuns};
 
 use crate::action_book::ActionBook;
 use crate::action_slots::ActionSlots;
@@ -36,14 +34,13 @@ impl Holds {
     /// whose time came comes back. A slot's times change only when its charges do, as they
     /// replicate. A unit's charges follow from its slots, its times and the book, and from the
     /// tick only as a charge comes back: so a run visits the units whose slots or times changed
-    /// since its last, those a predicting client predicts again, `returned`, whose parts kept
-    /// their ticks while hidden, and those the index of the charges holds due, and pushes each
-    /// it visits at its next charge's time; every unit when the book changed.
+    /// since its last, as a unit a predicting client predicts again counts its parts changed, and
+    /// those the index of the charges holds due, and pushes each it visits at its next charge's
+    /// time; every unit when the book changed.
     pub(super) fn hold_charges(
         actions: Res<'_, ActionBook>,
         tick: Res<'_, SimTick>,
         mut units: Query<'_, '_, (Entity, &StableId, Ref<'_, ActionSlots>, &mut SlotTimes)>,
-        mut returned: Removals<'_, '_, Unpredicted>,
         mut index: ResMut<'_, DueIndex<Charges>>,
         (mut due, mut visits, mut charges): (
             Local<'_, Vec<DueUnit>>,
@@ -57,7 +54,6 @@ impl Holds {
         index.take_due(now, &mut due);
         visits.clear();
         visits.extend(due.iter().map(|unit| unit.entity));
-        visits.extend(returned.read());
         visits.sort_unstable();
         visits.dedup();
         let mut charge = |entity, id, slots: &ActionSlots, times: &mut Mut<'_, SlotTimes>| {

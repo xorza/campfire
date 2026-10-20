@@ -222,7 +222,7 @@ pub(crate) const PROXIES: [Proxy; 6] = [
         lints: &[LINTS[1]],
         methods: &[],
         types: &APP_THREAD_TYPES,
-        dependencies: &["bevy_app", "bevy_ecs", "campfire-schedule"],
+        dependencies: &["bevy_app", "bevy_ecs", "bevy_tasks", "campfire-schedule"],
         names: &["TaskPoolPlugin", "TaskPoolOptions"],
         crates: &[],
     },
@@ -268,7 +268,7 @@ pub(crate) const PROXIES: [Proxy; 6] = [
 ];
 
 /// The bans with no proxy, which nothing may exempt: each lets two conflicting sim systems run in
-/// either order, runs a query on the compute pool, or seeds a map at random.
+/// either order, runs a system's work on the compute pool, or seeds a map at random.
 const UNOWNED_METHODS: [&str; 12] = [
     "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with",
     "bevy_ecs::schedule::Schedule::ignore_ambiguity",
@@ -283,19 +283,22 @@ const UNOWNED_METHODS: [&str; 12] = [
     "bevy_ecs::query::QueryState::par_iter",
     "bevy_ecs::query::QueryState::par_iter_mut",
 ];
-const UNOWNED_TYPES: [&str; 3] = [
+const UNOWNED_TYPES: [&str; 5] = [
     "std::collections::HashMap",
     "std::collections::HashSet",
     "std::hash::RandomState",
+    "bevy_ecs::system::ParallelCommands",
+    "bevy_utils::Parallel",
 ];
 
 /// What names a call of no proxy's group in source, which no proxy's source holds, as its
 /// exemption would cover it.
-const UNOWNED_NAMES: [&str; 7] = [
+const UNOWNED_NAMES: [&str; 8] = [
     "ambiguous_with",
     "ignore_ambiguity",
     "allow_ambiguous",
     "par_iter",
+    "ParallelCommands",
     "HashMap",
     "HashSet",
     "RandomState",
@@ -307,7 +310,7 @@ const UNOWNED_NAMES: [&str; 7] = [
 const THREAD_LOCAL: &str = "std::thread::LocalKey";
 
 /// What names a banned type in source, other than the thread-local one.
-const TYPE_NAMES: [&str; 9] = [
+const TYPE_NAMES: [&str; 11] = [
     "std::fs",
     "tempfile::",
     "TaskPool",
@@ -317,6 +320,8 @@ const TYPE_NAMES: [&str; 9] = [
     "HashMap",
     "HashSet",
     "RandomState",
+    "ParallelCommands",
+    "bevy_utils::Parallel",
 ];
 
 /// The paths of `rules` that the list `list`, `disallowed-methods` or `disallowed-types`, of

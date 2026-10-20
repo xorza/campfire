@@ -23,7 +23,7 @@ fn the_binary_logs_the_last_state_hash() {
     let log = fixture("headless.campfire-log", SessionLog::MAX_FILE_LEN);
     let mut snapshot = fixture("headless.snapshot", StateRegistry::MAX_SNAPSHOT_LEN);
     // A directory of this run's own, which goes when the test ends, passed or failed.
-    let test_dir = TestDir::new_in(env!("CARGO_TARGET_TMPDIR"));
+    let test_dir = TestDir::new();
     let dir = test_dir.root().to_str().unwrap();
     let path = format!("{dir}/headless.log");
     test_dir.write(&path, &log);

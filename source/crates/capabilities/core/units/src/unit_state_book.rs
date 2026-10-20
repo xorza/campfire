@@ -10,6 +10,7 @@ use campfire_values::{NameId, UnitType};
 /// each field's name, type, first value and the clients it goes to. Package data, not state: a
 /// restore loads it from the packages, as a new match does. A clone shares the schemas.
 #[derive(Resource, Debug, Clone)]
+#[component(immutable)]
 pub struct UnitStateBook(Arc<[StateSchema]>);
 
 impl UnitStateBook {

@@ -73,6 +73,20 @@ host = ["spectators", "out", "inventory"]
     assert_eq!(settings.max_spectators(), 0);
     assert!(mode.leaves(Setting::Spectators) && mode.leaves(kind(DataKind::Inventory)));
     assert!(!mode.leaves(kind(DataKind::Resources)));
+    // It writes each setting a mode may set, and what it leaves the host, and reads back to
+    // itself, as the default does.
+    let written = |visibility: &ModeVisibility| {
+        let text = Toml::write(&std::collections::BTreeMap::from([(
+            "visibility",
+            visibility,
+        )]));
+        Toml::parse::<ModeFile>(&text).unwrap().visibility
+    };
+    assert_eq!(written(&mode), mode);
+    assert_eq!(
+        written(&ModeVisibility::default()),
+        ModeVisibility::default()
+    );
 
     // No table: the defaults, which leave the spectators' fog and what a player out of play
     // sees to the host; an empty `host`, nothing.

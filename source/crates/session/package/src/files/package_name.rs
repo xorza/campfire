@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 
 use derive_more::Display;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A package's name, such as `hero-husk`: a lowercase letter, then lowercase letters, digits,
 /// hyphens and underscores. It is one component of a locale file's path, and an avatar's names
@@ -41,6 +41,13 @@ impl PartialEq<&str> for PackageName {
 impl Borrow<str> for PackageName {
     fn borrow(&self) -> &str {
         &self.0
+    }
+}
+
+/// As its text, which `Deserialize` reads.
+impl Serialize for PackageName {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
     }
 }
 

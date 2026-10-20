@@ -35,7 +35,7 @@ pub(crate) mod step;
 pub struct GatherLoop;
 
 /// The parts of a worker the loop reads.
-pub(super) type Worker = (
+pub(super) type WorkerParts = (
     Entity,
     &'static StableId,
     &'static Position,

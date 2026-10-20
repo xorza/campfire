@@ -9,11 +9,13 @@ use campfire_common::Seat;
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
 use campfire_mode::MatchEnd;
 use campfire_players::{HeldOut, PlayersWorld};
+use campfire_production::Production;
 use campfire_protocol::{InputRules, Outcome, SeatPlan, SessionLog};
 use campfire_runner::{Replay, SessionWorld};
 use campfire_sim::StableId;
+use campfire_sim::internals::SimWorldInternals;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::{Dead, Life, Units, UnitsWorld};
+use campfire_units::{Dead, Life, StatusTags, Units, UnitsWorld};
 use campfire_values::{Names, ResourceId, UnitType};
 
 /// The units of the type `name` that player `seat` owns, by stable id.
@@ -199,4 +201,52 @@ fn a_kill_pays_its_killers_player_its_share_of_the_victims_cost_rounded_up() {
     );
     fixed.game_mut().run_tick_alone();
     assert_eq!(moneys(&fixed), [351, 100, 100]);
+}
+
+/// A kill of a site, a building under construction, pays no bounty under Zero Hour's rules, whose
+/// `[bounty]` selects victims of no `constructing` tag at their death, as the original's
+/// `Player::doBountyForKill` pays none for one; the same kill pays its share with no victim filter.
+#[test]
+fn a_kill_of_a_site_under_construction_pays_no_bounty_by_the_victim_filter() {
+    let money_after_a_site_kill = |filtered: bool| {
+        let mut tree = PackageTree::of(TestMode::Skirmish);
+        tree.edit(
+            "test/engine/modes/skirmish/data/units.toml",
+            Edit::Replace(
+                "combat = { on_death = \"despawn\" }",
+                "combat = { on_death = \"despawn\" }\nbounty = { resource = \"money\", cost = 1001 }",
+            ),
+        );
+        tree.edit(
+            "zero-hour/scripts/mode.rhai",
+            Edit::Replace(
+                "fn on_match_start(ctx) {\n",
+                "fn on_match_start(ctx) {\n    ctx.set_bounty_share(ctx.players[0], num(1) / 4);\n",
+            ),
+        );
+        if !filtered {
+            tree.edit("zero-hour/data/rules.toml", Edit::Remove("bounty.victim"));
+        }
+        let rate = NonZeroU32::new(30).unwrap();
+        let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Bot];
+        let mut fixed =
+            FixedSession::planned(tree.load().unwrap(), rate, InputRules::ROOMY, plan).start();
+        let dozer = one(&fixed, "dozer", 0);
+        let center = one(&fixed, "center", 1);
+        let site = StatusTags::from([Production::CONSTRUCTING]);
+        fixed.game_mut().insert_parts(center, site);
+        fixed.game_mut().run_tick_alone();
+        Combat::damage(
+            fixed.game_mut(),
+            Some(dozer),
+            center,
+            10,
+            DamageCause::Effect,
+        );
+        fixed.game_mut().run_tick_alone();
+        money(fixed.game(), 0)
+    };
+    // Each player starts with 100; with no filter the site pays a quarter of 1,001, rounded up.
+    assert_eq!(money_after_a_site_kill(true), 100);
+    assert_eq!(money_after_a_site_kill(false), 100 + 251);
 }

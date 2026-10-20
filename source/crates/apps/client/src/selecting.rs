@@ -15,13 +15,14 @@ use bevy::picking::Pickable;
 use bevy::state::app::AppExtStates;
 use bevy::state::condition::in_state;
 use bevy::ui::{BackgroundColor, BorderColor, Node, PositionType, UiRect, Val};
+use campfire_client_files::Press;
 use campfire_mode::PlayerControl;
 use campfire_sim::{EntityIndex, StableId};
 
+use crate::input_map::InputMap;
 use crate::input_mode::InputMode;
 use crate::own_player::OwnPlayer;
 use crate::pointer::Pointer;
-use crate::press;
 use crate::selection::{Selection, SelectionSystems};
 use crate::view::ViewSystems;
 
@@ -40,7 +41,7 @@ pub(crate) struct SelectingPlugin {
 /// The left button, held down over the match: the point of the window it went down at, where the
 /// cursor is now, and whether it moved far enough to drag.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Press {
+struct HeldPress {
     from: Vec2,
     to: Vec2,
     drags: bool,
@@ -48,7 +49,7 @@ struct Press {
 
 /// The press the left button holds; none while it is up, or held from over the UI.
 #[derive(Resource, Debug, Default)]
-struct Held(Option<Press>);
+struct Held(Option<HeldPress>);
 
 /// The rectangle a drag draws, a node of the UI that takes no clicks.
 #[derive(Component, Debug)]
@@ -123,17 +124,17 @@ impl SelectingPlugin {
         held.0 = pointer
             .cursor()
             .filter(|_| !pointer.is_over_ui())
-            .map(|at| Press {
+            .map(|at| HeldPress {
                 from: at,
                 to: at,
                 drags: false,
             });
     }
 
-    /// Follows the cursor with the held press.
-    fn follow(pointer: Pointer<'_, '_>, mut held: ResMut<'_, Held>) {
+    /// Follows the cursor with the held press, which drags by the mode's press.
+    fn follow(pointer: Pointer<'_, '_>, input: Res<'_, InputMap>, mut held: ResMut<'_, Held>) {
         if let (Some(press), Some(at)) = (held.0.as_mut(), pointer.cursor()) {
-            press.follow(at);
+            press.follow(at, input.press());
         }
     }
 
@@ -168,7 +169,7 @@ impl SelectingPlugin {
         drawn: Single<'_, '_, (&mut Node, &mut Visibility), With<DragBox>>,
     ) {
         let (mut node, mut visibility) = drawn.into_inner();
-        let Some(rect) = held.0.filter(|press| press.drags).map(Press::rect) else {
+        let Some(rect) = held.0.filter(|press| press.drags).map(HeldPress::rect) else {
             visibility.set_if_neq(Visibility::Hidden);
             return;
         };
@@ -180,12 +181,12 @@ impl SelectingPlugin {
     }
 }
 
-impl Press {
-    /// Moves its cursor to `at`; once the press drags, it drags until it ends, wherever the
-    /// cursor goes back to.
-    fn follow(&mut self, at: Vec2) {
+impl HeldPress {
+    /// Moves its cursor to `at`; once the press drags by `rule`, it drags until it ends, wherever
+    /// the cursor goes back to.
+    fn follow(&mut self, at: Vec2, rule: Press) {
         self.to = at;
-        self.drags |= press::drags(self.from, at);
+        self.drags |= rule.drags(self.from, at);
     }
 
     /// The rectangle from where the button went down to the cursor.
@@ -214,24 +215,27 @@ mod tests {
     }
 
     #[test]
-    fn a_press_drags_once_the_cursor_goes_past_four_pixels_and_drags_until_it_ends() {
+    fn a_press_drags_once_the_cursor_goes_past_the_modes_pixels_and_drags_until_it_ends() {
         let from = Vec2::new(100.0, 50.0);
-        let mut press = Press {
+        let held = || HeldPress {
             from,
             to: from,
             drags: false,
         };
-        // 4 px right and 4 px up is a shaking click; 4.5 px down drags.
-        press.follow(Vec2::new(104.0, 46.0));
+        // By the engine's press of 4 px, 4 px right and 4 px up is a shaking click; 4.5 px down
+        // drags.
+        let engine = Press::default();
+        let mut press = held();
+        press.follow(Vec2::new(104.0, 46.0), engine);
         assert!(!press.drags);
-        press.follow(Vec2::new(100.0, 54.5));
+        press.follow(Vec2::new(100.0, 54.5), engine);
         assert!(press.drags);
         // Back over where it went down, it still drags, an empty rectangle.
-        press.follow(from);
+        press.follow(from, engine);
         assert!(press.drags);
         assert_eq!(press.rect(), Rect::from_corners(from, from));
         // Dragged up and left, the rectangle runs from the cursor to where it went down.
-        press.follow(Vec2::new(40.0, 10.0));
+        press.follow(Vec2::new(40.0, 10.0), engine);
         assert_eq!(
             press.rect(),
             Rect {
@@ -239,5 +243,15 @@ mod tests {
                 max: Vec2::new(100.0, 50.0),
             }
         );
+        // A mode's press of 10 px takes the 4.5 px as a click, and drags past 10 px.
+        let wide = Press {
+            drag: 10.0,
+            ..engine
+        };
+        let mut press = held();
+        press.follow(Vec2::new(100.0, 54.5), wide);
+        assert!(!press.drags);
+        press.follow(Vec2::new(110.5, 50.0), wide);
+        assert!(press.drags);
     }
 }

@@ -5,7 +5,7 @@ use campfire_common::StateHash;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageStore;
 use campfire_protocol::{Checkpoint, SessionLog, SessionTerms, SnapshotFingerprint};
-use campfire_runner::{Replay, SessionRules, SessionWorld};
+use campfire_runner::{Replay, ResumeAt, SessionRules, SessionWorld};
 use campfire_sim::{SimWorld, StateRegistry};
 use campfire_store::InputFile;
 use tracing::warn;
@@ -68,7 +68,11 @@ pub fn verify_file(
 
 /// The state hash after the last tick of the log file `log`, replayed with the packages of
 /// `store` its terms name, once the snapshot `snapshots` gives of each checkpoint, if any,
-/// checks: the log decoded, its replay started, each snapshot checked, and every tick replayed.
+/// checks: the log decoded, its replay started, from tick 0 or from the snapshot of the
+/// checkpoint the file starts at, which it needs, each later snapshot checked, and every tick
+/// replayed. A file that starts at a checkpoint trusts only what the server signed there: the
+/// snapshot's fingerprint and its state hash are the record's
+/// (08-sessions.md, A log file may start at a checkpoint).
 pub fn verify_log(
     log: &[u8],
     store: &PackageStore,
@@ -76,12 +80,28 @@ pub fn verify_log(
 ) -> Result<StateHash, VerifyError> {
     let decoded = SessionLog::decode(log).map_err(VerifyError::Decode)?;
     let packages = mode_packages(store, &decoded.header().terms)?;
-    let mut replay = Replay::of(decoded, &packages).map_err(VerifyError::Start)?;
+    let first = decoded
+        .starts_at()
+        .map(|record| (record.segment, record.snapshot));
+    let mut replay = match first {
+        None => Replay::of(decoded, &packages).map_err(VerifyError::Start)?,
+        Some((segment, fingerprint)) => {
+            let snapshot = snapshots
+                .snapshot(fingerprint)
+                .ok_or(VerifyError::MissingSnapshot { segment })??;
+            let at = ResumeAt {
+                segment,
+                snapshot: &snapshot,
+            };
+            Replay::from_checkpoint(decoded, at, &packages).map_err(VerifyError::Resume)?
+        }
+    };
     let records: Vec<Checkpoint> = replay
         .game()
         .session()
         .log()
         .checkpoints()
+        .filter(|record| first.is_none_or(|(segment, _)| record.segment != segment))
         .cloned()
         .collect();
     for record in &records {

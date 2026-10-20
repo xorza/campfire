@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::panic;
 
 use crate::bans::{PROXIES, foreign_names};
-use crate::manifest::{CrateKind, Manifest, WorkspaceManifest};
+use crate::manifest::{CargoManifest, CrateKind, WorkspaceManifest};
 use crate::source_file::SourceFile;
 use crate::workspace::{
     Crate, crate_dependencies, crates, holder, manifests, read, required_closure, sim_closure,
@@ -113,7 +113,7 @@ fn is_engine(name: &str) -> bool {
 /// What breaks the rule of a crate's kind, by crate (02-engine-core.md, Every crate declares its
 /// kind): a crate that names no kind; a problem or IO crate with an engine crate in its required
 /// closure; a glue crate that requires an IO crate; and a library that requires a test crate.
-fn kind_problems(manifests: &[(String, Manifest)]) -> Vec<String> {
+fn kind_problems(manifests: &[(String, CargoManifest)]) -> Vec<String> {
     let kind = |name: &str| {
         manifests
             .iter()
@@ -151,7 +151,7 @@ fn kind_problems(manifests: &[(String, Manifest)]) -> Vec<String> {
 #[test]
 fn each_crate_keeps_the_rule_of_its_kind() {
     let crates = crates();
-    let manifests: Vec<(String, Manifest)> = manifests();
+    let manifests: Vec<(String, CargoManifest)> = manifests();
     assert_eq!(kind_problems(&manifests), Vec::<String>::new());
     // A proxy crate is exactly a proxy of the bans, whose dependencies those pin.
     let mut proxies: Vec<&str> = crates
@@ -185,10 +185,13 @@ fn each_crate_keeps_the_rule_of_its_kind() {
         let text = format!(
             "[package]\nname = \"{name}\"\n\n[package.metadata.campfire]\nkind = \"{kind}\"\n\n[dependencies]\n{dependencies}"
         );
-        (name.to_owned(), Manifest::parse(&text))
+        (name.to_owned(), CargoManifest::parse(&text))
     });
     let mut sample = Vec::from(sample);
-    sample.push(("g".to_owned(), Manifest::parse("[package]\nname = \"g\"\n")));
+    sample.push((
+        "g".to_owned(),
+        CargoManifest::parse("[package]\nname = \"g\"\n"),
+    ));
     assert_eq!(
         kind_problems(&sample),
         [
@@ -261,7 +264,7 @@ fn a_version_is_the_workspaces_and_a_feature_its_users() {
     assert_eq!(manifest.shared_features(), Vec::<&str>::new());
     // A version, a path or `default-features` of a member's own is not inherited; a feature and
     // `optional` are. The table's dependency with its defaults on, or a feature, shares it.
-    let member = Manifest::parse(concat!(
+    let member = CargoManifest::parse(concat!(
         "[package]\nname = \"x\"\n\n[dependencies]\n",
         "a = \"1\"\nb = { workspace = true, default-features = false }\n",
         "c = { workspace = true, path = \"c\" }\n",
@@ -306,7 +309,7 @@ fn each_crates_dir_is_its_package_name_without_the_prefix() {
         dir_name: path.rsplit('/').next().unwrap().to_owned(),
         path: path.to_owned(),
         name: String::new(),
-        manifest: Manifest::default(),
+        manifest: CargoManifest::default(),
     };
     let sample = [krate("crates/a"), krate("crates/a/b"), krate("crates/ab")];
     assert_eq!(nested_crates(&sample), ["crates/a holds crates/a/b"]);
@@ -340,13 +343,13 @@ const TEST_INFRASTRUCTURE: [&str; 7] = [
 ];
 
 /// The entries of `manifest`'s `internals` feature.
-fn internals_entries(manifest: &Manifest) -> &[String] {
+fn internals_entries(manifest: &CargoManifest) -> &[String] {
     manifest.feature("internals").unwrap_or_default()
 }
 
 /// The crates of the workspace each crate of `manifests` builds on, by its name: those it
 /// depends on, and theirs, by its dependencies alone.
-fn dependency_closures(manifests: &[(String, Manifest)]) -> BTreeMap<&str, BTreeSet<&str>> {
+fn dependency_closures(manifests: &[(String, CargoManifest)]) -> BTreeMap<&str, BTreeSet<&str>> {
     let workspace = |other: &str| manifests.iter().any(|(crate_name, _)| crate_name == other);
     manifests
         .iter()
@@ -379,7 +382,7 @@ fn dependency_closures(manifests: &[(String, Manifest)]) -> BTreeMap<&str, BTree
 /// crate its own build lacks, so the test build gains that crate alone and holds no second copy
 /// of one, as a crate that depends on it would bring; or, of a crate with no feature of its own,
 /// as a binary, which cannot dev-depend on itself, a dependency whose helpers its tests read.
-fn internals_problems(manifests: &[(String, Manifest)]) -> Vec<String> {
+fn internals_problems(manifests: &[(String, CargoManifest)]) -> Vec<String> {
     let closures = dependency_closures(manifests);
     let with_internals = |other: &str| {
         manifests.iter().any(|(crate_name, manifest)| {
@@ -437,7 +440,7 @@ fn internals_problems(manifests: &[(String, Manifest)]) -> Vec<String> {
 /// The crates whose `internals` the build of `name`'s tests turns on: each dependency of any kind
 /// that turns it on, and each crate whose `internals` one of those passes it on to. A weak entry,
 /// `x?/internals`, counts for none, as it holds only where another feature turns `x` on.
-fn internals_on(manifests: &[(String, Manifest)], name: &str) -> Vec<String> {
+fn internals_on(manifests: &[(String, CargoManifest)], name: &str) -> Vec<String> {
     let manifest = |crate_name: &str| {
         manifests
             .iter()
@@ -467,7 +470,11 @@ fn internals_on(manifests: &[(String, Manifest)], name: &str) -> Vec<String> {
 
 /// The crates of `manifests` but `name` whose `internals` `text`, code of `name`, reads, and its
 /// tests' build leaves off: such code compiles only where another crate of the build turns it on.
-fn internals_read_off(manifests: &[(String, Manifest)], name: &str, text: &str) -> Vec<String> {
+fn internals_read_off(
+    manifests: &[(String, CargoManifest)],
+    name: &str,
+    text: &str,
+) -> Vec<String> {
     let on = internals_on(manifests, name);
     manifests
         .iter()
@@ -575,7 +582,7 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
         ),
         ("campfire-test-packages", "[dependencies]\nf.workspace = true\n"),
     ]
-    .map(|(name, manifest)| (name.to_owned(), Manifest::parse(manifest)));
+    .map(|(name, manifest)| (name.to_owned(), CargoManifest::parse(manifest)));
     // `a` turns no crate's on; `b` its own; `c` `b`'s; `d` its own, `a`'s through its own, `b`'s,
     // and `campfire-store`'s, which is not among them, and not `c`'s, which `d` passes on weakly.
     let reads = "x::internals::X; a::internals::A; b::internals::B; data::internals::D;";
@@ -618,7 +625,7 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
 
 /// The required dependencies of `manifest` that `production`, its crate's production code, names
 /// nowhere: a dependency that only code a gate holds uses is optional, and `internals` turns it on.
-fn unnamed_dependencies<'a>(manifest: &'a Manifest, production: &str) -> Vec<&'a str> {
+fn unnamed_dependencies<'a>(manifest: &'a CargoManifest, production: &str) -> Vec<&'a str> {
     manifest
         .required()
         .filter(|name| !production.contains(&format!("{}::", name.replace('-', "_"))))
@@ -643,7 +650,7 @@ fn code_by_crate(crates: &[Crate], view: fn(&SourceFile) -> Option<String>) -> V
 /// The optional dependencies of `manifest` that `library`, its crate's library code, names
 /// nowhere: one that only its tests name is a dev-dependency, as cargo's `unused_dependencies`
 /// counts a use by the crate's integration tests.
-fn tests_only_optional<'a>(manifest: &'a Manifest, library: &str) -> Vec<&'a str> {
+fn tests_only_optional<'a>(manifest: &'a CargoManifest, library: &str) -> Vec<&'a str> {
     manifest
         .dependencies()
         .filter(|(_, dependency)| dependency.optional)
@@ -667,7 +674,7 @@ fn a_required_dependency_is_named_by_production_code() {
     assert_eq!(found, Vec::<String>::new());
     // A plain and an inline dependency are found where no code names them; an optional one, and
     // one a path names, are not, nor one only a comment names.
-    let manifest = Manifest::parse(
+    let manifest = CargoManifest::parse(
         "[package]\nname = \"a\"\n\n[dependencies]\nb.workspace = true\nc-d = { workspace = true }\ne = { workspace = true, optional = true }\n",
     );
     assert_eq!(unnamed_dependencies(&manifest, ""), ["b", "c-d"]);
@@ -777,7 +784,7 @@ fn a_dev_dependency_turns_on_internals_that_gate_code() {
         dir_name: name.to_owned(),
         path: format!("crates/{name}"),
         name: name.to_owned(),
-        manifest: Manifest::parse(manifest),
+        manifest: CargoManifest::parse(manifest),
     };
     let with = r#" = { workspace = true, features = ["internals"] }"#;
     let sample = [
@@ -830,7 +837,7 @@ fn the_default_members_are_the_build_that_ships() {
         dir_name: name.to_owned(),
         path: name.to_owned(),
         name: name.to_owned(),
-        manifest: Manifest::parse(&format!(
+        manifest: CargoManifest::parse(&format!(
             "[package]\nname = \"{name}\"\n\n[dependencies]\n{dependencies}"
         )),
     };
@@ -891,7 +898,7 @@ fn an_optional_dependency_is_named_by_library_code() {
     // An optional dependency that only a test names is found: in a `tests/` file, a `tests.rs`, or
     // an item `#[cfg(test)]` holds; one that `internals` code or a bench names is not, nor a
     // required one.
-    let manifest = &Manifest::parse(
+    let manifest = &CargoManifest::parse(
         "[package]\nname = \"a\"\n\n[dependencies]\nb.workspace = true\nc-d = { workspace = true, optional = true }\ne = { workspace = true, optional = true }\n",
     );
     let library = |path: &str, text: &str| {

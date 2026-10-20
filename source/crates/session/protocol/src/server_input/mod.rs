@@ -1,4 +1,4 @@
-use campfire_codec::{Binary, Taken};
+use campfire_codec::{Binary, Decoded};
 use campfire_common::{AfterLeave, Seat, Tick};
 use serde::{Deserialize, Serialize};
 
@@ -136,8 +136,8 @@ impl<'a> ServerInput<'a> {
 
     /// The input at the front of `bytes`, and the bytes after it; an error for bytes that do not
     /// decode, and for a delegation that does not parse.
-    pub(crate) fn take(bytes: &'a [u8]) -> Result<Taken<'a, Self>, ServerInputDecodeError> {
-        let Taken { value: wire, rest } =
+    pub(crate) fn take(bytes: &'a [u8]) -> Result<Decoded<'a, Self>, ServerInputDecodeError> {
+        let Decoded { value: wire, rest } =
             Binary::take::<Wire<'a>>(bytes).map_err(ServerInputDecodeError::Malformed)?;
         let delegation =
             |json: &str| Delegation::parse(json).map_err(ServerInputDecodeError::Delegation);
@@ -179,7 +179,7 @@ impl<'a> ServerInput<'a> {
                 seat: Seat::new(seat),
             },
         };
-        Ok(Taken { value: input, rest })
+        Ok(Decoded { value: input, rest })
     }
 
     fn wire(&self) -> Wire<'_> {

@@ -37,7 +37,7 @@ use campfire_net_bytes::Writer;
 use campfire_net_payload::SendPayload;
 
 use crate::channel_setup::ChannelSetup;
-use crate::sent_packets::{SentMessage, SentPackets};
+use crate::sent_packets::{SentMessage, UnsettledPackets};
 
 /// A message that [`Channels::send`] staged for the next send (11-net-stack/transport.md, A queued
 /// message keeps its channel's type until the flush).
@@ -221,7 +221,7 @@ pub struct Channels {
     /// The packets in flight: the tick of each, and its reliable messages, so that a sender learns
     /// each one's fate. The packet session reports each packet's fate once, so an entry lives until
     /// its packet is delivered or lost.
-    pub(crate) sent: SentPackets,
+    pub(crate) sent: UnsettledPackets,
     /// Messages staged for the next send, in staging order (11-net-stack/transport.md, A link's
     /// `Channels` queue its sends in a `Vec`, in the `Transport` component).
     pub(crate) staged: Vec<StagedMessage>,
@@ -257,7 +257,7 @@ impl Default for Channels {
             fragment_len: FRAGMENT_LEN,
             compression: CompressionSetup::default(),
             receive_budget: DEFAULT_RECEIVE_BUDGET,
-            sent: SentPackets::default(),
+            sent: UnsettledPackets::default(),
             staged: Vec::new(),
             sent_bytes: BenchCounter::default(),
             sent_packets: BenchCounter::default(),

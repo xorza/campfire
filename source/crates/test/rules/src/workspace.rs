@@ -3,7 +3,7 @@ use std::path::Path;
 
 use campfire_store::{DirEntries, DirEntry, EntryKind, InputFile};
 
-use crate::manifest::Manifest;
+use crate::manifest::CargoManifest;
 use crate::source_file::SourceFile;
 use crate::source_files::SourceFiles;
 
@@ -24,7 +24,7 @@ pub(crate) fn source() -> &'static Path {
 /// The dependencies of the crate at `dir`, under `source/crates/`, sorted.
 pub(crate) fn crate_dependencies(dir: &str) -> Vec<String> {
     let path = source().join("crates").join(dir).join("Cargo.toml");
-    let manifest = Manifest::parse(&read(path.to_str().unwrap()));
+    let manifest = CargoManifest::parse(&read(path.to_str().unwrap()));
     let mut names: Vec<String> = manifest
         .dependencies()
         .map(|(name, _)| name.to_owned())
@@ -35,7 +35,7 @@ pub(crate) fn crate_dependencies(dir: &str) -> Vec<String> {
 
 /// The crates of the workspace a match runs on, by name: the release and each crate of the
 /// workspace its required dependencies reach, of `manifests`, the workspace's.
-pub(crate) fn sim_closure(manifests: &[(String, Manifest)]) -> BTreeSet<String> {
+pub(crate) fn sim_closure(manifests: &[(String, CargoManifest)]) -> BTreeSet<String> {
     let workspace = |name: &str| manifests.iter().any(|(crate_name, _)| crate_name == name);
     let mut reached = required_closure(manifests, "campfire-capabilities");
     reached.retain(|name| workspace(name));
@@ -46,7 +46,10 @@ pub(crate) fn sim_closure(manifests: &[(String, Manifest)]) -> BTreeSet<String> 
 /// Every crate the build of `name`, a crate of `manifests`, requires, by name: its required
 /// dependencies, and theirs through each crate of the workspace, as a dependency from outside it
 /// names its own in no manifest here.
-pub(crate) fn required_closure(manifests: &[(String, Manifest)], name: &str) -> BTreeSet<String> {
+pub(crate) fn required_closure(
+    manifests: &[(String, CargoManifest)],
+    name: &str,
+) -> BTreeSet<String> {
     let manifest = |name: &str| {
         manifests
             .iter()
@@ -75,7 +78,7 @@ pub(crate) struct Crate {
     /// Its directory's path under `source/`, as `sources` names a file's.
     pub(crate) path: String,
     pub(crate) name: String,
-    pub(crate) manifest: Manifest,
+    pub(crate) manifest: CargoManifest,
 }
 
 /// The crates of the workspace, by their packages' names: each directory of `crates/` and `checks/`
@@ -90,7 +93,7 @@ pub(crate) fn crates() -> Vec<Crate> {
             .iter()
             .any(|inner: &DirEntry| inner.name == "Cargo.toml")
         {
-            let manifest = Manifest::parse(&read(dir.join("Cargo.toml").to_str().unwrap()));
+            let manifest = CargoManifest::parse(&read(dir.join("Cargo.toml").to_str().unwrap()));
             // Joined by `/` on every OS, as a source file's path is.
             let path: Vec<&str> = dir
                 .strip_prefix(source())
@@ -119,7 +122,7 @@ pub(crate) fn crates() -> Vec<Crate> {
 }
 
 /// The crates of the workspace, each by its package's name, with its manifest.
-pub(crate) fn manifests() -> Vec<(String, Manifest)> {
+pub(crate) fn manifests() -> Vec<(String, CargoManifest)> {
     crates()
         .into_iter()
         .map(|krate| (krate.name, krate.manifest))

@@ -12,6 +12,7 @@ use crate::wall::Wall;
 /// The map's walls, as a placement tests a box against them and the pathing grid blocks its
 /// cells: map data, not state, which the capability that reads the map's walls builds.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[component(immutable)]
 pub struct WallBook(Arc<[Wall]>);
 
 impl WallBook {

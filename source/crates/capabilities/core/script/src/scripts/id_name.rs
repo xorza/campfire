@@ -2,10 +2,11 @@ use std::marker::PhantomData;
 
 use rhai::Dynamic;
 
+use crate::scripts::given_names::GivenNames;
 use crate::scripts::script_output::ScriptOutput;
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
-use campfire_values::{NameKind, Named};
+use campfire_values::Named;
 
 /// The name of an id of type `I`, as a form gives it: a script reads it as text, and the load
 /// checks each literal a script compares it with as a name of `I`'s kind
@@ -19,7 +20,7 @@ pub struct IdName<I> {
 }
 
 impl<I> IdName<I> {
-    pub(crate) const fn new(text: ScriptText) -> Self {
+    pub const fn new(text: ScriptText) -> Self {
         Self {
             text,
             id: PhantomData,
@@ -35,7 +36,7 @@ impl<I> From<IdName<I>> for ScriptText {
 
 impl<I: Named> ScriptOutput for IdName<I> {
     type Value = ScriptText;
-    const NAME_KIND: Option<NameKind> = Some(I::NAMES);
+    const NAMES: Option<GivenNames> = Some(GivenNames::one(I::NAMES));
 
     fn into_engine(self) -> Dynamic {
         ScriptValue::engine(self.text)
@@ -55,7 +56,7 @@ impl<I> From<Option<IdName<I>>> for MaybeName<I> {
 
 impl<I: Named> ScriptOutput for MaybeName<I> {
     type Value = ScriptValue;
-    const NAME_KIND: Option<NameKind> = Some(I::NAMES);
+    const NAMES: Option<GivenNames> = Some(GivenNames::one(I::NAMES));
 
     fn into_engine(self) -> Dynamic {
         self.0.map_or(Dynamic::UNIT, IdName::into_engine)

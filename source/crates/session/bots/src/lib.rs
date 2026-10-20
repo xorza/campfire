@@ -14,7 +14,7 @@ pub use crate::bot_script::error::{BotScriptError, OrderUnsent};
 pub use crate::bot_script::{BotBuffers, BotOrder, BotScript, BotSink, BotUnits, OrderScratch};
 pub use crate::bot_view::{BotView, HeldBotView};
 pub use crate::location::{Location, MarkerLocation};
-pub use crate::named::Named;
+pub use crate::named::NamedRefs;
 pub use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
 pub use crate::order_script::{
     OrderScript, ScriptedInput, ScriptedOrder, ScriptedUnits, ScriptedValue,

@@ -12,7 +12,7 @@ use campfire_actions::{
     ActionSlots, ActionTarget, Actions, ChannelData, ChargeRule, ChargeUpData, ChargesData,
     CostTarget, DeliveryData, EffectData, EffectTo, InProgress, KindSection, LaunchLists,
     ListedEffect, OrderPhase, PipelineField, ProgressDues, RangeField, SlotAim, SlotKind,
-    SlotKindBook, SlotKindData, SlotKinds, SlotRanks, SlotTimes, SlotsMut, Started, Targeting,
+    SlotKindBook, SlotKindData, SlotKinds, SlotRanks, SlotTimes, SlotsMut, StartedOrder, Targeting,
     TimedSlots, Toggle,
 };
 use campfire_areas::{Area, AreaData, AreaInsideData, Areas, LandEffectData};
@@ -46,8 +46,8 @@ use campfire_script::{
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    Capability, EntityIndex, Position, SimComponent, SimRng, SimSystems, SimTick, SimWorld,
-    StableId, StateCopy,
+    Capability, EntityIndex, Position, PredictionStarted, SimComponent, SimRng, SimSystems,
+    SimTick, SimWorld, StableId, StateCopy, Unpredicted,
 };
 use campfire_stats::{
     Hold, IntervalRevival, Level, LiveCarriers, ModifierBook, ModifierClocks, ModifierData,
@@ -797,7 +797,7 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     let started = |tick| {
         Some(InProgress::Order {
             aim,
-            phase: OrderPhase::Started(Started {
+            phase: OrderPhase::Started(StartedOrder {
                 resolves_at: Tick::new(tick),
                 start,
             }),
@@ -1897,6 +1897,8 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
 fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
     let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    // Before any system builds its queries, as a predicting client registers it.
+    Unpredicted::register(&mut game);
     Abilities::load_stats(&mut game);
     // A guard whose shield is Lash Out's damage at its rank: 75, then 100.
     let guard = ModifierData {
@@ -1940,6 +1942,20 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     assert_eq!(shield(&game), None);
     game.step();
     assert_eq!(shield(&game), Some(Num::int(100)));
+    // As on a predicting client, which held the caster as the server sent it: a cooldown that
+    // came while it was held takes the guard away in the first tick it is predicted again, and
+    // not only as the cooldown ends, though the times kept the change tick they had then.
+    game.entity_mut(entity).insert(Unpredicted);
+    let now = game.now();
+    game.get_mut::<SlotTimes>(entity)
+        .unwrap()
+        .cool_down(0, now.after(Ticks::new(100)));
+    game.step();
+    assert_eq!(shield(&game), Some(Num::int(100)));
+    game.entity_mut(entity).remove::<Unpredicted>();
+    game.trigger(PredictionStarted { entity });
+    game.step();
+    assert_eq!(shield(&game), None);
 
     // A weapon's passive holds as well, in a match with no abilities: a ward of 40 from its
     // first tick.
@@ -2056,6 +2072,22 @@ fn on_resolve(ctx, caster, target) {
 }
 "#;
     let action = Abilities::load(&mut game, "lash_out", &lash_out(), marker);
+    // Package 1's own Lash Out, whose script adds package 1's `mark`, loads with the books.
+    let own = r#"
+fn on_resolve(ctx, caster, target) {
+    if caster.has_modifier("mark") { throw "the caster carries no mark of package 1"; }
+    ctx.add_modifier(caster, "mark");
+}
+"#;
+    let script = Units::compile_hooked(&mut game, own).unwrap();
+    let theirs = Actions::load(
+        &mut game,
+        PackageIndex::new(1),
+        "lash_out",
+        &lash_out(),
+        Some(script),
+        5,
+    );
     let caster = Abilities::caster(&mut game, action, 3);
     let entity = game.unit_entity(caster);
     let t = game.resource::<SimTick>().start();
@@ -2080,21 +2112,6 @@ fn on_resolve(ctx, caster, target) {
 
     // A cast of package 1's ability means package 1's names: the caster carries package 0's
     // `mark`, not its own, and the cast adds its own beside it.
-    let own = r#"
-fn on_resolve(ctx, caster, target) {
-    if caster.has_modifier("mark") { throw "the caster carries no mark of package 1"; }
-    ctx.add_modifier(caster, "mark");
-}
-"#;
-    let script = Units::compile_hooked(&mut game, own).unwrap();
-    let theirs = Actions::load(
-        &mut game,
-        PackageIndex::new(1),
-        "lash_out",
-        &lash_out(),
-        Some(script),
-        5,
-    );
     let slots = TimedSlots::new(ActionSlots::new([(
         theirs.unwrap(),
         SlotKind::new(0),
@@ -2480,8 +2497,9 @@ fn on_interval(ctx, m) { throw "interval"; }
             ("pulse", scripted(Some(100), &[])),
         ],
     );
-    game.resource_mut::<CombatBook>()
-        .set_assist_window(Some(Ticks::new(10)));
+    CombatBook::amend(&mut game, |_, book| {
+        book.set_assist_window(Some(Ticks::new(10)));
+    });
     let striker = striker(500).load(&mut game);
     let victim = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
     let origin = Vec3::from((0, 0, 0));

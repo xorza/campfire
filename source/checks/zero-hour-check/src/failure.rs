@@ -12,7 +12,7 @@ use crate::pins::{
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
 /// map that does not load in the imported mode.
 #[derive(Debug, Display)]
-pub(crate) enum Failure {
+pub(crate) enum CheckFailure {
     /// The import's fingerprints differ from the pinned.
     #[display("it gave {_0}")]
     Fingerprints(Box<Differs<Fingerprints>>),

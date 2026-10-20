@@ -27,14 +27,14 @@ use crate::modifiers::Modifiers;
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[component(on_insert = ModifierClocks::pushed)]
 pub struct ModifierClocks {
-    clocks: Vec<Clock>,
+    clocks: Vec<ModifierClock>,
     state: Vec<StateValue>,
 }
 
 /// One instance's clock: when its `on_interval` comes, when its modifier has an interval; what
 /// is left of its shield; and how many values of state it holds in its carrier's buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Clock {
+pub struct ModifierClock {
     pub interval: Option<Interval>,
     pub shield: Option<Num>,
     state: u16,
@@ -42,7 +42,7 @@ pub struct Clock {
 
 /// What a shield spent of an amount, and whether it is empty now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Spent {
+pub struct ShieldSpent {
     pub(crate) amount: Num,
     pub(crate) emptied: bool,
 }
@@ -85,7 +85,7 @@ impl ModifierClocks {
 
     /// Whether an instance has a shield left to absorb damage.
     pub fn is_shielded(&self) -> bool {
-        let left = |clock: &Clock| clock.shield.is_some_and(|shield| shield > Num::ZERO);
+        let left = |clock: &ModifierClock| clock.shield.is_some_and(|shield| shield > Num::ZERO);
         self.clocks.iter().any(left)
     }
 
@@ -179,14 +179,14 @@ impl ModifierClocks {
     }
 
     /// Spends the shield of the instance at `at`, which it has, on `amount`.
-    pub(crate) fn spend_shield(&mut self, at: usize, amount: Num) -> Spent {
+    pub(crate) fn spend_shield(&mut self, at: usize, amount: Num) -> ShieldSpent {
         let shield = self.clocks[at]
             .shield
             .as_mut()
             .expect("an instance with a shield");
         let spent = (*shield).min(amount);
         *shield -= spent;
-        Spent {
+        ShieldSpent {
             amount: spent,
             emptied: *shield == Num::ZERO,
         }
@@ -202,7 +202,7 @@ impl ModifierClocks {
     ) {
         let state = state.into_iter();
         let start = self.state_start(at);
-        let clock = Clock {
+        let clock = ModifierClock {
             interval,
             shield,
             state: u16::try_from(state.len()).expect("a modifier's state fits u16"),
@@ -291,7 +291,7 @@ impl<'de> Deserialize<'de> for ModifierClocks {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
-            clocks: Vec<Clock>,
+            clocks: Vec<ModifierClock>,
             state: Vec<StateValue>,
         }
         let Fields { clocks, state } = Fields::deserialize(deserializer)?;
@@ -318,7 +318,7 @@ pub(crate) mod internals {
     use campfire_values::ModifierId;
 
     use crate::modifiers::Modifiers;
-    use crate::modifiers::modifier_clocks::{Clock, ModifierClocks};
+    use crate::modifiers::modifier_clocks::{ModifierClock, ModifierClocks};
 
     impl ModifierClocks {
         /// The shield of the instance of `id` from `source` of `modifiers`, if it carries one.
@@ -332,7 +332,7 @@ pub(crate) mod internals {
         }
 
         /// The clock of the instance at `at`, to change as a flawed snapshot would.
-        pub fn clock_mut(&mut self, at: usize) -> &mut Clock {
+        pub fn clock_mut(&mut self, at: usize) -> &mut ModifierClock {
             &mut self.clocks[at]
         }
     }

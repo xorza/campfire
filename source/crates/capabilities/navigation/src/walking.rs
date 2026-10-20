@@ -1,7 +1,7 @@
-use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut, Mut};
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
-use bevy_ecs::system::{Commands, If, Local, ParamSet, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, If, Local, Query, Res, ResMut};
 use campfire_deliveries::DashDelivering;
 use campfire_sim::{Keyed, MatchRate, Ordered, Position, StableId, Unpredicted};
 use campfire_units::{Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep};
@@ -302,26 +302,14 @@ impl Walking {
     }
 
     /// Clamps each unit that walks into the bounds: those whose place changed since the last run,
-    /// as a place comes with each unit, and every one when the bounds changed; a unit already
-    /// within them does not change.
+    /// as a place comes with each unit, spawned or restored, and the bounds, a book's, never
+    /// change; a unit already within them does not change.
     pub(super) fn keep_in_bounds(
         map: Res<'_, MapBook>,
-        mut units: ParamSet<
-            '_,
-            '_,
-            (
-                Query<'_, '_, &mut Position, (With<MoveStep>, Changed<Position>)>,
-                Query<'_, '_, &mut Position, With<MoveStep>>,
-            ),
-        >,
+        mut units: Query<'_, '_, &mut Position, (With<MoveStep>, Changed<Position>)>,
     ) {
-        let clamp = |mut position: Mut<'_, Position>| {
+        for mut position in &mut units {
             position.set_if_neq(Position::from(map.bounds.clamp(position.get())));
-        };
-        if map.is_changed() {
-            units.p1().iter_mut().for_each(clamp);
-        } else {
-            units.p0().iter_mut().for_each(clamp);
         }
     }
 }

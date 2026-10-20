@@ -15,7 +15,7 @@ use crate::server_input::ServerInput;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::server_seed::ServerSeed;
 use crate::session_log::applied::Applied;
-use crate::session_log::error::{HeaderError, LogError};
+use crate::session_log::error::{CheckpointError, HeaderError, LogError};
 use crate::session_log::log_entries::Entry;
 use crate::session_log::player_packet::PlayerPacket;
 use crate::session_log::session_header::SessionHeader;
@@ -23,36 +23,20 @@ use crate::session_log::{Bounds, LoggedResult, Past, SessionLog, len, offset, pu
 use crate::session_terms::SessionTerms;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
-pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v6";
+pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v7";
 /// The bytes that start a player's packet and a server input in the file.
 pub(super) const PACKET_ENTRY: u8 = 0;
 pub(super) const SERVER_ENTRY: u8 = 1;
 
 impl SessionLog {
-    /// Writes the log file into `out`, which is cleared first: the tag, then in postcard the
-    /// header; the `u32` number of segments, each as its checkpoint record and the signature over
-    /// it, but the first, which has none, then the `u64` number of its sealed ticks and the
-    /// entries logged before each; the entries logged since the last tick; the revealed seed as
-    /// an option; and the result with its signature as an option. Entries go as a `u32` count,
-    /// then each as a byte, 0 for a player's packet and 1 for a server input. A packet goes as its
-    /// `u32` seat, its inputs as a `u32` count and each input's stamp and payload bytes, and its
-    /// signature; a server input as its postcard encoding and its signature. An input's seq and
-    /// link are not written: a reader computes them from the chain, and the signature covers
-    /// them. The header goes field by field, each seat's start as a byte, 0 for a player, then
-    /// the delegation's JSON, 1 for a bot and 2 for an open seat.
+    /// Writes the log file into `out`, which is cleared first, from the log's first segment: 0,
+    /// or the checkpoint its file started at (05-protocol-spec.md, File).
     pub fn encode(&self, out: &mut Vec<u8>) {
         debug_assert!(
-            self.holds_all(),
-            "a log is written whole only while it forgot nothing, as one with no journal"
+            self.base().is_none_or(|base| base == self.segments.first()),
+            "a log is written whole only while it forgot nothing its file holds"
         );
-        assert!(
-            self.segments.begun_count() == 0,
-            "a log is written once every checkpoint it began has its record"
-        );
-        let start = self.put_segments(out, self.segments.len(), self.next_tick());
-        self.put_entries(out, start..self.entries.len());
-        put(out, &self.revealed);
-        put(out, &self.result);
+        self.encode_from(self.segments.first(), out);
         debug_assert_eq!(
             len(out.len()),
             self.file_len,
@@ -60,21 +44,50 @@ impl SessionLog {
         );
     }
 
-    /// Writes into `out`, which is cleared first, the tag, the header, and the first `segments`
-    /// segments, the last ending before `end`; where the entries of the ticks written end.
-    fn put_segments(&self, out: &mut Vec<u8>, segments: usize, end: Tick) -> u32 {
+    /// Writes into `out`, which is cleared first, the log file that starts at the checkpoint of
+    /// `segment`, a segment the log holds the entries of: the file a host keeps once it prunes
+    /// the segments before, whose replay starts from that checkpoint's snapshot
+    /// (08-sessions.md, A log file may start at a checkpoint).
+    pub fn encode_from(&self, segment: u32, out: &mut Vec<u8>) {
+        assert!(
+            self.segments.begun_count() == 0,
+            "a log is written once every checkpoint it began has its record"
+        );
+        let start = self
+            .segments
+            .get(segment)
+            .expect("a log writes a file from a segment it holds");
+        assert!(
+            self.base().is_none_or(|base| base <= segment),
+            "a log writes a file from a segment whose entries it holds"
+        );
+        let entries = start
+            .tick
+            .get()
+            .checked_sub(1)
+            .map_or(0, |before| self.entries.tick_end(Tick::new(before)));
+        let entries = self.put_segments(out, segment, entries);
+        self.put_entries(out, entries..self.entries.len());
+        put(out, &self.revealed);
+        put(out, &self.result);
+    }
+
+    /// Writes into `out`, which is cleared first, the tag, the header, and the segments from
+    /// `first` on, whose entries start at `start`; where the entries of the ticks written end.
+    fn put_segments(&self, out: &mut Vec<u8>, first: u32, mut start: u32) -> u32 {
         out.clear();
         out.extend_from_slice(LOG_TAG);
         self.put_header(out);
-        put(out, &offset(segments));
-        let mut start = 0;
-        let written = self.segments.first(segments);
-        for (place, segment) in written.iter().enumerate() {
+        put(out, &first);
+        put(out, &(self.segments.last() - first + 1));
+        let next = self.next_tick();
+        let mut written = self.segments.since(first).peekable();
+        while let Some((_, segment)) = written.next() {
             if let Some(logged) = &segment.checkpoint {
                 logged.record.encode(out);
                 put(out, &logged.signature);
             }
-            let end = written.get(place + 1).map_or(end, |next| next.tick);
+            let end = written.peek().map_or(next, |(_, after)| after.tick);
             put(out, &(end.get() - segment.tick.get()));
             for tick in segment.tick.get()..end.get() {
                 let tick_end = self.entries.tick_end(Tick::new(tick));
@@ -101,13 +114,17 @@ impl SessionLog {
         let mut log = Self::within(header, bounds).map_err(LogError::Header)?;
         let mut inputs = Vec::new();
         let mut applied = Vec::new();
+        let first: u32 = take(&mut rest)?;
         let segments: u32 = take(&mut rest)?;
-        if segments == 0 {
-            return Err(LogError::NoSegment);
-        }
-        for segment in 0..segments {
-            if segment > 0 {
-                log.record_checkpoint_at(&mut rest, segment)?;
+        let last = segments
+            .checked_sub(1)
+            .and_then(|more| first.checked_add(more))
+            .ok_or(LogError::NoSegment)?;
+        for segment in first..=last {
+            match segment {
+                0 => {}
+                _ if segment == first => log.start_at(&mut rest, segment)?,
+                _ => log.record_checkpoint_at(&mut rest, segment)?,
             }
             let ticks: u64 = take(&mut rest)?;
             for _ in 0..ticks {
@@ -248,6 +265,25 @@ impl SessionLog {
         let signature = take(rest)?;
         self.record_server(taken.value, &signature, None)
             .map_err(|error| LogError::Server { tick, error })
+    }
+
+    /// Starts the log at the checkpoint of segment `segment`, its file's first, whose record
+    /// `encode` wrote at the front of `rest`, with its signature.
+    fn start_at(&mut self, rest: &mut &[u8], segment: u32) -> Result<(), LogError> {
+        let taken = Checkpoint::take(rest).map_err(|error| match error {
+            CheckpointDecodeError::Malformed(BinaryError::Truncated) => LogError::Truncated,
+            error => LogError::CheckpointDecode { segment, error },
+        })?;
+        *rest = taken.rest;
+        let signature = take(rest)?;
+        if taken.value.segment != segment {
+            return Err(LogError::Checkpoint {
+                segment,
+                error: CheckpointError::Segment,
+            });
+        }
+        self.start_at_checkpoint(taken.value, &signature)
+            .map_err(|error| LogError::Checkpoint { segment, error })
     }
 
     /// Begins the checkpoint of segment `segment`, and records its record that `encode` wrote at

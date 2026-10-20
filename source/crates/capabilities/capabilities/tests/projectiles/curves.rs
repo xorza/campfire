@@ -1,6 +1,7 @@
 use campfire_actions::ShotDamage;
 use campfire_combat::{SCATTER_STREAM, SplashData};
 use campfire_math::SinCos;
+use campfire_units::MapSpace;
 use campfire_units::{CellSplit, Ground, HeightGrid};
 use campfire_values::{ActionId, DamageKind, Rank, RelationSet};
 
@@ -242,11 +243,7 @@ fn a_shell_rises_over_the_highest_ground_on_its_way_and_ends_as_its_life_passes(
     let grid =
         HeightGrid::new([Num::ZERO; 2], Num::int(10), Num::ONE, 2, vec![2, 2, 5, 2]).unwrap();
     let ground = Ground::new(grid, CellSplit::ZeroTwo, None).unwrap();
-    let map = MapBook {
-        ground,
-        ..game.resource::<MapBook>().clone()
-    };
-    game.insert_resource(map);
+    MapBook::amend(&mut game, |_, map| map.space = MapSpace::Planar(ground));
     let volley = Shelling::place(&mut game, &shell(180, Num::ZERO, 0, None), Num::ZERO);
     let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
     let target = Mode::spawn(&mut game, volley.flat, (8, 0, 0), Team::new(1), ());

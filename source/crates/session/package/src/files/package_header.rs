@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use campfire_common::Version;
 use campfire_script::ApiVersion;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::files::dependency::Dependency;
 use crate::files::package_name::PackageName;
@@ -10,7 +10,7 @@ use crate::language::Language;
 
 /// What every manifest starts with: the package's name and version, the package API version it
 /// targets, and the language of its own text.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PackageHeader {
     pub name: PackageName,

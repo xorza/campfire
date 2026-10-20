@@ -2,30 +2,30 @@
 //! there to prove: each capability it names takes part.
 
 use std::any::TypeId;
-use std::collections::BTreeMap;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
-use campfire_actions::{ActionProgress, ActionSlots, ActionTarget};
+use campfire_actions::ActionProgress;
 use campfire_areas::Area;
-use campfire_capabilities::{MatchKind, MatchSetup, Order, Release};
-use campfire_common::{Seat, SegmentSeed};
+use campfire_capabilities::{MatchKind, MatchSetup, Release};
+use campfire_common::SegmentSeed;
 use campfire_declarations::{CapabilitySet, MatchFacts, Role};
 use campfire_harness::{ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
 use campfire_math::{Num, Vec3};
 use campfire_mode::ModeWorld;
-use campfire_orders::OrdersDirective;
 use campfire_production::TrainQueue;
 use campfire_progression::Experience;
 use campfire_projectiles::Projectile;
 use campfire_runner::{MatchBuild, Session, SessionWorld};
 use campfire_script::{ScriptFailures, StateValue};
-use campfire_sim::internals::{Draws, Mutation, SimWorldInternals, StageClock};
+use campfire_sim::internals::{SimWorldInternals, StageClock};
 use campfire_sim::{EntityIndex, MatchRate, Position, SimWorld, StableId};
 use campfire_stats::{Level, Modifiers};
 use campfire_test_packages::TestMode;
 use campfire_units::{Body, Dead, Lifespan, MoveStep, Owner, SeenBy};
 use campfire_values::{Team, TeamSet};
+
+mod sweep;
 
 /// What the match showed over its ticks.
 #[derive(Debug, Default)]
@@ -375,192 +375,6 @@ fn the_proving_match_plays_alike_in_reverse_query_order_and_with_stage_probes() 
         record.tick(fixed.game_mut());
     }
     record.compare("proving");
-}
-
-/// A snapshot of the proving match restores into a match built from its packages, to the same
-/// hash; and a snapshot with any byte flipped never panics as it restores or as it plays on, and
-/// what restores snapshots again to the same bytes: no two byte strings restore to one state.
-#[test]
-fn a_snapshot_restores_and_a_flawed_one_never_panics() {
-    let proving = ProvingMatch::load();
-    let mut fixed = proving.start();
-    // Past the first trains, with heroes, guards, creeps, projectiles and modifiers about.
-    for tick in 0..60 {
-        proving.play_tick(&mut fixed, tick);
-    }
-    let mut target = MatchBuild::test_target(proving.packages(), ProvingMatch::PLAYERS);
-    let mut bytes = Vec::new();
-    fixed.game().snapshot(&mut bytes);
-    target.restore_in_place(&bytes).unwrap();
-    assert_eq!(target.state_hash(), fixed.game().state_hash());
-
-    // Every byte, its low bit flipped, which keeps the most values decodable, so the most restore
-    // and play on: a flip of the high bit or of every bit restores in few of the types the low
-    // bit's reach, and is refused in the same ways. The drawn values below reach each type's edges.
-    let mut again = Vec::new();
-    for at in 0..bytes.len() {
-        let mut flawed = bytes.clone();
-        flawed[at] ^= 0x01;
-        if target.restore_in_place(&flawed).is_ok() {
-            again.clear();
-            target.snapshot(&mut again);
-            assert_eq!(again, flawed, "byte {at} flipped");
-            // A value its checks let through still plays: no system panics on it.
-            for _ in 0..5 {
-                target.step();
-            }
-        }
-    }
-}
-
-/// The draws of each state type: enough to reach each edge of its numbers, few enough to keep
-/// the test fast.
-const DRAWS: usize = 16;
-
-/// The ticks a restored match plays, its first with an order of every slot of every unit.
-const WINDOW: usize = 5;
-
-/// Drawn values of each state type in turn, each a value its decode accepts with every number at
-/// an edge such as the limit, put in place of one holder's in a snapshot of the proving match, or
-/// on a drawn entity when none holds one: each restores or is refused, and what restores plays on
-/// with no panic, its first tick with every unit's every slot ordered, so its actions and their
-/// effects compute on the drawn value. A byte flip seldom makes a value that decodes, so this
-/// reaches the checks the flips do not.
-#[test]
-fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
-    let proving = ProvingMatch::load();
-    let mut fixed = proving.start();
-    for tick in 0..60 {
-        proving.play_tick(&mut fixed, tick);
-    }
-    let mut target = MatchBuild::test_target(proving.packages(), ProvingMatch::PLAYERS);
-    let mut base = Vec::new();
-    fixed.game().snapshot(&mut base);
-    let mut draws = Draws::new(7);
-    let (mut restored, mut refused) = (0, 0);
-    let mut flawed = Vec::new();
-    let mut undrawn = Vec::new();
-    for name in target.state_names() {
-        let mut drawn = false;
-        for _ in 0..DRAWS {
-            target.restore_in_place(&base).unwrap();
-            if !target.scramble_state(name, &mut draws) {
-                continue;
-            }
-            drawn = true;
-            flawed.clear();
-            target.snapshot(&mut flawed);
-            if target.restore_in_place(&flawed).is_ok() {
-                restored += 1;
-                let orders = every_slot_orders(&target);
-                let inputs: Vec<(Seat, &[u8])> = orders
-                    .iter()
-                    .map(|(slot, payload)| (*slot, payload.as_slice()))
-                    .collect();
-                target.step_with(&inputs);
-                for _ in 1..WINDOW {
-                    target.step();
-                }
-            } else {
-                refused += 1;
-            }
-        }
-        if !drawn {
-            undrawn.push(name);
-        }
-    }
-    // Every state type is drawn, those the match holds nowhere among them, and the draws reach
-    // both outcomes, so the checks are exercised, not passed over.
-    assert_eq!(undrawn, Vec::<&str>::new());
-    assert!(
-        restored > 0 && refused > 0,
-        "{restored} restored, {refused} refused"
-    );
-}
-
-/// For each player, an order of each slot of each living unit it controls, at a living unit of
-/// the match: a slot's at the unit as many places past it, by stable id, as the slot's number,
-/// plus one, so the slots of a unit meet different units.
-fn every_slot_orders(world: &World) -> Vec<(Seat, Vec<u8>)> {
-    let units: Vec<_> = MatchUnits::of(world)
-        .all()
-        .filter(|(_, unit)| unit.contains::<Position>() && !unit.contains::<Dead>())
-        .collect();
-    let mut by_player: BTreeMap<Seat, Vec<Order>> = BTreeMap::new();
-    for (at, (id, unit)) in units.iter().enumerate() {
-        let (Some(owner), Some(slots)) = (unit.get::<Owner>(), unit.get::<ActionSlots>()) else {
-            continue;
-        };
-        for slot in 0..slots.iter().count() {
-            let (target, _) = units[(at + slot + 1) % units.len()];
-            let slot = u8::try_from(slot).expect("a unit's slots fit u8");
-            let action = OrdersDirective::Slot {
-                slot,
-                target: ActionTarget::Unit(target),
-            };
-            by_player
-                .entry(owner.seat())
-                .or_default()
-                .push(Order::one(*id, action));
-        }
-    }
-    by_player
-        .into_iter()
-        .map(|(slot, orders)| (slot, Order::payload(&orders)))
-        .collect()
-}
-
-/// The draws of each mutation of each state type: each picks its holder and its other entity anew.
-const MUTATIONS: usize = 4;
-
-/// Each state type's value removed from one holder, moved to an entity that holds none, copied to
-/// one, or with one of its `Some`s as `None`, in a snapshot of the proving match: each restores
-/// or is refused, and what restores plays on with no panic. A value draw keeps each value where
-/// it sat and draws every part anew, so this reaches the checks of where a value may sit, which
-/// parts a holder needs, and an option a system expects to hold.
-#[test]
-fn a_snapshot_with_a_value_moved_or_an_option_dropped_restores_or_is_refused_and_never_panics() {
-    let proving = ProvingMatch::load();
-    let mut fixed = proving.start();
-    for tick in 0..60 {
-        proving.play_tick(&mut fixed, tick);
-    }
-    let mut target = MatchBuild::test_target(proving.packages(), ProvingMatch::PLAYERS);
-    let mut base = Vec::new();
-    fixed.game().snapshot(&mut base);
-    let mut draws = Draws::new(11);
-    let (mut restored, mut refused) = (0, 0);
-    let mut made = [0; Mutation::ALL.len()];
-    let mut flawed = Vec::new();
-    let draws_of = Mutation::ALL
-        .into_iter()
-        .enumerate()
-        .flat_map(|kind| [kind; MUTATIONS]);
-    for name in target.state_names() {
-        for (kind, mutation) in draws_of.clone() {
-            target.restore_in_place(&base).unwrap();
-            if !target.mutate_state(name, &mut draws, mutation) {
-                continue;
-            }
-            made[kind] += 1;
-            flawed.clear();
-            target.snapshot(&mut flawed);
-            if target.restore_in_place(&flawed).is_ok() {
-                restored += 1;
-                for _ in 0..5 {
-                    target.step();
-                }
-            } else {
-                refused += 1;
-            }
-        }
-    }
-    assert!(
-        restored > 0 && refused > 0,
-        "{restored} restored, {refused} refused"
-    );
-    // Each mutation reaches some state type of the match.
-    assert!(made.iter().all(|&count| count > 0), "{made:?}");
 }
 
 #[test]

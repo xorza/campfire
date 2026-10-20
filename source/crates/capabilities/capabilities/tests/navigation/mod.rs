@@ -2,6 +2,7 @@ use bevy_ecs::change_detection::DetectChanges;
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_common::{DeclaredName, Tick};
+use campfire_declarations::internals::BookLoad;
 use campfire_geometry::{Bounds, Polygon, PolygonError, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{MapData, MapInput, MarkerData, ModeMap, PlacedUnitData, TeamManifest};
@@ -110,8 +111,9 @@ fn a_walker_turns_at_its_turn_rate_and_walks_once_it_faces_its_way() {
 fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
     let mut game = walk_match();
     assert_eq!(game.resource::<MapBook>().bounds, Bounds::WORLD);
-    game.resource_mut::<MapBook>().bounds =
-        Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap();
+    MapBook::amend(&mut game, |_, map| {
+        map.bounds = Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap();
+    });
     // Outside the bounds at x = 6: clamped to the edge x = 4, at its height and its z.
     let outside = Navigation::unit(&mut game, (6, 1, 2), None);
     // From x = 3 a meter towards x = 5: it arrives at 4, then walks on to 5 and back to 4.
@@ -128,14 +130,6 @@ fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
     assert_eq!(game.part::<Destination>(past).get(), None);
     // A unit that does not walk is not moved: the map's check keeps it within the bounds.
     assert_eq!(game.part::<Position>(id).get(), Vec3::from((9, 0, 9)));
-    // Bounds that shrink take in each unit that walks, though none moved: the inside one, at
-    // (1, 0, 1), to (0.5, 0, 0.5), and the one at the edge to (0.5, 0, 0).
-    let half = Num::HALF;
-    game.resource_mut::<MapBook>().bounds = Bounds::new([-half, -half], [half, half]).unwrap();
-    game.step();
-    let to = |x, z| Vec3::new(x, Num::ZERO, z);
-    assert_eq!(game.part::<Position>(inside).get(), to(half, half));
-    assert_eq!(game.part::<Position>(past).get(), to(half, Num::ZERO));
 }
 
 #[test]

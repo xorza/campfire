@@ -10,9 +10,9 @@ use ureq::Agent;
 use xmltree::Element;
 
 use crate::control_schema::ControlSchema;
-use crate::error::{MapError, SoapError};
+use crate::error::{PortMapError, SoapError};
 use crate::facing_socket::FacingSocket;
-use crate::gateway::{Ask, MappedBy, Mapping};
+use crate::gateway::{MapAsk, MappedBy, Mapping};
 use crate::router_description::RouterDescription;
 use crate::router_url::RouterUrl;
 use crate::soap_call::SoapCall;
@@ -62,18 +62,18 @@ impl UpnpGateway {
         ssdp: SocketAddr,
         timeout: Duration,
         stop: &AtomicBool,
-    ) -> Result<Self, MapError> {
-        let search = SsdpSearch::send(ssdp, timeout).map_err(MapError::Io)?;
+    ) -> Result<Self, PortMapError> {
+        let search = SsdpSearch::send(ssdp, timeout).map_err(PortMapError::Io)?;
         while let Some(location) = search.next_location() {
             match Self::at(&location, || search.remaining(), stop) {
                 Ok(router) => return Ok(router),
-                Err(MapError::Stopped) => return Err(MapError::Stopped),
+                Err(PortMapError::Stopped) => return Err(PortMapError::Stopped),
                 Err(error) => {
                     debug!(error = %ErrorReport::of(&error), location = %location.whole(), "a UPnP router answered, but its documents did not read");
                 }
             }
         }
-        Err(MapError::NoUpnpRouter)
+        Err(PortMapError::NoUpnpRouter)
     }
 
     /// The router of `announcement`, each of its documents read within `timeout`. The map's stop
@@ -82,7 +82,7 @@ impl UpnpGateway {
         announcement: &SsdpAnnouncement,
         timeout: Duration,
         stop: &AtomicBool,
-    ) -> Result<Self, MapError> {
+    ) -> Result<Self, PortMapError> {
         Self::at(announcement.location(), || timeout, stop)
     }
 
@@ -92,7 +92,7 @@ impl UpnpGateway {
         location: &RouterUrl,
         within: impl Fn() -> Duration,
         stop: &AtomicBool,
-    ) -> Result<Self, MapError> {
+    ) -> Result<Self, PortMapError> {
         // As `igd-next`'s client did, it follows no redirect, so each URL is at the address the
         // router was found at, and it keeps no connection, which a router may close between two
         // requests, and a SOAP action is not sent again.
@@ -102,13 +102,13 @@ impl UpnpGateway {
             .build()
             .new_agent();
         let description = Self::fetch(&http, location, within())?;
-        let description =
-            RouterDescription::parse(&description, location).ok_or(MapError::UpnpDescription)?;
+        let description = RouterDescription::parse(&description, location)
+            .ok_or(PortMapError::UpnpDescription)?;
         running(stop)?;
         let schema = Self::fetch(&http, description.schema(), within())?;
-        let schema = ControlSchema::parse(&schema).ok_or(MapError::UpnpSchema)?;
+        let schema = ControlSchema::parse(&schema).ok_or(PortMapError::UpnpSchema)?;
         let local = FacingSocket::connect(location.address())
-            .map_err(MapError::Io)?
+            .map_err(PortMapError::Io)?
             .host;
         Ok(Self {
             http,
@@ -142,11 +142,11 @@ impl UpnpGateway {
     /// address outside: `address` reads it.
     pub(crate) fn map(
         &self,
-        ask: Ask<'_>,
+        ask: MapAsk<'_>,
         stop: &AtomicBool,
         random: &mut Random,
-    ) -> Result<Mapping, MapError> {
-        let Ask {
+    ) -> Result<Mapping, PortMapError> {
+        let MapAsk {
             internal_port,
             name,
             renewed,
@@ -173,7 +173,7 @@ impl UpnpGateway {
             Err(SoapError::Refused(CONFLICT_IN_MAPPING_ENTRY)) if renewed.is_none() => {
                 running(stop)?;
                 match self.add_any(lease, stop, random) {
-                    Err(MapError::UpnpAddAny(SoapError::Refused(
+                    Err(PortMapError::UpnpAddAny(SoapError::Refused(
                         ONLY_PERMANENT_LEASES_SUPPORTED,
                     ))) => {
                         running(stop)?;
@@ -183,7 +183,7 @@ impl UpnpGateway {
                     added => added,
                 }?
             }
-            Err(error) => return Err(MapError::UpnpAdd(error)),
+            Err(error) => return Err(PortMapError::UpnpAdd(error)),
         };
         Ok(Mapping {
             external_port,
@@ -194,28 +194,28 @@ impl UpnpGateway {
     }
 
     /// The router's address outside.
-    pub(crate) fn address(&self) -> Result<Ipv4Addr, MapError> {
+    pub(crate) fn address(&self) -> Result<Ipv4Addr, PortMapError> {
         let reply = self
             .call("GetExternalIPAddress", &[], |_| None)
-            .map_err(MapError::UpnpExternal)?;
+            .map_err(PortMapError::UpnpExternal)?;
         let address = reply
             .get_child("NewExternalIPAddress")
             .and_then(Element::get_text)
             .and_then(|address| address.trim().parse().ok())
-            .ok_or(MapError::UpnpExternal(SoapError::Reply))?;
+            .ok_or(PortMapError::UpnpExternal(SoapError::Reply))?;
         match address {
             IpAddr::V4(address) => Ok(address),
-            address @ IpAddr::V6(_) => Err(MapError::ExternalNotIpv4(address)),
+            address @ IpAddr::V6(_) => Err(PortMapError::ExternalNotIpv4(address)),
         }
     }
 
     /// Deletes `mapping`, which this router granted, waiting at most `ACTION_TIMEOUT`.
-    pub(crate) fn delete(&self, mapping: &Mapping) -> Result<(), MapError> {
+    pub(crate) fn delete(&self, mapping: &Mapping) -> Result<(), PortMapError> {
         debug_assert_eq!(mapping.by, MappedBy::Upnp, "a mapping of this router");
         let arguments = self
             .schema
             .arguments("DeletePortMapping")
-            .ok_or(MapError::UpnpRemove(SoapError::Unsupported))?;
+            .ok_or(PortMapError::UpnpRemove(SoapError::Unsupported))?;
         let external_port = mapping.external_port.to_string();
         self.call("DeletePortMapping", arguments, |name| match name {
             "NewRemoteHost" => Some(String::new()),
@@ -223,7 +223,7 @@ impl UpnpGateway {
             "NewProtocol" => Some(String::from("UDP")),
             _ => None,
         })
-        .map_err(MapError::UpnpRemove)?;
+        .map_err(PortMapError::UpnpRemove)?;
         Ok(())
     }
 
@@ -235,20 +235,20 @@ impl UpnpGateway {
         lease: Lease<'_>,
         stop: &AtomicBool,
         random: &mut Random,
-    ) -> Result<u16, MapError> {
+    ) -> Result<u16, PortMapError> {
         if let Some(arguments) = self.schema.arguments("AddAnyPortMapping") {
             let wished = Self::draw(random);
             let reply = self
                 .call("AddAnyPortMapping", arguments, |name| {
                     self.value(name, wished, lease)
                 })
-                .map_err(MapError::UpnpAddAny)?;
+                .map_err(PortMapError::UpnpAddAny)?;
             return reply
                 .get_child("NewReservedPort")
                 .and_then(Element::get_text)
                 .and_then(|port| port.trim().parse().ok())
                 .filter(|&port| port != 0)
-                .ok_or(MapError::UpnpAddAny(SoapError::Reply));
+                .ok_or(PortMapError::UpnpAddAny(SoapError::Reply));
         }
         for _ in 0..DRAWS {
             running(stop)?;
@@ -261,12 +261,12 @@ impl UpnpGateway {
                     return self
                         .add(lease.internal_port, lease)
                         .map(|()| lease.internal_port)
-                        .map_err(MapError::UpnpAddAny);
+                        .map_err(PortMapError::UpnpAddAny);
                 }
-                Err(error) => return Err(MapError::UpnpAddAny(error)),
+                Err(error) => return Err(PortMapError::UpnpAddAny(error)),
             }
         }
-        Err(MapError::UpnpAddAny(SoapError::Refused(
+        Err(PortMapError::UpnpAddAny(SoapError::Refused(
             CONFLICT_IN_MAPPING_ENTRY,
         )))
     }
@@ -338,9 +338,9 @@ impl UpnpGateway {
 }
 
 /// An error once the map stopped, which ends a turn between two requests.
-fn running(stop: &AtomicBool) -> Result<(), MapError> {
+fn running(stop: &AtomicBool) -> Result<(), PortMapError> {
     if stop.load(Ordering::SeqCst) {
-        return Err(MapError::Stopped);
+        return Err(PortMapError::Stopped);
     }
     Ok(())
 }

@@ -1,7 +1,7 @@
 use campfire_values::PackagePath;
 use derive_more::Display;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A dependency's path in the workspace, relative to the mode's manifest: names joined by `/`,
 /// each `..` or a name a package path takes, so it names no root, no drive and no device, and
@@ -21,6 +21,13 @@ impl DependencyPath {
     /// Its names, in order.
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.0.split('/')
+    }
+}
+
+/// As its text, which `Deserialize` reads.
+impl Serialize for DependencyPath {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
     }
 }
 

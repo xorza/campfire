@@ -3244,6 +3244,27 @@ static MAP_FLAWS: &[Flaw] = &[
         MODE,
         |problem| matches!(problem, LoadProblem::Unknown { of: TimerId::NAMES, name, .. } if name == "pick_ends"),
     ),
+    // A literal compared with the name a hook passes, or found in a list of names, is a name of
+    // its kind: `on_timer`'s timer, and a unit type in a queue.
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(r#"if name == "pick_end" {"#, r#"if name == "pick_ends" {"#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: TimerId::NAMES, name, .. } if name == "pick_ends"),
+    ),
+    Flaw {
+        file: MODE_SCRIPT,
+        edit: Edit::Replace(
+            r#"    if name == "pick_end" {"#,
+            r#"    for unit in ctx.all_avatars() {
+        if "melee_creeps" in unit.queue {}
+    }
+    if name == "pick_end" {"#,
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, name, .. } if name == "melee_creeps"),
+    },
     flaw(
         "modes/3v3/scripts/mode.rhai",
         Edit::Replace(
@@ -3836,6 +3857,14 @@ fn every_flaw_of_the_data_or_a_delivery_fails_its_load_with_its_own_problem() {
 #[test]
 fn every_flaw_of_a_script_fails_its_load_with_its_own_problem() {
     fails_each(SCRIPT_FLAWS);
+    // A name the check cannot follow, a variable its function binds by `let`, loads.
+    let unfollowed = Edit::Replace(
+        r#"    if name == "pick_end" {"#,
+        r#"    let timer = name;
+    if timer == "pick_ends" {}
+    if name == "pick_end" {"#,
+    );
+    assert!(load(&edited([(MODE_SCRIPT, unfollowed)])).is_ok());
 }
 
 #[test]

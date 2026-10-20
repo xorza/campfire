@@ -13,6 +13,7 @@ use crate::error::ItemError;
 /// amount holds, and each costs at least its components. A clone shares the items, as a write
 /// that reads them holds them.
 #[derive(Resource, Debug, Clone, PartialEq, Eq)]
+#[component(immutable)]
 pub struct ItemBook(Arc<Items>);
 
 /// The items of an `ItemBook`.

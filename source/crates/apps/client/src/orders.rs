@@ -25,7 +25,7 @@ use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_units::{GroundPoint, MoveStep};
 use campfire_values::Team;
 
-use crate::input_map::{Act, InputMap, Row};
+use crate::input_map::{Act, ChordRow, InputMap};
 use crate::input_mode::InputMode;
 use crate::own_player::OwnPlayer;
 use crate::pointer::{Pointed, Pointer};
@@ -139,7 +139,8 @@ impl OrdersPlugin {
                 .zip(input.row(row))
                 .map(move |(slot, chord)| (slot, chord, key_use))
         };
-        let abilities = row(Row::Cast, KeyUse::Cast).chain(row(Row::Learn, KeyUse::Learn));
+        let abilities =
+            row(ChordRow::Cast, KeyUse::Cast).chain(row(ChordRow::Learn, KeyUse::Learn));
         // An item chord past the inventory's slots casts nothing.
         let inventory = group.map(|group| {
             let kind = group.kind();
@@ -147,7 +148,7 @@ impl OrdersPlugin {
             (slots.first_of(kind), count)
         });
         let items = inventory.into_iter().flat_map(|(first, count)| {
-            let chords = input.row(Row::Items);
+            let chords = input.row(ChordRow::Items);
             (first..)
                 .zip(&chords[..count.min(chords.len())])
                 .map(|(slot, chord)| (slot, chord, KeyUse::Cast))
@@ -230,7 +231,7 @@ impl OrdersPlugin {
 
     /// Whether a chord of a cast, a learn or an item went down this frame.
     fn cast_pressed(keys: Res<'_, ButtonInput<KeyCode>>, input: Res<'_, InputMap>) -> bool {
-        [Row::Cast, Row::Learn, Row::Items]
+        [ChordRow::Cast, ChordRow::Learn, ChordRow::Items]
             .into_iter()
             .flat_map(|row| input.row(row))
             .any(|&chord| InputMap::chord_pressed(chord, &keys))

@@ -1,6 +1,6 @@
 use derive_more::Display;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A version of the package API, the script API and the schemas of the data files together, as
 /// `major.minor`: a name or a field the API adds raises the minor, and one it removes or changes
@@ -39,6 +39,13 @@ impl ApiVersion {
     /// has, with the same meaning.
     pub const fn loads(self, package: Self) -> bool {
         package.major == self.major && package.minor <= self.minor
+    }
+}
+
+/// As `major.minor`, which `Deserialize` reads.
+impl Serialize for ApiVersion {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
     }
 }
 

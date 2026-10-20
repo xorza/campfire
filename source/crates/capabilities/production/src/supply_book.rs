@@ -6,6 +6,7 @@ use crate::mode_supply_data::ModeSupplyData;
 
 /// The mode's `[supply]`; none in a mode that counts no supply. Package data, not state.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+#[component(immutable)]
 pub struct SupplyBook(pub Option<ModeSupplyData>);
 
 impl SupplyBook {

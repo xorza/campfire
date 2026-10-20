@@ -3,7 +3,7 @@ use std::path::Path;
 
 use bevy_math::UVec2;
 use campfire_client_files::{
-    CameraFile, ClientObjects, ClientUnits, HudFile, MapConditions, MapLights, ShownBars,
+    CameraFile, ClientObjects, ClientUnits, HudFile, KeysFile, MapConditions, MapLights, ShownBars,
     TeamColors, TerrainFile,
 };
 use campfire_codec::Toml;
@@ -12,7 +12,7 @@ use campfire_math::Num;
 use campfire_package_disk::{PackageDir, PackageWriter, WriteError};
 use campfire_store::DurableDir;
 use campfire_units::HeightGrid;
-use campfire_values::PackagePath;
+use campfire_values::{PackagePath, Speed};
 
 use crate::texture::dds_file::DdsFile;
 use crate::texture::tga_file::{TgaAlpha, TgaFile, TgaHeader};
@@ -22,7 +22,7 @@ use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
-use crate::zero_hour::format::map::map_file::MapFile;
+use crate::zero_hour::format::map::map_file::ZeroHourMap;
 use crate::zero_hour::format::map::terrain::TextureClass;
 use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::game_version::GameVersion;
@@ -62,6 +62,7 @@ pub(crate) mod model_assets;
 pub(crate) mod model_import;
 pub(crate) mod model_nodes;
 pub(crate) mod model_writer;
+mod press_import;
 pub(crate) mod production_import;
 pub(crate) mod rules_package;
 pub(crate) mod skirmish_start;
@@ -138,10 +139,11 @@ impl ZeroHour {
         let rules = Self::write_rules(&out.join(Self::RULES))?;
         let mut writer = PackageWriter::create(&out.join(Self::GAME))?;
         let game = ZeroHourRules::read(self)?;
-        let camera = camera_import::camera_file(&game.game_data, &game.mouse)
-            .ok_or(ZeroHourError::Camera)?;
+        let camera = camera_import::camera_file(&game.game_data).ok_or(ZeroHourError::Camera)?;
         let text = Toml::write(&camera);
         writer.write(CameraFile::path(), text.as_bytes())?;
+        let keys = press_import::keys_file(&game.mouse);
+        writer.write(KeysFile::path(), Toml::write(&keys).as_bytes())?;
         // The game draws a bar only over a unit selected or under the cursor
         // (`Drawable::drawHealthBar`).
         let hud = HudFile {
@@ -181,7 +183,7 @@ impl ZeroHour {
                 map: map.path.to_string(),
                 error,
             };
-            let file = MapFile::read(&bytes).map_err(|error| in_map(error.into()))?;
+            let file = ZeroHourMap::read(&bytes).map_err(|error| in_map(error.into()))?;
             let textures = file
                 .terrain
                 .classes
@@ -264,8 +266,11 @@ impl ZeroHour {
         });
         writer.write(fixed("data/units.toml"), units.text.as_bytes())?;
         // A mode whose types drive none caps no speed it moves at; 1 m a second is as good as any.
-        let max_move_speed = units.max_speed.filter(|speed| *speed > Num::ZERO);
-        let manifest = rules_package::mode_manifest(max_move_speed.unwrap_or(Num::ONE));
+        let max_move_speed = units
+            .max_speed
+            .and_then(Speed::new)
+            .unwrap_or(Speed::new(Num::ONE).expect("1 m a second is a speed"));
+        let manifest = Toml::write(&rules_package::mode_manifest(max_move_speed));
         writer.write(fixed("manifest.toml"), manifest.as_bytes())?;
         let fingerprint = writer.finish()?;
         // The engine's own load of each map is the check of what the import wrote, so it

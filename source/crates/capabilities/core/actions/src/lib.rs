@@ -15,7 +15,7 @@ use campfire_common::EnumAll;
 use campfire_declarations::{
     ByType, Declarations, InstallCx, Module, ModuleSystems, NamedScripts, NamedTexts, SetPlace,
 };
-use campfire_sim::{Capability, SimSystems, Unpredicted};
+use campfire_sim::{Capability, SimSystems};
 use campfire_units::{BodyUnit, UnitsSystems};
 
 use crate::actions_api::ActionsApi;
@@ -89,9 +89,11 @@ mod type_slots_data;
 
 pub use crate::action::{Action, Aim, Passive};
 pub use crate::action_book::{ActionBook, PackageAction};
-pub use crate::action_call::{ActionCall, ResolvedCast, Started};
+pub use crate::action_call::{ActionCall, ResolvedCast, StartedOrder};
 pub use crate::action_data::error::ActionField;
-pub use crate::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
+pub use crate::action_data::{
+    ActionData, ActionKeys, ChannelData, ChargeUpData, ChargesData, Toggle,
+};
 pub use crate::action_kind::ActionKind;
 pub use crate::action_load::ActionLoad;
 pub use crate::action_names::ActionNames;
@@ -258,7 +260,6 @@ impl Module for Actions {
         d.section::<ActionsData>();
         d.section::<TypeSlotsData>();
         d.section::<SlotKinds>();
-        d.removals::<Unpredicted>();
         d.component::<ActionSlots>();
         d.component::<ActionProgress>();
         d.component::<SlotTimes>();
@@ -308,7 +309,7 @@ pub mod internals {
 
     use bevy_ecs::world::World;
     use campfire_common::{DeclaredName, Ticks};
-    use campfire_declarations::Book;
+    use campfire_declarations::internals::BookLoad;
     use campfire_math::Num;
     use campfire_players::ResourceAmount;
     use campfire_script::{HookSet, MatchNames, UnknownName};
@@ -409,10 +410,7 @@ pub mod internals {
         /// Adds `action`, named `name` in its package, to the match's action book, and shares
         /// the book with the script view.
         pub fn push(world: &mut World, name: &str, action: Action) -> ActionId {
-            let mut book = world.resource_mut::<ActionBook>();
-            let id = book.push(name, action);
-            ActionBook::share_in(world);
-            id
+            ActionBook::amend(world, |_, book| book.push(name, action))
         }
     }
 

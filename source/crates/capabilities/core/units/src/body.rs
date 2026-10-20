@@ -138,7 +138,7 @@ impl SimComponent for Body {
     // a planar map, as the load gives one, which a spatial map's measures do not take.
     fn check(&self, world: &World, _: Entity) -> bool {
         matches!(self.shape, Shape::Circle(_))
-            || world.resource::<MapBook>().metric == Metric::Planar
+            || world.resource::<MapBook>().metric() == Metric::Planar
     }
 }
 
@@ -224,6 +224,7 @@ mod tests {
     use crate::facing::Facing;
     use crate::ground::{CellSplit, Ground};
     use crate::height_grid::HeightGrid;
+    use crate::map_space::MapSpace;
 
     #[test]
     fn a_body_is_a_circle_up_to_2048_m_or_a_box_on_a_layer() {
@@ -259,7 +260,7 @@ mod tests {
         let on = |metric| {
             let mut world = World::new();
             world.insert_resource(MapBook {
-                metric,
+                space: MapSpace::from(metric),
                 ..MapBook::default()
             });
             [circle, boxed].map(|body| body.check(&world, Entity::PLACEHOLDER))
@@ -313,12 +314,14 @@ mod tests {
         // A ground 4 m up everywhere; a body of radius 1 and height 2 at 0.5 m above it.
         let grid = HeightGrid::new([Num::ZERO; 2], Num::int(10), Num::ONE, 2, vec![4; 4]).unwrap();
         let ground = Ground::new(grid, CellSplit::ZeroTwo, None).unwrap();
-        let map = |metric| MapBook {
-            metric,
-            ground: ground.clone(),
+        let planar = MapBook {
+            space: MapSpace::Planar(ground),
             ..MapBook::default()
         };
-        let [planar, spatial] = [map(Metric::Planar), map(Metric::Spatial)];
+        let spatial = MapBook {
+            space: MapSpace::Spatial,
+            ..MapBook::default()
+        };
         let tall = Body::new(Num::ONE).unwrap().raised(Num::int(2)).unwrap();
         let position = Vec3::new(Num::int(5), Num::HALF, Num::int(5));
         let at = |y: Num| Vec3::new(position.x, y, position.z);

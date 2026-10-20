@@ -14,4 +14,4 @@ pub(crate) enum FloatError {
 /// Bytes of the original that end inside a field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("it ends inside a field")]
-pub(crate) struct Short;
+pub(crate) struct CutShort;

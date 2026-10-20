@@ -12,7 +12,7 @@ use campfire_sim::{SimWorld, StateDelta, StateRegistry};
 use crate::error::SaveRefusal;
 use crate::events::checkpoint_taken::CheckpointTaken;
 use crate::events::seeds_ran_out::SeedsRanOut;
-use crate::faults::Faults;
+use crate::faults::WorkerFaults;
 use crate::faults::error::SnapshotWriteError;
 use crate::faults::fault::Fault;
 use crate::hosting::Hosting;
@@ -91,7 +91,7 @@ impl Checkpoints {
     pub(crate) fn end(
         mut checkpoints: ResMut<'_, Self>,
         mut session: ResMut<'_, Session>,
-        mut faults: ResMut<'_, Faults>,
+        mut faults: ResMut<'_, WorkerFaults>,
     ) {
         let returned = checkpoints.thread.take();
         if let Err(error) = Self::record(&mut session, returned) {
@@ -142,7 +142,7 @@ impl Checkpoints {
             SaveCommand::LoadLatest => {
                 if let Err(error) = Self::settle(world) {
                     world
-                        .resource_mut::<Faults>()
+                        .resource_mut::<WorkerFaults>()
                         .report(Fault::Snapshot(error));
                     return Ok(None);
                 }

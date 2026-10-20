@@ -5,14 +5,14 @@ use campfire_values::NameId;
 /// The cells of the pathing grid the map's walls block, layer by layer, one bit a cell: derived
 /// from the map once, as the walls never change.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct Terrain {
+pub(crate) struct WallGrid {
     /// Words of cells a layer.
     words: usize,
     /// Each layer's blocked cells, from the first layer to the last a wall stands on.
     blocked: Vec<u64>,
 }
 
-impl Terrain {
+impl WallGrid {
     /// The cells of `grid` that `walls` block.
     pub(crate) fn new(grid: &Grid, walls: &[Wall]) -> Self {
         let words = grid.cells().div_ceil(64);
@@ -45,7 +45,7 @@ mod tests {
     use campfire_math::{Num, Vec3};
     use campfire_units::{Layer, Wall};
 
-    use crate::terrain::Terrain;
+    use crate::terrain::WallGrid;
 
     #[test]
     fn the_walls_split_a_scene_into_two_lanes_and_a_jungle() {
@@ -60,7 +60,7 @@ mod tests {
                 area,
             })
             .collect();
-        let terrain = Terrain::new(&grid, &walls);
+        let terrain = WallGrid::new(&grid, &walls);
         let blocked = terrain.blocked(Layer::FIRST).unwrap();
         let at = |x: i64, z: i64| {
             let position = Vec3::new(Num::int(x) + Num::HALF, Num::ZERO, Num::int(z) + Num::HALF);

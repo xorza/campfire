@@ -5,7 +5,6 @@ use bevy_math::Vec2;
 use campfire_client_files::{CameraFile, CameraHeight};
 
 use crate::zero_hour::format::ini::game_data_ini::GameDataIni;
-use crate::zero_hour::format::ini::mouse_ini::MouseIni;
 
 /// The game's frames a second, which its camera's speeds count by.
 const FRAMES: f32 = 30.0;
@@ -29,22 +28,15 @@ const DRAG_TURN: f32 = 0.01;
 /// The pixels from the screen's edge within which the cursor scrolls: `LookAtTranslator`'s
 /// `edgeScrollSize`.
 const EDGE: f32 = 3.0;
-/// The milliseconds of a second.
-const MILLISECONDS: f32 = 1000.0;
 
 /// The player's camera of `data`, as the game's tactical view moves it at its start, its zoom at
-/// its most, a press of `mouse`'s `DragToleranceMS` or less that does not drag a click: a key or
-/// the screen's edge scrolls it `SCROLL_PIXELS` a frame times the axis's factor and the default
+/// its most: a key or the screen's edge scrolls it `SCROLL_PIXELS` a frame times the axis's factor and the default
 /// scroll factor, each pixel `SCROLL_RESOLUTION` pixels of the view plane, whose width at depth 1
 /// is `2 · tan(fov / 2)` across `DISPLAY_WIDTH` pixels.
 ///
 /// The pitch is clamped to 0.1°–89.9° and the most height raised to the least, as the view takes
 /// them; none for a camera the client takes no other way.
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "a click's milliseconds are far below 2²⁴, exact in f32"
-)]
-pub(crate) fn camera_file(data: &GameDataIni, mouse: &MouseIni) -> Option<CameraFile> {
+pub(crate) fn camera_file(data: &GameDataIni) -> Option<CameraFile> {
     let plane = 2.0 * TAN_HALF_FIELD / DISPLAY_WIDTH;
     let speed = |factor: f32| {
         factor * SCROLL_PIXELS * data.default_scroll * SCROLL_RESOLUTION * plane * FRAMES
@@ -63,7 +55,6 @@ pub(crate) fn camera_file(data: &GameDataIni, mouse: &MouseIni) -> Option<Camera
         zoom_notch: ZOOM_HEIGHT,
         zoom_key: ZOOM_HEIGHT * FRAMES,
         edge: EDGE,
-        click: mouse.drag_tolerance_ms as f32 / MILLISECONDS,
     }
     .checked()
 }
@@ -96,10 +87,7 @@ mod tests {
         shipped
             .read(b"GameData\n CameraPitch = 37.5\n MaxCameraHeight = 310.0\n MinCameraHeight = 120.0\n HorizontalScrollSpeedFactor = 1.6;\n VerticalScrollSpeedFactor = 2.0\nEnd\n")
             .unwrap();
-        let mouse = MouseIni {
-            drag_tolerance_ms: 167,
-        };
-        let camera = camera_file(&shipped, &mouse).unwrap();
+        let camera = camera_file(&shipped).unwrap();
         assert_eq!(
             (camera.pitch, camera.yaw, camera.field_of_view),
             (37.5, 0.0, 50.0)
@@ -120,12 +108,7 @@ mod tests {
             (camera.drag_turn, camera.zoom_notch, camera.zoom_key),
             (0.01, 10.0, 300.0)
         );
-        // The edge's 3 pixels, and `Mouse.ini`'s 167 ms as seconds, 0.167 rounded once to its
-        // nearest f32.
-        assert_eq!((camera.edge, camera.click), (3.0, 0.167));
-        let slow = MouseIni {
-            drag_tolerance_ms: 500,
-        };
-        assert_eq!(camera_file(&shipped, &slow).unwrap().click, 0.5);
+        // The edge's 3 pixels.
+        assert_eq!(camera.edge, 3.0);
     }
 }

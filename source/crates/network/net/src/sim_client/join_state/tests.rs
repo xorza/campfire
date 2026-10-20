@@ -42,7 +42,7 @@ fn signer() -> Signer {
 }
 
 /// Terms the client can play, with `change` applied.
-fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
+fn offer(change: impl FnOnce(&mut SessionTerms)) -> SessionOffer {
     let packages = lane();
     let rules = SessionRules::of(&packages);
     let mut terms = rules
@@ -57,7 +57,7 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
         })
         .unwrap();
     change(&mut terms);
-    Offer {
+    SessionOffer {
         terms: Arc::new(terms),
         times: SessionTimes::DEFAULT,
         challenge: ConnectChallenge::new([9; 32]),
@@ -124,7 +124,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
             state.answer(&offer(|_| {}), &BINDING, &mut signer, TestKey::NOW),
             None
         );
-        assert_eq!(state.start(START, Hosting::Remote), Started::No);
+        assert_eq!(state.start(START, Hosting::Remote), StartEffect::No);
     }
 
     // A fitting offer: the delegation names the offered session, lets session key 2 sign until a
@@ -133,7 +133,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     let mut state = waiting(TICK_HZ);
     assert_eq!(
         state.start(START, Hosting::Remote),
-        Started::No,
+        StartEffect::No,
         "no match starts before the answer"
     );
     let offer = offer(|_| {});
@@ -180,9 +180,9 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     // starts from the delegation's id.
     assert_eq!(
         state.start(START, Hosting::Remote),
-        Started::Playing { discarded: 0 }
+        StartEffect::Playing { discarded: 0 }
     );
-    assert_eq!(state.start(START, Hosting::Remote), Started::No);
+    assert_eq!(state.start(START, Hosting::Remote), StartEffect::No);
     assert_eq!(
         (state.seat(), state.team()),
         (Some(Seat::new(1)), Some(Team::new(1)))
@@ -257,7 +257,7 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
     };
     assert_eq!(
         state.start(resumed, Hosting::Remote),
-        Started::Playing { discarded: 1 }
+        StartEffect::Playing { discarded: 1 }
     );
     let playing = state.playing().unwrap();
     assert_eq!(playing.chain, InputChain::resume(Seat::new(1), heads[2], 2));
@@ -281,7 +281,7 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
     };
     assert_eq!(
         state.start(again, Hosting::Remote),
-        Started::Playing { discarded: 0 }
+        StartEffect::Playing { discarded: 0 }
     );
     let playing = state.playing_mut().unwrap();
     assert_eq!(playing.chain, InputChain::new(Seat::new(1), rejoined));
@@ -308,7 +308,7 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
         chain: SeatChain::Held(rewritten),
         ..resumed
     };
-    assert_eq!(state.start(start, Hosting::Remote), Started::Rewritten);
+    assert_eq!(state.start(start, Hosting::Remote), StartEffect::Rewritten);
     assert_eq!(state.loss(), Some(Loss::Rewritten));
 }
 
@@ -491,13 +491,13 @@ fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it()
         if hosting == Hosting::Local {
             assert_eq!(
                 state.start(loaded, hosting),
-                Started::Playing { discarded: 2 }
+                StartEffect::Playing { discarded: 2 }
             );
             let playing = state.playing().unwrap();
             assert_eq!(playing.chain, InputChain::resume(Seat::new(1), heads[3], 1));
             assert_eq!(state.receipt(), None);
         } else {
-            assert_eq!(state.start(loaded, hosting), Started::Rewritten);
+            assert_eq!(state.start(loaded, hosting), StartEffect::Rewritten);
         }
     }
 }
@@ -568,7 +568,7 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
     };
     assert_eq!(
         state.start(resumed, Hosting::Remote),
-        Started::Playing { discarded: 0 }
+        StartEffect::Playing { discarded: 0 }
     );
     assert_eq!(state.receipt(), Some(&signed(third)));
 
@@ -615,7 +615,7 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
         }),
         ..START
     };
-    assert_eq!(state.start(start, Hosting::Remote), Started::Rewritten);
+    assert_eq!(state.start(start, Hosting::Remote), StartEffect::Rewritten);
 }
 
 #[test]

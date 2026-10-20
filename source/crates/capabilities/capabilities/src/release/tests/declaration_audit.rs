@@ -31,7 +31,7 @@ use campfire_script::{
 };
 use campfire_sim::{
     Breach, Capability, DueIndex, HostRule, OnAny, OwnResources, SimComponent, SimResource,
-    SimSystems, TimedProcess, Unpredicted,
+    SimSystems, TimedProcess,
 };
 use campfire_states::{NotSent, Replication, StateTypes};
 use campfire_stats::Modifiers;
@@ -526,12 +526,10 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(
         removals,
         [
-            type_name::<Unpredicted>(),
             type_name::<Dead>(),
             type_name::<Modifiers>(),
             type_name::<Owner>(),
             type_name::<Dead>(),
-            type_name::<Unpredicted>(),
             type_name::<Gatherer>(),
         ]
     );
@@ -604,6 +602,7 @@ struct Undeclared;
 
 /// A book a test declares, as the stats' own.
 #[derive(Resource, Debug, Default)]
+#[component(immutable)]
 struct StrayBook;
 
 impl Book for StrayBook {

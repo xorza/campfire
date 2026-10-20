@@ -10,7 +10,7 @@ use campfire_capabilities::{Match, Order, Release};
 use campfire_codec::Binary;
 use campfire_combat::internals::Armed;
 use campfire_combat::internals::TestWeapon;
-use campfire_combat::{Combat, OnDeath};
+use campfire_combat::{Combat, DamagePass, OnDeath, Respawn};
 use campfire_common::{Seat, Tick, Ticks};
 use campfire_declarations::MatchFacts;
 use campfire_geometry::{Bounds, Grid};
@@ -811,6 +811,50 @@ fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
     assert_eq!(targets, expected);
 }
 
+/// A unit's AI waits while it is dead, and thinks again once it respawns, as `NextThink`'s
+/// revival pushes it (04-capabilities/00-overview.md, One due index for each timed process).
+#[test]
+fn a_units_ai_waits_while_it_is_dead_and_thinks_again_once_it_respawns() {
+    let mut game = orders_match();
+    let striker = Orders::ai_type(
+        &mut game,
+        &[],
+        &[],
+        Some(
+            r#"fn on_think(ctx, unit) { ctx.order_attack(ctx.find(unit, unit.position, 20, "enemies")[0]); }"#,
+        ),
+    );
+    let striker = arm(&mut game, striker, standing());
+    let still = armed(&mut game, standing(), None);
+    let thinker = Mode::spawn(&mut game, striker, (0, 0, 0), Team::new(0), ());
+    let enemy = Mode::spawn(&mut game, still, (9, 0, 0), Team::new(1), ());
+    // It thinks in tick 0 and takes the enemy as its target.
+    Orders::think(&mut game, &[]);
+    assert_eq!(
+        game.part::<ActionProgress>(thinker).attack_target(),
+        Some(enemy)
+    );
+    // It dies in tick 1, which ends its target, and waits dead past its next think, in tick 8.
+    DamagePass::kill(&mut game, thinker);
+    for _ in 1..12 {
+        Orders::think(&mut game, &[]);
+    }
+    assert!(game.try_part::<Dead>(thinker).is_some());
+    assert_eq!(game.part::<ActionProgress>(thinker).attack_target(), None);
+    // Back at the start of tick 13, it thinks then, as it is past due, and takes its target again.
+    let entity = Mode::entity_by_id(&game, thinker.get());
+    game.entity_mut(entity)
+        .insert(Respawn { at: Tick::new(13) });
+    for _ in 12..14 {
+        Orders::think(&mut game, &[]);
+    }
+    assert!(game.try_part::<Dead>(thinker).is_none());
+    assert_eq!(
+        game.part::<ActionProgress>(thinker).attack_target(),
+        Some(enemy)
+    );
+}
+
 #[test]
 fn an_ai_needs_think_and_orders_its_unit_but_changes_nothing() {
     let mut game = orders_match();
@@ -854,6 +898,16 @@ fn an_ai_needs_think_and_orders_its_unit_but_changes_nothing() {
         arm(&mut game, unit_type, standing());
     }
     let still = armed(&mut game, standing(), None);
+    // The weapons the strikers learn below, which load with the books: one aims at enemies, the
+    // other at allies alone.
+    let [at_enemies, at_allies] = ["enemies", "allies"].map(|aim| {
+        let weapon = TestWeapon::new(
+            Filter::parse(aim, &TagNames::new(&Release::engine_tags())).unwrap(),
+            ActionRange::meters(Num::int(20)),
+            Ticks::new(2),
+        );
+        Combat::add_weapon(&mut game, weapon)
+    });
     let thinker = Mode::spawn(&mut game, meddler, (0, 0, 0), Team::new(0), ());
     let ally = Mode::spawn(&mut game, still, (1, 0, 0), Team::new(0), ());
     let enemy = Mode::spawn(&mut game, still, (9, 0, 0), Team::new(1), ());
@@ -889,18 +943,12 @@ fn an_ai_needs_think_and_orders_its_unit_but_changes_nothing() {
     // An attack order needs a learned weapon whose filter selects the target. Units 4 and 5 order
     // an attack on the enemy, 9 m off, in ticks 4 and 5: the first's weapon aims at enemies, and
     // attacks; the second's aims only at allies, and its call fails.
-    let mut armed = |aim: &str| {
-        let weapon = TestWeapon::new(
-            Filter::parse(aim, &TagNames::new(&Release::engine_tags())).unwrap(),
-            ActionRange::meters(Num::int(20)),
-            Ticks::new(2),
-        );
-        let weapon = Combat::add_weapon(&mut game, weapon);
+    let mut armed = |weapon| {
         let slots = TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]));
         Mode::spawn(&mut game, striker, (0, 0, 0), Team::new(0), slots)
     };
-    let hostile = armed("enemies");
-    let friendly = armed("allies");
+    let hostile = armed(at_enemies);
+    let friendly = armed(at_allies);
     assert_eq!([hostile.get(), friendly.get()], [4, 5]);
     game.run_until(4);
     game.step_with(&[]);

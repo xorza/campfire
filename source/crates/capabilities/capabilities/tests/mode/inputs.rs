@@ -2,7 +2,7 @@ use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut};
-use campfire_players::Seating;
+use campfire_players::SeatHolder;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_units::internals::UnitsWorldInternals;
@@ -472,9 +472,9 @@ fn take_input(ctx, player, name, value) {
     let script = format!("{script}{PICKING}");
     let mut game = installed_match(&script, ScriptLimits::ROOMY, &mode_files(), |_| {});
     let players = Mode::seats(&game);
-    let mut seatings = vec![Seating::Held; players];
-    seatings[1] = Seating::Open;
-    Mode::start(&mut game, &seatings).unwrap();
+    let mut holders = vec![SeatHolder::Held; players];
+    holders[1] = SeatHolder::Open;
+    Mode::start(&mut game, &holders).unwrap();
     let seats: String = (0..players)
         .map(|at| if at == 1 { 'o' } else { 'h' })
         .collect();

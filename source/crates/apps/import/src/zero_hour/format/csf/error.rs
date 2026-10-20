@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::zero_hour::format::error::Short;
+use crate::zero_hour::format::error::CutShort;
 
 /// Why a string table's bytes are none the game reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -23,8 +23,8 @@ pub enum CsfError {
     NotText { index: usize },
 }
 
-impl From<Short> for CsfError {
-    fn from(_: Short) -> Self {
+impl From<CutShort> for CsfError {
+    fn from(_: CutShort) -> Self {
         Self::Short
     }
 }

@@ -7,6 +7,7 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
 use campfire_common::{Seat, Tick, Ticks};
+use campfire_declarations::internals::BookLoad;
 use campfire_declarations::{ByType, PerType};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
@@ -108,7 +109,7 @@ impl Shop {
 
     /// Gives `unit_type` `value` in its book, as the books of a mode's type do.
     fn give<T: PerType>(game: &mut World, unit_type: UnitType, value: T) {
-        game.resource_mut::<ByType<T>>().set(unit_type, value);
+        ByType::<T>::amend(game, |_, book| book.set(unit_type, value));
     }
 
     /// Each unit of `unit_type` so far, by stable id: in the order production spawned them.

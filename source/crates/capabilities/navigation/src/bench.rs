@@ -18,9 +18,9 @@ use crate::broadphase::internals::{scene, static_bodies, statics};
 use crate::collider::Collider;
 use crate::party::{Party, PartyKey};
 use crate::pathing_grid::PathingGrid;
-use crate::route_asks::{Ask, Member, RouteAsks, RouteSearch};
+use crate::route_asks::{Ask, PlanWalker, RouteAsks, RouteSearch};
 use crate::route_planner::{RoutePlanner, Walkable};
-use crate::terrain::Terrain;
+use crate::terrain::WallGrid;
 use crate::walker::Walker;
 use crate::walker_kinds::WalkerKinds;
 
@@ -99,7 +99,7 @@ fn pathing_grid(c: &mut Criterion) {
         })
         .collect();
     let widest = walkers.iter().map(|walker| walker.radius).max().unwrap();
-    let mut grid = PathingGrid::new(scene_cells(span), walkers, &Terrain::default());
+    let mut grid = PathingGrid::new(scene_cells(span), walkers, &WallGrid::default());
     let mut index = BodyIndex::new(widest);
     index.update(&statics);
     grid.update(&index);
@@ -145,7 +145,7 @@ fn route_planner(c: &mut Criterion) {
         radius: KernelScene::centimeters(HERO_RADIUS),
     };
     let walkers = WalkerKinds::from([walker]);
-    let mut grid = PathingGrid::new(cells, walkers, &Terrain::new(&cells, &walls));
+    let mut grid = PathingGrid::new(cells, walkers, &WallGrid::new(&cells, &walls));
     let mut index = BodyIndex::new(walker.radius);
     index.update(&scene_statics(span));
     grid.update(&index);
@@ -232,7 +232,7 @@ impl GroupScene<'_> {
             .map(|&at| Ask {
                 tick: Tick::new(0),
                 party: Some(party),
-                member: Member {
+                member: PlanWalker {
                     id: ids.allocate(),
                     entity: Entity::PLACEHOLDER,
                     position: at,
@@ -250,7 +250,7 @@ impl GroupScene<'_> {
                 let mut left = members.as_slice();
                 while !left.is_empty() {
                     let mut answered = 0;
-                    let mut answer = |_: Member, route: &[Vec3], _: bool| {
+                    let mut answer = |_: PlanWalker, route: &[Vec3], _: bool| {
                         black_box(route);
                         answered += 1;
                     };

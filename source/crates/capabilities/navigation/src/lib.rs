@@ -21,7 +21,7 @@ use campfire_declarations::{
 use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
 use campfire_script::{ApiVersion, Status};
-use campfire_sim::{Capability, SimEdgeSystems, SimSystems, Unpredicted};
+use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
 use campfire_units::{
     BodyUnit, Dead, DeclaredTags, LayerNames, MoveStep, OpenCellAsk, OpenCellRun, SpawnCallbacks,
     UnitTracker, UnitsSystems, WallBook,
@@ -30,7 +30,7 @@ use campfire_units::{
 use crate::navigation_column::RowReads;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::Walkable;
-use crate::terrain::Terrain;
+use crate::terrain::WallGrid;
 
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -168,7 +168,6 @@ impl Module for Navigation {
         d.section::<MapNavigationData>();
         d.section::<MapPathsData>();
         d.removals::<Dead>();
-        d.removals::<Unpredicted>();
         d.callback::<SpawnCallbacks>(Capability::Navigation, Self::make_room);
         d.component::<PathWalker>();
         d.component::<OnPath>();
@@ -263,7 +262,7 @@ impl Navigation {
             world.contains_resource::<BodyIndex>(),
             "a map's pathing grid is navigation's, which the load checked the mode declares"
         );
-        let terrain = Terrain::new(&grid, world.resource::<WallBook>().walls());
+        let terrain = WallGrid::new(&grid, world.resource::<WallBook>().walls());
         let widest = walkers.iter().map(|walker| walker.radius).max();
         world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
         world.insert_resource(RoutePlanner::new(&grid));

@@ -27,6 +27,10 @@ pub enum StartError {
     /// The mode script's `on_match_start` failed.
     #[error("the mode's start failed")]
     MatchStart(#[source] CallError),
+    /// The log's file starts at the checkpoint of segment `segment`, whose snapshot a match
+    /// starts from, not from tick 0.
+    #[error("the log starts at the checkpoint of segment {segment}")]
+    AtCheckpoint { segment: u32 },
 }
 
 /// Why a snapshot does not hold what a checkpoint record says of it.

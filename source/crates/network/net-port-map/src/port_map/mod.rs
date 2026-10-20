@@ -9,7 +9,7 @@ use campfire_threads::{Job, Worker};
 use polling::Poller;
 use tracing::{info, warn};
 
-use crate::listening::Listening;
+use crate::listening::TurnWait;
 use crate::port_mapper::{MapRequest, MapTimes, PortMapper, Routes};
 use crate::thread_stop::ThreadStop;
 
@@ -62,7 +62,7 @@ impl PortMap {
             stopped: AtomicBool::new(false),
             poller: Poller::new()?,
         });
-        let listening = Listening::open(Arc::clone(&stop), mapper.routes())?;
+        let listening = TurnWait::open(Arc::clone(&stop), mapper.routes())?;
         let worker = Worker::start(Job::PortMap, move || listening.run(mapper));
         Ok(Self {
             stop,

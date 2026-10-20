@@ -1,5 +1,6 @@
 use std::fmt;
 
+use bevy_math::Vec2;
 use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -9,7 +10,7 @@ use crate::client_path;
 /// A mode's `client/keys.toml`: the keys of each of the client's actions, each a list of
 /// chords, any of which does it; a field the file does not give keeps the engine's own keys, as
 /// a mode of no file does (02-engine-core.md, Keys are the mode's data).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct KeysFile {
     /// The chords that cast the avatar's abilities, one for each of its slots in their order.
@@ -45,7 +46,72 @@ pub struct KeysFile {
     pub reset_camera: Vec<Chord>,
     /// The modifiers held with a drag of the middle button that orbit the camera, where none
     /// pans it.
-    pub orbit: Modifiers,
+    pub orbit: KeyModifiers,
+    /// What a press of a button is, a selection's and the camera's.
+    pub press: Press,
+}
+
+/// The one rule of every press of a button, a selection's and the camera's: it drags once the
+/// cursor moves more than `drag` logical pixels along either axis from where the button went
+/// down, as Zero Hour's `SelectionTranslator` drags past `Mouse.ini`'s `DragTolerance`, and one
+/// that does not drag is a click while it lasts at most `click` seconds
+/// (02-engine-core.md, Keys are the mode's data).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Press {
+    pub drag: f32,
+    pub click: f32,
+}
+
+impl Press {
+    /// Whether a press that went down at `from` drags with the cursor at `to`.
+    pub fn drags(self, from: Vec2, to: Vec2) -> bool {
+        (to - from).abs().max_element() > self.drag
+    }
+
+    /// Whether a press that did not drag, held for `seconds`, is a click.
+    pub fn clicks(self, seconds: f64) -> bool {
+        seconds <= f64::from(self.click)
+    }
+}
+
+/// The engine's own press: Windows' default `SM_CXDRAG` and `SM_CYDRAG` of 4 pixels, so a hand
+/// that shakes as it clicks still clicks, and a click of up to 0.2 seconds.
+impl Default for Press {
+    fn default() -> Self {
+        Self {
+            drag: 4.0,
+            click: 0.2,
+        }
+    }
+}
+
+/// A package's file is untrusted, so a press of a length or a time not finite, or negative,
+/// fails to read; a field it does not give keeps the engine's.
+impl<'de> Deserialize<'de> for Press {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Debug, Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            drag: Option<f32>,
+            click: Option<f32>,
+        }
+        let Fields { drag, click } = Fields::deserialize(deserializer)?;
+        let engine = Self::default();
+        let press = Self {
+            drag: drag.unwrap_or(engine.drag),
+            click: click.unwrap_or(engine.click),
+        };
+        let held = [press.drag, press.click]
+            .iter()
+            .all(|value| value.is_finite() && *value >= 0.0);
+        if held {
+            Ok(press)
+        } else {
+            Err(D::Error::custom(
+                "a press's drag and click are finite and at least 0",
+            ))
+        }
+    }
 }
 
 /// A key with the modifiers held with it, written as their names and its own joined by `+`, as
@@ -54,7 +120,7 @@ pub struct KeysFile {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Chord {
     pub key: Key,
-    pub modifiers: Modifiers,
+    pub modifiers: KeyModifiers,
 }
 
 /// What a key's cap shows of a chord: its modifiers' names and its key's label, joined by `+`,
@@ -65,7 +131,7 @@ pub struct ChordLabel(Chord);
 /// The modifiers a chord holds, each of either side of the keyboard, written as their names
 /// joined by `+`, as `Shift+Control`, and none as an empty text.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Modifiers {
+pub struct KeyModifiers {
     pub shift: bool,
     pub control: bool,
     pub alt: bool,
@@ -126,13 +192,13 @@ impl KeysFile {
 /// (02-engine-core.md, Every key on a keyboard with no keypad).
 impl Default for KeysFile {
     fn default() -> Self {
-        let alt = Modifiers {
+        let alt = KeyModifiers {
             alt: true,
-            ..Modifiers::NONE
+            ..KeyModifiers::NONE
         };
-        let control = Modifiers {
+        let control = KeyModifiers {
             control: true,
-            ..Modifiers::NONE
+            ..KeyModifiers::NONE
         };
         let plain = |keys: &[Key]| keys.iter().map(|&key| Chord::plain(key)).collect();
         let with = |key, modifiers| Chord { key, modifiers };
@@ -166,6 +232,7 @@ impl Default for KeysFile {
             turn_right: vec![Chord::plain(Key::Numpad6), with(Key::ArrowRight, alt)],
             reset_camera: vec![Chord::plain(Key::Numpad5), with(Key::Backspace, alt)],
             orbit: control,
+            press: Press::default(),
         }
     }
 }
@@ -175,7 +242,7 @@ impl Chord {
     pub const fn plain(key: Key) -> Self {
         Self {
             key,
-            modifiers: Modifiers::NONE,
+            modifiers: KeyModifiers::NONE,
         }
     }
 
@@ -188,15 +255,15 @@ impl Chord {
     /// named twice.
     fn parse(text: &str) -> Option<Self> {
         let (modifiers, key) = match text.rsplit_once('+') {
-            Some((modifiers, key)) => (Modifiers::parse(modifiers)?, key),
-            None => (Modifiers::NONE, text),
+            Some((modifiers, key)) => (KeyModifiers::parse(modifiers)?, key),
+            None => (KeyModifiers::NONE, text),
         };
         let key = Key::parse(key)?;
         Some(Self { key, modifiers })
     }
 }
 
-impl Modifiers {
+impl KeyModifiers {
     pub const NONE: Self = Self {
         shift: false,
         control: false,
@@ -270,7 +337,7 @@ impl fmt::Display for ChordLabel {
     }
 }
 
-impl fmt::Display for Modifiers {
+impl fmt::Display for KeyModifiers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (at, name) in self.named().enumerate() {
             if at > 0 {
@@ -296,13 +363,13 @@ impl<'de> Deserialize<'de> for Chord {
     }
 }
 
-impl Serialize for Modifiers {
+impl Serialize for KeyModifiers {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_str(self)
     }
 }
 
-impl<'de> Deserialize<'de> for Modifiers {
+impl<'de> Deserialize<'de> for KeyModifiers {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
         Self::parse(&text).ok_or_else(|| {
@@ -325,7 +392,7 @@ mod tests {
             orbit = "Alt"
         "#;
         let file: KeysFile = Toml::parse(text).unwrap();
-        let both = Modifiers {
+        let both = KeyModifiers {
             shift: true,
             control: true,
             alt: false,
@@ -343,9 +410,9 @@ mod tests {
         assert!(file.stop.is_empty());
         assert_eq!(
             file.orbit,
-            Modifiers {
+            KeyModifiers {
                 alt: true,
-                ..Modifiers::NONE
+                ..KeyModifiers::NONE
             }
         );
         // A field it does not give is the engine's: the items are 1 to 6.

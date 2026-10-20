@@ -1,3 +1,4 @@
+use std::iter;
 use std::ops::Range;
 
 use campfire_codec::{Binary, BinaryError};
@@ -24,12 +25,12 @@ use crate::session_log::durable_head::DurableHead;
 use crate::session_log::error::{
     CheckpointError, HeaderError, InputError, LogError, LogLoadError, ResultError, ServerInputError,
 };
-use crate::session_log::input_schedule::{Due, InputSchedule};
+use crate::session_log::input_schedule::{InputOrder, InputSchedule};
 use crate::session_log::journal::Journal;
 use crate::session_log::log_entries::{LogEntries, Served};
 use crate::session_log::player_packet::PlayerPacket;
 use crate::session_log::seat_control::{SeatControl, SeatState, TakenPacket};
-use crate::session_log::segments::{Boundary, LoggedCheckpoint, Segments};
+use crate::session_log::segments::{Boundary, LoggedCheckpoint, SegmentStart, Segments};
 use crate::session_log::session_header::SessionHeader;
 use crate::session_result::SessionResult;
 use crate::signature::Signature;
@@ -270,11 +271,11 @@ impl SessionLog {
             unit: largest + RECORD_SLACK,
             session_id,
         };
-        // The tag and the header, then a byte each: one segment, of no tick, no entry since, and
-        // neither the seed nor the result.
+        // The tag and the header, then a byte each: the first segment's number, 0, one segment,
+        // of no tick, no entry since, and neither the seed nor the result.
         let mut start = file::LOG_TAG.to_vec();
         log.put_header(&mut start);
-        log.file_len = len(start.len()) + 5;
+        log.file_len = len(start.len()) + 6;
         Ok(log)
     }
 
@@ -406,7 +407,15 @@ impl SessionLog {
         self.segments.latest_begun()
     }
 
-    /// Every checkpoint record, by segment from the second.
+    /// The checkpoint its file starts at, whose snapshot its replay starts from; none for a log
+    /// from tick 0.
+    pub fn starts_at(&self) -> Option<&Checkpoint> {
+        let first = self.segments.first();
+        let start = self.segments.get(first).filter(|_| first > 0)?;
+        start.checkpoint.as_ref().map(|logged| &logged.record)
+    }
+
+    /// Every checkpoint record it holds, by segment.
     pub fn checkpoints(&self) -> impl Iterator<Item = &Checkpoint> {
         self.segments.checkpoints().map(|logged| &logged.record)
     }
@@ -848,7 +857,7 @@ impl SessionLog {
         if self.segments.last_start().tick == tick {
             return Err(CheckpointError::Empty);
         }
-        let number = offset(self.segments.len());
+        let number = self.segments.next();
         // The count of segments grows, and the new one's count of ticks, 0, takes a byte.
         self.file_len += varint_len(u64::from(number) + 1) - varint_len(u64::from(number)) + 1;
         let begun = CheckpointBegun {
@@ -872,8 +881,8 @@ impl SessionLog {
     /// Logs `record`, with the server key's `signature` over it, as the record of the oldest
     /// checkpoint the log began and has none of yet, as many ticks after its boundary as it took:
     /// it must start that segment, at its tick, and carry the log's own state there, which a
-    /// segment's verification from its checkpoint alone will start from. A refused record leaves
-    /// the log unchanged.
+    /// log file that starts at the checkpoint starts from. A refused record leaves the log
+    /// unchanged.
     pub fn record_checkpoint(
         &mut self,
         record: Checkpoint,
@@ -1139,40 +1148,11 @@ impl SessionLog {
             "a session that ended loads nothing"
         );
         let tick = logged.record.tick;
-        let LogCarry { seats, pending } = logged.record.carry.clone();
+        let carry = logged.record.carry.clone();
         let boundary = boundary.clone();
         self.entries.truncate(boundary.entries);
-        self.segments.truncate(at(segment) + 1);
-        let mut control = Vec::with_capacity(seats.len());
-        let mut spills = Vec::with_capacity(seats.len());
-        for (carried, head_signer) in seats.into_iter().zip(boundary.head_signers) {
-            let held = carried.control.map(|delegation| {
-                let index = self.entries.delegation_index(&delegation);
-                index.expect("a carried delegation is one the log held at its save")
-            });
-            control.push(SeatState {
-                control: held,
-                leaver: carried.leaver,
-                stamps: carried.stamps,
-                head_signer,
-            });
-            spills.push(carried.spill);
-        }
-        let mut due = Vec::with_capacity(pending.len());
-        for input in &pending {
-            let index = self.entries.push_input(PlayerInput {
-                seat: input.seat,
-                stamp: input.stamp,
-                payload: &input.payload,
-            });
-            due.push(Due {
-                tick: input.tick,
-                seat: input.seat,
-                index,
-            });
-        }
-        self.control = control.into_iter().collect();
-        self.schedule = InputSchedule::restored(self.header.terms.inputs, spills, due);
+        self.segments.truncate_after(segment);
+        self.take_carry(carry, boundary.head_signers);
         self.changes.retain(|change| change.tick < tick);
         let sealed = tick.get().checked_sub(1).map(Tick::new);
         let first = self
@@ -1192,6 +1172,129 @@ impl SessionLog {
             journal.durable_mut().clear();
         }
         Ok(())
+    }
+
+    /// Starts the log, a new one that took nothing, at the checkpoint `record`, which the server
+    /// key's `signature` signs, as a log file that starts there gives it: the segment it starts
+    /// is the log's first, the log holds no entry before its boundary, and its own state there is
+    /// the record's carry, which the server signed. An error for a record the server key did not
+    /// sign, one of segment 0 or at tick 0, and a carry no log holds: another count of seats than
+    /// the header's, a delegation of another session, or an input of no seat or due before the
+    /// boundary.
+    fn start_at_checkpoint(
+        &mut self,
+        record: Checkpoint,
+        signature: &Signature,
+    ) -> Result<(), CheckpointError> {
+        debug_assert!(
+            self.entries.len() == 0 && self.next_tick() == Tick::ZERO,
+            "a log starts at a checkpoint before it takes anything"
+        );
+        let signed = InSession {
+            session_id: self.session_id,
+            record: &record,
+        };
+        let server_key = self.header.terms.server_key;
+        if !self.verifier.verifies(signature, &server_key, &signed) {
+            return Err(CheckpointError::BadSignature);
+        }
+        if record.segment == 0 {
+            return Err(CheckpointError::Segment);
+        }
+        if record.tick == Tick::ZERO {
+            return Err(CheckpointError::Empty);
+        }
+        self.check_carry(&record)?;
+        self.entries.start_at(record.tick);
+        let entries = self.entries.at();
+        self.take_carry(record.carry.clone(), iter::repeat(None));
+        let logged = LoggedCheckpoint {
+            record,
+            signature: *signature,
+        };
+        self.record.clear();
+        logged.write(&mut self.record);
+        let segment = logged.record.segment;
+        // The first segment's number, then its record, the byte of its kind left out.
+        self.file_len +=
+            varint_len(u64::from(segment)) - varint_len(0) + len(self.record.len()) - 1;
+        let boundary = Boundary {
+            entries,
+            head_signers: vec![None; self.control.len()],
+            pending: self.schedule.pending().into_iter().copied().collect(),
+            file_len: self.file_len,
+        };
+        let start = SegmentStart {
+            tick: logged.record.tick,
+            checkpoint: Some(logged),
+            boundary: Some(boundary),
+        };
+        self.segments = Segments::from_checkpoint(segment, start);
+        self.base = Some(segment);
+        Ok(())
+    }
+
+    /// Whether `record`'s carry is one a log holds at its boundary, as `start_at_checkpoint`
+    /// asks.
+    fn check_carry(&self, record: &Checkpoint) -> Result<(), CheckpointError> {
+        let seats = self.control.len();
+        let terms = &self.header.terms;
+        let carry = &record.carry;
+        let scoped = carry.seats.iter().all(|seat| match &seat.control {
+            Control::Player { delegation, .. } => delegation
+                .check(&terms.server_key, &self.session_id)
+                .is_ok(),
+            Control::Bot | Control::Open | Control::Reserved => true,
+        });
+        let due = carry
+            .pending
+            .iter()
+            .all(|input| input.seat.index() < seats && input.tick >= record.tick);
+        if carry.seats.len() == seats && scoped && due {
+            Ok(())
+        } else {
+            Err(CheckpointError::BadCarry)
+        }
+    }
+
+    /// Takes `carry`, the log's own state at a checkpoint's boundary, as who controls each seat
+    /// and when each input still to apply applies, each seat's chain head signed by the
+    /// delegation `head_signers` gives: what a load goes back to, and what a log file that
+    /// starts at the checkpoint starts from. The carried inputs are logged again, after the
+    /// entries the log holds.
+    fn take_carry(&mut self, carry: LogCarry, head_signers: impl IntoIterator<Item = Option<u32>>) {
+        let LogCarry { seats, pending } = carry;
+        let mut control = Vec::with_capacity(seats.len());
+        let mut spills = Vec::with_capacity(seats.len());
+        for (carried, head_signer) in seats.into_iter().zip(head_signers) {
+            let held = carried.control.map(|delegation| {
+                self.entries
+                    .delegation_index(&delegation)
+                    .unwrap_or_else(|| self.entries.push_delegation(*delegation))
+            });
+            control.push(SeatState {
+                control: held,
+                leaver: carried.leaver,
+                stamps: carried.stamps,
+                head_signer,
+            });
+            spills.push(carried.spill);
+        }
+        let mut due = Vec::with_capacity(pending.len());
+        for input in &pending {
+            let index = self.entries.push_input(PlayerInput {
+                seat: input.seat,
+                stamp: input.stamp,
+                payload: &input.payload,
+            });
+            due.push(InputOrder {
+                tick: input.tick,
+                seat: input.seat,
+                index,
+            });
+        }
+        self.control = control.into_iter().collect();
+        self.schedule = InputSchedule::restored(self.header.terms.inputs, spills, due);
     }
 
     /// Forgets what the log took before the boundary where segment `segment` starts, which a

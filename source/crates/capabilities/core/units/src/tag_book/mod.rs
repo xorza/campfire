@@ -14,6 +14,7 @@ pub(crate) mod tag_effect;
 
 /// What each tag of a match does, and each unit type's own tags. Package data, not state.
 #[derive(Resource, Debug, Default)]
+#[component(immutable)]
 pub struct TagBook {
     /// By tag.
     properties: Vec<TagProperties>,

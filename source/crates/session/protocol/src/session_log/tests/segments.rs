@@ -141,6 +141,23 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     assert_eq!(decoded.result(), Some(&ended));
     let ticks: [&[(u32, &[u8])]; 4] = [&[], &[(1, b"x")], &[(1, b"y")], &[(0, b"z")]];
     assert_eq!(replayed(decoded).applied, per_tick(&ticks));
+
+    // The file from segment 1's checkpoint on starts at its record: it holds that record, the
+    // result and the reveal, writes the same bytes again, and replays ticks 2 and 3 alone, y due
+    // from the carry and z logged after it. It leaves out tick 0's and tick 1's entry.
+    let mut cut = Vec::new();
+    log.encode_from(1, &mut cut);
+    let based = SessionLog::decode(&cut).unwrap();
+    assert_eq!(based.starts_at(), Some(&record));
+    assert_eq!(based.checkpoints().collect::<Vec<_>>(), [&record]);
+    assert_eq!(
+        (based.result(), based.next_tick(), based.segment()),
+        (Some(&ended), Tick::new(4), 1)
+    );
+    assert_eq!(encoded(&based), cut);
+    assert!(cut.len() < bytes.len());
+    assert_eq!(replayed(based).applied, per_tick(&ticks[2..]));
+    assert_eq!(SessionLog::decode(&bytes).unwrap().starts_at(), None);
 }
 
 #[test]
@@ -289,6 +306,62 @@ fn flawed_segments_in_a_log_file_are_refused() {
             error: CheckpointError::BadSignature,
         })
     );
+
+    // The file from segment 1's checkpoint on: a byte of its carry changed, or its record
+    // signed by another key, it fails the record's signature; its first segment named as 2, its
+    // record is of another; a carry the server key signs with an input due before the boundary,
+    // or with one seat of the header's two, is no state a log holds.
+    let mut based = Vec::new();
+    log.encode_from(1, &mut based);
+    assert!(SessionLog::decode(&based).is_ok());
+    let based_at = based
+        .windows(record_bytes.len())
+        .position(|window| window == record_bytes)
+        .unwrap();
+    let refused = |error| Some(LogError::Checkpoint { segment: 1, error });
+    let mut changed = based.clone();
+    let payload_at = based_at + record_bytes.len() - 1;
+    assert_eq!(changed[payload_at], b'y');
+    changed[payload_at] = b'z';
+    assert_eq!(
+        SessionLog::decode(&changed).err(),
+        refused(CheckpointError::BadSignature)
+    );
+    let signature_at = based_at + record_bytes.len();
+    let resigned = [&based[..signature_at], &other, &based[signature_at + 64..]].concat();
+    assert_eq!(
+        SessionLog::decode(&resigned).err(),
+        refused(CheckpointError::BadSignature)
+    );
+    let mut renumbered = based.clone();
+    assert_eq!(renumbered[based_at - 2..based_at], [1, 1]);
+    renumbered[based_at - 2] = 2;
+    assert_eq!(
+        SessionLog::decode(&renumbered).err(),
+        Some(LogError::Checkpoint {
+            segment: 2,
+            error: CheckpointError::Segment,
+        })
+    );
+    let forged = |change: fn(&mut Checkpoint)| {
+        let mut forged = record.clone();
+        change(&mut forged);
+        let mut bytes = Vec::new();
+        forged.encode(&mut bytes);
+        let signature = signed_by(&forged, &TestKey::server()).to_bytes();
+        let file = [
+            &based[..based_at],
+            &bytes,
+            &signature,
+            &based[signature_at + 64..],
+        ]
+        .concat();
+        SessionLog::decode(&file).err()
+    };
+    let early = forged(|record| record.carry.pending[0].tick = Tick::new(1));
+    assert_eq!(early, refused(CheckpointError::BadCarry));
+    let one_seat = forged(|record| drop(record.carry.seats.pop()));
+    assert_eq!(one_seat, refused(CheckpointError::BadCarry));
 
     let seed_at = valid.len() - 1 - 32;
     let first_seed = [

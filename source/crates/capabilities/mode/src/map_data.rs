@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_declarations::{Section, SectionReaders, SectionTable, Sections, TableRead};
+use campfire_declarations::{
+    PatchError, Patched, Section, SectionReaders, SectionTable, Sections, TableRead,
+};
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{MapPathsData, PathData, PathEnd};
@@ -34,25 +36,42 @@ impl<'de> DeserializeSeed<'de> for MapSeed<'_> {
     type Value = MapData;
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<MapData, D::Error> {
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Fields {
-            #[serde(default)]
-            units: Vec<PlacedUnitData>,
-            #[serde(default)]
-            markers: Vec<MarkerData>,
-        }
         let table = self.0.table(SectionTable::Map);
         let TableRead { sections, rest, .. } = table.deserialize(deserializer)?;
         if !sections.holds::<BoundsData>() {
             return Err(D::Error::missing_field(BoundsData::KEY));
         }
-        let Fields { units, markers } = TableRead::own(rest)?;
-        Ok(MapData {
-            units,
-            markers,
-            sections,
+        let data: MapData = TableRead::own(rest)?;
+        Ok(MapData { sections, ..data })
+    }
+}
+
+/// A map's own keys as a tool writes them: each of `MapData`'s, but its sections, optional
+/// (03-game-scripting.md, A section has a partial form).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MapPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub units: Option<Vec<PlacedUnitData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markers: Option<Vec<MarkerData>>,
+}
+
+impl Patched for MapData {
+    type Patch = MapPatch;
+
+    fn from_patch(patch: MapPatch) -> Result<Self, PatchError> {
+        Ok(Self {
+            units: patch.units.unwrap_or_default(),
+            markers: patch.markers.unwrap_or_default(),
+            sections: Sections::default(),
         })
+    }
+}
+
+impl<'de> Deserialize<'de> for MapData {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::read_patch(deserializer)
     }
 }
 

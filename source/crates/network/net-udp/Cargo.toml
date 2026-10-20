@@ -38,8 +38,6 @@ zeroize = { workspace = true, features = ["alloc"] }
 campfire-net-bytes = { workspace = true, features = ["internals"] }
 campfire-net-udp = { workspace = true, features = ["internals"] }
 
-[lib]
-bench = false
 
 [[bench]]
 name = "net-udp"

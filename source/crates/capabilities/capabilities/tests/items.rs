@@ -14,6 +14,7 @@ use campfire_capabilities::{Directive, Match, Order};
 use campfire_combat::{HealEffectData, OnDeath};
 use campfire_common::{Seat, Tick};
 use campfire_declarations::MatchFacts;
+use campfire_declarations::internals::BookLoad;
 use campfire_items::*;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
@@ -456,7 +457,7 @@ fn shop_match() -> ShopMatch {
     )
     .unwrap();
     let sells = [0, 1, 2].map(ItemId::nth).to_vec();
-    game.insert_resource(book);
+    book.load_into(&mut game);
     Players::spawn(&mut game, 2, 1);
     game.player_resources_mut(Seat::new(0))
         .unwrap()

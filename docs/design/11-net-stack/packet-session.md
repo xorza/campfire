@@ -50,12 +50,23 @@ packet stream under the transport's messages. The sealed handshake is in [UDP](u
   deadlines, so a pass costs what its datagrams and due timers cost, whatever the endpoint holds.
   Refused: a walk of every packet session for each datagram and each pass, which a server of a
   thousand clients at 60 Hz runs tens of millions of times a second.
-- **A pass opens a bounded batch under each hold of the lock.** It reads at most a batch outside
-  the lock, opens it, sends, and reads again while a read fills its batch, so a burst holds the
-  frame's endpoint systems for one batch and not for all of it. Refused: a read until the socket
-  is empty under one hold, whose worst frame is the whole burst. Source: quinn's endpoint driver
-  bounds its loop at 160 datagrams, the lowest that did not lower throughput in its benchmarks,
-  and then yields.
+- **A pass opens a bounded batch under each hold of the lock.** A hold takes at most a batch of
+  work, datagrams and due packet sessions together, so a burst or a sweep of timers holds the
+  frame's endpoint systems for one batch: 68 µs as 4,096 keep-alives come due, against 1.34 ms
+  unbounded ([Endpoint holds](../../research/endpoint-holds.md)). Refused: a read until the socket
+  is empty; quinn's time budget, whose boundaries differ in each run of a driven test. Source: quinn
+  bounds its endpoint loop at 160 datagrams, the lowest that kept its throughput.
+- **A hold starts at most one handshake,** which `Establish::receive` reports with no default, as a
+  TLS server's first flight costs 58 µs ([Endpoint holds](../../research/endpoint-holds.md)); quinn
+  starts each accepted connection under a hold of its own. Refused: a smaller batch, which slows
+  every burst for a cost only a start has.
+- **The IO thread wakes only for a deadline it does not know.** The frame's send wakes it only when
+  the core's next deadline is earlier than the one it sleeps to, as quinn moves its timer only when
+  `poll_timeout` changes. Refused: a flag set when the frame took a payload, which wakes for
+  datagrams already sent.
+- **A path check is a server's capability,** which both routes by connection ID and challenges a new
+  path, as only the server routes so ([UDP](udp.md)). Refused: a `bool` beside a challenge method,
+  which leaves a client methods it cannot reach.
 - **The link conditioner goes into the endpoint, before the packet sessions,** so their RTT samples,
   loss detection and window see the delay and loss it adds. Refused: the conditioner on the frame's
   queues, whose delay the RTT samples would leave out.

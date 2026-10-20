@@ -28,7 +28,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `dash` | `(unit: Unit, to: Vector or Unit, speed: Num)` | every role | navigation | since 1.0 | moves `unit` on the ground plane at `speed` meters a second to `to`: a point, or a unit it follows until their bodies touch |
 | `draw` | `()` | mode's own script | core | since 1.0 | ends the match with no winner; a call once it ended does nothing |
 | `drop` | `(unit, slot)` | every role | items | planned | drops the item in `unit`'s inventory slot `slot` at its feet |
-| `enemies` | `(team: text)`, `team` a team | every role | core | since 1.0 | the playing teams' names that `team` may attack, hostile or neutral, in order |
+| `enemies` | `(team: text)`, `team` a team, gives a list of team names | every role | core | since 1.0 | the playing teams' names that `team` may attack, hostile or neutral, in order |
 | `every` | `(name: text, ms: ms)` or `(name: text, ms: ms, data: any)`, `name` a timer | mode | core | since 1.0 | calls `on_timer` as `after` does, and again each `ms` after, until its cancel |
 | `find` | `(of: Unit, position: Vector, radius: Num, filter: text)`, `filter` a filter | every role | core | since 1.0 | the living targets whose bodies come within `radius` of `position`, as an area's, that `filter` selects for `of`, seen or not, by stable id |
 | `find_visible` | `(of: Unit, position: Vector, radius: Num, filter: text)`, `filter` a filter | every role | vision | since 1.0 | as `find`, of the units `of`'s team sees |
@@ -74,7 +74,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `spawn_unit` | `(type: text, team: text, position: Vector)` or `(type: text, team: text, position: Vector, player: Player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `position`, within the map's bounds, owned by `player` if given, who plays on `team`, when the call ends; the new unit, for `grant` and its `.state` |
 | `state` | read | mode's own script | core | since 1.0 | the mode's state fields, by name, to read and write |
 | `take_resource` | `(player: Player, name: text, amount: int)`, `name` a player resource | every role | core | since 1.0 | takes `amount`, at least 0, of the player resource `name` from `player`, which must hold it |
-| `teams` | read | every role | core | since 1.0 | the playing teams' names, the teams with slots |
+| `teams` | read, gives a list of team names | every role | core | since 1.0 | the playing teams' names, the teams with slots |
 | `teleport` | `(unit: Unit, position: Vector)` | every role | navigation | since 1.0 | puts `unit` at `position` at once, or at the nearest place it may stand |
 | `units_tagged` | `(tag: text)`, `tag` a tag | every role | core | since 1.0 | the living units of a tag, by stable id |
 | `win` | `(team: text)`, `team` a team | mode's own script | core | since 1.0 | ends the match, which `team` wins; a call once it ended does nothing |
@@ -121,7 +121,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
 | `markers` | `(tag: text)`, `tag` a marker with tag | core | since 1.0 | the markers with `tag`, in the map's order |
-| `paths` | read | navigation | since 1.0 | the paths' names |
+| `paths` | read, gives a list of path names | navigation | since 1.0 | the paths' names |
 
 ## Marker, of `ctx.map.markers(tag)`
 
@@ -192,7 +192,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `pool` | `(name: text)`, `name` a pool | stats | since 1.0 | the current amount of its pool `name` |
 | `pool_max` | `(name: text)`, `name` a pool | stats | since 1.0 | the maximum of its pool `name` |
 | `position` | read | core | since 1.0 | where it stands |
-| `queue` | read | production | since 1.0 | the unit types its queue trains, first the one under way, none with no queue |
+| `queue` | read, gives a list of unit type names | production | since 1.0 | the unit types its queue trains, first the one under way, none with no queue |
 | `radius` | read | core | since 1.0 | its body's radius, 0 with no body, `()` for a box |
 | `recent_attackers` | `(ms: ms)` | combat | since 1.0 | the living units that struck it within the last `ms`, rounded up to whole ticks |
 | `site_progress` | read | production | since 1.0 | the share of its build's time its site reached, from 0 to 1, `()` when it is no site |
@@ -716,6 +716,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Field | Capability | Status |
 | --- | --- | --- |
 | `killer` | core | since 1.0 |
+| `victim` | core | since 1.0 |
 | `share` | core | since 1.0 |
 
 ### A unit type's `bounty`

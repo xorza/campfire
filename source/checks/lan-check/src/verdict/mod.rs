@@ -10,7 +10,7 @@ use campfire_net_payload::UnlinkReason;
 use campfire_verifier::Verified;
 
 use crate::error::CheckError;
-use crate::failure::Failure;
+use crate::failure::CheckFailure;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
 use crate::process_outcome::ProcessOutcome;
@@ -20,7 +20,7 @@ use crate::session_kind::SessionKind;
 /// when the match passed.
 #[derive(Debug, Default)]
 pub(crate) struct Verdict {
-    failures: Vec<Failure>,
+    failures: Vec<CheckFailure>,
 }
 
 /// An input a session's log took: its seat, its stamp, and the tick it took effect in, as the
@@ -69,7 +69,7 @@ impl Verdict {
     /// Checks that `process` succeeded, and logged no warning or error.
     pub(crate) fn process(&mut self, process: Process, outcome: ProcessOutcome, log: &ProcessLog) {
         if outcome != ProcessOutcome::Succeeded {
-            self.failures.push(Failure::Ended { process, outcome });
+            self.failures.push(CheckFailure::Ended { process, outcome });
         }
         self.warned(process, log);
     }
@@ -79,7 +79,7 @@ impl Verdict {
     fn warned(&mut self, process: Process, log: &ProcessLog) {
         for line in log.lines() {
             if line.level >= LogLevel::Warn && line.read::<InputsDiscarded>().is_none() {
-                self.failures.push(Failure::Warned {
+                self.failures.push(CheckFailure::Warned {
                     process,
                     level: line.level,
                     target: line.target.clone(),
@@ -93,7 +93,8 @@ impl Verdict {
     /// warning or error.
     pub(crate) fn stopped(&mut self, process: Process, outcome: ProcessOutcome, log: &ProcessLog) {
         if outcome != ProcessOutcome::Stopped {
-            self.failures.push(Failure::NotStopped { process, outcome });
+            self.failures
+                .push(CheckFailure::NotStopped { process, outcome });
         }
         self.warned(process, log);
     }
@@ -102,15 +103,17 @@ impl Verdict {
     /// server's key, which its pin does not take (08-sessions.md, A link's end is a type).
     pub(crate) fn impostor(&mut self, outcome: ProcessOutcome, lost: &[LinkLost]) {
         if !matches!(outcome, ProcessOutcome::Failed { .. }) {
-            self.failures.push(Failure::ImpostorNotRefused { outcome });
+            self.failures
+                .push(CheckFailure::ImpostorNotRefused { outcome });
         }
         if lost.is_empty() {
-            self.failures.push(Failure::ImpostorSilent);
+            self.failures.push(CheckFailure::ImpostorSilent);
         }
         let wrong_key = LinkLossCause::Link(UnlinkReason::WrongTlsKey);
         for &LinkLost { cause } in lost {
             if cause != wrong_key {
-                self.failures.push(Failure::ImpostorNotWrongKey { cause });
+                self.failures
+                    .push(CheckFailure::ImpostorNotWrongKey { cause });
             }
         }
     }
@@ -118,7 +121,7 @@ impl Verdict {
     /// Checks that the server listened.
     pub(crate) fn listened(&mut self, listening: &[Listening]) {
         if listening.is_empty() {
-            self.failures.push(Failure::NeverListened);
+            self.failures.push(CheckFailure::NeverListened);
         }
     }
 
@@ -136,7 +139,7 @@ impl Verdict {
         for events in bots {
             let bot = events.bot;
             let Some(MatchStarted { seat, .. }) = events.started else {
-                self.failures.push(Failure::NoSeat { bot });
+                self.failures.push(CheckFailure::NoSeat { bot });
                 continue;
             };
             for &OrdersSent { stamp, orders, .. } in &events.kept {
@@ -144,7 +147,7 @@ impl Verdict {
             }
             let count: usize = events.sent.iter().map(|sent| sent.orders).sum();
             if events.whole && count != events.scripted {
-                self.failures.push(Failure::OrderCount {
+                self.failures.push(CheckFailure::OrderCount {
                     bot,
                     sent: count,
                     scripted: events.scripted,
@@ -156,7 +159,8 @@ impl Verdict {
             *by_stamp.entry((seat, stamp)).or_default() += 1;
             let waited = caught_up.iter().any(|ticks| ticks.delayed(stamp, tick));
             if tick != stamp && !waited {
-                self.failures.push(Failure::Moved { seat, stamp, tick });
+                self.failures
+                    .push(CheckFailure::Moved { seat, stamp, tick });
             }
         }
         let keys: BTreeSet<_> = sent.keys().chain(by_stamp.keys()).collect();
@@ -164,7 +168,7 @@ impl Verdict {
             let sent = sent.get(&(seat, stamp)).copied().unwrap_or(0);
             let logged = by_stamp.get(&(seat, stamp)).copied().unwrap_or(0);
             if sent != logged {
-                self.failures.push(Failure::Unlogged {
+                self.failures.push(CheckFailure::Unlogged {
                     seat,
                     stamp,
                     sent,
@@ -183,13 +187,13 @@ impl Verdict {
         verified: Option<&Verified>,
     ) {
         let Some(written) = written else {
-            self.failures.push(Failure::NoLog { session });
+            self.failures.push(CheckFailure::NoLog { session });
             return;
         };
         match verified {
-            None => self.failures.push(Failure::NotVerified { session }),
+            None => self.failures.push(CheckFailure::NotVerified { session }),
             Some(verified) if verified.hash != written.hash => {
-                self.failures.push(Failure::OtherHash {
+                self.failures.push(CheckFailure::OtherHash {
                     session,
                     host: written.hash,
                     verifier: verified.hash,
@@ -202,15 +206,15 @@ impl Verdict {
     /// The failures found, less each that follows from another: with a session's host that did
     /// not succeed, its missing session log and final hash; with its verifier that did not, the
     /// final hash.
-    pub(crate) fn failures(&self) -> impl Iterator<Item = &Failure> {
+    pub(crate) fn failures(&self) -> impl Iterator<Item = &CheckFailure> {
         let ended = |of: Process| {
-            self.failures
-                .iter()
-                .any(|failure| matches!(failure, Failure::Ended { process, .. } if *process == of))
+            self.failures.iter().any(
+                |failure| matches!(failure, CheckFailure::Ended { process, .. } if *process == of),
+            )
         };
         self.failures.iter().filter(move |failure| match failure {
-            Failure::NoLog { session } => !ended(session.host()),
-            Failure::NotVerified { session } => {
+            CheckFailure::NoLog { session } => !ended(session.host()),
+            CheckFailure::NotVerified { session } => {
                 !ended(session.host()) && !ended(session.verifier())
             }
             _ => true,

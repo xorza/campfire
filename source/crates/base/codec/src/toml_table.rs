@@ -1,12 +1,12 @@
-use serde::Deserialize;
 use serde::de::{DeserializeOwned, DeserializeSeed};
+use serde::{Deserialize, Serialize};
 
 use crate::error::TomlError;
 use crate::toml_value::TomlValue;
 
 /// A TOML table read and kept whole, to take keys out of and read the rest as a type: as a data
 /// file whose parts several types read, each from the keys that are its own.
-#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct TomlTable(toml::Table);
 

@@ -8,7 +8,7 @@ use crate::scripts::call_start::CallStart;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_role::ParamScope;
 use crate::scripts::script_value::ScriptValue;
-use crate::scripts::type_slots::{Slot, TypeSlots};
+use crate::scripts::typed_list::{TypedItem, TypedList};
 
 /// A module's own extension of the call frame: what a call reads besides the core's, such as the
 /// mode's state, and what it wrote, which commits once the call succeeds. The core names none of
@@ -50,7 +50,7 @@ pub trait CallParams: CallExtension {
 }
 
 /// An extension of any type, as the frame holds it.
-trait AnyExtension: Slot + fmt::Debug {
+trait AnyExtension: TypedItem + fmt::Debug {
     fn begin_batch(&mut self, world: &World);
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError>;
     fn commit(&mut self, world: &mut World);
@@ -88,7 +88,7 @@ struct ParamsAt {
 /// extension that holds each scope's params.
 #[derive(Debug, Default)]
 pub(crate) struct CallExtensions {
-    extensions: TypeSlots<dyn AnyExtension>,
+    extensions: TypedList<dyn AnyExtension>,
     params: [Option<ParamsAt>; ParamScope::ALL.len()],
 }
 

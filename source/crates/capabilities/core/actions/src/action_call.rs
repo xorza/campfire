@@ -7,7 +7,7 @@ use crate::slot_aim::SlotAim;
 
 /// A started order: the tick it resolves in, and how it started.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Started {
+pub struct StartedOrder {
     pub resolves_at: Tick,
     pub start: ActionStart,
 }

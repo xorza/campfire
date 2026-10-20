@@ -26,7 +26,7 @@ impl Mine {
     /// ticks, within 1 m of its body's edge, and looks 4 m from its node for another.
     fn place(game: &mut Match, shop: Shop) -> Self {
         let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
-        game.resource_mut::<MapBook>().bounds = bounds;
+        MapBook::amend(game, |_, map| map.bounds = bounds);
         let walker = Walker {
             layer: Layer::FIRST,
             radius: Num::HALF,

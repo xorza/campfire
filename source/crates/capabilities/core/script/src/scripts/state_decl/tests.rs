@@ -8,7 +8,7 @@ use crate::script_host::error::ScriptError;
 use crate::scripts::error::{CallError, FailureKind};
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::script_list::ScriptList;
-use crate::scripts::state_decl::state_field_decl::StateFieldDecl;
+use crate::scripts::state_decl::state_field_decl::{Audience, StateFieldDecl};
 use crate::scripts::view::View;
 
 #[test]
@@ -56,6 +56,16 @@ fn a_field_starts_at_its_default_or_its_types_zero() {
             decl.as_ref().is_none_or(|decl| decl.kind() == kind),
             "{declared}"
         );
+        // A field writes its type, its first value as its default, and its audience, and reads
+        // back to itself.
+        if let Some(decl) = &decl {
+            let field = StateFieldDecl {
+                decl: decl.clone(),
+                audience: Audience::Team,
+            };
+            let written = Toml::parse::<StateFieldDecl>(&Toml::write(&field));
+            assert_eq!(written.as_ref(), Ok(&field), "{declared}");
+        }
         assert_eq!(
             decl.map(|decl| decl.initial().clone()),
             initial,
@@ -117,7 +127,10 @@ fn an_enum_starts_at_its_default_or_first_member_and_holds_only_its_members() {
     // needs.
     let read = |text: &str| Toml::parse::<StateFieldDecl>(text).map(|field| field.decl);
     let phase = read("type = \"enum\"\nvalues = [\"pick\", \"play\"]\ndefault = \"play\"");
-    assert_eq!(phase.unwrap().initial(), &StateValue::Text("play".into()));
+    let phase = phase.unwrap();
+    assert_eq!(phase.initial(), &StateValue::Text("play".into()));
+    // It writes its members and its first value, and reads back to itself.
+    assert_eq!(Toml::parse::<StateDecl>(&Toml::write(&phase)), Ok(phase));
     assert!(read("type = \"int\"\nvalues = [\"a\"]").is_err());
     assert!(read("type = \"enum\"").is_err());
 }

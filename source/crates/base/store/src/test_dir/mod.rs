@@ -32,16 +32,7 @@ impl TestDir {
         reason = "a test directory is made on the disk, which `Default` does not promise"
     )]
     pub fn new() -> Self {
-        Self::made(TempDir::new())
-    }
-
-    /// A test directory under `parent`, as a test keeps its files in its own target's.
-    pub fn new_in(parent: impl AsRef<Path>) -> Self {
-        Self::made(TempDir::new_in(parent))
-    }
-
-    fn made(temp: io::Result<TempDir>) -> Self {
-        let temp = temp.expect("a temporary directory is made");
+        let temp = TempDir::new().expect("a temporary directory is made");
         let root = temp.path().join("test");
         UserOnly::create_dir(&root).expect("the test directory is made");
         Self { root, _temp: temp }

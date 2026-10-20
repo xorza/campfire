@@ -56,7 +56,7 @@ pub(crate) mod samples {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::error::Short;
+    use crate::zero_hour::format::error::CutShort;
     use crate::zero_hour::format::w3d::w3d_fields::samples::name;
 
     #[test]
@@ -75,7 +75,7 @@ mod tests {
         assert_eq!(fields.cursor.f32().unwrap(), 1.5);
         assert_eq!(fields.name(8).unwrap(), "mixed");
         assert_eq!(fields.u32s().unwrap(), [7, 9]);
-        assert_eq!(fields.cursor.u32(), Err(Short));
+        assert_eq!(fields.cursor.u32(), Err(CutShort));
         // A name of no NUL fills its field; one past ASCII is refused; a tail not whole is short.
         assert_eq!(W3dFields::of(b"ABCD").name(4).unwrap(), "abcd");
         assert!(matches!(

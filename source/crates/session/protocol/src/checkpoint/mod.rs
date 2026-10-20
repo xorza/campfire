@@ -1,4 +1,4 @@
-use campfire_codec::{Binary, Taken};
+use campfire_codec::{Binary, Decoded};
 use campfire_common::{StateHash, Tick};
 use serde::{Deserialize, Serialize};
 
@@ -49,8 +49,8 @@ impl Checkpoint {
 
     /// The record at the front of `bytes`, and the bytes after it; an error for bytes that do
     /// not decode, and for a delegation that does not parse.
-    pub(crate) fn take(bytes: &[u8]) -> Result<Taken<'_, Self>, CheckpointDecodeError> {
-        let Taken { value: wire, rest } =
+    pub(crate) fn take(bytes: &[u8]) -> Result<Decoded<'_, Self>, CheckpointDecodeError> {
+        let Decoded { value: wire, rest } =
             Binary::take::<Wire<'_>>(bytes).map_err(CheckpointDecodeError::Malformed)?;
         let record = Self {
             segment: wire.segment,
@@ -59,7 +59,7 @@ impl Checkpoint {
             snapshot: wire.snapshot,
             carry: LogCarry::from_wire(wire.carry)?,
         };
-        Ok(Taken {
+        Ok(Decoded {
             value: record,
             rest,
         })

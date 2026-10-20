@@ -43,7 +43,7 @@ impl CrateKind {
 /// a manifest that holds one the rules do not know fails to read.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(crate) struct Manifest {
+pub(crate) struct CargoManifest {
     #[serde(default)]
     package: Package,
     #[serde(default)]
@@ -51,9 +51,9 @@ pub(crate) struct Manifest {
     #[serde(default)]
     features: BTreeMap<String, Vec<String>>,
     #[serde(default)]
-    dependencies: BTreeMap<String, Dependency>,
+    dependencies: BTreeMap<String, CargoDependency>,
     #[serde(default)]
-    dev_dependencies: BTreeMap<String, Dependency>,
+    dev_dependencies: BTreeMap<String, CargoDependency>,
     /// The dependencies of a platform, by its `cfg`.
     #[serde(default)]
     target: BTreeMap<String, TargetDependencies>,
@@ -95,7 +95,7 @@ struct Lib {
 #[derive(Debug, Default, Deserialize)]
 struct TargetDependencies {
     #[serde(default)]
-    dependencies: BTreeMap<String, Dependency>,
+    dependencies: BTreeMap<String, CargoDependency>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -115,7 +115,7 @@ struct BuildTarget {
 /// A dependency, as a version alone or as a table.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(from = "DependencyForm")]
-pub(crate) struct Dependency {
+pub(crate) struct CargoDependency {
     /// Whether a feature turns it on.
     pub(crate) optional: bool,
     /// The features of its own it turns on.
@@ -125,7 +125,7 @@ pub(crate) struct Dependency {
     pub(crate) inherited: bool,
 }
 
-impl Dependency {
+impl CargoDependency {
     /// Whether it turns its `internals` on.
     pub(crate) fn turns_internals_on(&self) -> bool {
         self.features.iter().any(|feature| feature == "internals")
@@ -150,7 +150,7 @@ enum DependencyForm {
     },
 }
 
-impl From<DependencyForm> for Dependency {
+impl From<DependencyForm> for CargoDependency {
     fn from(form: DependencyForm) -> Self {
         match form {
             DependencyForm::Version(_) => Self::default(),
@@ -173,7 +173,7 @@ impl From<DependencyForm> for Dependency {
     }
 }
 
-impl Manifest {
+impl CargoManifest {
     /// The manifest `text` holds.
     pub(crate) fn parse(text: &str) -> Self {
         Toml::parse(text).unwrap_or_else(|error| panic!("a manifest reads: {error}"))
@@ -190,7 +190,7 @@ impl Manifest {
     }
 
     /// Each dependency, a target's among them, by its name, sorted.
-    pub(crate) fn dependencies(&self) -> impl Iterator<Item = (&str, &Dependency)> {
+    pub(crate) fn dependencies(&self) -> impl Iterator<Item = (&str, &CargoDependency)> {
         let targets = self.target.values().flat_map(|target| &target.dependencies);
         self.dependencies
             .iter()
@@ -206,10 +206,15 @@ impl Manifest {
     }
 
     /// Each dev-dependency, by its name, sorted.
-    pub(crate) fn dev_dependencies(&self) -> impl Iterator<Item = (&str, &Dependency)> {
+    pub(crate) fn dev_dependencies(&self) -> impl Iterator<Item = (&str, &CargoDependency)> {
         self.dev_dependencies
             .iter()
             .map(|(name, dependency)| (name.as_str(), dependency))
+    }
+
+    /// The names of its features.
+    pub(crate) fn feature_names(&self) -> impl Iterator<Item = &str> {
+        self.features.keys().map(String::as_str)
     }
 
     /// The entries of the feature `name`, if the manifest has it.
@@ -344,7 +349,7 @@ impl WorkspaceManifest {
 fn a_manifest_reads_each_form_of_a_dependency_and_fails_on_a_section_it_does_not_know() {
     // A dependency by a version, a dotted key, a table, a dotted section and a target's, and a
     // dev-dependency; the target's condition is spelled in parts, so this file names no OS.
-    let manifest = Manifest::parse(concat!(
+    let manifest = CargoManifest::parse(concat!(
         "[package]\nname = \"x\"\nversion.workspace = true\n\n",
         "[package.metadata.campfire]\nkind = \"glue\"\n\n",
         "[features]\ni = [\"dep:t\"]\n\n[dependencies]\n",
@@ -367,7 +372,7 @@ fn a_manifest_reads_each_form_of_a_dependency_and_fails_on_a_section_it_does_not
     assert_eq!(manifest.feature("i"), Some(&["dep:t".to_owned()][..]));
     assert!(manifest.requires_internals() && !manifest.is_proc_macro());
     assert!(!manifest.takes_workspace_lints());
-    assert!(Manifest::parse("[lints]\nworkspace = true\n").takes_workspace_lints());
+    assert!(CargoManifest::parse("[lints]\nworkspace = true\n").takes_workspace_lints());
     let turns: Vec<&str> = manifest
         .dependencies()
         .filter(|(_, dependency)| dependency.turns_internals_on())
@@ -376,12 +381,12 @@ fn a_manifest_reads_each_form_of_a_dependency_and_fails_on_a_section_it_does_not
     assert_eq!(turns, ["u"]);
     // `t` is turned on by `dep:`, `w` by a feature of its own, and `y` only by its implicit
     // feature, as `y?/x` turns nothing on.
-    let optionals = Manifest::parse(concat!(
+    let optionals = CargoManifest::parse(concat!(
         "[features]\na = [\"dep:t\", \"w/x\", \"y?/x\"]\n\n[dependencies]\n",
         "t = { workspace = true, optional = true }\nw = { workspace = true, optional = true }\n",
         "y = { workspace = true, optional = true }\n",
     ));
     assert_eq!(optionals.unturned_optionals(), ["y"]);
-    let unknown = Toml::parse::<Manifest>("[build-dependencies]\na = \"1\"\n");
+    let unknown = Toml::parse::<CargoManifest>("[build-dependencies]\na = \"1\"\n");
     assert!(unknown.is_err());
 }

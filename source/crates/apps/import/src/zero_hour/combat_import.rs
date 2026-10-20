@@ -3,14 +3,16 @@ use std::collections::btree_map::Entry;
 
 use std::num::NonZeroU8;
 
-use campfire_actions::{ActionKind, ActionRange, DeliveryData, RangeField, Targeting};
+use campfire_actions::{ActionKeys, ActionKind, ActionRange, DeliveryData, RangeField, Targeting};
 use campfire_client_files::ClientUnits;
-use campfire_combat::{AttackData, ClipData, PitchData, ScatterData, SplashData, WeaponValue};
+use campfire_codec::TomlTable;
+use campfire_combat::{
+    ArmorShare, AttackData, ClipData, PitchData, ScatterData, SplashData, WeaponValue,
+};
 use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_projectiles::ProjectileData;
 use campfire_values::{FilterData, Number, Ranked, RelationSet, Scalar, Speed};
-use serde::Serialize;
 
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::game_float;
@@ -37,7 +39,7 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 pub(crate) struct CombatImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedWeapon>,
     pub(crate) weapons: BTreeMap<ImportName, Vec<DeclaredName>>,
-    pub(crate) armors: BTreeMap<DeclaredName, BTreeMap<DeclaredName, Num>>,
+    pub(crate) armors: BTreeMap<DeclaredName, BTreeMap<DeclaredName, ArmorShare>>,
     pub(crate) dropped: Vec<DroppedWeapon>,
     pub(crate) unliving: Vec<String>,
     pub(crate) wounded: Vec<String>,
@@ -55,15 +57,10 @@ struct ShellLook {
 /// converts when it hits one target at once): its numbers, its clip, the shell it fires, the
 /// damage of its radius, its scatter, the pitches it reaches, and the speed of a weapon of no
 /// shell whose damage lands after its shot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedWeapon {
-    kind: ActionKind,
-    targeting: Targeting,
-    range: Ranked<RangeField>,
-    #[serde(flatten)]
+    pub(crate) keys: ActionKeys,
     pub(crate) attack: AttackData,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) delivery: Option<DeliveryData>,
 }
 
 /// A weapon the import converts, and the shell it fires, if it fires one.
@@ -109,7 +106,7 @@ impl CombatImport {
                 }
                 let share = game_float::to_num(share)
                     .ok()
-                    .filter(|share| *share >= Num::ZERO)
+                    .and_then(ArmorShare::new)
                     .ok_or_else(|| ZeroHourError::ArmorShare(name.to_owned()))?;
                 shares.insert(kind.kind(), share);
             }
@@ -240,7 +237,7 @@ impl CombatImport {
                     .actions
                     .get_mut(&action)
                     .expect("a shell's action is converted");
-                held.delivery = Some(DeliveryData::Projectile {
+                held.keys.delivery = Some(DeliveryData::Projectile {
                     unit_type,
                     count: NonZeroU8::MIN,
                     spread_deg: Num::ZERO,
@@ -273,6 +270,11 @@ impl FiredShell<'_> {
 }
 
 impl ImportedWeapon {
+    /// Its table under `[actions]`.
+    pub(crate) fn table(&self) -> TomlTable {
+        self.keys.table(&self.attack)
+    }
+
     /// The attack of `weapon`, of the objects of `ini`, and the shell it fires; why the import
     /// drops it, when it hits no target by the engine's rules, or holds a number the engine does
     /// not.
@@ -396,9 +398,10 @@ impl ImportedWeapon {
         let enemies = FilterData::parse("enemies").expect("the enemies' filter parses");
         Ok(ConvertedWeapon {
             weapon: Self {
-                kind: ActionKind::Attack,
-                targeting: Targeting::Unit(enemies),
-                range: Ranked::One(range),
+                keys: ActionKeys {
+                    range: Some(Ranked::One(range)),
+                    ..ActionKeys::new(ActionKind::Attack, Targeting::Unit(enemies))
+                },
                 attack: AttackData {
                     rate: WeaponValue::Own(ms(period_ms)?),
                     damage: WeaponValue::Own(damage),
@@ -409,7 +412,6 @@ impl ImportedWeapon {
                     pitch_deg,
                     speed,
                 },
-                delivery: None,
             },
             shell,
         })
@@ -473,10 +475,12 @@ mod tests {
         let decimal = |value: i64| Ranked::One(Number::Value(Scalar::Decimal(Num::int(value))));
         let range =
             |meters: i64| Ranked::One(RangeField::Range(ActionRange::meters(Num::int(meters))));
+        let enemies = Targeting::Unit(FilterData::parse("enemies").unwrap());
         let rifle = ImportedWeapon {
-            kind: ActionKind::Attack,
-            targeting: Targeting::Unit(FilterData::parse("enemies").unwrap()),
-            range: range(100),
+            keys: ActionKeys {
+                range: Some(range(100)),
+                ..ActionKeys::new(ActionKind::Attack, enemies)
+            },
             attack: AttackData {
                 rate: WeaponValue::Own(own(100)),
                 damage: WeaponValue::Own(decimal(5)),
@@ -490,7 +494,6 @@ mod tests {
                 pitch_deg: None,
                 speed: None,
             },
-            delivery: None,
         };
         assert_eq!(weapon("RangerRifle"), Ok(rifle.clone()));
         assert!(of("RangerRifle").unwrap().shell.is_none());
@@ -501,7 +504,10 @@ mod tests {
         assert_eq!(
             cannon.weapon,
             ImportedWeapon {
-                range: range(150),
+                keys: ActionKeys {
+                    range: Some(range(150)),
+                    ..rifle.keys
+                },
                 attack: AttackData {
                     rate: WeaponValue::Own(own(2000)),
                     damage: WeaponValue::Own(decimal(60)),
@@ -515,7 +521,6 @@ mod tests {
                     pitch_deg: PitchData::new(Num::int(-15), Num::int(15)),
                     speed: None,
                 },
-                ..rifle
             }
         );
         let shell = cannon.shell.unwrap();
@@ -739,7 +744,7 @@ End
                 .actions
                 .iter()
                 .map(|(id, weapon)| {
-                    let delivery = weapon.delivery.as_ref().unwrap();
+                    let delivery = weapon.keys.delivery.as_ref().unwrap();
                     (
                         id.as_str().to_owned(),
                         delivery.unit_type().as_str().to_owned(),

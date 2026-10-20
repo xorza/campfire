@@ -6,7 +6,9 @@ use campfire_client_files::{ClientObjects, ClientUnits, MapConditions, TerrainFi
 use campfire_codec::Binary;
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
-use campfire_import::{DropCause, DroppedButton, DroppedWeapon, ImportLoss, Imported, WeaponDrop};
+use campfire_import::{
+    ButtonDropCause, DroppedButton, DroppedWeapon, ImportLoss, Imported, WeaponDrop,
+};
 use campfire_math::Num;
 use campfire_navigation::MapNavigationData;
 use campfire_package::ModePackages;
@@ -14,7 +16,7 @@ use campfire_package_disk::PackageDir;
 use tracing::info;
 
 use crate::error::CheckError;
-use crate::failure::{Differs, Failure};
+use crate::failure::{CheckFailure, Differs};
 use crate::golden::{Golden, Measured};
 use crate::pins::{
     FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
@@ -34,7 +36,7 @@ pub(crate) struct ImportCheck<'a> {
     pub(crate) packages: ModePackages,
     pub(crate) golden: Option<Golden>,
     pub(crate) measured: Measured,
-    pub(crate) failures: Vec<Failure>,
+    pub(crate) failures: Vec<CheckFailure>,
 }
 
 impl ImportCheck<'_> {
@@ -48,7 +50,7 @@ impl ImportCheck<'_> {
     pub(crate) fn fingerprints(&mut self, got: Fingerprints) {
         let expected = self.pinned(|golden| golden.fingerprints, got);
         self.failures
-            .extend(Differs::of(got, expected).map(Failure::Fingerprints));
+            .extend(Differs::of(got, expected).map(CheckFailure::Fingerprints));
         self.measured.fingerprints = Some(got);
     }
 
@@ -91,15 +93,15 @@ impl ImportCheck<'_> {
         });
         let untextured = untextured.unwrap_or(0);
         if untextured > 0 {
-            self.failures.push(Failure::Untextured(untextured));
+            self.failures.push(CheckFailure::Untextured(untextured));
         }
         let pinned = self.pinned(|golden| golden.map, counts);
         self.failures
-            .extend(Differs::of(counts, pinned).map(Failure::Map));
+            .extend(Differs::of(counts, pinned).map(CheckFailure::Map));
         let layers = self.pinned(|golden| golden.terrain, drawn.counts);
         let expected = TerrainDrawn::expected(pinned.heights, layers);
         self.failures
-            .extend(Differs::of(drawn, expected).map(Failure::Terrain));
+            .extend(Differs::of(drawn, expected).map(CheckFailure::Terrain));
         self.measured.map = Some(counts);
         self.measured.terrain = Some(drawn.counts);
         info!(
@@ -150,7 +152,7 @@ impl ImportCheck<'_> {
         }
         let expected = self.pinned(|golden| golden.looks, drawn);
         self.failures
-            .extend(Differs::of(drawn, expected).map(Failure::Looks));
+            .extend(Differs::of(drawn, expected).map(CheckFailure::Looks));
         self.measured.looks = Some(drawn);
         info!(
             varied = drawn.varied,
@@ -187,7 +189,7 @@ impl ImportCheck<'_> {
         let produced = ProducedCounts {
             trains: self.kind_count(ActionKind::Train),
             builds: self.kind_count(ActionKind::Build),
-            dropped: DropCause::ALL.map(|cause| {
+            dropped: ButtonDropCause::ALL.map(|cause| {
                 dropped
                     .iter()
                     .filter(|button| button.cause == cause)
@@ -196,7 +198,7 @@ impl ImportCheck<'_> {
         };
         let expected = self.pinned(|golden| golden.produced, produced);
         self.failures
-            .extend(Differs::of(produced, expected).map(Failure::Produced));
+            .extend(Differs::of(produced, expected).map(CheckFailure::Produced));
         self.measured.produced = Some(produced);
         for dropped in &dropped {
             info!(
@@ -240,7 +242,7 @@ impl ImportCheck<'_> {
         };
         let expected = self.pinned(|golden| golden.fought, fought);
         self.failures
-            .extend(Differs::of(fought, expected).map(Failure::Fought));
+            .extend(Differs::of(fought, expected).map(CheckFailure::Fought));
         self.measured.fought = Some(fought);
         for dropped in &dropped {
             info!(
@@ -255,7 +257,7 @@ impl ImportCheck<'_> {
     /// The skirmish's production and fight, in a match of its own of the packages loaded again,
     /// then the start and the dozer's drive, at `HZ` ticks a second; then, in a run that blesses,
     /// the golden file written of what the checks measured: every failure the checks found.
-    pub(crate) fn plays(mut self) -> Result<Vec<Failure>, CheckError> {
+    pub(crate) fn plays(mut self) -> Result<Vec<CheckFailure>, CheckError> {
         let rate = u32::try_from(HZ).ok().and_then(NonZeroU32::new);
         let rate = rate.expect("a rate");
         let played = self
@@ -279,7 +281,7 @@ impl ImportCheck<'_> {
             let pinned = self.pinned(|golden| golden.skirmish, ticks);
             let expected = ProductionSteps::expected(pinned.barracks);
             self.failures
-                .extend(Differs::of(production, expected).map(Failure::Production));
+                .extend(Differs::of(production, expected).map(CheckFailure::Production));
             info!(
                 dozer = production.dozer_ticks,
                 barracks = production.barracks_ticks,
@@ -289,7 +291,7 @@ impl ImportCheck<'_> {
             );
             let expected = FactorySteps::expected(pinned.factory);
             self.failures
-                .extend(Differs::of(factory, expected).map(Failure::Factory));
+                .extend(Differs::of(factory, expected).map(CheckFailure::Factory));
             info!(
                 ticks = ?factory.ticks,
                 money = factory.money,
@@ -297,7 +299,7 @@ impl ImportCheck<'_> {
             );
             let expected = FightSteps::expected(pinned);
             self.failures
-                .extend(Differs::of(fight, expected).map(Failure::Fight));
+                .extend(Differs::of(fight, expected).map(CheckFailure::Fight));
             self.measured.skirmish = Some(ticks);
             info!(
                 train = fight.train_ticks,
@@ -310,7 +312,7 @@ impl ImportCheck<'_> {
             );
             let expected = self.pinned(|golden| golden.bot, bot);
             self.failures
-                .extend(Differs::of(bot, expected).map(Failure::Bot));
+                .extend(Differs::of(bot, expected).map(CheckFailure::Bot));
             self.measured.bot = Some(bot);
             info!(
                 built = ?bot.built,
@@ -322,10 +324,10 @@ impl ImportCheck<'_> {
             let golden = self.golden.as_ref();
             let expected = golden.map_or(drive.ticks, |golden| golden.drive_ticks);
             self.failures
-                .extend(Differs::of(drive.ticks, expected).map(Failure::DriveTicks));
+                .extend(Differs::of(drive.ticks, expected).map(CheckFailure::DriveTicks));
             self.measured.drive_ticks = Some(drive.ticks);
             if drive.left != Num::ZERO {
-                self.failures.push(Failure::DriveShort(drive.left));
+                self.failures.push(CheckFailure::DriveShort(drive.left));
             }
             info!(
                 ticks = drive.ticks,
@@ -337,7 +339,7 @@ impl ImportCheck<'_> {
         if self.golden.is_none() {
             match self.measured.into_golden() {
                 Some(golden) => golden.bless()?,
-                None => self.failures.push(Failure::Unmeasured),
+                None => self.failures.push(CheckFailure::Unmeasured),
             }
         }
         Ok(self.failures)

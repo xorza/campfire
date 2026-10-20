@@ -154,7 +154,7 @@ impl ViewReader {
         let read = ReadOf {
             now: world.resource::<SimTick>().start(),
             relations: world.relations(),
-            metric: map.metric,
+            metric: map.metric(),
             bounds: map.bounds,
         };
         let refill = rows.begin(read) || full;

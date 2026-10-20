@@ -51,7 +51,7 @@ impl Targets<'_, '_> {
     }
 
     pub fn metric(&self) -> Metric {
-        self.map.metric
+        self.map.metric()
     }
 
     /// How `of` regards `other`.
@@ -63,20 +63,20 @@ impl Targets<'_, '_> {
     /// exactly, from the edge of the one body to the edge of the other.
     pub fn reaches(&self, from: Placed, range: Num, target: &LivingUnit) -> bool {
         let target = Placed::new(target.position, target.shape);
-        self.map.metric.reaches(from, range, target)
+        self.map.metric().reaches(from, range, target)
     }
 
     /// Whether `range` from the body `from` reaches the point `position`, from the edge of the
     /// body, exactly.
     pub(crate) fn reaches_point(&self, from: Placed, range: Num, position: Vec3) -> bool {
         self.map
-            .metric
+            .metric()
             .reaches(from, range, Placed::point(position))
     }
 
     /// The point `step` from `from` toward `to` in the map's metric, or `to` when it is nearer.
     pub fn toward(&self, from: Vec3, to: Vec3, step: Num) -> Vec3 {
-        self.map.metric.step_toward(from, to, step)
+        self.map.metric().step_toward(from, to, step)
     }
 
     /// `target`, when it is a living unit that may be a target.

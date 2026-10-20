@@ -14,7 +14,7 @@ use crate::passive_data::PassiveData;
 /// a modifier.
 #[derive(Debug, Default)]
 pub struct ModifierAppliers {
-    pub(crate) applied: Vec<Applied>,
+    pub(crate) applied: Vec<ApplyWay>,
     /// The modifiers that pass each of their ways on to another of their package's: an aura's,
     /// and those a modifier's script applies with its action.
     pub(crate) passes: Vec<Pass>,
@@ -22,7 +22,7 @@ pub struct ModifierAppliers {
 
 /// A way that applies a modifier of a package.
 #[derive(Debug)]
-pub(crate) struct Applied {
+pub(crate) struct ApplyWay {
     pub(crate) package: PackageIndex,
     pub(crate) modifier: String,
     pub(crate) way: Way,
@@ -87,7 +87,7 @@ impl ModifierAppliers {
 
     /// Adds that `way` applies `modifier`, of the package at `package`.
     pub fn apply(&mut self, package: PackageIndex, modifier: &str, way: Way) {
-        self.applied.push(Applied {
+        self.applied.push(ApplyWay {
             package,
             modifier: modifier.to_owned(),
             way,

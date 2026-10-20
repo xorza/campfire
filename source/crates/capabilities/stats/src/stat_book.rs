@@ -21,6 +21,7 @@ use crate::stats_data::StatsData;
 /// value at level 1 and gain a level; with the move speed cap the engine's formulas take.
 /// Package data, not state.
 #[derive(Resource, Debug)]
+#[component(immutable)]
 pub struct StatBook {
     /// The stats' names, by id; shared with the script view, which names them to scripts.
     names: Arc<Names<StatId>>,

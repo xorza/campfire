@@ -46,12 +46,10 @@ pub(crate) fn receive_event_typed<M: Message + Event>(
         "Received trigger message: {:?} from: {from:?}",
         DebugName::type_name::<M>()
     );
-    commands.command_scope(|mut commands| {
-        commands.trigger(RemoteEvent {
-            event: trigger,
-            from,
-            link,
-        });
+    commands.trigger(RemoteEvent {
+        event: trigger,
+        from,
+        link,
     });
     Ok(())
 }

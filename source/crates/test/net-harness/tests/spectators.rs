@@ -1,21 +1,27 @@
 //! Spectators (10-replication-audiences.md, The host admits spectators, and their fog is a
 //! setting): a link with no slot, admitted while the session holds a place for it, watches every
 //! unit through any fog, or the teams' views it chooses, and holds of each entity what its kind's
-//! audience gives spectators. It predicts nothing.
+//! audience gives spectators. It predicts nothing, and its join's burst of the whole world crosses
+//! a slow link in the frames its rate allows.
 
 use std::collections::BTreeSet;
 
 use bevy_app::App;
 use bevy_ecs::query::{Allow, With};
+use campfire_bots::OrderScript;
 use campfire_net::{
     CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, WatchRequest,
 };
-use campfire_net_emulator::LinkModel;
+use campfire_net_core::LinkDirection;
+use campfire_net_emulator::{LinkModel, RateLimit};
 use campfire_net_harness::{InProcessMatch, InProcessSetup};
+use campfire_net_prediction::RollbackMode;
 use campfire_net_replication::Replicate;
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_units::{Life, SpawnPoint, UnitsWorld};
 use campfire_values::{Relations, Team, TeamSet};
+
+use crate::short_3v3::{PICKS, short_3v3};
 
 /// Steps a spectator may take to link, answer the offer and watch.
 const JOIN_STEPS: usize = 300;
@@ -148,4 +154,82 @@ fn a_spectator_of_the_teams_views_watches_the_teams_it_chooses() {
         local.step();
     }
     assert_eq!(held(local.client_mut(spectator)), held(local.client_mut(0)));
+}
+
+/// What a spectator's join to the short 3v3 ten seconds in cost its link, by server frame from
+/// the join, until it held every entity the server replicates.
+#[derive(Debug, PartialEq, Eq)]
+struct JoinBurst {
+    /// The bytes the server put on the spectator's wire in each frame.
+    frames: Vec<u64>,
+    /// The entities it then held.
+    entities: usize,
+}
+
+impl JoinBurst {
+    /// The join over links of `link`, the server running a frame a tick.
+    fn over(link: LinkModel) -> Self {
+        let mut setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
+        setup.bots = &PICKS[1..];
+        setup.max_spectators = 1;
+        setup.link = link;
+        let mut local = InProcessMatch::of_mode(setup, short_3v3(&[], ""));
+        local.open_match();
+        local.play(0, &OrderScript::parse(PICKS[0]).unwrap());
+        local.await_avatars(JOIN_STEPS);
+        for _ in 0..300 {
+            local.step();
+        }
+        let spectator = local.add_spectator();
+        let sent = |local: &InProcessMatch| {
+            local
+                .wire_counts(spectator, LinkDirection::ServerToClient)
+                .sent_bytes
+        };
+        let mut frames = Vec::new();
+        for _ in 0..JOIN_STEPS {
+            let before = sent(&local);
+            local.step();
+            frames.push(sent(&local) - before);
+            let all = replicated(local.server_mut());
+            if state(&local, spectator).watching_clock().is_some()
+                && held(local.client_mut(spectator)) == all
+            {
+                return Self {
+                    frames,
+                    entities: all.len(),
+                };
+            }
+        }
+        panic!("the spectator held every entity within {JOIN_STEPS} steps");
+    }
+
+    fn largest(&self) -> u64 {
+        self.frames.iter().copied().max().unwrap()
+    }
+}
+
+/// A link whose queue holds a second of its rate, `bytes_per_second`, with no delay and no loss.
+const fn rated(bytes_per_second: u32) -> LinkModel {
+    LinkModel::perfect().with_rate(RateLimit::new(bytes_per_second, bytes_per_second))
+}
+
+#[test]
+fn a_join_burst_fits_the_initial_window_and_a_megabit_link_delays_it_one_tick() {
+    // At 10 Mbit/s each datagram arrives at the other end's next frame, as the link takes time to
+    // carry it: the handshake's frames, then the world's 58 entities in one frame of 4,438 bytes,
+    // the largest, which takes 3.6 ms. It is below NewReno's initial window of 10 packets of
+    // 1,200 bytes, so the packet session's budget sends it whole (11-net-stack/packet-session.md,
+    // Congestion control is NewReno, in the packet session).
+    let fast = JoinBurst::over(rated(1_250_000));
+    assert_eq!(fast.frames, [0, 43, 0, 431, 0, 599, 46, 4_438, 439]);
+    assert_eq!(fast.entities, 58);
+    assert!(fast.largest() < 10 * 1_200);
+
+    // At 1 Mbit/s the 4,438 bytes take 35,504 µs, past the tick of 33,333 µs: the spectator
+    // holds the world one frame later, in which the server sent one more frame's bytes.
+    let slow = JoinBurst::over(rated(125_000));
+    assert_eq!(slow.frames, [0, 43, 0, 431, 0, 599, 46, 4_438, 439, 451]);
+    assert_eq!(slow.entities, 58);
+    assert_eq!(slow.largest() * 1_000_000 / 125_000, 35_504);
 }

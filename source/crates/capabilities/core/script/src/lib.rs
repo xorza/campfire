@@ -30,9 +30,11 @@ pub use crate::scripts::error::{
 };
 pub use crate::scripts::frame::Frame;
 pub use crate::scripts::frame::effects::{Effect, EffectKind};
+pub use crate::scripts::given_names::{GivenNames, NameShape};
 pub use crate::scripts::hook::{Hook, HookDecl};
 pub use crate::scripts::hook_set::HookSet;
 pub use crate::scripts::id_name::{IdName, MaybeName};
+pub use crate::scripts::id_names::IdNames;
 pub use crate::scripts::member_decl::{ArgKinds, MemberDecl};
 pub use crate::scripts::member_kind::MemberKind;
 pub use crate::scripts::mode_events::{ListedScript, ModeAnswer, ModeEvents};

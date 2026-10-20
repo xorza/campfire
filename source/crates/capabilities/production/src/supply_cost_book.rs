@@ -14,6 +14,7 @@ use crate::train_spec::TrainSpec;
 /// the train's action: the one rule by which every count of supply reads a unit. Package data,
 /// not state. A clone shares the costs, as the script view reads them.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[component(immutable)]
 pub struct SupplyCostBook {
     types: Arc<ByType<SupplyData>>,
     /// By action, up to the last train, 0 for an action that trains nothing.

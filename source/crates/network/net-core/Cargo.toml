@@ -8,7 +8,6 @@ license.workspace = true
 kind = "problem"
 
 [features]
-# `Reflect` on the shared types, for the ECS crates that hold them in components and resources
 reflect = ["dep:bevy_reflect"]
 
 [dependencies]

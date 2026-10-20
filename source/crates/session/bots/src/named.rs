@@ -9,9 +9,9 @@ use crate::location::Location;
 /// name or its point; an item type by its name (04-capabilities/control.md, A bot's script
 /// names what it orders).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Named;
+pub struct NamedRefs;
 
-impl OrderRefs for Named {
+impl OrderRefs for NamedRefs {
     type Unit = FilterData;
     type Slot = DeclaredName;
     type Ground = Location;

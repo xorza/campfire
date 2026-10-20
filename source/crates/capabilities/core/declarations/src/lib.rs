@@ -56,7 +56,9 @@ pub use crate::capability_set::CapabilitySet;
 pub use crate::declarations::{ColumnFill, Declarations};
 pub use crate::entity_kind::{EntityKind, KindAudience};
 pub use crate::entity_parts::EntityParts;
-pub use crate::error::{BookError, BookPlace, DefaultsError, NamesListError, Problem, TypePlace};
+pub use crate::error::{
+    BookError, BookPlace, DefaultsError, NamesListError, PatchError, Problem, TypePlace,
+};
 pub use crate::fact::Fact;
 pub use crate::install_cx::{InstallCx, InstallFacts};
 pub use crate::kind_spawn::{KindSpawn, SpawnCore};
@@ -72,7 +74,9 @@ pub use crate::report::Report;
 pub use crate::role::Role;
 pub use crate::role_form::{ClientForm, RoleForm, ServerForm};
 pub use crate::scratch::Scratch;
+pub use crate::section::patched::Patched;
 pub use crate::section::section_readers::{SectionReaders, TableRead, TableSeed};
+pub use crate::section::section_writer::SectionWriter;
 pub use crate::section::sections::Sections;
 pub use crate::section::{Listed, ListedSet, ReadValue, Section, SectionTable};
 pub use crate::server_only_systems::ServerOnlySystems;

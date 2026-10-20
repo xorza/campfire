@@ -7,6 +7,7 @@ use campfire_values::{NameId, PackageIndex, UnitType};
 /// place in the mode's packages, the mode's first, and its name there, as its client data names
 /// it. Package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[component(immutable)]
 pub struct TypeOriginBook {
     origins: Vec<TypeOrigin>,
 }

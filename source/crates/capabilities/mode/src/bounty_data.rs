@@ -2,16 +2,17 @@ use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::FilterData;
+use campfire_values::{FilterData, TagFilterData};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// The mode's `bounty` section: the killers whose kills pay, a filter from the victim's side, and
-/// the share of a victim's cost each player starts with, 0 or more (04-capabilities/games.md, A
-/// kill's bounty).
+/// The mode's `bounty` section: the killers whose kills pay, a filter from the victim's side; the
+/// victims whose deaths pay, by their tags at death, all by default; and the share of a victim's
+/// cost each player starts with, 0 or more (04-capabilities/games.md, A kill's bounty).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModeBountyData {
     pub killer: FilterData,
+    pub victim: TagFilterData,
     pub share: Num,
 }
 
@@ -40,13 +41,23 @@ impl<'de> Deserialize<'de> for ModeBountyData {
         struct Fields {
             killer: FilterData,
             #[serde(default)]
+            victim: TagFilterData,
+            #[serde(default)]
             share: Num,
         }
-        let Fields { killer, share } = Fields::deserialize(deserializer)?;
+        let Fields {
+            killer,
+            victim,
+            share,
+        } = Fields::deserialize(deserializer)?;
         if share < Num::ZERO {
             return Err(D::Error::custom("a bounty's share is 0 or more"));
         }
-        Ok(Self { killer, share })
+        Ok(Self {
+            killer,
+            victim,
+            share,
+        })
     }
 }
 

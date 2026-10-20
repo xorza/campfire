@@ -1,7 +1,7 @@
 use campfire_common::EnumAll;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::scripts::state_decl::{StateDecl, StateDefault};
+use crate::scripts::state_decl::{DeclFields, StateDecl, StateDefault};
 use crate::scripts::state_type::StateType;
 
 /// A declared field of the mode's or a unit type's script state: its type, its first value, and
@@ -13,7 +13,7 @@ pub struct StateFieldDecl {
 }
 
 /// Which clients a field of script state is sent to: none unless the field says so.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, EnumAll)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, EnumAll)]
 #[serde(rename_all = "snake_case")]
 pub enum Audience {
     #[default]
@@ -30,19 +30,41 @@ impl Audience {
     }
 }
 
+/// A declared field as data writes it, its audience beside its declaration's keys, which reads
+/// and writes the same keys.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Fields {
+    #[serde(rename = "type")]
+    kind: StateType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default: Option<StateDefault>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    values: Option<Vec<String>>,
+    #[serde(default)]
+    audience: Audience,
+}
+
+impl Serialize for StateFieldDecl {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let DeclFields {
+            kind,
+            default,
+            values,
+        } = self.decl.fields();
+        Fields {
+            kind,
+            default,
+            values,
+            audience: self.audience,
+        }
+        .serialize(serializer)
+    }
+}
+
 /// A default not of its field's type fails to read, where the data enters.
 impl<'de> Deserialize<'de> for StateFieldDecl {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Fields {
-            #[serde(rename = "type")]
-            kind: StateType,
-            default: Option<StateDefault>,
-            values: Option<Vec<String>>,
-            #[serde(default)]
-            audience: Audience,
-        }
         let Fields {
             kind,
             default,

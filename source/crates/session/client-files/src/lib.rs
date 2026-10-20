@@ -31,7 +31,7 @@ pub use crate::client_units::{
 };
 pub use crate::error::{TerrainFileError, TextureLevelsError};
 pub use crate::hud_file::{HudFile, ShownBars};
-pub use crate::keys_file::{Chord, ChordLabel, Key, KeysFile, Modifiers};
+pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};
 pub use crate::ktx2_image::Ktx2Image;
 pub use crate::map_conditions::MapConditions;
 pub use crate::map_lights::{MapLight, MapLights};

@@ -187,7 +187,7 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
     for bound in [false, true] {
         let mut game = stat_match(slice::from_ref(&hero));
         if bound {
-            game.resource_mut::<PoolBook>().set_life(Some(HEALTH));
+            PoolBook::amend(&mut game, |_, book| book.set_life(Some(HEALTH)));
         }
         let unit = unit(&mut game, 0);
         game.step();
@@ -376,7 +376,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
         (TagProperties::default(), TagSet::from([slowed])),
     ];
     let own = TagSet::from([sight]);
-    game.insert_resource(TagBook::new(0, effects, [(UnitType::new(0), own)]));
+    TagBook::new(0, effects, [(UnitType::new(0), own)]).load_into(&mut game);
     let unit = unit(&mut game, 0);
     let book = game.resource::<StatBook>();
     let speed = book.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
@@ -592,22 +592,22 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
     let id = *game.get::<StableId>(unit).unwrap();
     Stats::give_modifier(&mut game, id, warding, Some((id, None, 1)), false);
     let made = game.get::<ModifierClocks>(unit).unwrap().clone();
-    let check = |change: fn(&mut Clock)| {
+    let check = |change: fn(&mut ModifierClock)| {
         let mut clocks = made.clone();
         change(clocks.clock_mut(0));
         Match::decodes(&clocks) && clocks.check(&game, unit)
     };
-    let limit = |clock: &mut Clock| {
+    let limit = |clock: &mut ModifierClock| {
         let interval = clock.interval.as_mut().unwrap();
         (interval.every, interval.next) = (Ticks::LIMIT, Tick::LIMIT);
     };
     assert!(check(|_| ()) && check(limit));
     assert!(!check(|clock| clock.interval = None));
     assert!(!check(|clock| clock.shield = None));
-    let past_every = |clock: &mut Clock| {
+    let past_every = |clock: &mut ModifierClock| {
         clock.interval.as_mut().unwrap().every = Ticks::new(Ticks::LIMIT.get() + 1);
     };
-    let past_next = |clock: &mut Clock| {
+    let past_next = |clock: &mut ModifierClock| {
         clock.interval.as_mut().unwrap().next = Tick::new(Tick::LIMIT.get() + 1);
     };
     assert!(!check(past_every) && !check(past_next));
@@ -623,7 +623,8 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     Unpredicted::register(&mut game);
     let book = StatBook::new(&rules(), Num::int(6));
     book.load_into(&mut game);
-    // A presence of 2 m on allies, holding `inspired`.
+    // A presence of 2 m on allies, holding `inspired`, which grants its carrier the engine's tag
+    // 0, `avatar`.
     let presence = AuraData {
         radius: Number::Value(Scalar::Int(2)),
         affects: FilterData::parse("allies").unwrap(),
@@ -636,13 +637,11 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         &modifier_data(None),
         None,
     );
-    Stats::load_modifier(
-        &mut game,
-        PackageIndex::MODE,
-        "presence",
-        &modifier_data(Some(presence)),
-        None,
-    );
+    let presence = ModifierData {
+        tags: vec![DeclaredName::new("avatar").unwrap()],
+        ..modifier_data(Some(presence))
+    };
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "presence", &presence, None);
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
     // `warded`, whose modifier `ward` grants it, makes immune to the engine's tag 0, `avatar`.
     let warded = DeclaredName::new("warded").unwrap();
@@ -699,7 +698,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     game.step();
     assert_eq!([near, far].map(|id| holds(&game, id)), [false, true]);
     // An aura's instance of no stack projects nothing, nor does one its carrier's immunity
-    // suppresses: the aura grants tag 0, to which the carrier is immune.
+    // suppresses: the aura grants tag 0, to which the carrier, warded, is immune.
     let stacks = |game: &mut Match, stacks| {
         let holder = entity(game, carrier);
         let mut modifiers = game.get_mut::<Modifiers>(holder).unwrap();
@@ -711,8 +710,6 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     stacks(&mut game, 1);
     game.step();
     assert!(holds(&game, far));
-    let mut book = game.resource_mut::<ModifierBook>();
-    book.grant_tags(presence, TagSet::from([Tag::new(0)]));
     let ward = Stats::modifier(&game, PackageIndex::MODE, "ward").unwrap();
     Stats::give_modifier(&mut game, carrier, ward, None, false);
     game.step();
@@ -883,8 +880,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
             (UnitType::new(0), TagSet::NONE),
             (UnitType::new(1), TagSet::from([stunned])),
         ];
-        let book = TagBook::new(0, effects, own);
-        game.insert_resource(book);
+        TagBook::new(0, effects, own).load_into(&mut game);
         // The modifiers the shares below are instances of, 0 and 1.
         let speed = game.resource::<StatBook>();
         let speed = speed.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();

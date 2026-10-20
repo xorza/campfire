@@ -76,3 +76,8 @@ How the stack answers "what time is it".
   `jitter_margin` defaults to 0, a tail margin above the measured jitter that interpolation keeps
   at 1. Practice: Netcode for Entities' `TargetCommandSlack` of 2 ticks. Refused: a second tick
   for the input's arrival, which paid the same reason twice.
+- **A client behind steps, a client ahead slews.** The input timeline steps to its objective once a
+  deficit passes the deadband, as a late input costs more than latency, and the interpolation
+  timeline slews, as a step shows as a jump ([LAN late input](../../research/lan-late-input.md)).
+  Practice: NTP steps a large offset and slews a small one. Refused: a lead the server acknowledges,
+  which comes back only after an input, as a client sends one only with an order.

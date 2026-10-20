@@ -1,4 +1,4 @@
-use campfire_codec::{Binary, Taken};
+use campfire_codec::{Binary, Decoded};
 use campfire_sim::{Capability, Command};
 
 use crate::mode_data::InputType;
@@ -33,18 +33,18 @@ impl<'a> ModeInput<'a> {
     /// The input in `body`, when its name is one of `types` and its value is exactly of the
     /// type declared for it: a client can send any bytes.
     pub fn decode(body: &'a [u8], types: impl Fn(&str) -> Option<InputType>) -> Option<Self> {
-        let Taken { value: name, rest } = Binary::take::<&str>(body).ok()?;
-        let Taken { value, rest } = match types(name)? {
+        let Decoded { value: name, rest } = Binary::take::<&str>(body).ok()?;
+        let Decoded { value, rest } = match types(name)? {
             InputType::String => {
                 let text = Binary::take::<&str>(rest).ok()?;
-                Taken {
+                Decoded {
                     value: InputValue::String(text.value),
                     rest: text.rest,
                 }
             }
             InputType::StringList => {
                 let texts = Binary::take::<Vec<&str>>(rest).ok()?;
-                Taken {
+                Decoded {
                     value: InputValue::StringList(texts.value),
                     rest: texts.rest,
                 }

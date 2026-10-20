@@ -19,7 +19,7 @@ use crate::platform::stop_signals::StopSignals;
 /// does only what a signal's handler may. A shared port takes `SO_REUSEADDR` and `SO_REUSEPORT`,
 /// as BSD and macOS bind a port twice only with the second.
 #[derive(Debug)]
-pub(crate) struct Os;
+pub(crate) struct Native;
 
 /// The bits of a mode that let a file's group or others in.
 const SHARED: u32 = 0o077;
@@ -30,7 +30,7 @@ const STOP: [c_int; 3] = [SIGINT, SIGTERM, SIGHUP];
 /// Root's user id.
 const ROOT: u32 = 0;
 
-impl Os {
+impl Native {
     pub(crate) fn share_port(socket: &Socket) -> io::Result<()> {
         socket.set_reuse_address(true)?;
         socket.set_reuse_port(true)
@@ -151,9 +151,9 @@ pub(crate) mod internals {
 
     use libc::{SIGHUP, SIGINT, SIGTERM};
 
-    use crate::platform::os::Os;
+    use crate::platform::os::Native;
 
-    impl Os {
+    impl Native {
         pub(crate) fn ignore_terminal(command: &mut Command) {
             // SAFETY: the closure runs in the child between its fork and its exec, and calls only
             // `signal`, which POSIX makes async-signal-safe.
@@ -201,19 +201,19 @@ pub(crate) mod internals {
 mod tests {
     use libc::SIGUSR2;
 
-    use crate::platform::os::Os;
+    use crate::platform::os::Native;
 
     #[test]
     fn an_ignored_signal_is_read_as_ignored() {
         // `SIGUSR2`, which nothing of the test process catches, so its disposition is the
         // test's to change.
-        assert!(!Os::ignored(SIGUSR2).unwrap());
+        assert!(!Native::ignored(SIGUSR2).unwrap());
         // SAFETY: `signal` sets a disposition, and touches no memory.
         unsafe { libc::signal(SIGUSR2, libc::SIG_IGN) };
-        assert!(Os::ignored(SIGUSR2).unwrap());
+        assert!(Native::ignored(SIGUSR2).unwrap());
         // SAFETY: as above.
         unsafe { libc::signal(SIGUSR2, libc::SIG_DFL) };
-        assert!(!Os::ignored(SIGUSR2).unwrap());
+        assert!(!Native::ignored(SIGUSR2).unwrap());
     }
 
     #[test]
@@ -226,10 +226,10 @@ mod tests {
             (0o400, 1000),
             (0o100_600, 1000),
         ] {
-            assert_eq!(Os::exposed(mode, owner, 1000), None, "{mode:o}");
+            assert_eq!(Native::exposed(mode, owner, 1000), None, "{mode:o}");
         }
         // Root, who may open any file, owns it: as its own.
-        assert_eq!(Os::exposed(0o600, 0, 1000), None);
+        assert_eq!(Native::exposed(0o600, 0, 1000), None);
         for (mode, owner, text) in [
             (0o644, 1000, "mode 644"),
             (0o640, 1000, "mode 640"),
@@ -240,14 +240,14 @@ mod tests {
             (0o640, 1001, "mode 640, its owner, user 1001"),
         ] {
             assert_eq!(
-                Os::exposed(mode, owner, 1000).as_deref(),
+                Native::exposed(mode, owner, 1000).as_deref(),
                 Some(text),
                 "{mode:o}"
             );
         }
         // Root reads a file another user owns as that user's: the promise holds for root too.
         assert_eq!(
-            Os::exposed(0o600, 1000, 0).as_deref(),
+            Native::exposed(0o600, 1000, 0).as_deref(),
             Some("its owner, user 1000")
         );
     }

@@ -70,7 +70,7 @@ impl<S: TeamSight> BotView<'_, '_, S> {
     /// stable id, so the query's order chooses nothing.
     pub(crate) fn nearest(&self, from: StableId, filter: Filter) -> Option<StableId> {
         let (_, position, &team, ..) = self.units.get(self.index.get(from)?).ok()?;
-        let (from, metric) = (position.get(), self.map.metric);
+        let (from, metric) = (position.get(), self.map.metric());
         let relations = self.relations.get();
         let targets = self
             .units

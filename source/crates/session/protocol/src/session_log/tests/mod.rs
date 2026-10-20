@@ -892,7 +892,7 @@ fn frame(
     tail: &[Sent<'_>],
     revealed: Option<&ServerSeed>,
 ) -> Vec<u8> {
-    let mut bytes = b"campfire/session-log/v6".to_vec();
+    let mut bytes = b"campfire/session-log/v7".to_vec();
     let terms = &header.terms;
     put(&mut bytes, &terms.server_key.serialize());
     put(&mut bytes, &terms.tick_hz);
@@ -915,7 +915,8 @@ fn frame(
             put(&mut bytes, delegation.json());
         }
     }
-    // One segment, from tick 0.
+    // The first segment, 0, and one segment.
+    put(&mut bytes, &0_u32);
     put(&mut bytes, &1_u32);
     put(&mut bytes, &u64::try_from(ticks.len()).unwrap());
     for packets in ticks.iter().map(Vec::as_slice).chain([tail]) {
@@ -1018,7 +1019,7 @@ fn a_log_file_has_its_layout() {
 
     let [first, second] = [0, 1].map(delegation);
     let expected = [
-        &b"campfire/session-log/v6"[..],
+        &b"campfire/session-log/v7"[..],
         // The terms, and no session id: it is their hash.
         &server_key().serialize(),
         // 300 ticks a second = 0b10_0101100: varint 0xAC 0x02. Max input delay 2, lead 2,
@@ -1047,9 +1048,9 @@ fn a_log_file_has_its_layout() {
         &[0],
         &varint(second.json().len()),
         second.json().as_bytes(),
-        // 1 segment of 1 tick with 2 entries. A packet, 0: seat 1, 1 input: stamp 0, 1 payload
-        // byte.
-        &[1, 1, 2, 0, 1, 1, 0, 1],
+        // From segment 0, 1 segment of 1 tick with 2 entries. A packet, 0: seat 1, 1 input:
+        // stamp 0, 1 payload byte.
+        &[0, 1, 1, 2, 0, 1, 1, 0, 1],
         b"a",
         &a.signature.to_bytes(),
         // A server input, 1: `Disconnected`, the sixth kind, 5, of seat 0.
@@ -1064,7 +1065,7 @@ fn a_log_file_has_its_layout() {
     assert_eq!(encoded(&log), expected);
 
     // A rate of 0 ticks a second does not decode.
-    let tick_at = b"campfire/session-log/v6".len() + 32;
+    let tick_at = b"campfire/session-log/v7".len() + 32;
     let zero_rate = [&expected[..tick_at], &[0], &expected[tick_at + 2..]].concat();
     assert!(matches!(
         SessionLog::decode(&zero_rate),
@@ -1127,13 +1128,24 @@ fn play_minimal(log: &mut SessionLog, journal: Option<&mut Journal>) {
 fn every_truncation_and_every_flip_of_a_log_file_is_refused() {
     // A signature, a chain link or the commitment covers every byte: the session id hashes the
     // terms, each main key signs its delegation with the contribution, each session key its
-    // inputs, and the reveal checks against the commitment.
-    let bytes = encoded(&minimal());
+    // inputs, the server key the checkpoint a file starts at, and the reveal checks against the
+    // commitment. So in the whole file, and in the one from the checkpoint on.
+    let log = minimal();
+    let mut based = Vec::new();
+    log.encode_from(1, &mut based);
+    for bytes in [encoded(&log), based] {
+        assert_truncations_and_flips_refused(&bytes);
+    }
+}
+
+/// Asserts that every truncation of `bytes`, the file of `minimal` or a part of it, and every
+/// flip of 0x01 or 0x80 of one of its bytes, is refused.
+fn assert_truncations_and_flips_refused(bytes: &[u8]) {
     assert_eq!(
-        SessionLog::decode(&bytes).map(|log| log.next_tick()),
+        SessionLog::decode(bytes).map(|log| log.next_tick()),
         Ok(Tick::new(1))
     );
-    let tag = b"campfire/session-log/v6".len();
+    let tag = b"campfire/session-log/v7".len();
     for at in 0..bytes.len() {
         let expected = if at < tag {
             LogError::NotLog
@@ -1149,7 +1161,7 @@ fn every_truncation_and_every_flip_of_a_log_file_is_refused() {
         // breaks their encoding; 0xFF reaches nothing the two do not, but a variant past the
         // last, which `flawed_server_entries_are_refused` writes.
         for flip in [0x01, 0x80] {
-            let mut corrupt = bytes.clone();
+            let mut corrupt = bytes.to_vec();
             corrupt[at] ^= flip;
             assert!(
                 SessionLog::decode(&corrupt).is_err(),

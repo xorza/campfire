@@ -3,12 +3,12 @@ use campfire_combat::CombatColumn;
 use campfire_common::Seat;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd};
-use campfire_players::{PlayerResources, PlayersCall, Seating};
+use campfire_players::{PlayerResources, PlayersCall, SeatHolder};
 use campfire_script::{
     ApiBuilder, ApiError, ApiHolder, ApiVersion, ArgCtx, CapabilityRefusal, Checked, Ctx,
-    DataTable, Frame, IdName, ListPlace, Listing, MaybeName, MemberDecl, PlannedCapability,
-    PlayerHandle, RoleSet, ScriptHandle, ScriptList, ScriptPosition, ScriptText, ScriptTicks,
-    ScriptValue, StateField, StateType, StateValue, Status, TextArg, Unit, UnitAt,
+    DataTable, Frame, IdName, IdNames, ListPlace, Listing, MaybeName, MemberDecl,
+    PlannedCapability, PlayerHandle, RoleSet, ScriptHandle, ScriptList, ScriptPosition, ScriptText,
+    ScriptTicks, ScriptValue, StateField, StateType, StateValue, Status, TextArg, Unit, UnitAt,
 };
 use campfire_sim::{Capability, StableId};
 use campfire_units::{SpawnAt, Units};
@@ -119,17 +119,12 @@ impl ModeApi {
     fn register_reads(api: &mut ApiBuilder<'_>) {
         api.call(
             MemberDecl::value("teams", "the playing teams' names, the teams with slots"),
-            |ctx: &mut Ctx| -> Checked<ScriptList> {
+            |ctx: &mut Ctx| -> Checked<IdNames<Team>> {
                 let book = ctx.mode_spec_or_fail()?;
                 let teams = &book.teams;
                 let names = ctx.view().names();
                 let name = |&team| ScriptText::from(names.name(team));
-                Ok(teams
-                    .playing()
-                    .iter()
-                    .map(name)
-                    .map(ScriptValue::of)
-                    .collect())
+                Ok(teams.playing().iter().map(name).collect())
             },
         )
         .call(
@@ -174,11 +169,11 @@ impl ModeApi {
                 &[&["team"]],
                 "the playing teams' names that `team` may attack, hostile or neutral, in order",
             ),
-            |ctx: &mut Ctx, team: Team| -> Checked<ScriptList> {
+            |ctx: &mut Ctx, team: Team| -> Checked<IdNames<Team>> {
                 let book = ctx.mode_spec_or_fail()?;
                 let view = ctx.view();
                 let enemy = |&&other: &&Team| view.relation(team, other).may_attack();
-                let name = |&team| ScriptValue::of(ScriptText::from(view.names().name(team)));
+                let name = |&team| ScriptText::from(view.names().name(team));
                 Ok(book.teams.playing().iter().filter(enemy).map(name).collect())
             },
         )
@@ -859,7 +854,7 @@ impl ModeApi {
         let players = frame
             .extension::<PlayersCall>()
             .expect("every call holds the players'");
-        players.seating(seat) == Some(Seating::Held)
+        players.holder(seat) == Some(SeatHolder::Held)
     }
 
     /// The living units of player `seat`, by stable id.

@@ -20,7 +20,7 @@ use campfire_items::{Inventory, ItemStack, ItemsDirective, Shopping};
 use campfire_net::PendingOrders;
 use campfire_sim::{MatchRate, SimTick, Unpredicted};
 
-use crate::input_map::{InputMap, Row};
+use crate::input_map::{ChordRow, InputMap};
 use crate::item_names::ItemTexts;
 use crate::own_player::OwnPlayer;
 use crate::ui_style::{self, BACK, TEXT};
@@ -69,7 +69,7 @@ impl InventoryBarPlugin {
         };
         let bar = commands.spawn(bar).id();
         // A slot for each chord that casts an inventory slot's action.
-        for at in (0..=u8::MAX).take(input.row(Row::Items).len()) {
+        for at in (0..=u8::MAX).take(input.row(ChordRow::Items).len()) {
             let slot = Node {
                 width: Val::Px(120.0),
                 height: Val::Px(64.0),
@@ -111,7 +111,7 @@ impl InventoryBarPlugin {
         };
         for (entity, &BarSlot(at)) in &slots {
             line.clear();
-            let chord = input.row(Row::Items)[usize::from(at)];
+            let chord = input.row(ChordRow::Items)[usize::from(at)];
             write!(line, "{}", chord.label()).expect("a String takes any text");
             let carried = carrier
                 .and_then(|(inventory, ..)| inventory.slots().get(usize::from(at)).copied())

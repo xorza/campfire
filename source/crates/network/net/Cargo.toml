@@ -72,7 +72,7 @@ campfire-net-payload.workspace = true
 campfire-net-prediction.workspace = true
 campfire-net-replication.workspace = true
 # Its emulated wires carry the singleplayer link
-campfire-net-stack = { workspace = true, features = ["sim"] }
+campfire-net-stack = { workspace = true, features = ["emulator"] }
 campfire-net-sync.workspace = true
 campfire-net-timeline.workspace = true
 campfire-net-transport.workspace = true
@@ -86,7 +86,7 @@ campfire-store.workspace = true
 campfire-threads.workspace = true
 campfire-units.workspace = true
 campfire-values = { workspace = true, features = ["ecs"] }
-campfire-visibility = { workspace = true, features = ["ecs"] }
+campfire-visibility.workspace = true
 campfire-vision.workspace = true
 
 bevy_app.workspace = true

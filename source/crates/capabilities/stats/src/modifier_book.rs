@@ -32,6 +32,7 @@ use crate::stat_book::StatBook;
 /// packages, as a new match does. Ids follow the order of package, then name. A clone shares
 /// the entries, as the script view reads them; `ModifierBookBuilder` loads it.
 #[derive(Resource, Debug, Clone)]
+#[component(immutable)]
 pub struct ModifierBook {
     entries: Arc<[ModifierEntry]>,
     /// Each modifier's name in its package.

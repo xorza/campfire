@@ -33,7 +33,7 @@ mod toggles;
 pub use crate::abilities_api::AbilitiesApi;
 pub use crate::cast_data::CastData;
 pub use crate::casts::Casts;
-pub use crate::channels::Channels;
+pub use crate::channels::Channeling;
 pub use crate::error::AbilitiesRefusal;
 pub use crate::toggles::Toggles;
 
@@ -99,15 +99,15 @@ impl Module for Abilities {
         if channels {
             cx.unscripted(
                 AbilitiesSystems::Resolve,
-                (Casts::predict_casts, Channels::predict_channels).chain(),
+                (Casts::predict_casts, Channeling::predict_channels).chain(),
             );
             cx.scripted(
                 AbilitiesSystems::Resolve,
                 (
                     Casts::collect_casts,
                     Casts::resolve_casts,
-                    Channels::collect_channels,
-                    Channels::run_channels,
+                    Channeling::collect_channels,
+                    Channeling::run_channels,
                 )
                     .chain(),
             );

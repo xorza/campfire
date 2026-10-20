@@ -49,8 +49,6 @@ bevy_utils = { workspace = true, features = ["debug"], optional = true }
 campfire-app-threads.workspace = true
 campfire-net-transport = { workspace = true, features = ["internals"] }
 
-[lib]
-bench = false
 
 [[bench]]
 name = "net-transport"

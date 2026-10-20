@@ -43,7 +43,7 @@ use crate::events::server_frame::ServerFrame;
 use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::time_dropped::TimeDropped;
 use crate::events::unit_died::UnitDied;
-use crate::faults::Faults;
+use crate::faults::WorkerFaults;
 use crate::faults::fault::Fault;
 use crate::hosting::Hosting;
 use crate::match_clock::MatchClock;
@@ -133,7 +133,7 @@ impl Plugin for SimServerPlugin {
         app.insert_resource(rooms);
         app.insert_resource(self.hosting);
         app.register_required_components_with::<LinkOf, ReplicationSender>(|| ReplicationSender);
-        app.init_resource::<Faults>();
+        app.init_resource::<WorkerFaults>();
         app.init_state::<ServerPhase>();
         app.configure_sets(
             Update,
@@ -305,7 +305,7 @@ impl SimServerPlugin {
         };
         if ends && let Err(error) = world.end_session() {
             world
-                .resource_mut::<Faults>()
+                .resource_mut::<WorkerFaults>()
                 .report(Fault::Snapshot(error));
         }
     }

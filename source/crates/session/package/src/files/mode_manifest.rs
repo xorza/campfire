@@ -7,7 +7,7 @@ use campfire_mode::TeamManifest;
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
 use campfire_values::Speed;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::files::dependency::Dependency;
 use crate::files::package_header::PackageHeader;
@@ -56,24 +56,65 @@ impl ModeManifest {
     }
 }
 
-/// The flat table of a mode's manifest, its header's fields among the others.
+/// The flat table of a mode's manifest, its header's fields among the others, as its file holds
+/// it, which reads and writes the same fields: `kind`, which `Manifest`'s tag reads before the
+/// fields, is written alone (03-game-scripting.md, The manifest writes as it reads).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Fields {
+    #[serde(skip_deserializing)]
+    kind: Kind,
+    name: PackageName,
+    version: Version,
+    api: ApiVersion,
+    language: Language,
+    capabilities: Vec<Capability>,
+    tick_hz: TickRange,
+    teams: Vec<TeamManifest>,
+    max_move_speed: Speed,
+    script_limits: ScriptLimits,
+    #[serde(default)]
+    dependencies: BTreeMap<PackageName, Dependency>,
+}
+
+/// The kind of package a mode's manifest names.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Kind {
+    #[default]
+    Mode,
+}
+
+impl Serialize for ModeManifest<Vec<Capability>> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let Self {
+            header,
+            capabilities,
+            tick_hz,
+            teams,
+            max_move_speed,
+            script_limits,
+            dependencies,
+        } = self.clone();
+        Fields {
+            kind: Kind::Mode,
+            name: header.name,
+            version: header.version,
+            api: header.api,
+            language: header.language,
+            capabilities,
+            tick_hz,
+            teams,
+            max_move_speed,
+            script_limits,
+            dependencies,
+        }
+        .serialize(serializer)
+    }
+}
+
 impl<'de> Deserialize<'de> for ModeManifest<Vec<Capability>> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Fields {
-            name: PackageName,
-            version: Version,
-            api: ApiVersion,
-            language: Language,
-            capabilities: Vec<Capability>,
-            tick_hz: TickRange,
-            teams: Vec<TeamManifest>,
-            max_move_speed: Speed,
-            script_limits: ScriptLimits,
-            #[serde(default)]
-            dependencies: BTreeMap<PackageName, Dependency>,
-        }
         let fields = Fields::deserialize(deserializer)?;
         Ok(Self {
             header: PackageHeader {
@@ -89,5 +130,37 @@ impl<'de> Deserialize<'de> for ModeManifest<Vec<Capability>> {
             script_limits: fields.script_limits,
             dependencies: fields.dependencies,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::Toml;
+
+    use super::*;
+    use crate::files::manifest::Manifest;
+
+    /// The lane test mode's manifest, which names a dependency.
+    const LANE: &str = include_str!("../../../../../packages/test/engine/modes/lane/manifest.toml");
+
+    fn mode(text: &str) -> ModeManifest<Vec<Capability>> {
+        let Manifest::Mode(manifest) = Toml::parse(text).unwrap() else {
+            panic!("a mode's manifest");
+        };
+        manifest
+    }
+
+    /// A manifest read from its file writes its kind first, then the fields it read, and reads
+    /// back to itself: one shape both ways.
+    #[test]
+    fn a_mode_manifest_writes_what_it_reads() {
+        let read = mode(LANE);
+        let written = Toml::write(&read);
+        assert!(
+            written.starts_with("kind = \"mode\"\nname = \"test-lane\"\n"),
+            "{written}"
+        );
+        assert_eq!(mode(&written), read);
+        assert_eq!(read.dependencies.len(), 2);
     }
 }

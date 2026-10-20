@@ -17,6 +17,7 @@ use campfire_stats::{
     CarriedMut, ModifierBook, ModifierClocks, ModifierEvents, ModifierHooks, StatsWorld, UnitStats,
 };
 use campfire_units::{Avatar, Deaths, Fallen, Life, Owner, StatId, TagEffect};
+use campfire_values::TagSet;
 use campfire_values::{Block, NameId, Team, UnitTags, UnitType};
 
 use crate::armor::Armor;
@@ -74,7 +75,7 @@ impl<'w> PassRun<'_, 'w> {
 /// target's attackers, made as the first record needs it, and the assisters of a death, then of
 /// the kill whose events run.
 #[derive(Default)]
-pub(crate) struct PassScratch {
+pub(crate) struct DamageScratch {
     records: Option<SystemState<AttackerRecords<'static, 'static>>>,
     assisters: Vec<StableId>,
 }
@@ -85,9 +86,9 @@ type AttackerRecords<'w, 's> = (
     Query<'w, 's, &'static mut RecentAttackers>,
 );
 
-impl fmt::Debug for PassScratch {
+impl fmt::Debug for DamageScratch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PassScratch")
+        f.debug_struct("DamageScratch")
             .field("assisters", &self.assisters)
             .finish_non_exhaustive()
     }
@@ -122,7 +123,7 @@ impl DamagePass {
     /// heals, as leech's, are dealt next; each heal through the mode's `calc_heal` when it has one.
     /// Damage to a unit that does not live, or to an invulnerable one, does nothing, and so does a
     /// heal of a unit that does not live.
-    pub(crate) fn run(world: &mut World, mut scratch: Local<'_, PassScratch>) {
+    pub(crate) fn run(world: &mut World, mut scratch: Local<'_, DamageScratch>) {
         let now = world.resource::<SimTick>().start();
         world.resource_mut::<Deaths>().clear(now);
         // Only a tick that carries entries writes the next tick's damage, which is state.
@@ -172,7 +173,7 @@ impl DamagePass {
         run: &mut PassRun<'_, '_>,
         hooks: Option<&ModifierHooks>,
         weigh: Option<Weigh>,
-        scratch: &mut PassScratch,
+        scratch: &mut DamageScratch,
     ) {
         let now = run.world().resource::<SimTick>().start();
         while let Some(entry) = run.world().resource_mut::<PassQueue>().next() {
@@ -362,7 +363,7 @@ impl DamagePass {
     /// assist window assisted. A living source heals by its `leech` stat, `attack` for an attack's
     /// damage and `other` for the rest, times the life taken. Each write follows the reads it
     /// needs, which go to `scratch`.
-    fn deal(world: &mut World, damage: Damage, scratch: &mut PassScratch) -> Landed {
+    fn deal(world: &mut World, damage: Damage, scratch: &mut DamageScratch) -> Landed {
         let Some(entity) = Self::damageable(world, damage.target) else {
             return Landed::Nothing;
         };
@@ -436,6 +437,9 @@ impl DamagePass {
                 team: world.get::<Team>(entity).copied(),
                 owner: world.get::<Owner>(entity).map(|owner| owner.seat()),
                 avatar: world.entity(entity).contains::<Avatar>(),
+                tags: world
+                    .get::<UnitTags>(entity)
+                    .map_or(TagSet::NONE, |tags| tags.tags),
             };
             let mut deaths = world.resource_mut::<Deaths>();
             deaths.push(fallen, source, scratch.assisters.iter().copied())

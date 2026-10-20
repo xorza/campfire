@@ -5,12 +5,12 @@ use crate::quaternion::Quaternion;
 /// A rigid placement: a rotation, then a translation, each step in `f32` in a fixed order, so
 /// every machine gives the same bits.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Pose {
+pub(crate) struct RigidPose {
     pub(crate) translation: Vec3,
     pub(crate) rotation: Quaternion,
 }
 
-impl Pose {
+impl RigidPose {
     pub(crate) const IDENTITY: Self = Self {
         translation: Vec3::ZERO,
         rotation: Quaternion::IDENTITY,
@@ -46,7 +46,7 @@ mod tests {
     fn a_pose_turns_and_moves_as_wwmath_does() {
         // A quarter turn about z, (0, 0, √½, √½), takes x to y; then the move by (1, 2, 3).
         let half = FRAC_1_SQRT_2;
-        let turn = Pose {
+        let turn = RigidPose {
             translation: Vec3::new(1.0, 2.0, 3.0),
             rotation: Quaternion::from_array([0.0, 0.0, half, half]),
         };

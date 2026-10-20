@@ -76,7 +76,7 @@ pub use crate::clip_shots::ClipShots;
 pub use crate::combat_api::CombatApi;
 pub use crate::combat_book::CombatBook;
 pub use crate::combat_column::CombatColumn;
-pub use crate::combat_data::CombatData;
+pub use crate::combat_data::{CombatData, CombatPatch};
 pub use crate::damage::{Damage, DamageCause};
 pub use crate::damage_effect_data::DamageEffectData;
 pub use crate::damage_handle::DamageHandle;
@@ -87,7 +87,7 @@ pub use crate::heal::{Heal, HealCause};
 pub use crate::heal_effect_data::HealEffectData;
 pub use crate::heal_handle::HealHandle;
 pub use crate::kept::Kept;
-pub use crate::mode_combat_data::{LeechData, ModeCombatData};
+pub use crate::mode_combat_data::{LeechData, ModeCombatData, ModeCombatPatch};
 pub use crate::on_death::OnDeath;
 pub use crate::pass_queue::{PassEntry, PassQueue};
 pub use crate::recent_attack::RecentAttack;
@@ -95,7 +95,7 @@ pub use crate::recent_attackers::RecentAttackers;
 pub use crate::respawn::Respawn;
 pub use crate::turret::Turret;
 pub use crate::turret::turret_angle::TurretAngle;
-pub use crate::turret::turret_data::TurretData;
+pub use crate::turret::turret_data::{TurretData, TurretPatch};
 pub use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Weapon, WeaponDamage};
 pub use crate::weighers::{Weigh, Weighers};
 
@@ -282,6 +282,7 @@ impl Module for Combat {
 
 #[cfg(feature = "internals")]
 pub mod internals {
+    use campfire_declarations::internals::BookLoad;
     use std::collections::BTreeMap;
 
     use bevy_ecs::system::RunSystemOnce;
@@ -380,22 +381,24 @@ pub mod internals {
                 None => action,
             };
             let id = Actions::add(world, "weapon", action);
-            world.get_resource_or_init::<ByAction<Weapon>>().set(
-                id,
-                Weapon {
-                    rate: weapon.rate,
-                    damage: weapon.damage,
-                    kind: DamageKind::new(0),
-                    clip: weapon.clip.map(|clip| Box::from([clip])),
-                    splash: weapon.splash,
-                    scatter: weapon.scatter.map(|radius| Scatter {
-                        radius,
-                        tags: Box::new([]),
-                    }),
-                    pitch: weapon.pitch,
-                    speed: weapon.speed,
-                },
-            );
+            ByAction::<Weapon>::amend(world, |_, book| {
+                book.set(
+                    id,
+                    Weapon {
+                        rate: weapon.rate,
+                        damage: weapon.damage,
+                        kind: DamageKind::new(0),
+                        clip: weapon.clip.map(|clip| Box::from([clip])),
+                        splash: weapon.splash,
+                        scatter: weapon.scatter.map(|radius| Scatter {
+                            radius,
+                            tags: Box::new([]),
+                        }),
+                        pitch: weapon.pitch,
+                        speed: weapon.speed,
+                    },
+                );
+            });
             id
         }
 
@@ -425,9 +428,7 @@ pub mod internals {
                 tags: world.resource::<MatchNames>().tags(),
             };
             let weapon = names.weapon(attack).expect("a test's weapon resolves");
-            world
-                .get_resource_or_init::<ByAction<Weapon>>()
-                .set(action, weapon);
+            ByAction::<Weapon>::amend(world, |_, book| book.set(action, weapon));
         }
 
         /// Strikes with each attack whose windup ended, as the server's strike set does once the
@@ -708,8 +709,8 @@ pub mod internals {
         /// Binds `life` as the life pool, with no stat bound and no assist window, as a test world
         /// with no mode needs.
         pub fn bind_life(world: &mut World, life: PoolId) {
-            world.resource_mut::<PoolBook>().set_life(Some(life));
-            world.insert_resource(CombatBook::default());
+            PoolBook::amend(world, |_, book| book.set_life(Some(life)));
+            CombatBook::default().load_into(world);
         }
 
         pub fn attack(world: &mut World, attacker: StableId, target: StableId) {

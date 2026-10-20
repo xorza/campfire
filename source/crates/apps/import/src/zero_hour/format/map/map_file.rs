@@ -17,7 +17,7 @@ use crate::zero_hour::format::ref_pack;
 /// terrain's tiles and blends, the objects the game keeps, in the file's order, and its objects'
 /// lights.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct MapFile {
+pub(crate) struct ZeroHourMap {
     pub(crate) heights: MapHeights,
     /// Its cells in the file's order, one for each sample of the heights.
     pub(crate) terrain: TerrainFields,
@@ -90,7 +90,7 @@ enum ClassForm {
     Edge,
 }
 
-impl MapFile {
+impl ZeroHourMap {
     /// The map whose file, packed or not, is `packed`.
     pub(crate) fn read(packed: &[u8]) -> Result<Self, MapReadError> {
         let bytes = Self::unpack(packed)?;
@@ -666,7 +666,7 @@ mod tests {
     #[test]
     fn lighting_of_an_older_version_keeps_the_game_s_dark_lights_and_needs_a_time_of_day() {
         let read = |version: u16, bytes: &[u8]| {
-            MapFile::lighting(RawChunk {
+            ZeroHourMap::lighting(RawChunk {
                 id: 0,
                 version,
                 body: ChunkReader::new(bytes),
@@ -726,7 +726,7 @@ mod tests {
                 version,
                 body: ChunkReader::new(&body),
             };
-            MapFile::snowy(chunk, &writer.table())
+            ZeroHourMap::snowy(chunk, &writer.table())
         };
         let snowy = |entries: &[(&str, u8, Vec<u8>)]| snowy_of(1, entries);
         let int = |value: i32| value.to_le_bytes().to_vec();
@@ -750,14 +750,14 @@ mod tests {
         let twice = [("weather", 1, int(0)), ("weather", 1, int(1))];
         assert_eq!(snowy(&twice), Ok(true));
         // The fixture's world dictionary is empty: a day map, not snowy.
-        let read = MapFile::read(&map(8)).unwrap();
+        let read = ZeroHourMap::read(&map(8)).unwrap();
         assert_eq!(read.conditions, LookConditions::default());
     }
 
     #[test]
     fn a_map_reads_its_heights_terrain_and_kept_objects_packed_or_not() {
         let plain = map(8);
-        let read = MapFile::read(&plain).unwrap();
+        let read = ZeroHourMap::read(&plain).unwrap();
         assert_eq!(
             read.heights,
             MapHeights {
@@ -862,19 +862,22 @@ mod tests {
     fn a_packed_map_reads_as_its_plain_file() {
         // Packed by RefPack and by zlib, each behind its 8-byte header, it reads the same.
         let plain = map(8);
-        let read = MapFile::read(&plain).unwrap();
+        let read = ZeroHourMap::read(&plain).unwrap();
         let len = u32::try_from(plain.len()).unwrap().to_le_bytes();
         let ear = [&b"EAR\0"[..], &len, &literal(&plain)].concat();
         let zlib = [&b"ZL5\0"[..], &len, &compress_to_vec_zlib(&plain, 5)].concat();
-        assert_eq!(MapFile::read(&ear).unwrap(), read);
-        assert_eq!(MapFile::read(&zlib).unwrap(), read);
+        assert_eq!(ZeroHourMap::read(&ear).unwrap(), read);
+        assert_eq!(ZeroHourMap::read(&zlib).unwrap(), read);
         let short = [
             &b"ZL5\0"[..],
             &(u32::from_le_bytes(len) - 1).to_le_bytes(),
             &compress_to_vec_zlib(&plain, 5),
         ]
         .concat();
-        assert!(matches!(MapFile::read(&short), Err(MapReadError::Zlib(_))));
+        assert!(matches!(
+            ZeroHourMap::read(&short),
+            Err(MapReadError::Zlib(_))
+        ));
         let long = [
             &b"EAR\0"[..],
             &(u32::from_le_bytes(len) + 1).to_le_bytes(),
@@ -882,7 +885,7 @@ mod tests {
         ]
         .concat();
         assert_eq!(
-            MapFile::read(&long),
+            ZeroHourMap::read(&long),
             Err(MapReadError::PackedSize {
                 written: plain.len(),
                 len: plain.len() + 1
@@ -890,7 +893,7 @@ mod tests {
         );
         let nox = [&b"NOX\0"[..], &len, &plain].concat();
         assert_eq!(
-            MapFile::read(&nox),
+            ZeroHourMap::read(&nox),
             Err(MapReadError::Packing(Packing::Nox))
         );
     }
@@ -901,14 +904,14 @@ mod tests {
         // so the game marks the cells whose corners span 16 steps or more: the first, of 0, 1,
         // 16 and 5, and the one at column 2, row 1, of 6, 7, 10 and 40; not the two of 15.
         let cliffs = |version| -> Vec<usize> {
-            let terrain = MapFile::read(&map(version)).unwrap().terrain;
+            let terrain = ZeroHourMap::read(&map(version)).unwrap().terrain;
             (0..12).filter(|&at| terrain.cells[at].cliff).collect()
         };
         assert_eq!(cliffs(7), Vec::<usize>::new());
         assert_eq!(cliffs(6), [0, 6]);
         assert_eq!(cliffs(8), [0, 11]);
         assert_eq!(
-            MapFile::read(&map(5)),
+            ZeroHourMap::read(&map(5)),
             Err(MapReadError::Version {
                 chunk: Chunk::BlendTileData,
                 version: 5
@@ -932,7 +935,8 @@ mod tests {
         };
         let good = writer.chunk("HeightMapData", 4, &heights(4));
         let odd = writer.chunk("HeightMapData", 4, &heights(3));
-        let file = |writer: &ChunkWriter, chunks: &[Vec<u8>]| MapFile::read(&writer.file(chunks));
+        let file =
+            |writer: &ChunkWriter, chunks: &[Vec<u8>]| ZeroHourMap::read(&writer.file(chunks));
         assert_eq!(
             file(&writer, slice::from_ref(&good)),
             Err(MapReadError::Missing(Chunk::BlendTileData))
@@ -950,13 +954,13 @@ mod tests {
                 depth: 2
             })
         );
-        assert_eq!(MapFile::read(b"CkMq"), Err(MapReadError::NotChunks));
+        assert_eq!(ZeroHourMap::read(b"CkMq"), Err(MapReadError::NotChunks));
         // A chunk of an id the table lacks; the fixture cut by a byte.
         let stray = [&99_u32.to_le_bytes()[..], &[1, 0], &0_i32.to_le_bytes()].concat();
         assert_eq!(file(&writer, &[stray]), Err(MapReadError::UnknownName(99)));
         let cut = map(8);
         assert_eq!(
-            MapFile::read(&cut[..cut.len() - 1]),
+            ZeroHourMap::read(&cut[..cut.len() - 1]),
             Err(MapReadError::Short)
         );
     }
@@ -971,7 +975,7 @@ mod tests {
                 &mark.to_le_bytes(),
             ]
             .concat();
-            MapFile::blend_tile(&mut ChunkReader::new(&bytes), 1)
+            ZeroHourMap::blend_tile(&mut ChunkReader::new(&bytes), 1)
         };
         assert_eq!(
             blend([1, 0, 0, 0, 2, 1], BLEND_MARK).map(|tile| (

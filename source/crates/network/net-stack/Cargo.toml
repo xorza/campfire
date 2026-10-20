@@ -11,13 +11,13 @@ kind = "glue"
 compression_lz4 = ["campfire-net-transport/compression_lz4"]
 # The endpoint of an emulated network's wires, `net-packets`' `EmulatedWires`, which the plugin
 # groups add; the caller makes the `EmulatedNetwork` through `net-emulator`
-sim = ["dep:campfire-net-endpoint", "dep:campfire-net-packets"]
+emulator = ["dep:campfire-net-endpoint", "dep:campfire-net-packets"]
 # The OS's sockets of the stack's own UDP protocol, `net-socket`, whose endpoints the plugin groups
 # add
 udp = ["dep:campfire-net-endpoint", "dep:campfire-net-packets", "dep:campfire-net-socket"]
 # The full stack and the test protocol, for every layer's tests
 internals = [
-    "sim",
+    "emulator",
     "udp",
     "compression_lz4",
     "dep:bevy",

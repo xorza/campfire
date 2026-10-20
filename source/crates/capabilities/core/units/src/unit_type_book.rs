@@ -9,6 +9,7 @@ use campfire_values::{NameTable, Names, Scalar, UnitType};
 /// `UnitTypes::finish` makes. Package data, not state: a restore loads it from the packages, as a
 /// new match does. It gives the script view the types' and the tags' names and the types' params.
 #[derive(Resource, Debug)]
+#[component(immutable)]
 pub struct UnitTypeBook {
     /// The name of each tag, by tag: the engine's, then the match's.
     tags: TagNames,

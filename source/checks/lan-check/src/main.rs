@@ -16,12 +16,13 @@
 //!
 //! Run it with `cargo drive run lan`, which builds it and the processes it starts in one build,
 //! beside it, and gives it the run root `target/drive/lan-check`; each run's logs and session log
-//! go into a new directory below the run root, named for the run's start. `campfire-lan-check
-//! verify <run directory>` verifies the session log of a run, perhaps from another machine, with
-//! the verifier beside the check, and compares the server's final hash; with `--verifier
-//! <verifier>`, it runs that verifier.
+//! go into a new directory below the run root, named for the run's start, which keeps the newest
+//! `KEPT_RUNS`. `campfire-lan-check verify <run directory>` verifies the session log of a run,
+//! perhaps from another machine, with the verifier beside the check, and compares the server's
+//! final hash; with `--verifier <verifier>`, it runs that verifier.
 
 use std::env;
+use std::num::NonZeroUsize;
 use std::path::{self, Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::SystemTime;
@@ -61,6 +62,9 @@ mod process_outcome;
 mod session_kind;
 mod verdict;
 
+/// The runs the run root keeps, this one among them: each holds 6 to 14 MB of logs, and the newest
+/// 3 hold a failure and the runs around it, as pytest keeps its newest 3 `tmp_path` directories.
+const KEPT_RUNS: NonZeroUsize = NonZeroUsize::new(3).unwrap();
 /// The workspace's `packages` directory, where the check finds the test packages. It is not
 /// `campfire-package-disk`'s `PackageDir::workspace`, which only its `internals` feature has, and
 /// the build that ships, which `ship` lints, has no `internals`.
@@ -95,7 +99,7 @@ fn main() -> ExitCode {
         Err(status) => return ExitCode::from(status),
     };
     let dir = match &args {
-        Args::Play { root } => match RunDir::create(root, SystemTime::now()) {
+        Args::Play { root } => match RunDir::create(root, SystemTime::now(), KEPT_RUNS) {
             Ok(run) => run.path().to_owned(),
             Err(error) => {
                 error!(error = %ErrorReport::of(&error), "the LAN check did not run");

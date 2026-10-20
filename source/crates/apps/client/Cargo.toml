@@ -102,6 +102,7 @@ campfire-script = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-test-packages.workspace = true
 fluent-syntax.workspace = true
+naga = { workspace = true, features = ["wgsl-in"] }
 
 [lints]
 workspace = true

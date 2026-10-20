@@ -88,7 +88,10 @@ fn a_trace_shows_the_allocating_call_and_the_workspaces_frames_down_to_the_fixtu
     // The capture's own frame and the allocator's go; a dependency's frames before the
     // workspace's show, a run of the scheduler as one; the workspace's show through the fixture's
     // first, and the test's wrappers past it go.
-    let dependency = "/home/a/.cargo/registry/src/x/src/lib.rs";
+    // Absolute on every platform, as a registry's path is: `/home/a` has no drive on Windows.
+    let root = AllocTrace::workspace_root().parent().unwrap();
+    let dependency = native(&root.join("registry/x/src/lib.rs").to_string_lossy());
+    let dependency = dependency.as_str();
     let rendered = AllocTrace::kept_frames(
         [
             symbol("backtrace::capture", dependency, 1),
@@ -125,20 +128,16 @@ fn a_trace_shows_the_allocating_call_and_the_workspaces_frames_down_to_the_fixtu
         ]
         .into_iter(),
     );
-    let expected = concat!(
-        "   0: bevy_replicon::send\n            at /home/a/.cargo/registry/src/x/src/lib.rs:4:9\n",
-        "   1: bevy_ecs::system::run\n            at /home/a/.cargo/registry/src/x/src/lib.rs:5:9\n",
-        "   2: campfire_net_stepper::Stepper::frame_step\n",
-        "            at crates/network/net-stepper/src/stepper/mod.rs:7:9\n",
-        "   3: idle::fixture\n            at crates/network/net-stack/tests/alloc/fixtures/idle.rs:9:9\n",
+    let expected = format!(
+        "   0: bevy_replicon::send\n            at {dependency}:4:9\n\
+         \x20  1: bevy_ecs::system::run\n            at {dependency}:5:9\n\
+         \x20  2: campfire_net_stepper::Stepper::frame_step\n\
+         \x20           at crates/network/net-stepper/src/stepper/mod.rs:7:9\n\
+         \x20  3: idle::fixture\n\
+         \x20           at crates/network/net-stack/tests/alloc/fixtures/idle.rs:9:9\n",
     );
-    assert_eq!(rendered, native_dependency(expected, dependency));
+    assert_eq!(rendered, expected);
     assert_eq!(AllocTrace::kept_frames(iter::empty()), "");
-}
-
-/// `expected` with the dependency's path as the platform writes it.
-fn native_dependency(expected: &str, dependency: &str) -> String {
-    expected.replace(dependency, &native(dependency))
 }
 
 #[test]

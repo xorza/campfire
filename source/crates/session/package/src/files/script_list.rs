@@ -1,7 +1,7 @@
 use campfire_script::ListPlace;
 use campfire_values::PackagePath;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::files::package_name::PackageName;
 
@@ -9,7 +9,7 @@ use crate::files::package_name::PackageName;
 /// their hooks answer an event, and which of them is the mode's own: the one entry marked
 /// `mode = true`, or the list's only one (03-game-scripting.md, Rules scripts in order).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ScriptList {
+pub struct ScriptOrder {
     /// Each once, at most `ListPlace::LIMIT`.
     scripts: Vec<ScriptSource>,
     mode: ListPlace,
@@ -18,7 +18,7 @@ pub(crate) struct ScriptList {
 /// A script of a mode's list: one of its package's, by its path, or one of a rules package it
 /// depends on, `{ package, path }`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ScriptSource {
+pub enum ScriptSource {
     Own(PackagePath),
     Rules {
         package: PackageName,
@@ -26,7 +26,18 @@ pub(crate) enum ScriptSource {
     },
 }
 
-impl ScriptList {
+impl ScriptOrder {
+    /// The key the mode's file lists its scripts under.
+    pub const KEY: &'static str = "scripts";
+
+    /// The list of `source` alone, which is the mode's own.
+    pub fn one(source: ScriptSource) -> Self {
+        Self {
+            scripts: vec![source],
+            mode: ListPlace::FIRST,
+        }
+    }
+
     /// The scripts, in the list's order.
     pub(crate) fn iter(&self) -> impl ExactSizeIterator<Item = &ScriptSource> {
         self.scripts.iter()
@@ -55,25 +66,52 @@ impl ScriptSource {
     }
 }
 
+/// An entry of the list: a path alone, or a table of an optional package, a path and an
+/// optional mark.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum Written {
+    Own(PackagePath),
+    Table(Entry),
+}
+
+/// An entry of the list in its table's form, which reads and writes the same keys.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Entry {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    package: Option<PackageName>,
+    path: PackagePath,
+    #[serde(default, skip_serializing_if = "is_unmarked")]
+    mode: bool,
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's test of a field to skip takes it by reference"
+)]
+const fn is_unmarked(mode: &bool) -> bool {
+    !*mode
+}
+
+/// Each entry in its table's form, the mode's own marked in a list of more than one, which
+/// `Deserialize` reads back to it.
+impl Serialize for ScriptOrder {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let marks = self.scripts.len() > 1;
+        serializer.collect_seq(self.scripts.iter().enumerate().map(|(at, source)| Entry {
+            package: source.package().cloned(),
+            path: source.path().clone(),
+            mode: marks && at == self.mode.index(),
+        }))
+    }
+}
+
 /// A list of entries, each a path alone or a table of an optional package, a path and an
 /// optional mark: one or more, each once, at most one marked, and one marked in a list of more
 /// than one.
-impl<'de> Deserialize<'de> for ScriptList {
+impl<'de> Deserialize<'de> for ScriptOrder {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Debug, Deserialize)]
-        #[serde(untagged)]
-        enum Written {
-            Own(PackagePath),
-            Table(Entry),
-        }
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Entry {
-            package: Option<PackageName>,
-            path: PackagePath,
-            #[serde(default)]
-            mode: bool,
-        }
         let written = Vec::<Written>::deserialize(deserializer)?;
         if written.len() > ListPlace::LIMIT {
             return Err(D::Error::custom(format_args!(
@@ -136,10 +174,10 @@ mod tests {
 
     #[derive(Debug, Deserialize)]
     struct File {
-        scripts: ScriptList,
+        scripts: ScriptOrder,
     }
 
-    fn read(text: &str) -> Result<ScriptList, String> {
+    fn read(text: &str) -> Result<ScriptOrder, String> {
         Toml::parse::<File>(text)
             .map(|file| file.scripts)
             .map_err(|error| error.to_string())
@@ -176,6 +214,18 @@ mod tests {
             [own("scripts/first.rhai"), rules, own("scripts/last.rhai")]
         );
         assert_eq!(list.mode(), ListPlace::new(1).unwrap());
+        // Each writes its entries as tables, the mode's marked in a list of more than one, and
+        // reads back to itself; a list of one is `one`'s.
+        let written = |order: &ScriptOrder| {
+            let text = Toml::write(&std::collections::BTreeMap::from([(
+                ScriptOrder::KEY,
+                order,
+            )]));
+            read(&text).unwrap()
+        };
+        assert_eq!(written(&list), list);
+        assert_eq!(written(&one), one);
+        assert_eq!(ScriptOrder::one(own("scripts/mode.rhai")), one);
         // The same path of two packages is two scripts.
         let two = "scripts = [{ path = \"scripts/mode.rhai\", mode = true }, { package = \
                    \"test-rules\", path = \"scripts/mode.rhai\" }]";

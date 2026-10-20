@@ -1,3 +1,4 @@
+use crate::deficit::Deficit;
 use crate::sync_adjustment::SyncAdjustment;
 use crate::sync_hysteresis::SyncHysteresis;
 use crate::sync_sample::SyncSample;
@@ -21,6 +22,9 @@ pub trait TimelineSync {
     /// Settings used by this synchronization policy.
     type Setup;
 
+    /// How it closes an error behind its objective.
+    const DEFICIT: Deficit;
+
     /// The mutable hysteresis state used by the common speed controller.
     fn sync_hysteresis(&mut self) -> &mut SyncHysteresis;
 
@@ -38,8 +42,9 @@ pub trait TimelineSync {
     /// Synchronize the controlled clock to the sample's remote timeline from its current `now`
     /// instant.
     ///
-    /// Usually this slightly changes the relative speed. Initial synchronization and errors larger
-    /// than [`SyncSetup::max_error_margin`] instead call [`TimelineSync::resync`]. The returned
+    /// Usually this slightly changes the relative speed. Initial synchronization, errors larger
+    /// than [`SyncSetup::max_error_margin`] and a deficit a [`Deficit::Step`] policy steps instead
+    /// call [`TimelineSync::resync`]. The returned
     /// delta lets the caller propagate a discontinuity to any tick-indexed state it holds.
     fn sync(&mut self, now: TickInstant, sample: &SyncSample<'_, Self::Setup>) -> Option<i32>
     where
@@ -76,9 +81,9 @@ pub trait TimelineSync {
     ///
     /// A [`SyncAdjustment::Resync`] result is left to the synchronization policy.
     fn speed_adjustment(&mut self, setup: &Self::Setup, offset: TickSpan) -> SyncAdjustment {
-        let adjustment = self
-            .sync_hysteresis()
-            .speed_adjustment(Self::sync_setup(setup), offset);
+        let adjustment =
+            self.sync_hysteresis()
+                .speed_adjustment(Self::sync_setup(setup), offset, Self::DEFICIT);
         match adjustment {
             SyncAdjustment::SpeedAdjust(ratio) => self.set_relative_speed(ratio),
             SyncAdjustment::Nominal => self.set_relative_speed(1.0),

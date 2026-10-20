@@ -8,7 +8,6 @@ license.workspace = true
 kind = "glue"
 
 [features]
-# The messages layer's stack and test messages, for the tests and benches of every layer above
 internals = [
     "dep:campfire-measure",
     "campfire-codec/internals",
@@ -53,8 +52,6 @@ bevy_utils = { workspace = true, features = ["debug"] }
 campfire-net-messages = { workspace = true, features = ["internals"] }
 campfire-net-timeline = { workspace = true, features = ["internals"] }
 
-[lib]
-bench = false
 
 [[bench]]
 name = "net-messages"

@@ -19,7 +19,7 @@ pub(crate) struct W3dMesh {
     pub(crate) shaders: Vec<Shader>,
     pub(crate) materials: Vec<VertexMaterial>,
     pub(crate) textures: Vec<Texture>,
-    pub(crate) passes: Vec<Pass>,
+    pub(crate) passes: Vec<MaterialPass>,
 }
 
 /// How a mesh's pixels are colored, and how they meet what is drawn behind them.
@@ -65,11 +65,11 @@ pub(crate) struct Texture {
 /// A material pass: its vertex material, shader and color of each vertex or triangle, its first
 /// texture stage, and its second, the detail stage, which its shaders' detail functions mix in.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Pass {
+pub(crate) struct MaterialPass {
     /// By vertex.
-    pub(crate) materials: Ids,
+    pub(crate) materials: Indexing,
     /// By triangle.
-    pub(crate) shaders: Ids,
+    pub(crate) shaders: Indexing,
     /// Each vertex's red, green, blue and alpha.
     pub(crate) colors: Option<Vec<[u8; 4]>>,
     pub(crate) stage: Option<Stage>,
@@ -81,13 +81,13 @@ pub(crate) struct Pass {
 /// samples every vertex at `0, 0`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Stage {
-    pub(crate) textures: Ids,
+    pub(crate) textures: Indexing,
     pub(crate) coordinates: Vec<[f32; 2]>,
 }
 
 /// An index into a list: one for all, or one for each vertex or triangle.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Ids {
+pub(crate) enum Indexing {
     One(u32),
     Each(Vec<u32>),
 }
@@ -293,15 +293,15 @@ impl W3dMesh {
         {
             return Err(W3dError::NotFinite);
         }
-        let ids = |ids: &Ids, each: usize, len: usize| match ids {
-            Ids::One(id) => below(*id, len),
-            Ids::Each(ids) => ids.len() == each && ids.iter().all(|&id| below(id, len)),
+        let ids = |ids: &Indexing, each: usize, len: usize| match ids {
+            Indexing::One(id) => below(*id, len),
+            Indexing::Each(ids) => ids.len() == each && ids.iter().all(|&id| below(id, len)),
         };
         let stage = |stage: &Option<Stage>| {
             stage.as_ref().is_none_or(|stage| {
                 let textures = match &stage.textures {
-                    Ids::One(id) => below(*id, self.textures.len()),
-                    Ids::Each(ids) => {
+                    Indexing::One(id) => below(*id, self.textures.len()),
+                    Indexing::Each(ids) => {
                         ids.len() == triangles
                             && ids
                                 .iter()
@@ -311,7 +311,7 @@ impl W3dMesh {
                 textures && (stage.coordinates.is_empty() || per_vertex(stage.coordinates.len()))
             })
         };
-        let pass_holds = |pass: &Pass| {
+        let pass_holds = |pass: &MaterialPass| {
             let colors = pass
                 .colors
                 .as_ref()
@@ -413,7 +413,7 @@ impl W3dMesh {
 
     /// A pass, each of its lists from the first chunk that holds it: `MeshModelClass` reads a later
     /// one into the alternate material, which a draw's default look does not show.
-    fn pass(body: &[u8]) -> Result<Pass, W3dError> {
+    fn pass(body: &[u8]) -> Result<MaterialPass, W3dError> {
         let mut materials = None;
         let mut shaders = None;
         let mut colors = None;
@@ -423,9 +423,9 @@ impl W3dMesh {
             let mut fields = W3dFields::of(chunk.body);
             match chunk.id {
                 VERTEX_MATERIAL_IDS if materials.is_none() => {
-                    materials = Some(Ids::of(fields.u32s()?)?);
+                    materials = Some(Indexing::of(fields.u32s()?)?);
                 }
-                SHADER_IDS if shaders.is_none() => shaders = Some(Ids::of(fields.u32s()?)?),
+                SHADER_IDS if shaders.is_none() => shaders = Some(Indexing::of(fields.u32s()?)?),
                 COLORS if colors.is_none() => colors = Some(fields.records::<4>()?),
                 // Each stage is the next, as `read_texture_stage` counts them; the game holds two.
                 TEXTURE_STAGE if stages.len() == STAGES => return Err(W3dError::Stages),
@@ -437,7 +437,7 @@ impl W3dMesh {
                         let mut fields = W3dFields::of(inner.body);
                         match inner.id {
                             TEXTURE_IDS if textures.is_none() => {
-                                textures = Some(Ids::of(fields.u32s()?)?);
+                                textures = Some(Indexing::of(fields.u32s()?)?);
                             }
                             STAGE_COORDINATES if coordinates.is_none() => {
                                 coordinates = Some(
@@ -459,7 +459,7 @@ impl W3dMesh {
                         }
                     }
                     stages.push(Stage {
-                        textures: textures.unwrap_or(Ids::One(0)),
+                        textures: textures.unwrap_or(Indexing::One(0)),
                         coordinates: coordinates.unwrap_or_default(),
                     });
                 }
@@ -467,9 +467,9 @@ impl W3dMesh {
             }
         }
         let mut stages = stages.into_iter();
-        Ok(Pass {
-            materials: materials.unwrap_or(Ids::One(0)),
-            shaders: shaders.unwrap_or(Ids::One(0)),
+        Ok(MaterialPass {
+            materials: materials.unwrap_or(Indexing::One(0)),
+            shaders: shaders.unwrap_or(Indexing::One(0)),
             colors,
             stage: stages.next(),
             detail: stages.next(),
@@ -477,7 +477,7 @@ impl W3dMesh {
     }
 }
 
-impl Ids {
+impl Indexing {
     /// One id for all if the chunk holds one, else one each.
     fn of(ids: impl IntoIterator<Item = u32>) -> Result<Self, W3dError> {
         let ids: Vec<u32> = ids.into_iter().collect();
@@ -577,9 +577,9 @@ pub(crate) mod samples {
                 shaders: vec![Shader::DEFAULT],
                 materials: vec![VertexMaterial::DEFAULT],
                 textures: Vec::new(),
-                passes: vec![Pass {
-                    materials: Ids::One(0),
-                    shaders: Ids::One(0),
+                passes: vec![MaterialPass {
+                    materials: Indexing::One(0),
+                    shaders: Indexing::One(0),
                     colors: None,
                     stage: None,
                     detail: None,
@@ -708,7 +708,7 @@ pub(crate) mod samples {
         }
     }
 
-    impl Pass {
+    impl MaterialPass {
         /// The chunks of a material pass's body.
         pub(crate) fn chunks(&self) -> Vec<u8> {
             let mut body = [
@@ -743,7 +743,7 @@ pub(crate) mod samples {
         }
     }
 
-    impl Ids {
+    impl Indexing {
         fn bytes(&self) -> Vec<u8> {
             match self {
                 Self::One(id) => id.to_le_bytes().to_vec(),
@@ -777,12 +777,12 @@ mod tests {
                 name: "rock.tga".to_owned(),
                 flags: 0x8,
             }],
-            passes: vec![Pass {
-                materials: Ids::One(0),
-                shaders: Ids::Each(vec![0, 0]),
+            passes: vec![MaterialPass {
+                materials: Indexing::One(0),
+                shaders: Indexing::Each(vec![0, 0]),
                 colors: Some(vec![[1, 2, 3, 4]; 3]),
                 stage: Some(Stage {
-                    textures: Ids::Each(vec![0, Stage::NONE]),
+                    textures: Indexing::Each(vec![0, Stage::NONE]),
                     coordinates: vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
                 }),
                 detail: None,
@@ -842,12 +842,12 @@ mod tests {
         );
         refused(|mesh| mesh.triangles[1] = [0, 1, 3], W3dError::Index);
         refused(
-            |mesh| mesh.passes[0].materials = Ids::One(1),
+            |mesh| mesh.passes[0].materials = Indexing::One(1),
             W3dError::Index,
         );
         // One id is one for all, as `read_shader_ids` reads it; else one for each triangle.
         refused(
-            |mesh| mesh.passes[0].shaders = Ids::Each(vec![0; 3]),
+            |mesh| mesh.passes[0].shaders = Indexing::Each(vec![0; 3]),
             W3dError::Index,
         );
         refused(
@@ -857,11 +857,11 @@ mod tests {
         // A triangle's texture `NONE` is untextured; one past the list, and `NONE` for all, are
         // refused, as `Peek_Texture` would read past its array.
         refused(
-            |mesh| stage_of(mesh).textures = Ids::Each(vec![0, 1]),
+            |mesh| stage_of(mesh).textures = Indexing::Each(vec![0, 1]),
             W3dError::Index,
         );
         refused(
-            |mesh| stage_of(mesh).textures = Ids::One(Stage::NONE),
+            |mesh| stage_of(mesh).textures = Indexing::One(Stage::NONE),
             W3dError::Index,
         );
         refused(
@@ -886,29 +886,29 @@ mod tests {
     fn a_pass_keeps_the_first_chunk_of_each_list_and_its_second_stage_as_its_detail() {
         // Two of each list: the second is the game's alternate material, and the first is kept;
         // the second stage is the next one, the detail stage, as `read_texture_stage` counts.
-        let first = Pass {
-            materials: Ids::One(1),
-            shaders: Ids::Each(vec![2, 3]),
+        let first = MaterialPass {
+            materials: Indexing::One(1),
+            shaders: Indexing::Each(vec![2, 3]),
             colors: Some(vec![[9; 4]]),
             stage: Some(Stage {
-                textures: Ids::One(4),
+                textures: Indexing::One(4),
                 coordinates: vec![[0.5, 0.25]],
             }),
             detail: None,
         };
-        let second = Pass {
-            materials: Ids::One(5),
-            shaders: Ids::One(6),
+        let second = MaterialPass {
+            materials: Indexing::One(5),
+            shaders: Indexing::One(6),
             colors: Some(vec![[7; 4]]),
             stage: Some(Stage {
-                textures: Ids::One(8),
+                textures: Indexing::One(8),
                 coordinates: vec![[1.0, 1.0]],
             }),
             detail: None,
         };
         let mut body = first.chunks();
         body.extend(second.chunks());
-        let detailed = Pass {
+        let detailed = MaterialPass {
             detail: second.stage.clone(),
             ..first.clone()
         };
@@ -941,7 +941,7 @@ mod tests {
         let empty = W3dMesh::pass(&[]).unwrap();
         assert_eq!(
             (empty.materials, empty.shaders, empty.colors, empty.stage),
-            (Ids::One(0), Ids::One(0), None, None)
+            (Indexing::One(0), Indexing::One(0), None, None)
         );
     }
 }

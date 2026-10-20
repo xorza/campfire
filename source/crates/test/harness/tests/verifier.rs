@@ -25,8 +25,9 @@ use campfire_protocol::{
     SessionResult, SessionTerms, SnapshotFingerprint, Taken,
 };
 use campfire_runner::{
-    Replay, ReplayError, ResultMismatch, SeatRuleError, ServerInputRefusal, Session, SessionSource,
-    SessionWorld, SnapshotCheckError, StartError, TermsError, UncheckedSource,
+    Replay, ReplayError, ResultMismatch, ResumeAt, ResumeError, SeatRuleError, ServerInputRefusal,
+    Session, SessionSource, SessionWorld, SnapshotCheckError, StartError, TermsError,
+    UncheckedSource,
 };
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, StateRegistry};
 use campfire_store::internals::{PinnedFile, TestDir};
@@ -224,7 +225,7 @@ fn a_matchs_journal_publishes_the_log_its_twin_of_no_journal_holds() {
     // The orders' match, journaled from its start, checkpointed before tick 40 and ended before
     // tick 72, and its twin, which keeps no journal; the journal on disk holds every record once
     // the match drops.
-    let test_dir = TestDir::new_in(env!("CARGO_TARGET_TMPDIR"));
+    let test_dir = TestDir::new();
     let path = test_dir.path("journal");
     let mut fixed = session().start();
     let mut twin = session().start();
@@ -254,7 +255,7 @@ fn a_matchs_journal_publishes_the_log_its_twin_of_no_journal_holds() {
             visit(record);
         }
     };
-    SessionLog::publish(&mut walk, &FixedSession::seed(1), &mut published).unwrap();
+    SessionLog::publish(&mut walk, &session().seed(1), &mut published).unwrap();
     assert_eq!(published, encoded(twin.game().session().log()));
     // The log its journal rebuilds forgets the same past, and stands where its twin does.
     let rebuilt =
@@ -287,7 +288,7 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     assert_eq!(end, Ok(()));
     live.assert_same(&trail);
     // Seeds that reach segment 0 alone do not start the log of two.
-    let first = ServerSeeds::new(0, FixedSession::seed(0));
+    let first = ServerSeeds::new(0, session().seed(0));
     assert!(matches!(
         Session::start_match(
             SessionSource::check(UncheckedSource {
@@ -310,6 +311,22 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
         Err(SnapshotCheckError::Fingerprint)
     );
     assert_eq!(replay.check_snapshot(&record, &snapshot), Ok(()));
+    // The file from the checkpoint on starts no match from tick 0, and replays from the
+    // snapshot to the same hashes from tick 40 on.
+    let mut cut = Vec::new();
+    log.encode_from(1, &mut cut);
+    let based = || SessionLog::decode(&cut).unwrap();
+    assert!(matches!(
+        Replay::of(based(), &named),
+        Err(StartError::AtCheckpoint { segment: 1 })
+    ));
+    let at = ResumeAt {
+        segment: 1,
+        snapshot: &snapshot,
+    };
+    let mut from = Replay::from_checkpoint(based(), at, &named).unwrap();
+    let resumed = HashTrail::of_replay(&mut from).unwrap();
+    assert_eq!(resumed.totals(), &live.totals()[40..]);
 
     // The record's state hash changed: the replay stops at the checkpoint, and the snapshot
     // restores to another state than it records.
@@ -511,7 +528,7 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     let to_bot = leave(AfterLeave::Bot);
     log.serve(to_bot, &FixedSession::server_signer(), None)
         .unwrap();
-    log.reveal_seed(FixedSession::seed(0));
+    log.reveal_seed(session.seed(0));
     let refused = refusal(&log, &store());
     assert!(
         matches!(
@@ -730,7 +747,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         let mut terms = session.terms().clone();
         change(&mut terms);
         let mut log = SessionLog::new(session.header(terms)).unwrap();
-        log.reveal_seed(FixedSession::seed(0));
+        log.reveal_seed(session.seed(0));
         refusal(&log, &store)
     };
     let refused = [
@@ -764,7 +781,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     let mut terms = session.terms().clone();
     terms.seats.extend([SeatPlan::Open; 2]);
     let mut log = SessionLog::new(session.header(terms)).unwrap();
-    log.reveal_seed(FixedSession::seed(0));
+    log.reveal_seed(session.seed(0));
     let refused = refusal(&log, &store);
     assert!(
         matches!(
@@ -792,7 +809,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     let refused = Session::start_match(
         SessionSource::check(UncheckedSource {
             log: thrown.log(),
-            seeds: FixedSession::seeds(),
+            seeds: thrown.seeds(),
             packages: thrown.packages(),
             signer: None,
         })
@@ -858,6 +875,21 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
         verify(&packages, "match.log", Some("snapshots")),
         Err(VerifyError::Snapshot(SnapshotCheckError::Fingerprint))
     ));
+    // The file from the checkpoint on, with no snapshot, and with the other bytes under the
+    // snapshot's name: it starts from the snapshot alone, which it needs, and checks.
+    let mut cut = Vec::new();
+    fixed.game().session().log().encode_from(1, &mut cut);
+    test_dir.write("cut.log", &cut);
+    assert!(matches!(
+        verify(&packages, "cut.log", None),
+        Err(VerifyError::MissingSnapshot { segment: 1 })
+    ));
+    assert!(matches!(
+        verify(&packages, "cut.log", Some("snapshots")),
+        Err(VerifyError::Resume(ResumeError::Snapshot(
+            SnapshotCheckError::Fingerprint
+        )))
+    ));
     // A checkpoint whose state its replay does not reach.
     let forged = StateHash::new([7; 32]);
     let Run { fixed: forged, .. } = checkpointed(&mut Vec::new(), Some(forged), None);
@@ -866,8 +898,11 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
         verify(&packages, "forged.log", None),
         Err(VerifyError::Replay(ReplayError::Checkpoint { .. }))
     ));
-    // With its own snapshot, the file verifies to the match's last state.
+    // With its own snapshot, the file verifies to the match's last state, and so does the one
+    // from the checkpoint on.
     test_dir.write(&named, &snapshot);
     let hash = verify(&packages, "match.log", Some("snapshots")).unwrap();
+    assert_eq!(Some(&hash), trail.totals().last());
+    let hash = verify(&packages, "cut.log", Some("snapshots")).unwrap();
     assert_eq!(Some(&hash), trail.totals().last());
 }

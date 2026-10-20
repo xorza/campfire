@@ -38,5 +38,5 @@ pub use crate::players_world::PlayersWorld;
 pub use crate::resource_amount::ResourceAmount;
 pub use crate::resource_book::ResourceBook;
 pub use crate::resources_data::ResourcesData;
-pub use crate::seated::{SeatStart, Seating};
+pub use crate::seated::{SeatHolder, StartingSeat};
 pub use crate::tick_commands::{TickCommand, TickCommands};

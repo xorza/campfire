@@ -67,9 +67,11 @@ impl SimWorldBuilder<'_> {
 }
 
 impl<'w> SimWorldBuilder<'w> {
-    /// Starts the build of a sim in `world`, a new world, at `rate`, drawing from `seed`.
+    /// Starts the build of a sim in `world`, a new world, at `rate`, drawing from `seed`; the
+    /// registry it builds marks the state of each unit a client starts to predict changed.
     pub fn new(world: &'w mut World, seed: SegmentSeed, rate: MatchRate) -> Self {
         SimUpdate::prepare(world, seed, rate);
+        world.add_observer(StateRegistry::predicted);
         SimWorldBuilder {
             world,
             schedule: SimUpdate::schedule(),

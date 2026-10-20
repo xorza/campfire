@@ -165,6 +165,7 @@ pub mod internals {
     use bevy_ecs::world::World;
     use campfire_common::DeclaredName;
     use campfire_declarations::ByType;
+    use campfire_declarations::internals::BookLoad;
     use campfire_script::UnknownName;
     use campfire_sim::MatchRate;
     use campfire_stats::Stats;
@@ -194,9 +195,7 @@ pub mod internals {
             let tags = world.resource::<UnitTypeBook>().tags();
             let spec = AreaSpec::of(data, tags, rate, modifier)
                 .expect("a test's area holds in ticks and names what its match has");
-            world
-                .resource_mut::<ByType<AreaSpec>>()
-                .set(unit_type, spec);
+            ByType::<AreaSpec>::amend(world, |_, book| book.set(unit_type, spec));
         }
     }
 }

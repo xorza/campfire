@@ -19,7 +19,7 @@ use crate::files::map_file::MapFile;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
 use crate::files::package_name::PackageName;
-use crate::files::script_list::{ScriptList, ScriptSource};
+use crate::files::script_list::{ScriptOrder, ScriptSource};
 use crate::files::units_file::UnitsFile;
 use crate::mode_packages::load_check::LoadCheck;
 use crate::package::Package;
@@ -37,7 +37,7 @@ pub struct ModePackages {
     pub(crate) mode: Package,
     pub(crate) manifest: ModeManifest,
     /// The scripts it runs, in order, and which is its own.
-    pub(crate) list: ScriptList,
+    pub(crate) list: ScriptOrder,
     pub(crate) data: ModeData,
     /// The name of the map it loaded, which its session plays.
     map_name: MapName,

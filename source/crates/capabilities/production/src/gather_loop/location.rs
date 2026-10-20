@@ -5,12 +5,12 @@ use crate::gather_loop::step::Step;
 
 /// A unit the loop goes to: where it stands, and its body.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct Location {
+pub(super) struct LoopTarget {
     pub position: Vec3,
     pub(super) body: Option<Body>,
 }
 
-impl Location {
+impl LoopTarget {
     /// The squared distance on the ground plane from `from` to the point of the location's body
     /// nearest it, as `Shape::nearest_point` rounds it, in squared bits.
     pub(super) fn distance_from(self, from: Vec3) -> u128 {

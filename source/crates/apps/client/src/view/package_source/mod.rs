@@ -31,7 +31,7 @@ use tracing::error;
 /// model's, which would hold every permit and wait forever once four did: Bevy's glTF loader loads
 /// its textures apart and reads a `.gltf`'s buffers, which are no models.
 #[derive(Debug, Clone)]
-pub(crate) struct PackageSource {
+pub(crate) struct PackageAssets {
     /// By place.
     packages: Vec<PackageReader>,
     models: Arc<Semaphore>,
@@ -46,7 +46,7 @@ struct HeldReader {
 /// The models that load at once.
 const MODELS_AT_ONCE: usize = 4;
 
-impl PackageSource {
+impl PackageAssets {
     /// The source's name, which an asset path of it names.
     pub(crate) const NAME: &'static str = "package";
 
@@ -107,7 +107,7 @@ impl PackageSource {
     }
 }
 
-impl AssetReader for PackageSource {
+impl AssetReader for PackageAssets {
     fn read<'a>(&'a self, path: &'a Path) -> impl AssetReaderFuture<Value: Reader + 'a> {
         async move {
             let permit = if Self::is_model(path) {

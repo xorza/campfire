@@ -41,7 +41,7 @@ use tracing::{error, info};
 
 use crate::command_line::CommandLine;
 use crate::error::CheckError;
-use crate::failure::Failure;
+use crate::failure::CheckFailure;
 use crate::golden::{Golden, Measured};
 use crate::import_check::ImportCheck;
 use crate::pins::{Fingerprints, MAP};
@@ -92,7 +92,7 @@ fn main() -> ExitCode {
 /// Imports the install into `out`, in place of the packages an earlier run wrote there once the
 /// new ones are whole, and checks Tournament Desert against the golden file, or, in a run that
 /// blesses, writes the file again; the failures it found.
-fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
+fn run(out: &Path) -> Result<Vec<CheckFailure>, CheckError> {
     let golden = if Golden::is_blessing() {
         None
     } else {

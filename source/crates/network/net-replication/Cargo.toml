@@ -58,8 +58,6 @@ campfire-net-replication = { workspace = true, features = ["internals"] }
 
 bevy.workspace = true
 
-[lib]
-bench = false
 
 [[bench]]
 name = "net-replication"

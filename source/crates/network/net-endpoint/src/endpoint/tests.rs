@@ -14,7 +14,7 @@ use campfire_net_link::{LinkPlugin, Unlinked};
 use campfire_net_packets::EmulatedWires;
 use campfire_net_packets::{
     ClientEstablish, ConnectionId, Datagram, EndpointSetup, Establish, Established, Establishing,
-    Protection, ServerEstablish,
+    PathCheck, Protection, ReadCost, ServerEstablish,
 };
 use campfire_net_payload::{OutgoingPayload, PayloadFate, PayloadKind, PayloadToken};
 use campfire_net_timeline::ClockPlugin;
@@ -494,20 +494,14 @@ impl Bound {
 }
 
 impl Establish for Bound {
-    fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) {}
+    fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) -> ReadCost {
+        ReadCost::Light
+    }
 
     fn poll(&mut self, _: Instant, _: &mut Establishing) {}
 
     fn next_deadline(&self) -> Option<Instant> {
         None
-    }
-
-    fn routes_by_prefix(&self) -> bool {
-        false
-    }
-
-    fn challenge(&mut self) -> [u8; 8] {
-        unreachable!("a packet session routed by address has no candidate path")
     }
 
     fn ended(&mut self, _: Option<ConnectionId>) {}
@@ -528,6 +522,10 @@ impl ServerEstablish for Bound {
 
     fn set_accepting(&mut self, accepting: bool) {
         self.accepting = accepting;
+    }
+
+    fn path_check(&mut self) -> Option<&mut dyn PathCheck> {
+        None
     }
 }
 

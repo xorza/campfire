@@ -2,17 +2,20 @@ use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::FilterData;
+use campfire_values::{FilterData, TagFilterData};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-/// The mode's `experience` section: the track a death's experience goes to, and to whom
-/// (04-capabilities/games.md, A death's experience).
+/// The mode's `experience` section: the track a death's experience goes to, to whom, and the
+/// victims whose deaths give it, by their tags at death, all by default (04-capabilities/games.md,
+/// A death's experience).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModeExperienceData {
     pub track: DeclaredName,
     pub to: ExperienceTo,
+    #[serde(default)]
+    pub victim: TagFilterData,
 }
 
 /// To whom a death's experience goes: its killer, `"killer"`, or `{ radius, filter }`, the living

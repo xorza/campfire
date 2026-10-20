@@ -1,11 +1,11 @@
 use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
 use campfire_values::Relation;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A pair of the mode's teams as its `[[relations]]` declare them: how they regard each other,
 /// and, friendly, whether they share vision.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RelationData {
     pub teams: [DeclaredName; 2],

@@ -21,7 +21,7 @@ use crate::net_protocol::join::Join;
 use crate::net_protocol::joined::Joined;
 use crate::net_protocol::leave_match::LeaveMatch;
 use crate::net_protocol::match_start::MatchStart;
-use crate::net_protocol::offer::Offer;
+use crate::net_protocol::offer::SessionOffer;
 use crate::net_protocol::save_command::SaveCommand;
 use crate::net_protocol::watch_start::WatchStart;
 use crate::net_protocol::watch_teams::WatchTeams;
@@ -97,7 +97,7 @@ impl Plugin for NetProtocolPlugin {
             .add_direction(LinkDirection::ServerToClient);
         app.register_message::<MatchStart>()
             .add_direction(LinkDirection::ServerToClient);
-        app.register_message::<Offer>()
+        app.register_message::<SessionOffer>()
             .add_direction(LinkDirection::ServerToClient);
         app.register_message::<Dismissed>()
             .add_direction(LinkDirection::ServerToClient);

@@ -22,7 +22,6 @@ use bevy_ecs::prelude::Res;
 use bevy_ecs::query::Has;
 use bevy_ecs::query::With;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::system::ParallelCommands;
 use bevy_ecs::system::ParamBuilder;
 use bevy_ecs::system::Query;
 use bevy_ecs::system::QueryParamBuilder;
@@ -141,17 +140,16 @@ impl Plugin for MessagePlugin {
 }
 
 /// The link a pass of [`MessagePlugin::receive`] reads, and what every message on it shares.
-struct ReceiveLink<'a, 'w, 's> {
+struct ReceiveLink<'a> {
     entity: Entity,
     peer: PeerId,
     /// The direction every message on this link travels: toward a client or toward a server.
     arriving: LinkDirection,
     registry: &'a MessageRegistry,
     entity_map: &'a ReceiveMapView<'a>,
-    commands: &'a ParallelCommands<'w, 's>,
 }
 
-impl core::fmt::Debug for ReceiveLink<'_, '_, '_> {
+impl core::fmt::Debug for ReceiveLink<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ReceiveLink")
             .field("entity", &self.entity)
@@ -199,7 +197,8 @@ impl MessagePlugin {
     /// Delivers one message; an `Err` is the peer's protocol violation: bytes that do not
     /// decode, an unknown message, or a message against its registered direction.
     fn receive_message_bytes(
-        link: &ReceiveLink<'_, '_, '_>,
+        link: &ReceiveLink<'_>,
+        commands: &mut Commands<'_, '_>,
         receivers: &mut FilteredEntityMut<'_, '_>,
         message: ArrivedMessage,
     ) -> Result<(), MessageError> {
@@ -209,7 +208,6 @@ impl MessagePlugin {
             arriving,
             registry,
             entity_map,
-            commands,
         } = *link;
         let ArrivedMessage {
             bytes,
@@ -283,7 +281,7 @@ impl MessagePlugin {
             With<Connected>,
         >,
         registry: Res<'_, MessageRegistry>,
-        commands: ParallelCommands<'_, '_>,
+        mut commands: Commands<'_, '_>,
         replicon: RepliconMapParam<'_, '_>,
     ) {
         let replicon = &replicon;
@@ -305,7 +303,6 @@ impl MessagePlugin {
                     },
                     registry: &registry,
                     entity_map: &view,
-                    commands: &commands,
                 };
                 for channel_receiver in transport.channel_receivers_mut() {
                     let channel_type_id = channel_receiver.channel_type_id();
@@ -323,15 +320,17 @@ impl MessagePlugin {
                             tick,
                             message_id,
                         };
-                        if let Err(error) =
-                            Self::receive_message_bytes(&link, &mut receivers, message)
-                        {
+                        let received = Self::receive_message_bytes(
+                            &link,
+                            &mut commands,
+                            &mut receivers,
+                            message,
+                        );
+                        if let Err(error) = received {
                             debug!(?entity, ?error, "unlinking a peer that broke the protocol");
-                            commands.command_scope(|mut commands| {
-                                commands.trigger(Unlink {
-                                    entity,
-                                    reason: UnlinkReason::ProtocolViolation,
-                                });
+                            commands.trigger(Unlink {
+                                entity,
+                                reason: UnlinkReason::ProtocolViolation,
                             });
                             return;
                         }

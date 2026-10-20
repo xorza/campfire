@@ -1,9 +1,9 @@
 use std::any::TypeId;
 use std::fmt::Write;
 
+use crate::scripts::given_names::GivenNames;
 use crate::scripts::member_decl::MemberDecl;
 use crate::scripts::status::Status;
-use campfire_values::NameKind;
 
 /// A name of the script API: its spec, as every binding of it gives it, whether a script may
 /// write it, as `m.stacks`, whether it runs, what its forms give, none for a planned name and a
@@ -23,7 +23,7 @@ pub struct ApiMember {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FormOutput {
     pub ty: TypeId,
-    pub names: Option<NameKind>,
+    pub names: Option<GivenNames>,
 }
 
 impl ApiMember {

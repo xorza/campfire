@@ -100,11 +100,11 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         layer: Layer::FIRST,
         radius: Num::HALF,
     };
-    game.resource_mut::<MapBook>().bounds = bounds;
+    MapBook::amend(&mut game, |_, map| map.bounds = bounds);
     Navigation::load_pathing(&mut game, Grid::new(Num::ONE, bounds).unwrap(), [walker]);
     let mut walkers = ByTypeBuilder::default();
     walkers.set(shop.grunt, walker);
-    game.insert_resource(walkers.build());
+    walkers.build().load_into(&mut game);
     let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
     let player = Seat::new(0);
     let producer = Production::allocate_id(&mut game);

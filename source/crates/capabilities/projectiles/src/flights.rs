@@ -20,7 +20,7 @@ use crate::struck_units::{Struck, StruckUnits};
 /// flies, the bodies a line or a curve may meet, indexed as the stage began, and a scratch list
 /// of the units a line's step meets, by share of the step.
 #[derive(Debug)]
-pub(crate) struct Flights<'a> {
+pub(crate) struct TickFlights<'a> {
     pub(crate) deliveries: &'a mut DeliveryQueue,
     pub(crate) struck: &'a mut StruckUnits,
     /// The units near, when a line or a curve flies.
@@ -87,7 +87,7 @@ impl Aloft<'_> {
     }
 }
 
-impl Flights<'_> {
+impl TickFlights<'_> {
     /// Flies `aloft` a step; whether it ended. A homing one flies towards its target's position
     /// now, and hits it where its step ends when its body, of half its width, then reaches the
     /// target's; one whose target is dead, gone, no target or lost to a teleport ends without a

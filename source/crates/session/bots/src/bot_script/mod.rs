@@ -13,7 +13,7 @@ use crate::bot_script::bot_names::BotNames;
 use crate::bot_script::error::{BotScriptError, OrderUnsent};
 use crate::bot_view::BotView;
 use crate::loaded::{ActionName, Loaded};
-use crate::named::Named;
+use crate::named::NamedRefs;
 use crate::order_script::{OrderScript, ScriptedInput, ScriptedUnits};
 
 pub(crate) mod bot_names;
@@ -42,7 +42,7 @@ pub struct BotOrder {
     directive: Directive<Loaded>,
     /// The slot it names, when it names one, which each commanded unit finds among its own.
     slot: Option<ActionName>,
-    pub named: Directive<Named>,
+    pub named: Directive<NamedRefs>,
 }
 
 /// Where a bot's step sends what its script has due: each payload, a mode input's or an order's,
@@ -53,7 +53,7 @@ pub trait BotSink {
 
     /// Hears that the order of `directive`, as its script names it, of the bot of `seat` goes
     /// unsent to all of its units or to some, as `cause` says.
-    fn unsent(&mut self, seat: Seat, directive: &Directive<Named>, cause: OrderUnsent);
+    fn unsent(&mut self, seat: Seat, directive: &Directive<NamedRefs>, cause: OrderUnsent);
 }
 
 /// The buffers of a bot's step, kept so that no input allocates: the payload, the body of the

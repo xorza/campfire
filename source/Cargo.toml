@@ -250,6 +250,7 @@ httparse = { version = "=1.10.1", default-features = false }
 libc = { version = "=0.2.191", default-features = false }
 lz4_flex = { version = "=0.14.0", default-features = false }
 miniz_oxide = { version = "=0.9.1", default-features = false }
+naga = { version = "=30.0.1", default-features = false }
 netdev = { version = "=0.46.3", default-features = false }
 nostr = { version = "=0.45.5", default-features = false }
 polling = { version = "=3.11.0", default-features = false }

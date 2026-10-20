@@ -5,14 +5,14 @@
 use bevy_app::PluginGroupBuilder;
 use campfire_math::TickRate;
 use campfire_net_connection::{ConnectionPlugins, ServerConnectionPlugins};
-#[cfg(any(feature = "sim", feature = "udp"))]
+#[cfg(any(feature = "emulator", feature = "udp"))]
 use campfire_net_endpoint::EndpointPlugin;
 use campfire_net_interpolation::{
     InterpolationMarkerPlugin, InterpolationPlugins, InterpolationRegistryPlugin,
 };
 use campfire_net_link::{LinkPlugin, ServerLinkPlugin};
 use campfire_net_messages::MessagePlugin;
-#[cfg(feature = "sim")]
+#[cfg(feature = "emulator")]
 use campfire_net_packets::EmulatedWires;
 use campfire_net_prediction::{
     PredictionMarkerPlugin, PredictionPlugins, PredictionRegistryPlugin,
@@ -38,7 +38,7 @@ pub(crate) fn shared(group: PluginGroupBuilder, tick_rate: TickRate) -> PluginGr
     let group = group
         .add_group(TimelinePlugins { tick_rate })
         .add(LinkPlugin);
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "emulator")]
     let group = group.add(EndpointPlugin::<EmulatedWires>::default());
     #[cfg(feature = "udp")]
     let group = group.add(EndpointPlugin::<UdpIo>::default());

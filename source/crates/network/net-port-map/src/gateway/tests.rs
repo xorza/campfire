@@ -20,9 +20,9 @@ fn nonce() -> MapNonce {
 }
 
 /// Maps port 4433 for `LIFETIME` by `TRIES`, anew or `renewed`, with a stop that never comes.
-fn map(client: &mut Gateway, renewed: Option<&Mapping>) -> Result<Mapping, MapError> {
+fn map(client: &mut Gateway, renewed: Option<&Mapping>) -> Result<Mapping, PortMapError> {
     let running = AtomicBool::new(false);
-    let ask = Ask {
+    let ask = MapAsk {
         internal_port: 4433,
         name: "campfire-test",
         renewed,
@@ -140,7 +140,7 @@ fn a_silent_gateway_is_asked_each_try_and_given_up() {
     let mut client = Gateway::connect(gateway.address, nonce()).unwrap();
     let start = Instant::now();
     let error = map(&mut client, None).unwrap_err();
-    assert!(matches!(error, MapError::NoAnswer), "{error:?}");
+    assert!(matches!(error, PortMapError::NoAnswer), "{error:?}");
     // 20 + 40 + 80 ms of waits, each after its own request.
     assert!(start.elapsed() >= Duration::from_millis(140));
     assert_eq!(gateway.requests_once(3).len(), 3);
@@ -160,7 +160,7 @@ fn a_reply_to_another_request_is_passed_over_and_a_refusal_is_the_answer() {
     assert!(
         matches!(
             error,
-            MapError::PcpRefused {
+            PortMapError::PcpRefused {
                 refusal: PcpRefusal::NotAuthorized,
                 lasts,
             } if lasts == Duration::from_secs(30)
@@ -178,7 +178,10 @@ fn a_reply_to_another_request_is_passed_over_and_a_refusal_is_the_answer() {
     let mut client = Gateway::connect(gateway.address, nonce()).unwrap();
     let error = map(&mut client, None).unwrap_err();
     assert!(
-        matches!(error, MapError::NatPmpRefused(NatPmpRefusal::NotAuthorized)),
+        matches!(
+            error,
+            PortMapError::NatPmpRefused(NatPmpRefusal::NotAuthorized)
+        ),
         "{error:?}"
     );
 }
@@ -194,7 +197,7 @@ fn a_gateway_port_no_server_listens_on_is_told_at_once() {
     let mut client = Gateway::connect(address, nonce()).unwrap();
     let start = Instant::now();
     let error = map(&mut client, None).unwrap_err();
-    assert!(matches!(error, MapError::NoServer), "{error:?}");
+    assert!(matches!(error, PortMapError::NoServer), "{error:?}");
     assert!(start.elapsed() < TRIES.first);
 }
 
@@ -209,7 +212,7 @@ fn a_stop_ends_a_request_before_its_next_try() {
     };
     let start = Instant::now();
     let error = client.address(wait).unwrap_err();
-    assert!(matches!(error, MapError::Stopped), "{error:?}");
+    assert!(matches!(error, PortMapError::Stopped), "{error:?}");
     // No try went, so no wait of 20 ms came.
     assert!(start.elapsed() < TRIES.first);
     assert_eq!(gateway.requests(), Vec::<Vec<u8>>::new());

@@ -14,7 +14,7 @@ use campfire_values::{
 use crate::bot_script::error::BotScriptError;
 use crate::loaded::{ActionName, Loaded};
 use crate::location::{Location, MarkerLocation};
-use crate::named::Named;
+use crate::named::NamedRefs;
 
 /// The kind of a map marker's name, which a bot's script names a location by.
 const MARKERS: NameKind = NameKind::new("marker", Article::A, NameScope::Match);
@@ -66,7 +66,7 @@ impl<'b> BotNames<'b> {
     }
 }
 
-impl RefMap<Named, Loaded> for LoadRefs<'_, '_> {
+impl RefMap<NamedRefs, Loaded> for LoadRefs<'_, '_> {
     type Error = BotScriptError;
 
     fn unit(&mut self, unit: FilterData) -> Result<Filter, BotScriptError> {
@@ -104,7 +104,7 @@ impl RefMap<Named, Loaded> for LoadRefs<'_, '_> {
                 spec.position.ok_or(BotScriptError::NoPoint(marker))
             }
             Location::At(at) => at
-                .place(map.metric, Bounds::WORLD)
+                .place(map.metric(), Bounds::WORLD)
                 .map_err(BotScriptError::Point),
         }
     }

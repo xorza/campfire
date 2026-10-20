@@ -87,7 +87,7 @@ fn a_record_round_trips_and_its_signature_holds_only_over_it() {
     let read = Checkpoint::take(&bytes).unwrap();
     assert_eq!(
         read,
-        Taken {
+        Decoded {
             value: record.clone(),
             rest: &[9][..],
         }

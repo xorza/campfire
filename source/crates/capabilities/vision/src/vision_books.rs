@@ -81,8 +81,8 @@ impl Sight {
 
 #[cfg(test)]
 mod tests {
-    use campfire_geometry::{Bounds, Metric, PolygonError};
-    use campfire_units::{Ground, MapPoint, MapPointError};
+    use campfire_geometry::{Bounds, PolygonError};
+    use campfire_units::{MapPoint, MapPointError, MapSpace};
 
     use super::*;
     use crate::grid_data::BrushData;
@@ -91,9 +91,8 @@ mod tests {
     fn a_brush_loads_only_as_a_simple_polygon_within_the_bounds() {
         let bounds = Bounds::new([Num::ZERO; 2], [Num::int(4); 2]).unwrap();
         let map = MapBook {
-            metric: Metric::Planar,
+            space: MapSpace::default(),
             bounds,
-            ground: Ground::default(),
         };
         let with = |points: &[(i64, i64)]| {
             let sections = Sections::default().with(GridData {

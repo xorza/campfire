@@ -5,12 +5,14 @@ use bevy_ecs::system::{Local, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::Seat;
 use campfire_script::{
-    Ctx, HookDecl, ModeEvents, PlayerHandle, ScriptList, ScriptRole, ScriptText, ScriptValue,
+    Ctx, HookDecl, IdName, ModeEvents, PlayerHandle, ScriptList, ScriptRole, ScriptText,
+    ScriptValue,
 };
 use campfire_sim::{SimTick, TickInputs};
 
 use crate::calls::Calls;
 use crate::mode_input::{InputValue, ModeInput};
+use crate::timer_id::TimerId;
 use crate::timers::Timers;
 
 /// One mode input of the tick: its player's seat, and its body in the scratch buffer.
@@ -79,7 +81,7 @@ mode_hook! {
     OnInput: "on_input", ["player", "name", "value"], (Ctx, PlayerHandle, ScriptText, ScriptValue);
     OnPlayerJoin: "on_player_join", ["player"], (Ctx, PlayerHandle);
     OnPlayerLeave: "on_player_leave", ["player"], (Ctx, PlayerHandle);
-    OnTimer: "on_timer", ["name", "data"], (Ctx, ScriptText, ScriptValue);
+    OnTimer: "on_timer", ["name", "data"], (Ctx, IdName<TimerId>, ScriptValue);
     OnUnitDeath: "on_unit_death", ["unit", "killer", "assisters"], (Ctx, ScriptValue, ScriptValue, ScriptList);
     OnGenerate: "on_generate", ["region"], (Ctx, ScriptValue);
     OnSystem: "on_system", ["units"], (Ctx, ScriptList);
@@ -186,7 +188,7 @@ impl ModeHooks {
                     .as_ref()
                     .map_or(ScriptValue::UNIT, |data| data.to_value(call.ctx.view()));
                 let script = timer.script;
-                let args = (call.ctx.clone(), name, data);
+                let args = |ctx: &Ctx| (ctx.clone(), IdName::new(name.clone()), data.clone());
                 if call.answer_in::<OnTimer>(script, args).is_break() {
                     break;
                 }

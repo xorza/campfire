@@ -77,7 +77,7 @@ enum Side {
 /// The reachable sets a cell belongs to: its own region's, or for a blocked cell, which a walker
 /// may leave or enter, those of the open cells beside it; the first `count`, ascending.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Reach {
+pub(crate) struct Reachable {
     sets: [u32; 4],
     count: u8,
 }
@@ -144,8 +144,8 @@ impl Regions {
     }
 
     /// The reachable sets `cell` belongs to.
-    pub(crate) fn reach(&self, cell: usize) -> Reach {
-        let mut reach = Reach {
+    pub(crate) fn reach(&self, cell: usize) -> Reachable {
+        let mut reach = Reachable {
             sets: [0; 4],
             count: 0,
         };
@@ -178,7 +178,7 @@ impl Regions {
     pub(crate) fn nearest(
         &self,
         grid: &Grid,
-        reach: Reach,
+        reach: Reachable,
         goal: Vec3,
         candidates: &mut Vec<Candidate>,
         work: &mut u32,
@@ -434,7 +434,7 @@ impl Regions {
     }
 }
 
-impl Reach {
+impl Reachable {
     fn add(&mut self, set: u32) {
         let count = usize::from(self.count);
         if self.sets[..count].contains(&set) {

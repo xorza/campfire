@@ -540,4 +540,5 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
 mod books;
 mod declaration_audit;
 mod feature_installs;
+mod patches;
 mod prediction_reads;

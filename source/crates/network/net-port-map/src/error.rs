@@ -8,7 +8,7 @@ use crate::pcp_map::PcpRefusal;
 /// A gateway did not map a port: it never answered, no server listens on its port, it refused,
 /// the client's socket failed, or the map stopped.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum MapError {
+pub(crate) enum PortMapError {
     #[error("the OS names no default gateway")]
     NoGateway,
     #[error("the default gateway has no IPv4 address")]

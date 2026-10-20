@@ -198,7 +198,8 @@ impl<Io: DatagramIo> Endpoint<Io> {
     }
 
     /// The frame's second step: each carried packet session takes its link's queues, its datagrams
-    /// go out at once, and the pass runs here on a driven clock or wakes the thread on a real one.
+    /// go out at once, and the pass runs here on a driven clock; on a real one the thread wakes
+    /// only for a deadline the frame moved earlier.
     pub(crate) fn send(
         mut endpoints: Query<'_, '_, &mut Self>,
         mut links: Query<'_, '_, &mut Link>,
@@ -222,10 +223,16 @@ impl<Io: DatagramIo> Endpoint<Io> {
                     }
                 }
             }
-            endpoint.runtime.send(&mut endpoint.scratch.outbound);
             match endpoint.driver {
-                Some(Driver::Inline) => endpoint.runtime.pass(&mut endpoint.scratch.pass),
-                Some(Driver::Thread(_)) | None => endpoint.runtime.io().wake(),
+                Some(Driver::Inline) => {
+                    endpoint.runtime.send(&mut endpoint.scratch.outbound);
+                    endpoint.runtime.pass(&mut endpoint.scratch.pass);
+                }
+                Some(Driver::Thread(_)) | None => {
+                    endpoint
+                        .runtime
+                        .send_from_frame(&mut endpoint.scratch.outbound);
+                }
             }
         }
     }

@@ -2,12 +2,12 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::Res;
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
-use campfire_client_files::{Chord, Key, KeysFile, Modifiers};
+use campfire_client_files::{Chord, Key, KeyModifiers, KeysFile, Press};
 
 /// The client's keys: the mode's `client/keys.toml`, or the engine's own for a mode of none,
 /// each chord pressed when its key is and exactly its modifiers are held (02-engine-core.md, Keys
 /// are the mode's data).
-#[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Resource, Debug, Clone, Default, PartialEq)]
 pub(crate) struct InputMap {
     file: KeysFile,
 }
@@ -36,7 +36,7 @@ pub(crate) enum Act {
 
 /// A row of chords, one for each slot in their order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Row {
+pub(crate) enum ChordRow {
     Cast,
     Learn,
     Items,
@@ -45,6 +45,11 @@ pub(crate) enum Row {
 impl InputMap {
     pub(crate) const fn new(file: KeysFile) -> Self {
         Self { file }
+    }
+
+    /// What a press of a button is, the mode's rule of a drag and a click.
+    pub(crate) const fn press(&self) -> Press {
+        self.file.press
     }
 
     /// Whether a chord of `act` is held.
@@ -70,11 +75,11 @@ impl InputMap {
     }
 
     /// The chords of `row`, by slot.
-    pub(crate) fn row(&self, row: Row) -> &[Chord] {
+    pub(crate) fn row(&self, row: ChordRow) -> &[Chord] {
         match row {
-            Row::Cast => &self.file.cast,
-            Row::Learn => &self.file.learn,
-            Row::Items => &self.file.items,
+            ChordRow::Cast => &self.file.cast,
+            ChordRow::Learn => &self.file.learn,
+            ChordRow::Items => &self.file.items,
         }
     }
 
@@ -113,8 +118,8 @@ impl InputMap {
 }
 
 /// The modifiers held, each of either side.
-fn held_modifiers(keys: &ButtonInput<KeyCode>) -> Modifiers {
-    Modifiers {
+fn held_modifiers(keys: &ButtonInput<KeyCode>) -> KeyModifiers {
+    KeyModifiers {
         shift: keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]),
         control: keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]),
         alt: keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]),
@@ -172,17 +177,17 @@ mod tests {
         let mut keys = ButtonInput::<KeyCode>::default();
         let first = |row| input.row(row)[0];
         keys.press(KeyCode::KeyQ);
-        assert!(InputMap::chord_pressed(first(Row::Cast), &keys));
-        assert!(!InputMap::chord_pressed(first(Row::Learn), &keys));
+        assert!(InputMap::chord_pressed(first(ChordRow::Cast), &keys));
+        assert!(!InputMap::chord_pressed(first(ChordRow::Learn), &keys));
         keys.clear();
         keys.press(KeyCode::ControlLeft);
         keys.release(KeyCode::KeyQ);
         keys.press(KeyCode::KeyQ);
-        assert!(!InputMap::chord_pressed(first(Row::Cast), &keys));
-        assert!(InputMap::chord_pressed(first(Row::Learn), &keys));
+        assert!(!InputMap::chord_pressed(first(ChordRow::Cast), &keys));
+        assert!(InputMap::chord_pressed(first(ChordRow::Learn), &keys));
         assert!(input.orbits(&keys));
         keys.press(KeyCode::ShiftLeft);
-        assert!(!InputMap::chord_pressed(first(Row::Learn), &keys));
+        assert!(!InputMap::chord_pressed(first(ChordRow::Learn), &keys));
         assert!(!input.orbits(&keys));
         // S stops as it goes down, and held into the next frame stops no more.
         let mut keys = ButtonInput::<KeyCode>::default();

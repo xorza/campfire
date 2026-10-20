@@ -95,7 +95,7 @@ impl Shopping<'_, '_> {
         spec.serves(buyer, |reach| {
             let from = Placed::new(at.get(), Body::shape_of(body));
             let to = Placed::new(visitor.position, Body::shape_of(visitor.body));
-            self.map.metric.reaches(from, reach, to)
+            self.map.metric().reaches(from, reach, to)
         })
         .then_some(spec)
     }
@@ -114,7 +114,7 @@ impl Shopping<'_, '_> {
                 let buyer = visitor.buyer(relations.between(team, visitor.team));
                 spec.selects(buyer).then(|| {
                     let nearest = Body::shape_of(body).nearest_point(at.get(), visitor.position);
-                    let away = self.map.metric.offset(nearest, visitor.position);
+                    let away = self.map.metric().offset(nearest, visitor.position);
                     (away.length_squared_bits(), id)
                 })
             });

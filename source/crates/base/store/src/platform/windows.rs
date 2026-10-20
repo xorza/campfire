@@ -42,7 +42,7 @@ use crate::platform::stop_signals::StopSignals;
 /// on a directory's handle keeps its names. A stop's event reaches a console's handler, which
 /// Windows runs on a thread of its own. A shared port takes `SO_REUSEADDR`.
 #[derive(Debug)]
-pub(crate) struct Os;
+pub(crate) struct Native;
 
 /// The flag a stop's event raises: a static, as `SetConsoleCtrlHandler` gives its handler no data
 /// of its caller's.
@@ -72,7 +72,7 @@ const SHARE: FILE_SHARE_MODE =
 /// directory's path leaves room for an 8.3 name.
 const LONG: usize = 248;
 
-impl Os {
+impl Native {
     pub(crate) fn share_port(socket: &Socket) -> io::Result<()> {
         socket.set_reuse_address(true)
     }
@@ -461,9 +461,9 @@ pub(crate) mod internals {
     use windows::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP;
     use windows::core::{BOOL, Owned};
 
-    use crate::platform::os::{Os, descriptor, io_error, user_sid, wide};
+    use crate::platform::os::{Native, descriptor, io_error, user_sid, wide};
 
-    impl Os {
+    impl Native {
         pub(crate) fn ignore_terminal(command: &mut Command) {
             command.creation_flags(CREATE_NEW_PROCESS_GROUP.0);
         }

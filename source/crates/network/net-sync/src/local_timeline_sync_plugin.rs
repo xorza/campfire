@@ -100,6 +100,7 @@ impl LocalTimelineSyncPlugin {
     fn sync_timelines(
         tick_rate: Res<'_, TimelineRate>,
         fixed_time: Res<'_, Time<Fixed>>,
+        virtual_time: Res<'_, Time<Virtual>>,
         networking: Res<'_, NetworkingState>,
         setup: Res<'_, InputTimelineSetup>,
         local_timeline: Res<'_, LocalTimeline>,
@@ -117,6 +118,11 @@ impl LocalTimelineSyncPlugin {
         let NetworkTopology::Client(client) = &networking.topology else {
             return;
         };
+        // A paused clock takes no correction, as a speed does not move it and a step would move
+        // a timeline whose error grows only by the pause.
+        if virtual_time.is_paused() {
+            return;
+        }
         let Ok((remote, estimator)) = remotes.get(*client) else {
             return;
         };

@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 
 use campfire_codec::TaggedError;
-use campfire_protocol::PublishError as JournalPublishError;
+use campfire_protocol::PublishError;
 use campfire_protocol::{JournalReplayError, JournalStreamError, NotJournal, SessionId};
 use campfire_store::{AppendOpenError, DurableDirError, DurableError, PathError, ReadError};
 use thiserror::Error;
@@ -49,12 +49,12 @@ pub enum AbortError {
     #[error("the session's match does not replay")]
     Replay(#[source] MatchBeginError),
     #[error("could not publish the log")]
-    Publish(#[source] PublishError),
+    Publish(#[source] SessionPublishError),
 }
 
 /// Why a session's log was not published, by its step, each of which its path's error names.
 #[derive(Debug, Error)]
-pub enum PublishError {
+pub enum SessionPublishError {
     /// The journal did not open to read.
     #[error(transparent)]
     Read(PathError<ReadError>),
@@ -63,7 +63,7 @@ pub enum PublishError {
     Journal(JournalStreamError),
     /// The journal holds no whole log.
     #[error(transparent)]
-    Log(#[from] JournalPublishError),
+    Log(#[from] PublishError),
     /// The logs' directory was not made.
     #[error(transparent)]
     Dir(#[from] PathError<DurableDirError>),

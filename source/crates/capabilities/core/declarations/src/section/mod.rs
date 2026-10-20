@@ -7,7 +7,9 @@ use serde::de::DeserializeOwned;
 
 use crate::section::section_readers::SectionReaders;
 
+pub(crate) mod patched;
 pub(crate) mod section_readers;
+pub(crate) mod section_writer;
 pub(crate) mod sections;
 
 /// A key of a data table that a module reads as its own type, which it registers by that key, so

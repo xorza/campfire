@@ -152,7 +152,7 @@ pub use crate::modifier_spec::{
     AuraSpec, ModifierSpec, ParamPlace, SpecChange, SpecNames, SpecNumber, SpecTime,
 };
 pub use crate::modifier_ways::ModifierWays;
-pub use crate::modifiers::modifier_clocks::{Clock, ModifierClocks, Spent};
+pub use crate::modifiers::modifier_clocks::{ModifierClock, ModifierClocks, ShieldSpent};
 pub use crate::modifiers::{Absorbed, Carried, Modifiers, Touched};
 pub use crate::modifiers_data::ModifiersData;
 pub use crate::move_speed_cap::MoveSpeedCap;
@@ -507,9 +507,8 @@ impl Stats {
 pub mod internals {
     use std::collections::BTreeMap;
 
-    use bevy_ecs::world::{Mut, World};
+    use bevy_ecs::world::World;
     use campfire_common::DeclaredName;
-    use campfire_declarations::Book;
     use campfire_declarations::internals::BookLoad;
     use campfire_math::Num;
     use campfire_script::ScriptId;
@@ -601,9 +600,7 @@ pub mod internals {
             changes: &[(StatId, StatOp)],
             tags: TagSet,
         ) -> ModifierId {
-            let id = world
-                .resource_mut::<ModifierBook>()
-                .push_changes(changes, tags);
+            let id = ModifierBook::amend(world, |_, book| book.push_changes(changes, tags));
             Self::load_modifier_params(world, id, &BTreeMap::new(), |_| StatId::new(0));
             id
         }
@@ -628,7 +625,7 @@ pub mod internals {
             if new {
                 Units::declare_tags(world, data.tags.iter().map(DeclaredName::as_str));
             }
-            world.resource_scope(|world, mut book: Mut<'_, ModifierBook>| {
+            ModifierBook::amend(world, |world, book| {
                 let tags = world.resource::<UnitTypeBook>().tags();
                 // A match that runs no scripts holds no script book, and its modifiers none.
                 let none = ScriptBook::default();
@@ -653,7 +650,6 @@ pub mod internals {
                 .names()
                 .named((package, name.as_str()))
                 .expect("the modifier loaded");
-            ModifierBook::share_in(world);
             let places = Self::stat_places(world, data.params.values().flat_map(Param::stats));
             Self::load_modifier_params(world, id, &data.params, |stat| places[stat]);
         }
@@ -667,7 +663,7 @@ pub mod internals {
         /// Gives `unit_type` `values` at level 1 in the match's stat book, by the stats' places,
         /// as its `stats` section would.
         pub fn give_type_stats(world: &mut World, unit_type: UnitType, values: &[Num]) {
-            world.resource_mut::<StatBook>().add_base(unit_type, values);
+            StatBook::amend(world, |_, book| book.add_base(unit_type, values));
         }
 
         /// Gives a match with no mode the stat book of `rules`, with no unit type and no pool
@@ -684,7 +680,7 @@ pub mod internals {
             params: &BTreeMap<DeclaredName, Param>,
             stat: impl Fn(&Stat) -> StatId,
         ) {
-            let run = world.resource_mut::<ParamBook>().push_action(params, stat);
+            let run = ParamBook::amend(world, |_, book| book.push_action(params, stat));
             assert_eq!(run, action.index(), "one run of params per action");
             Self::resolve_appliers(world);
         }
@@ -697,9 +693,7 @@ pub mod internals {
             params: &BTreeMap<DeclaredName, Param>,
             stat: impl Fn(&Stat) -> StatId,
         ) {
-            let run = world
-                .resource_mut::<ParamBook>()
-                .push_modifier(params, stat);
+            let run = ParamBook::amend(world, |_, book| book.push_modifier(params, stat));
             assert_eq!(run, modifier.index(), "one run of params per modifier");
             Self::resolve_appliers(world);
         }
@@ -707,7 +701,7 @@ pub mod internals {
         /// Resolves the params the match's modifiers read from their abilities in each action's
         /// params again; a world with no modifier book has none.
         fn resolve_appliers(world: &mut World) {
-            world.resource_scope(|world, mut params: Mut<'_, ParamBook>| {
+            ParamBook::amend(world, |world, params| {
                 let none = Names::default();
                 let appliers = world
                     .get_resource::<ModifierBook>()

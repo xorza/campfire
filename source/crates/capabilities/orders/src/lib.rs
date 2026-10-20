@@ -149,6 +149,7 @@ pub mod internals {
     use campfire_actions::{ActionProgress, InProgress, SlotTimes};
     use campfire_common::{Seat, Tick};
     use campfire_declarations::ByType;
+    use campfire_declarations::internals::BookLoad;
     use campfire_script::{ScriptFailures, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{MatchRate, StableId};
@@ -171,7 +172,7 @@ pub mod internals {
         ) -> Result<(), AiError> {
             let rate = *world.resource::<MatchRate>();
             let ai = Ai::of(data, script, world.resource::<ScriptBook>(), rate)?;
-            world.resource_mut::<ByType<Ai>>().set(unit_type, ai);
+            ByType::<Ai>::amend(world, |_, book| book.set(unit_type, ai));
             Ok(())
         }
     }

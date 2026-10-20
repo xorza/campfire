@@ -16,6 +16,7 @@ use crate::stat_book::StatBook;
 /// The pools the mode declares, by pool id: the place among the stats of each one's maximum and
 /// of its regen. Package data, not state.
 #[derive(Resource, Debug)]
+#[component(immutable)]
 pub struct PoolBook {
     /// The pools' names, by id; shared with the script view, which names them to scripts.
     names: Arc<Names<PoolId>>,

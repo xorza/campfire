@@ -1,14 +1,16 @@
+use std::collections::BTreeSet;
 use std::ptr;
 
 use campfire_values::{EngineEnum, ModifierId, Named};
 use derive_more::Display;
-use rhai::{AST, ASTNode, Expr, FnCallExpr, ScriptFnMetadata, Stmt};
+use rhai::{AST, ASTNode, Expr, FnCallExpr, Position, ScriptFnMetadata, Stmt};
 
 use crate::script_host::ScriptHost;
 use crate::script_host::error::ScriptError;
 use crate::scripts::api_holder::ApiHolder;
 use crate::scripts::applies::Applies;
 use crate::scripts::error::CtxMisuse;
+use crate::scripts::given_names::{GivenNames, NameShape};
 use crate::scripts::member_decl::MemberDecl;
 use crate::scripts::member_kind::MemberKind;
 use crate::scripts::script_api::ScriptApi;
@@ -149,13 +151,26 @@ impl ScriptFacts {
             .functions
             .sort_unstable_by(|a, b| (&a.name, a.params).cmp(&(&b.name, b.params)));
         facts.top_level = !ast.statements().is_empty();
+        let mut scopes = Scopes::of(ast, api);
         ast.walk(&mut |path: &[ASTNode<'_>]| {
+            if let Some(name) = rebound(path.last()) {
+                scopes.at_mut(path).shadowed.insert(name.to_owned());
+            }
+            true
+        });
+        ast.walk(&mut |path: &[ASTNode<'_>]| {
+            let walk = Walk {
+                ast,
+                api,
+                scope: scopes.at(path),
+                path,
+            };
             match path.last() {
                 Some(ASTNode::Expr(Expr::Map(map, _))) => {
                     let keys = map.0.iter().map(|(key, _)| key.name.to_string());
                     facts.map_keys.extend(keys);
                 }
-                Some(ASTNode::Expr(Expr::Dot(dot, ..))) => {
+                Some(ASTNode::Expr(expr @ Expr::Dot(dot, ..))) => {
                     let link = matches!(dot.lhs, Expr::Property(..) | Expr::MethodCall(..));
                     let on_ctx = !link && variable(&dot.lhs) == Some(CTX);
                     if !link {
@@ -168,6 +183,7 @@ impl ScriptFacts {
                             ChainHead::Member
                         };
                         facts.read_chain(&dot.rhs, head, api);
+                        facts.read_contains(&walk, expr);
                     }
                     if let Expr::MethodCall(call, _) = &dot.rhs
                         && !on_ctx
@@ -194,16 +210,16 @@ impl ScriptFacts {
                 Some(
                     ASTNode::Expr(Expr::FnCall(call, _)) | ASTNode::Stmt(Stmt::FnCall(call, _)),
                 ) if !call.is_operator_call() && own_function(ast, call).is_none() => {
-                    facts.read_comparison(ast, call, api);
+                    facts.read_comparison(&walk, call);
                     facts.read_call(call, api);
                 }
                 Some(
                     ASTNode::Expr(Expr::FnCall(call, _)) | ASTNode::Stmt(Stmt::FnCall(call, _)),
                 ) if call.is_operator_call() => {
-                    facts.read_comparison(ast, call, api);
+                    facts.read_comparison(&walk, call);
                 }
                 Some(ASTNode::Stmt(Stmt::Switch(switch, _))) => {
-                    if let Some(returned) = returned(ast, &switch.0, api) {
+                    if let Some(returned) = walk.returned(&switch.0) {
                         facts.switched.push(returned.member);
                     }
                 }
@@ -364,31 +380,78 @@ impl ScriptFacts {
         }
     }
 
-    /// The literals the call `call` compares with a name the API returns: `a == b` and `a != b`
-    /// either way round, and `a in [b, c]`, which Rhai calls as `contains` with the list first.
-    /// A list not written in place holds no literal the check reads.
-    fn read_comparison(&mut self, ast: &AST, call: &FnCallExpr, api: &ScriptApi) {
+    /// The literals the call `call` compares with a name the API returns, or a variable bound
+    /// to one: `a == b` and `a != b` either way round, `a in [b, c]`, which Rhai calls as
+    /// `contains` with the list first, and `b in list`, of a list of names. A list not written in
+    /// place holds no literal the check reads.
+    fn read_comparison(&mut self, walk: &Walk<'_>, call: &FnCallExpr) {
         let [left, right] = &*call.args else {
             return;
         };
+        let one = |expr| {
+            walk.returned(expr)
+                .filter(|returned| returned.names.shape == NameShape::One)
+        };
         let (returned, literals) = match call.name.as_str() {
-            "==" | "!=" => match (returned(ast, left, api), returned(ast, right, api)) {
+            "==" | "!=" => match (one(left), one(right)) {
                 (Some(returned), _) => (returned, string(right).into_iter().collect()),
                 (None, Some(returned)) => (returned, string(left).into_iter().collect()),
                 (None, None) => return,
             },
-            CONTAINS => {
-                let Some(returned) = returned(ast, right, api) else {
-                    return;
-                };
-                (returned, strings(left))
-            }
+            CONTAINS => match walk.returned(left) {
+                Some(list) if list.names.shape == NameShape::List => {
+                    (list, string(right).into_iter().collect())
+                }
+                _ => {
+                    let Some(returned) = one(right) else {
+                        return;
+                    };
+                    (returned, strings(left))
+                }
+            },
             _ => return,
         };
+        self.compare(&returned, literals);
+    }
+
+    /// The literal `list.contains("b")` finds in a list of names, the chain `dot` ending in that
+    /// call.
+    fn read_contains(&mut self, walk: &Walk<'_>, dot: &Expr) {
+        let Expr::Dot(chain, ..) = dot else {
+            return;
+        };
+        let mut links = Vec::new();
+        if !chain_links(&chain.rhs, &mut links) {
+            return;
+        }
+        let Some((last, before)) = links.split_last() else {
+            return;
+        };
+        let Expr::MethodCall(call, _) = last.expr else {
+            return;
+        };
+        let ([arg], false) = (&*call.args, last.indexed) else {
+            return;
+        };
+        if call.name != CONTAINS {
+            return;
+        }
+        let list = if before.is_empty() {
+            walk.returned(&chain.lhs)
+        } else {
+            walk.chain(&chain.lhs, before)
+        };
+        if let Some(list) = list.filter(|list| list.names.shape == NameShape::List) {
+            self.compare(&list, string(arg).into_iter().collect());
+        }
+    }
+
+    /// Records `literals`, each compared with a name of `returned`.
+    fn compare(&mut self, returned: &Returned, literals: Vec<String>) {
         self.compared
             .extend(literals.into_iter().map(|name| ComparedName {
                 member: returned.member.clone(),
-                kind: returned.kind,
+                kind: returned.names.kind,
                 name,
             }));
     }
@@ -473,61 +536,257 @@ fn property(expr: &Expr) -> Option<&str> {
     }
 }
 
-/// The member that returns a name, and its kind, whose value `expr` reads: the last link of a
-/// chain, none after a member that leads to data, or a call as a function, of `ctx` when it
-/// gives `ctx` first.
-fn returned(ast: &AST, expr: &Expr, api: &ScriptApi) -> Option<Returned> {
-    let (name, kind, on_ctx) = match expr {
-        Expr::Dot(dot, ..) => {
-            let mut on_ctx = variable(&dot.lhs) == Some(CTX);
-            let mut link = &dot.rhs;
-            loop {
-                let (head, rest) = match link {
-                    Expr::Property(property, _) => {
-                        break (property.2.as_str(), MemberKind::Field, on_ctx);
-                    }
-                    Expr::MethodCall(call, _) => {
-                        break (call.name.as_str(), MemberKind::Method, on_ctx);
-                    }
-                    Expr::Dot(next, ..) => (&next.lhs, &next.rhs),
-                    Expr::Index(next, ..) => match &next.rhs {
-                        Expr::Dot(element, ..) => (&next.lhs, &element.rhs),
-                        _ => return None,
-                    },
-                    _ => return None,
-                };
-                if property(head).is_some_and(|name| api.leads_to_data(name)) {
-                    return None;
-                }
-                (link, on_ctx) = (rest, false);
-            }
-        }
-        Expr::FnCall(call, _)
-            if call.namespace.is_empty()
-                && !call.is_operator_call()
-                && own_function(ast, call).is_none() =>
-        {
-            let on_ctx = call.args.first().and_then(variable) == Some(CTX);
-            (call.name.as_str(), MemberKind::Method, on_ctx)
-        }
-        _ => return None,
-    };
-    let kind = if on_ctx {
-        api.member(ApiHolder::CTX, name)?.output?.names?
-    } else {
-        api.returned(name, kind)?
-    };
-    Some(Returned {
-        member: name.to_owned(),
-        kind,
-    })
+/// A link of a chain after its head: a property or a method call, and whether the value it gives
+/// is indexed.
+#[derive(Debug, Clone, Copy)]
+struct Link<'a> {
+    expr: &'a Expr,
+    indexed: bool,
 }
 
-/// A member that returns a name of `kind`.
+/// The links of the chain after its head, from `link`, into `out`; `false` for a chain of a link
+/// that is neither a property nor a method call.
+fn chain_links<'a>(mut link: &'a Expr, out: &mut Vec<Link<'a>>) -> bool {
+    loop {
+        match link {
+            Expr::Property(..) | Expr::MethodCall(..) => {
+                out.push(Link {
+                    expr: link,
+                    indexed: false,
+                });
+                return true;
+            }
+            Expr::Dot(next, ..) => {
+                out.push(Link {
+                    expr: &next.lhs,
+                    indexed: false,
+                });
+                link = &next.rhs;
+            }
+            Expr::Index(next, ..) => {
+                out.push(Link {
+                    expr: &next.lhs,
+                    indexed: true,
+                });
+                match &next.rhs {
+                    Expr::Dot(element, ..) => link = &element.rhs,
+                    _ => return true,
+                }
+            }
+            _ => return false,
+        }
+    }
+}
+
+/// Where the facts' walk stands: the script, the API, the scope of the function it walks, and
+/// the path to the node.
+#[derive(Debug, Clone, Copy)]
+struct Walk<'a> {
+    ast: &'a AST,
+    api: &'a ScriptApi,
+    scope: &'a FunctionScope,
+    path: &'a [ASTNode<'a>],
+}
+
+impl Walk<'_> {
+    /// The names `expr` reads, as the API gives them: a variable bound to names, an item of a
+    /// list of names, the last link of a chain, none after a member that leads to data, or a call
+    /// as a function, of `ctx` when it gives `ctx` first.
+    fn returned(&self, expr: &Expr) -> Option<Returned> {
+        match expr {
+            Expr::Variable(variable, ..) if variable.2.is_empty() => {
+                let name = variable.1.as_str();
+                let names = self.bound(name)?;
+                Some(Returned {
+                    member: name.to_owned(),
+                    names,
+                })
+            }
+            Expr::Index(index, ..) => {
+                let list = self.returned(&index.lhs)?;
+                (list.names.shape == NameShape::List).then(|| Returned {
+                    names: list.names.item(),
+                    ..list
+                })
+            }
+            Expr::Dot(dot, ..) => {
+                let mut links = Vec::new();
+                if !chain_links(&dot.rhs, &mut links) {
+                    return None;
+                }
+                self.chain(&dot.lhs, &links)
+            }
+            Expr::FnCall(call, _)
+                if call.namespace.is_empty()
+                    && !call.is_operator_call()
+                    && own_function(self.ast, call).is_none() =>
+            {
+                let on_ctx = call.args.first().and_then(variable) == Some(CTX);
+                let name = call.name.as_str();
+                let names = if on_ctx {
+                    self.api.member(ApiHolder::CTX, name)?.output?.names?
+                } else {
+                    self.api.returned(name, MemberKind::Method)?
+                };
+                Some(Returned {
+                    member: name.to_owned(),
+                    names,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// The names the last of `links`, after `head`, reads: none after a member that leads to
+    /// data, and an item of a list of names where the link is indexed.
+    fn chain(&self, head: &Expr, links: &[Link<'_>]) -> Option<Returned> {
+        let (last, before) = links.split_last()?;
+        let data = before
+            .iter()
+            .any(|link| property(link.expr).is_some_and(|name| self.api.leads_to_data(name)));
+        if data {
+            return None;
+        }
+        let (name, kind) = match last.expr {
+            Expr::Property(property, _) => (property.2.as_str(), MemberKind::Field),
+            Expr::MethodCall(call, _) => (call.name.as_str(), MemberKind::Method),
+            _ => return None,
+        };
+        let names = if before.is_empty() && variable(head) == Some(CTX) {
+            self.api.member(ApiHolder::CTX, name)?.output?.names?
+        } else {
+            self.api.returned(name, kind)?
+        };
+        let names = if last.indexed {
+            (names.shape == NameShape::List).then(|| names.item())?
+        } else {
+            names
+        };
+        Some(Returned {
+            member: name.to_owned(),
+            names,
+        })
+    }
+
+    /// The names the variable `name` holds where the walk stands: the item of the list of names
+    /// the nearest loop over it binds `name` to, or the names a hook passes in the parameter
+    /// `name`; none for `ctx`, a loop's counter, a name its function binds by `let`, `const` or an
+    /// assignment, which the check cannot follow, and any other.
+    fn bound(&self, name: &str) -> Option<GivenNames> {
+        if name == CTX || self.scope.shadowed.contains(name) {
+            return None;
+        }
+        for (at, node) in self.path.iter().enumerate().rev() {
+            let ASTNode::Stmt(Stmt::For(each, _)) = node else {
+                continue;
+            };
+            let (item, counter, flow) = &**each;
+            if counter.as_ref().is_some_and(|counter| counter.name == name) {
+                return None;
+            }
+            if item.name == name {
+                let around = Self {
+                    path: &self.path[..at],
+                    ..*self
+                };
+                let list = around.returned(&flow.expr)?;
+                return (list.names.shape == NameShape::List).then(|| list.names.item());
+            }
+        }
+        self.scope
+            .params
+            .iter()
+            .find(|(param, _)| param == name)
+            .map(|&(_, names)| names)
+    }
+}
+
+/// The scope of a function of the script, or of its statements outside them: the names a hook
+/// passes in each parameter, the names it binds by `let`, `const` or an assignment, and the span
+/// of its body.
+#[derive(Debug, Default)]
+struct FunctionScope {
+    params: Vec<(String, GivenNames)>,
+    shadowed: BTreeSet<String>,
+    span: Option<(Position, Position)>,
+}
+
+/// The scope of each function of a script, and of its statements outside them.
+#[derive(Debug)]
+struct Scopes {
+    functions: Vec<FunctionScope>,
+    top: FunctionScope,
+}
+
+impl Scopes {
+    /// The scopes of `ast`'s functions: a hook's parameters take the names the API says its
+    /// call passes in each.
+    fn of(ast: &AST, api: &ScriptApi) -> Self {
+        let functions = ast
+            .iter_fn_def()
+            .map(|function| {
+                let kinds = api
+                    .hook_named(&function.name)
+                    .map_or(&[][..], |held| held.hook.param_kinds);
+                let params = function
+                    .params
+                    .iter()
+                    .zip(kinds)
+                    .filter_map(|(param, names)| Some((param.to_string(), (*names)?)))
+                    .collect();
+                FunctionScope {
+                    params,
+                    shadowed: BTreeSet::new(),
+                    span: Some((function.body.start_position(), function.body.end_position())),
+                }
+            })
+            .collect();
+        Self {
+            functions,
+            top: FunctionScope::default(),
+        }
+    }
+
+    /// The place among the functions of the one whose body holds the statement `path` starts
+    /// with; none for one outside every function's.
+    fn place(&self, path: &[ASTNode<'_>]) -> Option<usize> {
+        let Some(ASTNode::Stmt(first)) = path.first() else {
+            return None;
+        };
+        let at = first.position();
+        self.functions.iter().position(|function| {
+            function
+                .span
+                .is_some_and(|(start, end)| !at.is_none() && start <= at && at <= end)
+        })
+    }
+
+    fn at(&self, path: &[ASTNode<'_>]) -> &FunctionScope {
+        self.place(path).map_or(&self.top, |at| &self.functions[at])
+    }
+
+    fn at_mut(&mut self, path: &[ASTNode<'_>]) -> &mut FunctionScope {
+        match self.place(path) {
+            Some(at) => &mut self.functions[at],
+            None => &mut self.top,
+        }
+    }
+}
+
+/// The variable the node binds by `let` or `const`, or writes by an assignment.
+fn rebound<'a>(node: Option<&'a ASTNode<'_>>) -> Option<&'a str> {
+    match node? {
+        ASTNode::Stmt(Stmt::Var(var, ..)) => Some(var.0.name.as_str()),
+        ASTNode::Stmt(Stmt::Assignment(assignment)) => variable(&assignment.1.lhs),
+        _ => None,
+    }
+}
+
+/// A member, or a variable, that holds names.
 #[derive(Debug)]
 struct Returned {
     member: String,
-    kind: NameKind,
+    names: GivenNames,
 }
 
 /// The string literals of a list written in place, as the parse gives it, or folded into a

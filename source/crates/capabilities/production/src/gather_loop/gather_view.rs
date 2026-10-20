@@ -12,10 +12,10 @@ use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 use campfire_units::{Body, Dead, MapBook, Owner};
 use campfire_values::{Relations, ResourceId, Team, UnitTags, UnitType};
 
-use crate::gather_loop::Worker;
+use crate::gather_loop::WorkerParts;
 use crate::gather_loop::checked_gather::CheckedGather;
 use crate::gather_loop::gather::Gather;
-use crate::gather_loop::location::Location;
+use crate::gather_loop::location::LoopTarget;
 use crate::gather_loop::step::Step;
 use crate::gather_spec::GatherSpec;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
@@ -35,7 +35,7 @@ pub(crate) struct GatherView<'w, 's> {
     pub(super) map: Res<'w, MapBook>,
     pub relations: OnMatch<'w, 's, Relations>,
     pub(super) resources: PlayerRows<'w, 's, PlayerResources>,
-    pub(super) workers: Query<'w, 's, Worker, Without<Dead>>,
+    pub(super) workers: Query<'w, 's, WorkerParts, Without<Dead>>,
     pub(super) nodes: Query<
         'w,
         's,
@@ -89,7 +89,7 @@ struct Seeker<'a> {
 
 /// A load a worker of `owner` brings: its resource, which a drop-off of the player takes or not.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Delivery {
+pub(crate) struct Haul {
     pub(crate) owner: Seat,
     pub(crate) resource: ResourceId,
 }
@@ -98,7 +98,7 @@ pub(crate) struct Delivery {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FoundNode {
     pub(super) entity: Entity,
-    pub(super) location: Location,
+    pub(super) location: LoopTarget,
 }
 
 impl GatherView<'_, '_> {
@@ -138,7 +138,7 @@ impl GatherView<'_, '_> {
             && seeker.gather.filter.selects(relation, tags);
         ours.then_some(FoundNode {
             entity,
-            location: Location {
+            location: LoopTarget {
                 position: at.get(),
                 body: body.copied(),
             },
@@ -148,7 +148,7 @@ impl GatherView<'_, '_> {
     /// The nearest living node to a worker at `from` that `seeker`'s gather gathers, whose body
     /// comes within its bounce of `near`'s, and that no worker holds: by the distance to its
     /// body, the lower stable id on a tie.
-    fn free_node_near(&self, from: Vec3, seeker: Seeker<'_>, near: Location) -> Option<NodeAt> {
+    fn free_node_near(&self, from: Vec3, seeker: Seeker<'_>, near: LoopTarget) -> Option<NodeAt> {
         let near_shape = Body::shape_of(near.body.as_ref());
         self.nodes
             .iter()
@@ -157,7 +157,7 @@ impl GatherView<'_, '_> {
                 let id = *row.1;
                 let location = self.found(row, seeker)?.location;
                 let shape = Body::shape_of(location.body.as_ref());
-                let within = self.map.metric.reaches(
+                let within = self.map.metric().reaches(
                     Placed::new(near.position, near_shape),
                     seeker.gather.spec.bounce,
                     Placed::new(location.position, shape),
@@ -170,16 +170,16 @@ impl GatherView<'_, '_> {
 
     /// Whether a drop-off of `unit_type` that `drop_owner` owns takes `delivery`: one of the
     /// worker's player that takes its resource.
-    pub(crate) fn takes(&self, drop_owner: Owner, unit_type: UnitType, delivery: Delivery) -> bool {
+    pub(crate) fn takes(&self, drop_owner: Owner, unit_type: UnitType, delivery: Haul) -> bool {
         drop_owner.seat() == delivery.owner && self.nodes_book.takes(unit_type, delivery.resource)
     }
 
     /// Where the living, complete drop-off `id` stands, when it takes `delivery`.
-    fn drop_off_location(&self, id: StableId, delivery: Delivery) -> Option<Location> {
+    fn drop_off_location(&self, id: StableId, delivery: Haul) -> Option<LoopTarget> {
         let (_, &at, body, &unit_type, drop_owner) =
             self.drop_offs.get(self.index.get(id)?).ok()?;
         self.takes(*drop_owner, unit_type, delivery)
-            .then_some(Location {
+            .then_some(LoopTarget {
                 position: at.get(),
                 body: body.copied(),
             })
@@ -187,12 +187,12 @@ impl GatherView<'_, '_> {
 
     /// The nearest living, complete drop-off that takes `delivery`, to a worker at `from`: by
     /// the distance to its body, the lower stable id on a tie.
-    pub(super) fn drop_off(&self, from: Vec3, delivery: Delivery) -> Option<StableId> {
+    pub(super) fn drop_off(&self, from: Vec3, delivery: Haul) -> Option<StableId> {
         self.drop_offs
             .iter()
             .filter(|&(.., &unit_type, drop_owner)| self.takes(*drop_owner, unit_type, delivery))
             .map(|(&id, &at, body, ..)| {
-                let location = Location {
+                let location = LoopTarget {
                     position: at.get(),
                     body: body.copied(),
                 };
@@ -215,10 +215,10 @@ impl GatherView<'_, '_> {
     }
 
     /// Whether `worker`, with a gather of `gather`, reaches `at`.
-    pub(super) fn reaches(&self, worker: Location, gather: Gather, at: Location) -> bool {
+    pub(super) fn reaches(&self, worker: LoopTarget, gather: Gather, at: LoopTarget) -> bool {
         let shape = Body::shape_of(worker.body.as_ref());
         let to = Body::shape_of(at.body.as_ref());
-        self.map.metric.reaches(
+        self.map.metric().reaches(
             Placed::new(worker.position, shape),
             gather.range,
             Placed::new(at.position, to),
@@ -244,7 +244,7 @@ impl GatherView<'_, '_> {
             team,
             relations,
         };
-        let worker = Location {
+        let worker = LoopTarget {
             position: from.get(),
             body: body.copied(),
         };
@@ -255,7 +255,7 @@ impl GatherView<'_, '_> {
                 _ => Step::Hold,
             };
         }
-        let gone = Location {
+        let gone = LoopTarget {
             position: order.node.position,
             body: None,
         };
@@ -309,7 +309,7 @@ impl GatherView<'_, '_> {
                 let Some(owner) = owner.copied().map(Owner::seat) else {
                     return Step::Stand;
                 };
-                let delivery = Delivery {
+                let delivery = Haul {
                     owner,
                     resource: load.resource,
                 };
@@ -381,7 +381,7 @@ impl GatherView<'_, '_> {
             );
         }
         let returns = gatherer.load().zip(owner).is_some_and(|(load, owner)| {
-            let delivery = Delivery {
+            let delivery = Haul {
                 owner: owner.seat(),
                 resource: load.resource,
             };

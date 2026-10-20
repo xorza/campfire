@@ -13,12 +13,12 @@ pub(crate) mod fault;
 /// of each worker's own report. A failure before the app runs, in a restore's abort or a local
 /// server's start, is the error of the function that met it.
 #[derive(Resource, Debug, Default)]
-pub(crate) struct Faults {
+pub(crate) struct WorkerFaults {
     /// The faults reported and not applied yet, in the order reported.
     pending: Vec<Fault>,
 }
 
-impl Faults {
+impl WorkerFaults {
     pub(crate) fn report(&mut self, fault: Fault) {
         self.pending.push(fault);
     }

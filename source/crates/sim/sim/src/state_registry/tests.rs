@@ -1,9 +1,7 @@
 use std::any::TypeId;
 use std::num::NonZeroU32;
 
-use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::component::Component;
-use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use blake3::Hasher;
 use campfire_common::Tick;
@@ -1062,4 +1060,36 @@ fn a_types_layout_fingerprint_moves_with_its_encoding_alone() {
             assert_eq!(of(before, name), of(after, name), "{at}: {name}");
         }
     }
+}
+
+/// A unit a predicting client starts to predict counts each of its state parts changed, so a pass
+/// that follows changes takes it, though its parts kept the ticks they had while hidden; a part
+/// that is no state, and a unit not started, stay as they were.
+#[test]
+fn a_unit_predicted_again_counts_its_state_changed() {
+    let mut world = new_world();
+    world.insert_resource(registry());
+    world.add_observer(StateRegistry::predicted);
+    let [started, other] = [0, 1].map(|x| {
+        let id = allocate(&mut world);
+        world.spawn((id, position(x), life(10), Replicated)).id()
+    });
+    // A pass ran past the spawns: nothing changed since.
+    let ran = world.change_tick();
+    world.increment_change_tick();
+    let changed = |world: &World, entity: Entity| {
+        let unit = world.entity(entity);
+        let now = world.read_change_tick();
+        [
+            unit.get_change_ticks::<Position>(),
+            unit.get_change_ticks::<Life>(),
+            unit.get_change_ticks::<Replicated>(),
+        ]
+        .map(|ticks| ticks.unwrap().is_changed(ran, now))
+    };
+    assert_eq!(changed(&world, started), [false; 3]);
+    world.trigger(PredictionStarted { entity: started });
+    world.flush();
+    assert_eq!(changed(&world, started), [true, true, false]);
+    assert_eq!(changed(&world, other), [false; 3]);
 }

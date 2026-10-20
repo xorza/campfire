@@ -430,6 +430,7 @@ mod tests {
 
     /// A book of a test, of a count.
     #[derive(Resource, Debug, Default, PartialEq, Eq)]
+    #[component(immutable)]
     struct Count(u32);
 
     impl Book for Count {
@@ -440,6 +441,7 @@ mod tests {
 
     /// A book of a test that reads `Count`.
     #[derive(Resource, Debug, Default, PartialEq, Eq)]
+    #[component(immutable)]
     struct Doubled(u32);
 
     impl Book for Doubled {
@@ -467,6 +469,7 @@ mod tests {
 
     /// A book of a test that reads itself through `Doubled`.
     #[derive(Resource, Debug, Default)]
+    #[component(immutable)]
     struct Looped;
 
     impl Book for Looped {

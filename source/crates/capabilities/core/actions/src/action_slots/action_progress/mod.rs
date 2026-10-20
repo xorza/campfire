@@ -5,13 +5,13 @@ use campfire_common::{Tick, Ticks};
 use campfire_math::{Num, Rounding, Vec3};
 use campfire_sim::{SimComponent, StableId};
 use campfire_states::{Replication, SentPredicted};
-use campfire_units::UnitEntity;
+use campfire_units::{Dead, UnitEntity};
 use campfire_values::ActionStart;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::action_book::ActionBook;
-use crate::action_call::{ResolvedCast, Started};
+use crate::action_call::{ResolvedCast, StartedOrder};
 use crate::action_kind::ActionKind;
 use crate::action_slots::ActionSlots;
 use crate::action_slots::action_progress::progress_dues::ProgressDues;
@@ -90,7 +90,7 @@ impl ActionProgress {
     ) {
         if let Some(InProgress::Order { aim, phase }) = &mut self.underway {
             aim.target = target;
-            *phase = OrderPhase::Started(Started { resolves_at, start });
+            *phase = OrderPhase::Started(StartedOrder { resolves_at, start });
         }
         dues.push(self);
     }
@@ -176,7 +176,7 @@ impl ActionProgress {
             .expect("a charge's most is a tick at least, and its share at most 1");
         self.underway = Some(InProgress::Order {
             aim,
-            phase: OrderPhase::Started(Started {
+            phase: OrderPhase::Started(StartedOrder {
                 resolves_at: now,
                 start: ActionStart {
                     origin,
@@ -417,12 +417,16 @@ impl SimComponent for ActionProgress {
 
     // What is under way of a slot its unit does not have, an attack of no weapon or an order of
     // one, has no rules for a cast to follow; a channel's action and rank are its slot's. A
-    // place past the world's bound would overflow the distance to another.
+    // place past the world's bound would overflow the distance to another. A death ends what is
+    // under way and the attack target, and no pass of a dead unit's would end them.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let book = world.resource::<ActionBook>();
-        world
-            .get::<ActionSlots>(entity)
-            .is_some_and(|slots| self.fits(slots, book))
+        let dead = world.entity(entity).contains::<Dead>();
+        let ended = self.underway.is_none() && self.attack_target.is_none();
+        (!dead || ended)
+            && world
+                .get::<ActionSlots>(entity)
+                .is_some_and(|slots| self.fits(slots, book))
     }
 }
 

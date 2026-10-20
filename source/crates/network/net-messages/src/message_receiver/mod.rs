@@ -8,7 +8,7 @@ use crate::message_type_id::MessageTypeId;
 use crate::received_message::ReceivedMessage;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::ParallelCommands;
+use bevy_ecs::system::Commands;
 use bevy_ecs::world::FilteredEntityMut;
 use bevy_ecs::world::World;
 use bevy_utils::prelude::DebugName;
@@ -107,20 +107,18 @@ impl<M: Message> MessageReceiver<M> {
     /// Pushes `message` into the receiver of `entity`, which goes on the entity first if it is not
     /// there yet.
     fn queue_received(
-        commands: &ParallelCommands<'_, '_>,
+        commands: &mut Commands<'_, '_>,
         entity: Entity,
         message: ReceivedMessage<M>,
     ) {
-        commands.command_scope(|mut commands| {
-            commands.queue(move |world: &mut World| {
-                if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
-                    entity_mut
-                        .entry::<Self>()
-                        .or_default()
-                        .get_mut()
-                        .push_received(message);
-                }
-            });
+        commands.queue(move |world: &mut World| {
+            if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
+                entity_mut
+                    .entry::<Self>()
+                    .or_default()
+                    .get_mut()
+                    .push_received(message);
+            }
         });
     }
 

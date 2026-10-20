@@ -12,7 +12,7 @@ use campfire_values::Team;
 use crate::fixed_session::FixedSession;
 use crate::fixed_session::fixed_match::FixedMatch;
 use crate::match_units::MatchUnits;
-use crate::scripted::{Aim, Plan, Scripted, TICK_HZ};
+use crate::scripted::{CastAim, Plan, Scripted, TICK_HZ};
 use crate::scripted_mode::ScriptedMode;
 
 /// The camps team, which holds the neutral boulder.
@@ -28,7 +28,7 @@ pub enum ProvingMatch {
     /// The hero walks to a point.
     Move { x: i64, z: i64 },
     /// The hero casts the action in `slot` at `at`.
-    Cast { slot: u8, at: Aim },
+    Cast { slot: u8, at: CastAim },
     /// The hero attacks the boulder.
     AttackBoulder,
     /// The hero attacks the hero of player `seat`.
@@ -63,20 +63,20 @@ const SCRIPT: [Scripted<ProvingMatch>; 24] = [
     Scripted::new(3, 1, ProvingMatch::Move { x: 2, z: 2 }),
     Scripted::new(5, 0, ProvingMatch::AttackHero { seat: 1 }),
     Scripted::new(29, 0, ProvingMatch::AttackHero { seat: 1 }),
-    cast(30, 0, 0, Aim::HeroPoint { slot: 1 }),
-    cast(40, 1, 0, Aim::Hero { slot: 0 }),
-    cast(60, 0, 1, Aim::HeroPoint { slot: 1 }),
-    cast(70, 1, 1, Aim::Nothing),
-    cast(80, 0, 2, Aim::Nothing),
-    cast(100, 1, 2, Aim::Point { x: 2, z: 6 }),
+    cast(30, 0, 0, CastAim::HeroPoint { slot: 1 }),
+    cast(40, 1, 0, CastAim::Hero { slot: 0 }),
+    cast(60, 0, 1, CastAim::HeroPoint { slot: 1 }),
+    cast(70, 1, 1, CastAim::Nothing),
+    cast(80, 0, 2, CastAim::Nothing),
+    cast(100, 1, 2, CastAim::Point { x: 2, z: 6 }),
     Scripted::new(105, 0, ProvingMatch::Train { barracks: 1 }),
     Scripted::new(105, 0, ProvingMatch::Train { barracks: 0 }),
     Scripted::new(120, 0, ProvingMatch::Move { x: -3, z: 4 }),
     Scripted::new(150, 0, ProvingMatch::AttackBoulder),
     Scripted::new(160, 1, ProvingMatch::Move { x: -6, z: -1 }),
-    cast(200, 0, 0, Aim::HeroPoint { slot: 1 }),
-    cast(260, 1, 0, Aim::Hero { slot: 0 }),
-    cast(260, 0, 1, Aim::Point { x: -4, z: -1 }),
+    cast(200, 0, 0, CastAim::HeroPoint { slot: 1 }),
+    cast(260, 1, 0, CastAim::Hero { slot: 0 }),
+    cast(260, 0, 1, CastAim::Point { x: -4, z: -1 }),
     Scripted::new(
         300,
         0,
@@ -89,7 +89,7 @@ const SCRIPT: [Scripted<ProvingMatch>; 24] = [
 ];
 
 /// A cast by the player `seat`'s hero of its ability slot `action` at `aim`.
-const fn cast(stamp: u64, seat: u32, action: u8, aim: Aim) -> Scripted<ProvingMatch> {
+const fn cast(stamp: u64, seat: u32, action: u8, aim: CastAim) -> Scripted<ProvingMatch> {
     Scripted::new(
         stamp,
         seat,

@@ -46,20 +46,23 @@ fn on_unit_trained(ctx, unit, producer) {
     // The supply costs know the train, as the view reads a queue's supply by them.
     let trains = game.resource::<ByAction<TrainSpec>>();
     SupplyCostBook::new(ByType::default(), trains).load_into(&mut game);
-    Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
-    // Hero X becomes a producer of a queue of 2, with 100 mana, and its player holds 15 gold.
-    let mut owned = game.query_filtered::<Entity, With<Owner>>();
-    let producer = owned.single(&game).unwrap();
-    let pools = Pools::new([(PoolId::FIRST, Num::int(10)), (MANA, Num::int(100))]).unwrap();
-    let slots = TimedSlots::new(ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]));
-    let hero_type = *game.get::<UnitType>(producer).unwrap();
+    // Hero X's type produces, with a queue of 2.
+    let hero_type = Units::type_named(&game, "hero-x").unwrap();
     let production = ProductionData {
         queue: NonZeroU8::new(2).unwrap(),
         exit: None,
         rally: None,
     };
-    let mut producers = game.resource_mut::<ByType<ProductionData>>();
-    producers.set(hero_type, production);
+    ByType::<ProductionData>::amend(&mut game, |_, producers| {
+        producers.set(hero_type, production);
+    });
+    Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
+    // Hero X is a producer, with 100 mana, and its player holds 15 gold.
+    let mut owned = game.query_filtered::<Entity, With<Owner>>();
+    let producer = owned.single(&game).unwrap();
+    let pools = Pools::new([(PoolId::FIRST, Num::int(10)), (MANA, Num::int(100))]).unwrap();
+    let slots = TimedSlots::new(ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]));
+    assert_eq!(*game.get::<UnitType>(producer).unwrap(), hero_type);
     let parts = (pools, slots, TrainQueue::default());
     game.entity_mut(producer).insert(parts);
     let gold = resource("gold").unwrap();

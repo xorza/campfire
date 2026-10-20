@@ -54,9 +54,13 @@ pub mod bench {
     use criterion::Criterion;
 
     use crate::admission;
+    use crate::udp_server;
 
     /// Runs each case of the crate whose id criterion's filter takes.
     pub fn run(criterion: &mut Criterion) {
-        campfire_measure::without_logs(criterion, admission::bench::admission);
+        campfire_measure::without_logs(criterion, |criterion| {
+            admission::bench::admission(criterion);
+            udp_server::bench::endpoint(criterion);
+        });
     }
 }

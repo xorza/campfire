@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use bevy_ecs::world::World;
 
 use crate::scripts::frame::Frame;
-use crate::scripts::type_slots::{Slot, TypeSlots};
+use crate::scripts::typed_list::{TypedItem, TypedList};
 
 /// An effect a call queues: it applies itself when the call returns, in the order queued among
 /// every type's.
@@ -32,12 +32,12 @@ type ApplyNext = fn(&mut World, &mut Frame);
 /// their own queue's order, so the order list needs no index.
 #[derive(Debug, Default)]
 pub(crate) struct Effects {
-    queues: TypeSlots<dyn Queue>,
+    queues: TypedList<dyn Queue>,
     order: Vec<ApplyNext>,
 }
 
 /// One effect type's queue, as `Effects` holds every type.
-trait Queue: Slot + Debug {
+trait Queue: TypedItem + Debug {
     fn clear(&mut self);
 }
 
