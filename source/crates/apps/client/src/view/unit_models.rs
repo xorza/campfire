@@ -62,7 +62,7 @@ struct ExtrasHandler;
 
 impl Plugin for UnitModelsPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "file_material.wgsl");
+        embedded_asset!(app, "file_material.wesl");
         app.add_plugins(MaterialPlugin::<FileMaterial>::default());
         // The glTF loader takes its handlers as it is finished, after every plugin's build.
         app.world_mut()

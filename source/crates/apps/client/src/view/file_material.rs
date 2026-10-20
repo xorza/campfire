@@ -64,7 +64,7 @@ pub(crate) struct FileBlendKey {
 }
 
 /// The shader of every file material, embedded in the client.
-const SHADER: &str = "embedded://campfire_client/view/file_material.wgsl";
+const SHADER: &str = "embedded://campfire_client/view/file_material.wesl";
 
 /// The bits of a file material's team paint, as its shader reads them.
 const TINT: u32 = 1;

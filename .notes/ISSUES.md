@@ -8,8 +8,9 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Research
 
+- **Client.** No test compiles the client's material shader, `view/file_material.wesl`, through Bevy's shader composer, so a shader that fails to compile passes the gate and draws no model.
 - **Combat.** A predicting client's strike, `Attacks::strike::<ClientForm>` (`combat/src/attacks.rs`), runs on no attacker: its query takes `&mut ClipShots`, a server part, so a predicted attack's windup stays due on the client, its cooldown is never predicted, and only the server's state ends it.
-- **Import.** The imported package's `data/mode.toml` and `manifest.toml` come from `format!` templates (`import/src/zero_hour/rules_package.rs`, `mode_data` and `mode_manifest`), and its `data/units.toml` from structs that mirror the engine's sections, so a key the engine renames shows only as the import's own load of what it wrote fails.
+- **Import.** The imported package's `manifest.toml` comes from a `format!` template (`import/src/zero_hour/rules_package.rs`, `mode_manifest`), and its `data/mode.toml` and `data/units.toml` from structs that mirror the engine's sections (`mode_data`'s `ModeToml`), so a key the engine renames shows only as the import's own load of what it wrote fails.
 - **Mode.** A kill's bounty (`mode/src/bounty_book.rs`, `Bounty::pay`) pays for a victim that is a site under construction, where Zero Hour's `Player::doBountyForKill` pays none for a victim `UNDER_CONSTRUCTION`; it shows once a script raises a Zero Hour player's share, as the Cash Bounty power would.
 - **Navigation.** `Routing::route_units` (`navigation/src/routing.rs`) reads the change ticks of every walker's `Destination` and `Route` in each tick to find the walkers whose destination or route changed, as the many writers of `Destination` across the capabilities push no walker into an index.
 - **Net.** The LAN check failed once in CI on macOS after the server's restart: a bot at its tick 299 sent an order stamped 300 while the server ran tick 303, so the server applied the two inputs stamped 300 in ticks 301 and 303 with no catch-up frame logged, and the check counts each a failure (run 39052741501, commit `f3ad15c8`).
@@ -28,6 +29,7 @@ The issue log: every open problem of the project, under the step it waits for. T
 ## Ready
 
 - **Benches.** Each of the 16 crates with a `[[bench]]` sets `[lib] bench = false`, which no command reads: the driver selects the bench targets alone, by `--bench '*'`.
+- **Client.** The player's camera has `Tonemapping::None` and Bevy's default `DebandDither::Enabled` (`view/player_camera.rs:77`), and Bevy warns at each start that the dithering has no effect.
 - **Client.** A press drags past 4 pixels along either axis, a constant of the client's code (`client/src/press.rs`, `DRAG_PIXELS`), and the Zero Hour import does not read the game's `Mouse.ini` `DragTolerance`, the pixels within which a press of the game is still a click.
 - **Import.** `MapFile` and `UnitsFile` name Zero Hour's files in `import` and Campfire's files in `package`: two types of one name (14-workspace-alignment.md, A type name that both sides declare keeps one meaning).
 - **Mode.** A spatial map's height grid and `[ground]` load into its `MapBook`, and the sim reads neither: `MapBook::point` takes a spatial map's position as its point in space.

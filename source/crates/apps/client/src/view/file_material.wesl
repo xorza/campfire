@@ -3,32 +3,31 @@
 // blend and depth write are its pipeline's. Its mesh's tag names two places in the match's colors,
 // each from 1, 0 for none: its team's, in its low 16 bits, which its team paint colors it by, and
 // its tint's, in its high 16, which adds to its light as Zero Hour's drawable tint does.
-#import bevy_pbr::{
+import bevy_pbr::render::{
     mesh_functions::get_tag,
     pbr_fragment::pbr_input_from_standard_material,
     pbr_functions::alpha_discard,
-}
+};
 
-#ifdef PREPASS_PIPELINE
-#import bevy_pbr::{
-    prepass_io::{VertexOutput, FragmentOutput},
-    pbr_deferred_functions::deferred_output,
-}
-#else
-#import bevy_pbr::{
+@if(PREPASS_PIPELINE)
+import bevy_pbr::{
+    prepass::io::{VertexOutput, FragmentOutput},
+    deferred::functions::deferred_output,
+};
+@else
+import bevy_pbr::render::{
     forward_io::{VertexOutput, FragmentOutput},
     pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
     pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT,
-}
-#endif
+};
 
 struct FileBlend {
     cutoff: f32,
     team: u32,
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(100) var<uniform> file_blend: FileBlend;
-@group(#{MATERIAL_BIND_GROUP}) @binding(101) var<storage, read> colors: array<vec4<f32>>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> file_blend: FileBlend;
+@group(constants::MATERIAL_BIND_GROUP) @binding(101) var<storage, read> colors: array<vec4<f32>>;
 
 const TINT: u32 = 1u;
 const HUE_MASK: u32 = 2u;
@@ -100,14 +99,19 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     if (file_blend.team & HUE_MASK) != 0u {
         base.a = 1.0;
     }
-    pbr_input.material.base_color = alpha_discard(pbr_input.material, base);
+    pbr_input.material.base_color = alpha_discard(
+        pbr_input.material.flags,
+        pbr_input.material.alpha_cutoff,
+        base,
+    );
     if pbr_input.material.base_color.a < file_blend.cutoff {
         discard;
     }
-#ifdef PREPASS_PIPELINE
+@if(PREPASS_PIPELINE)
     let out = deferred_output(in, pbr_input);
-#else
+@if(!PREPASS_PIPELINE)
     var out: FragmentOutput;
+@if(!PREPASS_PIPELINE) {
     if (pbr_input.material.flags & STANDARD_MATERIAL_FLAGS_UNLIT_BIT) == 0u {
         out.color = apply_pbr_lighting(pbr_input);
     } else {
@@ -119,6 +123,6 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
         out.color = vec4(out.color.rgb + pbr_input.material.base_color.rgb * tint, out.color.a);
     }
     out.color = main_pass_post_lighting_processing(pbr_input, out.color);
-#endif
+}
     return out;
 }
