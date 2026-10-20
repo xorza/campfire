@@ -20,7 +20,7 @@ pub struct Datagram {
 
 /// The datagram IO an endpoint drives: the emulated network's wires, or a socket. Its methods take
 /// `&self`, as the IO thread reads and waits outside the endpoint's lock while the frame sends
-/// (13-net-stack/packet-session.md, Two IO kinds: the socket and the emulated network).
+/// (11-net-stack/packet-session.md, Two IO kinds: the socket and the emulated network).
 pub trait DatagramIo: Send + Sync + core::fmt::Debug + 'static {
     /// Appends the datagrams that arrived to `out`, or fails for good: at least `max` of them
     /// when as many wait, and at most one read of the IO beyond `max`, so a caller that finds

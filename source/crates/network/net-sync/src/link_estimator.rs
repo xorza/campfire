@@ -16,7 +16,7 @@ use crate::rtt_estimator_ewma::RttEstimatorEwma;
 /// The packet session keeps its own estimate for its timers; this one keeps a stable input delay,
 /// so it takes one sample each [`LinkEstimatorSetup::sample_interval`] after the first
 /// [`LinkEstimatorSetup::handshake_samples`], however often the packet session acknowledges
-/// (13-net-stack/packet-session.md, The RTT comes from the ACKs).
+/// (11-net-stack/packet-session.md, The RTT comes from the ACKs).
 #[derive(Debug, Component)]
 pub struct LinkEstimator {
     setup: LinkEstimatorSetup,
@@ -41,7 +41,7 @@ impl LinkEstimator {
     }
 
     /// The estimate once it holds the samples [`LinkEstimatorSetup::handshake_samples`] asks for
-    /// (13-net-stack/time.md, An unknown estimate is `None`).
+    /// (11-net-stack/time.md, An unknown estimate is `None`).
     pub fn estimate(&self) -> Option<LinkEstimate> {
         if self.samples() < u32::from(self.setup.handshake_samples) {
             return None;

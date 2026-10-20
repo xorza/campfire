@@ -78,8 +78,8 @@ mod view;
 /// through `wgpu_hal`, loudly, in debug builds.
 const TERMINAL_FILTER: &str = "info,wgpu=error,wgpu_hal=off,naga=warn";
 /// What the log file holds when `CAMPFIRE_LOG_FILTER` does not say: Campfire's messages down to
-/// `debug`, and Lightyear's rollbacks; of the rest, `info` and above, without the renderer's
-/// validation layers.
+/// `debug`, and the network stack's rollbacks; of the rest, `info` and above, without the
+/// renderer's validation layers.
 const FILE_FILTER: &str = "info,campfire_client=debug,campfire_net=debug,campfire_script=debug,\
                            campfire_net_prediction=debug,wgpu=warn,wgpu_hal=off,naga=warn";
 

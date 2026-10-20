@@ -10,7 +10,7 @@ use campfire_net_timeline::LocalTimeline;
 use core::marker::PhantomData;
 
 /// Read-only access to the application-global [`LocalTimeline`] after it has synchronized
-/// (13-net-stack/api.md, No `unsafe` but what an outside API requires).
+/// (11-net-stack/api.md, No `unsafe` but what an outside API requires).
 ///
 /// This parameter combines the canonical simulation clock with its [`LocalTimelineSync`]
 /// controller. Systems using it are skipped until synchronization is ready, and can read both the

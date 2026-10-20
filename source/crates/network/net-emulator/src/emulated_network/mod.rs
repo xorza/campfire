@@ -18,7 +18,7 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 
 /// An emulated network shared by the apps of one process: it makes [`EmulatedIo`] links and
-/// schedules every delivery on its own wire clock (13-net-stack/testing.md, The emulated network is
+/// schedules every delivery on its own wire clock (11-net-stack/testing.md, The emulated network is
 /// the in-process IO, in `net-emulator`).
 ///
 /// Clones share one network, so each app's `EmulatedIo` end and the harness that drives the wire

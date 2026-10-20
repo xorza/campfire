@@ -23,7 +23,7 @@ use tracing::error;
 
 /// Runs Replicon's client on the stack: its state follows the connection, its messages go through
 /// the transport, and a message names server entities through Replicon's `ServerEntityMap`, with no
-/// copy for each link (13-net-stack/api.md, Only a client maps the entities a message names).
+/// copy for each link (11-net-stack/api.md, Only a client maps the entities a message names).
 #[derive(Debug)]
 pub(crate) struct ClientRepliconPlugin;
 

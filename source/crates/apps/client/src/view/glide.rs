@@ -8,9 +8,9 @@ use bevy::math::Vec3;
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Glide {
     /// A unit the client predicts, which moves in each tick the client runs: its spot after the
-    /// tick before last and after the last tick. It is drawn one tick late, between the two, by
-    /// the share of the next tick that passed, as Lightyear's frame interpolation draws: exact at
-    /// any speed, at a pause, and after a rollback, which runs the ticks again.
+    /// tick before last and after the last tick. It is drawn one tick late, between the two, by the
+    /// share of the next tick that passed, as the network stack's frame interpolation draws: exact
+    /// at any speed, at a pause, and after a rollback, which runs the ticks again.
     Ticked { before: Spot, last: Spot },
     /// A unit the client only receives: from where it was drawn when the unit's sim place or
     /// facing last changed, to that spot, over one tick from `since`, in app time.

@@ -14,7 +14,7 @@ const GATEWAY_TYPES: [&str; 5] = [
 ];
 
 /// A UPnP-IGD router's `NOTIFY` announcement that it is alive, multicast to SSDP's group
-/// (13-net-stack/port-map.md, A router is found by its search answer or by its announcement): where
+/// (11-net-stack/port-map.md, A router is found by its search answer or by its announcement): where
 /// its description is, at the announcer's own address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SsdpAnnouncement {

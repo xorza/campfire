@@ -6,7 +6,7 @@ use crate::open_error::OpenError;
 pub const TAG_LEN: usize = 16;
 
 /// The AEAD of a sealed packet session's two directions, which its IO's establishment gives: the
-/// packet session does not depend on the crypto that implements it (13-net-stack/packet-session.md,
+/// packet session does not depend on the crypto that implements it (11-net-stack/packet-session.md,
 /// Every link runs the packet session, and the IO decides whether it is sealed).
 pub trait Seal: Send + Sync + core::fmt::Debug {
     /// Encrypts `payload` in place under `number`, with `header` as associated data, and returns

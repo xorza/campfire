@@ -44,9 +44,8 @@ const fn within(value: Num, min: i64, max: i64) -> Result<Num, TickRangeError> {
     }
 }
 
-/// A position on a timeline: a whole tick and the fraction of the next one, a `Num` in
-/// `[0, 2^32)` ticks (13-net-stack/time.md, Conversions are exact; 12-lightyear-in-tree.md, One
-/// number type).
+/// A position on a timeline: a whole tick and the fraction of the next one, a `Num` in `[0, 2^32)`
+/// ticks (11-net-stack/time.md, Conversions are exact; 11-net-stack/time.md, One number type).
 ///
 /// Arithmetic saturates at that range, as [`NetTick`]'s does at its own.
 #[derive(Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -155,7 +154,7 @@ impl Sub for TickInstant {
 }
 
 /// The signed difference between two [`TickInstant`]s, a `Num` in `[-2^31, 2^31)` ticks
-/// (12-lightyear-in-tree.md, One number type).
+/// (11-net-stack/time.md, One number type).
 ///
 /// Arithmetic saturates at that range, as [`NetTick`]'s does at its own.
 #[derive(Clone, Copy, PartialEq, Eq)]

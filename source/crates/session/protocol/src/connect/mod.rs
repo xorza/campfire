@@ -12,7 +12,7 @@ pub(crate) mod error;
 /// The random bytes a server sends a connecting client. The client answers with its delegation
 /// and its session key's signature over the challenge and its TLS session's channel binding,
 /// which binds the answer to this one connection: a party that relays it holds two sessions,
-/// whose bindings differ (11-quic-transport.md, The answer binds to the TLS session).
+/// whose bindings differ (08-sessions.md, The answer binds to the TLS session).
 pub type ConnectChallenge = Value32<ConnectChallengeMeaning>;
 
 /// The meaning of a `ConnectChallenge`.

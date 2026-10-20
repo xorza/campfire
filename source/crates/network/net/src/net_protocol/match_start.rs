@@ -4,12 +4,12 @@ use campfire_values::Team;
 use serde::{Deserialize, Serialize};
 
 /// Tells a client that it plays the match, as it starts or again after its link failed: which
-/// player it is and its team, the Lightyear tick of sim tick `first`, and the player's chain:
+/// player it is and its team, the network tick of sim tick `first`, and the player's chain:
 /// the root of a new one, or the chain as the log holds it; and whether the session went back to
 /// a save since it started, which may have dropped the chain's inputs after it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct MatchStart {
-    /// The Lightyear tick that is sim tick `first`.
+    /// The network tick that is sim tick `first`.
     pub start_tick: u32,
     pub first: Tick,
     pub seat: Seat,

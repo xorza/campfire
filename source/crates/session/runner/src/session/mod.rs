@@ -27,10 +27,10 @@ pub(crate) mod session_source;
 pub(crate) mod session_world;
 
 /// A match's session log and state types, kept as a resource in the `World` that runs the match: a
-/// bare one on a verifier, Lightyear's on a server. The server records inputs as they arrive, and
-/// signs what it logs with the signer the session holds; a verifier records a published log's
-/// inputs again, and its session holds no signer. Either way each tick applies exactly the inputs
-/// the log gives it, and draws from the seed of the segment it runs in.
+/// bare one on a verifier, the network stack's on a server. The server records inputs as they
+/// arrive, and signs what it logs with the signer the session holds; a verifier records a published
+/// log's inputs again, and its session holds no signer. Either way each tick applies exactly the
+/// inputs the log gives it, and draws from the seed of the segment it runs in.
 #[derive(Resource, Debug)]
 pub struct Session {
     /// The server seeds of the segments the session may run, secret until `reveal_seed`

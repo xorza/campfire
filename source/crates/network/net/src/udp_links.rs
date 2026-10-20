@@ -13,7 +13,8 @@ use campfire_protocol::{Entropy, Signer};
 /// What each Campfire link takes of the stack's sealed UDP protocol: the ALPN `campfire`, a
 /// server's identity from its own key, from which the stack derives its raw TLS key and its reset
 /// key, so a key file keeps its published key, and an admission of the session's seats from each
-/// address (12-lightyear-in-tree.md, Campfire keeps what is its own at the endpoint).
+/// address (08-sessions.md, A raw key derived from the server's key; 08-sessions.md, Limits for
+/// each address, from the session's seats).
 #[derive(Debug)]
 pub struct UdpLinks;
 
@@ -39,15 +40,14 @@ impl UdpLinks {
     }
 
     /// At most `seats` live links from one address, and `seats` new handshakes from it, which
-    /// come back over `grace` (11-quic-transport.md, Limits for each address, from the session's
-    /// seats).
+    /// come back over `grace` (08-sessions.md, Limits for each address, from the session's seats).
     pub const fn admission(seats: NonZeroU32, grace: Duration) -> AdmissionSetup {
         AdmissionSetup::new(seats, grace)
     }
 
     /// A sealed link between a server whose own key `signer` holds and its client in the same
     /// process, over the emulator on the OS clock with a perfect model, the stack's one in-process
-    /// IO (12-lightyear-in-tree.md, One in-process link): the client pins the server's raw key, so
+    /// IO (08-sessions.md, One in-process link): the client pins the server's raw key, so
     /// the connect answer signs the link's channel binding.
     pub(crate) fn local(signer: &Signer, entropy: Entropy) -> LocalPair {
         let server = Self::server(signer);

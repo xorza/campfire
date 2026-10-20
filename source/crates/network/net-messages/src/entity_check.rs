@@ -3,7 +3,7 @@ use bevy_ecs::query::QueryFilter;
 use bevy_ecs::system::Query;
 
 /// Tells if an entity is one that a peer may name, for
-/// [`ReceiveMapView::Checked`](crate::ReceiveMapView::Checked) (13-net-stack/api.md, A server
+/// [`ReceiveMapView::Checked`](crate::ReceiveMapView::Checked) (11-net-stack/api.md, A server
 /// accepts from a client an entity it replicates, or the link's own).
 ///
 /// The view holds it as `dyn`: the view goes through fn pointers that the registry stores, which

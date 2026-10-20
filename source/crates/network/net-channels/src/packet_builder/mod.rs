@@ -1,5 +1,5 @@
 //! The packing of a link's due messages into packets, to the packet session's budget
-//! (13-net-stack/transport.md, A flush stops at the packet session's budget).
+//! (11-net-stack/transport.md, A flush stops at the packet session's budget).
 use crate::bench_counter::BenchCounter;
 use crate::compression::{CompressionOutcome, PacketCompression};
 use crate::compression_scratch::CompressionScratch;

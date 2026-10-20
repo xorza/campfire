@@ -6,7 +6,7 @@ use bevy_replicon::prelude::Remote;
 /// relation, and keeps what the server sent: the server ends that entity's life with a despawn of
 /// its own, as it does for each entity it despawns or hides. The local entities under it die with
 /// it, as Bevy's [`ChildOf`] makes them. An entity with no `Remote` entity under it, as each on a
-/// server, despawns as Bevy despawns it (13-net-stack/replication.md, Every despawn of the
+/// server, despawns as Bevy despawns it (11-net-stack/replication.md, Every despawn of the
 /// replication crates is `DespawnReplicated`, in a proxy crate of its own).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DespawnReplicated;

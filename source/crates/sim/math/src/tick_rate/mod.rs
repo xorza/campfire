@@ -7,10 +7,11 @@ use crate::rounding::Rounding;
 const NANOS_PER_SEC: u128 = 1_000_000_000;
 
 /// A rate of ticks: `ticks` every `seconds` whole seconds, so a paced rate, half of 21 Hz among
-/// them, 21 ticks every 2 s, stays exact (12-lightyear-in-tree.md, One tick rate). It is kept in
-/// lowest terms, so two rates of one value are equal. Its conversions compute with the rate and a
-/// `Num`'s bits and round once, where a multiplication through `f32` loses the sub-tick part past
-/// 2^24 ticks (13-net-stack/time.md, The tick length is a rate, and the timestep is its period).
+/// them, 21 ticks every 2 s, stays exact (11-net-stack/time.md, One tick rate type, two resources).
+/// It is kept in lowest terms, so two rates of one value are equal. Its conversions compute with
+/// the rate and a `Num`'s bits and round once, where a multiplication through `f32` loses the
+/// sub-tick part past 2^24 ticks (11-net-stack/time.md, The tick length is a rate, and the timestep
+/// is its period).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TickRate {
     ticks: NonZeroU32,

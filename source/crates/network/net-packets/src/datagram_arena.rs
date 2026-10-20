@@ -12,7 +12,7 @@ const CHUNK_BYTES: usize = 256 * 1024;
 /// place and the frame then keeps a message slice of it: each copy a view of a chunk, so a datagram
 /// and the others of its read share one allocation, and a slice of one never promotes. Each chunk
 /// holds at least a slot of `slot` bytes, and all are allocated now
-/// (13-net-stack/packet-session.md, An IO copies each datagram it reads into an arena of four
+/// (11-net-stack/packet-session.md, An IO copies each datagram it reads into an arena of four
 /// chunks).
 pub fn datagram_arena(slot: usize) -> ByteArena {
     ByteArena::preallocated(slot.max(CHUNK_BYTES), CHUNKS - 1)

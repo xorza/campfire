@@ -175,7 +175,7 @@ impl InProcessSetup {
 /// A server app and one client app for each player, joined by sealed links over the stack's
 /// emulator, each link following the setup's `LinkModel`, each app on a manual clock that advances
 /// one tick per `step` and the emulator's wire clock driven with them, so every run repeats exactly
-/// (12-lightyear-in-tree.md, The harness's time is Bevy's). Each player holds fixed keys and draws
+/// (02-engine-core.md, The harness's time is Bevy's). Each player holds fixed keys and draws
 /// fixed random bytes, and the server keeps the state hash after every tick.
 #[derive(Debug)]
 pub struct InProcessMatch {

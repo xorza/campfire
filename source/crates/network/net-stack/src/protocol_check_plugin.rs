@@ -29,7 +29,7 @@ pub(crate) struct ProtocolCheck {
 struct ProtocolHashes(ProtocolCheck);
 
 /// The server sends each client that connects its registries' hashes, and a client whose own differ
-/// unlinks (13-net-stack/transport.md, Both peers agree on the protocol before data flows).
+/// unlinks (11-net-stack/transport.md, Both peers agree on the protocol before data flows).
 #[derive(Debug)]
 pub(crate) struct ProtocolCheckPlugin;
 

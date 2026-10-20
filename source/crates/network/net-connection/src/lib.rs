@@ -1,5 +1,5 @@
 //! Client and server connection states on top of a link, and the network topology of an app
-//! (13-net-stack/connection.md, One state per marker, in parallel for each layer).
+//! (11-net-stack/connection.md, One state per marker, in parallel for each layer).
 
 #![expect(
     clippy::type_complexity,

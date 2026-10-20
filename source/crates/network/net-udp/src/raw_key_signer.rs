@@ -20,7 +20,7 @@ const PKCS8_PREFIX: [u8; 16] = [
 const PKCS8_LEN: usize = PKCS8_PREFIX.len() + 32;
 
 /// The raw key a server presents to TLS: an Ed25519 key with no certificate, whose seed derives
-/// from the server's secret (13-net-stack/udp.md, One server secret derives the raw key and the
+/// from the server's secret (11-net-stack/udp.md, One server secret derives the raw key and the
 /// reset key).
 #[derive(Debug)]
 pub(crate) struct RawKeySigner {

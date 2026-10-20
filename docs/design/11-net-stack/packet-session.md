@@ -91,6 +91,10 @@ packet stream under the transport's messages. The sealed handshake is in [UDP](u
   header protection, which only hides the packet number from middleboxes. Source: the QUIC
   overhead of 36 bytes for each packet, measured under `quinn-proto` 0.11.19 on the emulated
   network.
+- **A header decodes from one encoding.** A `ToBytes` decode refuses an `Option` tag other than 0
+  or 1 and a varint longer than its value needs, as every format of the engine keeps one encoding
+  of each value (02-engine-core.md, One encoding of each value). Refused: two spellings of one
+  header, which a third party's implementation of the protocol would meet.
 - **The first bit of each datagram is the IO's,** for its handshake, Retry and reset packets.
 - **A packet number goes as its low 16 bits,** which the receiver makes whole against the largest
   it opened, as RFC 9000 §A.3 does; a sender sends nothing past the numbers its peer reads whole.
@@ -117,7 +121,7 @@ packet stream under the transport's messages. The sealed handshake is in [UDP](u
   packets, 12,000 bytes. Refused: Cubic or BBR, more code for app-limited traffic; pacing, which a
   tick's burst does not need; the transport's own rate limiter, a second budget. Source: RFC 9002
   §7.
-- **The keep-alive and the idle timeout are the packet session's,** 1 s and 5 s by default; an
+- **The keep-alive and the idle timeout are the packet session's,** on every IO, and only an
   authenticated packet resets the idle timer.
 - **A close carries its code,** and a closed packet session answers each packet of the next 3 probe
   timeouts with its close again; the peer's own close ends that at once. Source: RFC 9000 §10.2.

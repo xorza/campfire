@@ -56,8 +56,8 @@ pub enum StepOrder {
 }
 
 /// One server app and one app for each remote client, linked over a [`EmulatedNetwork`], with the
-/// stack `S` on each side (13-net-stack/testing.md, A discrete-event stepper holds the time)
-/// (13-net-stack/testing.md, The stepper's remote clients are all plain or all sealed).
+/// stack `S` on each side (11-net-stack/testing.md, A discrete-event stepper holds the time)
+/// (11-net-stack/testing.md, The stepper's remote clients are all plain or all sealed).
 ///
 /// Every remote client is of one kind: a plain packet session or a sealed one of the UDP protocol,
 /// which the server's one endpoint takes. The server's endpoint spawns its link to each client at
@@ -252,10 +252,10 @@ impl<S: Stack> Stepper<S> {
     }
 
     /// Makes `app`'s `Update` and `FixedUpdate` strict, so an ambiguity of the stack or a test
-    /// fails the build of its schedule (14-workspace-alignment.md, The stepper runs Campfire's
-    /// strict schedules), and runs each of its schedules on one thread, so systems with no order
-    /// between them keep one order in every run: again here, as a test adds systems after the
-    /// app finished, and a system of a new label makes a schedule `OneThreadPlugins` never saw.
+    /// fails the build of its schedule (11-net-stack/testing.md, The stepper runs Campfire's strict
+    /// schedules), and runs each of its schedules on one thread, so systems with no order between
+    /// them keep one order in every run: again here, as a test adds systems after the app finished,
+    /// and a system of a new label makes a schedule `OneThreadPlugins` never saw.
     fn run_strictly(app: &mut App) {
         app.edit_schedule(Update, StrictSchedule::apply);
         app.edit_schedule(FixedUpdate, StrictSchedule::apply);

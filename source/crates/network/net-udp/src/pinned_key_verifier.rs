@@ -7,7 +7,7 @@ use crate::spki::Spki;
 use campfire_common::TlsKey;
 
 /// A client's check of the server: the raw key the client pinned and no other, with no certificate,
-/// chain, name or date to read (13-net-stack/udp.md, A server's identity and a client's trust
+/// chain, name or date to read (11-net-stack/udp.md, A server's identity and a client's trust
 /// match). Any other key is refused with `ApplicationVerificationFailure`, which TLS sends as the
 /// `access_denied` alert.
 #[derive(Debug)]

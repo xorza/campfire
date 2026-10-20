@@ -1,5 +1,5 @@
 /// The room left in one transport's receive budget while it reads a packet
-/// (13-net-stack/transport.md, Each link's `Channels` has one receive budget).
+/// (11-net-stack/transport.md, Each link's `Channels` has one receive budget).
 ///
 /// The budget bounds the bytes a transport's receive side holds for messages it can not deliver
 /// yet: reassembly buffers, and ordered messages waiting behind a gap. Each channel counts what

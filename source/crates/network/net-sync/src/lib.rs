@@ -1,5 +1,5 @@
 //! Clock sync between peers: the latency estimate from the packet session's RTT samples, the remote
-//! timeline, and the controller that keeps a local timeline on it (13-net-stack/layering.md, The
+//! timeline, and the controller that keeps a local timeline on it (11-net-stack/layering.md, The
 //! link estimator and the timeline controller stay in `net-sync`).
 
 #![expect(

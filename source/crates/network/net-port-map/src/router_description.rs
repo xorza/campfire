@@ -10,7 +10,7 @@ const WAN_SERVICES: [&str; 3] = [
     "urn:schemas-upnp-org:service:WANIPConnection:2",
 ];
 
-/// What a router's device description says of its WAN connection service (13-net-stack/port-map.md,
+/// What a router's device description says of its WAN connection service (11-net-stack/port-map.md,
 /// A router is found by its search answer or by its announcement): its type, its control URL and
 /// its service schema's, both at the description's address.
 #[derive(Debug, Clone, PartialEq, Eq)]

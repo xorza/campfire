@@ -3,7 +3,7 @@ use bevy_ecs::world::{EntityWorldMut, World};
 use campfire_math::TickRate;
 
 /// The plugins and the per-link components of one layer's stack, which a `Stepper` runs on each
-/// side (13-net-stack/testing.md, Each layer's `internals` gives its stack on the one below).
+/// side (11-net-stack/testing.md, Each layer's `internals` gives its stack on the one below).
 ///
 /// Each layer's `internals` gives its stack on the one below it, with its test protocol.
 pub trait Stack: Copy + Send + Sync + 'static {

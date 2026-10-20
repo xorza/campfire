@@ -3,8 +3,8 @@ use core::time::Duration;
 use crate::bandwidth_limit::BandwidthLimit;
 
 /// How a packet session proves it lives, how long a silent one lasts, and how fast it sends
-/// (13-net-stack/packet-session.md, The keep-alive and the idle timeout are the packet session's)
-/// (13-net-stack/testing.md, The packet session times a silent peer out, on every IO).
+/// (11-net-stack/packet-session.md, The keep-alive and the idle timeout are the packet session's)
+/// (11-net-stack/testing.md, The packet session times a silent peer out, on every IO).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PacketSessionSetup {
     /// A packet session that sent nothing for this long sends a `Ping`.

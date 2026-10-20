@@ -4,8 +4,14 @@ How the stack is tested over an emulated network; the clocks are in [Time](time.
 
 - **Deterministic simulation from one seed.** Single-threaded schedules, `FixedHasher` maps, no
   OS time, and one seed for every generator, so a failing seed replays exactly; a canary runs one
-  seed twice and compares a digest of the run. Practice: FoundationDB's simulation and
-  TigerBeetle's VOPR, which replay a run from its seed.
+  seed twice and compares a digest of the run. Each draw is `math`'s `SplitMix64`, whose
+  `below`, `chance` and `fraction` keep the sim's `Rng`'s exact rules. Practice: FoundationDB's
+  simulation and TigerBeetle's VOPR, which replay a run from its seed. Refused: a biased `below`
+  and a float draw of the stack's own, a second meaning of a seeded draw.
+- **The stepper runs Campfire's strict schedules.** Each stepper app makes `Update` and
+  `FixedUpdate` strict through `schedule`, so an ambiguity among a layer's systems fails the
+  layer's own test, as it fails a server's build (02-engine-core.md, The server's frame declares
+  its order). Refused: the stepper setting the schedules' build settings past their proxy.
 - **A discrete-event stepper holds the time.** Each app has its own frame interval, clock drift
   and stalls, and `run_for` runs the next due frame of whichever app; `frame_step` keeps moving
   every app together. Refused: lockstep alone, which cannot express different frame rates, drift,
@@ -35,10 +41,8 @@ How the stack is tested over an emulated network; the clocks are in [Time](time.
   packets the frame holds, so every IO gets the same at-most-once delivery on unreliable
   channels. Refused: leaving it to the IO, since a datagram IO without its own check would
   deliver a message twice.
-- **Invariants, not traces.** A scenario runs numbered messages on every channel mode both ways
-  and a replicated workload under seeded faults, heals the network, and checks each channel's
-  guarantee, the replicated state, the connection and the sync, the backlogs a frame after the
-  drain, and that nothing logged a warning or an error.
+- **Invariants, not traces.** A scenario runs a workload under seeded faults, heals the network,
+  and checks what each layer promises, so a change of timing that keeps every promise passes.
 - **Swarm runs leave features out.** Each seed turns each fault on with probability one half,
   which finds more failures than one run with every fault on (Groce et al., ISSTA 2012). The
   default run fits the suite's time budget; `CAMPFIRE_SWARM_SEEDS` runs more, and

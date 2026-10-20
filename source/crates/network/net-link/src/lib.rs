@@ -1,5 +1,5 @@
 //! The link: the entity of one connection, its state, the queues it shares with its packet
-//! session, and a server's links (13-net-stack/packet-session.md, The seam is a set of queues on
+//! session, and a server's links (11-net-stack/packet-session.md, The seam is a set of queues on
 //! `Link`).
 
 #![expect(

@@ -15,7 +15,7 @@ use campfire_net_replication::ComponentRegistrator;
 pub trait InterpolationRegistrationExt<'a, C, M>: ComponentRegistrator<'a, C, M> {
     /// Registers `fns` as the component's default interpolation rule, priority 1 with no filter,
     /// from whole values or diffs as the component replicates. A bundle, a filter or another
-    /// priority goes through `AppInterpolationExt` (13-net-stack/api.md, A component's
+    /// priority goes through `AppInterpolationExt` (11-net-stack/api.md, A component's
     /// `.interpolate` is its default rule).
     ///
     /// It also records the component's mode for every rule it is a member of: a component that

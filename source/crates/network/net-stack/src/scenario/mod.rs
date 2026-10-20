@@ -1,4 +1,4 @@
-//! Seeded network scenarios and the invariants every run must keep (13-net-stack/testing.md,
+//! Seeded network scenarios and the invariants every run must keep (11-net-stack/testing.md,
 //! Invariants, not traces).
 //!
 //! A scenario connects and syncs its clients on a perfect link, then runs a workload under its
@@ -38,7 +38,7 @@ use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::internals::input_timeline_is_synced;
 
 /// One seeded run: its clients and their packet session, its faults, how long they hold, and how
-/// long the healed network gets to deliver what is still owed (13-net-stack/testing.md,
+/// long the healed network gets to deliver what is still owed (11-net-stack/testing.md,
 /// Deterministic simulation from one seed).
 #[derive(Debug, Clone)]
 pub(crate) struct Scenario {
@@ -53,7 +53,7 @@ pub(crate) struct Scenario {
 
 impl Scenario {
     /// The swarm's scenario of `seed`: one or two clients, plain or sealed, and faults the seed
-    /// picks (13-net-stack/testing.md, Swarm runs leave features out).
+    /// picks (11-net-stack/testing.md, Swarm runs leave features out).
     pub(crate) fn swarm(seed: u64) -> Self {
         Self {
             seed,

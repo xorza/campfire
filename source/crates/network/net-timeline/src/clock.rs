@@ -9,7 +9,7 @@ use crate::clock_source::ClockSource;
 use campfire_net_core::Instant;
 
 /// An app's network clock: ping stamps, packet send and receive times, retransmit timers and the
-/// bandwidth bucket all read it (13-net-stack/time.md, One clock per app, owned by the stack).
+/// bandwidth bucket all read it (11-net-stack/time.md, One clock per app, owned by the stack).
 ///
 /// `ClockPlugin` inserts one on [`ClockSource::Auto`] unless
 /// the app holds one already, and refreshes it at the start of each frame.

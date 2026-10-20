@@ -10,7 +10,7 @@ use core::time::Duration;
 use crate::header::AckFields;
 use crate::packet_numbers;
 
-/// The numbers below the largest accepted that the ACK bits name (13-net-stack/packet-session.md,
+/// The numbers below the largest accepted that the ACK bits name (11-net-stack/packet-session.md,
 /// One window of 32 accepted packets is both the ACK bits and the replay window).
 const BITS: u64 = 32;
 
@@ -20,12 +20,12 @@ const BITS: u64 = 32;
 pub(crate) const PENDING: u64 = 64;
 
 /// The largest time an accepted packet that needs an ACK waits for one, which every link's peer
-/// assumes, so no link negotiates it (RFC 9000 §13.2.1) (13-net-stack/packet-session.md, An
+/// assumes, so no link negotiates it (RFC 9000 §13.2.1) (11-net-stack/packet-session.md, An
 /// ACK-only packet goes when an accepted packet waited 25 ms and no packet carried its ACK).
 pub(crate) const MAX_ACK_DELAY: Duration = Duration::from_millis(25);
 
 /// The packets a packet session accepted, which its ACKs name and which drop a copy or a replay of
-/// one (13-net-stack/testing.md, The packet session drops a copy of a packet).
+/// one (11-net-stack/testing.md, The packet session drops a copy of a packet).
 #[derive(Debug, Default)]
 pub(crate) struct ReceivedWindow {
     /// The largest number opened, accepted or not, which the next truncated number reads against.

@@ -8,7 +8,7 @@ use core::fmt::Debug;
 
 #[derive(Clone, Debug, PartialEq)]
 /// The serialized bytes of one message: serialized once at send, cloned cheaply after, and sized
-/// for fragmentation from the start (13-net-stack/transport.md, A message's id goes with no tag).
+/// for fragmentation from the start (11-net-stack/transport.md, A message's id goes with no tag).
 ///
 /// Its id goes with no tag before it: the channel's mode tells whether one follows, and both ends
 /// register the same modes.

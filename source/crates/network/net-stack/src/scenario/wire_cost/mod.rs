@@ -1,5 +1,5 @@
 //! What one link puts on the emulated network for a fixed workload: exact counts for each
-//! direction, so a change to the wire shows as a diff of them (13-net-stack/testing.md, Bytes are
+//! direction, so a change to the wire shows as a diff of them (11-net-stack/testing.md, Bytes are
 //! golden tests, not benches).
 
 use bevy::prelude::*;

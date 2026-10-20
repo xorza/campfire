@@ -99,7 +99,7 @@ impl Verdict {
     }
 
     /// Checks that the impostor bot exited with failure, and logged why its link failed: the
-    /// server's key, which its pin does not take (11-quic-transport.md, A link's end is a type).
+    /// server's key, which its pin does not take (08-sessions.md, A link's end is a type).
     pub(crate) fn impostor(&mut self, outcome: ProcessOutcome, lost: &[LinkLost]) {
         if !matches!(outcome, ProcessOutcome::Failed { .. }) {
             self.failures.push(Failure::ImpostorNotRefused { outcome });

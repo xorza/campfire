@@ -89,7 +89,7 @@ impl PreSpawned {
 
 impl PreSpawned {
     /// Hashes the entity, unless its `PreSpawned` holds a hash, from the components inserted
-    /// before or with it and the tick `FixedMain` simulates (13-net-stack/replication.md, A
+    /// before or with it and the tick `FixedMain` simulates (11-net-stack/replication.md, A
     /// pre-spawn's tick is the simulated one, and the receiver makes its pre-spawns in
     /// `FixedMain`).
     fn on_add(mut deferred_world: DeferredWorld<'_>, context: HookContext) {
@@ -152,7 +152,7 @@ impl HashOutput for DefaultHash {
 /// The default hash that matches a server's entity with the client's pre-spawned one: the domain
 /// hash of the spawn tick, the count and the sorted net ids of the entity's registered components,
 /// and the salt when one is given, each in explicit little-endian bytes, so a client and a server
-/// in two processes agree (14-workspace-alignment.md, The registry hash is a domain hash).
+/// in two processes agree (11-net-stack/api.md, The registry hash is a domain hash).
 pub(crate) fn compute_default_hash(
     component_registry: &ComponentRegistry,
     components: &Components,

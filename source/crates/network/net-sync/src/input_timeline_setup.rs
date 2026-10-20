@@ -4,7 +4,7 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use campfire_net_core::PositiveTickSpan;
 
-/// The settings shared by local clock synchronization and input scheduling (13-net-stack/time.md,
+/// The settings shared by local clock synchronization and input scheduling (11-net-stack/time.md,
 /// An input leads by one margin for each reason).
 ///
 /// Input delay is part of the clock objective because it affects how far

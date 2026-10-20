@@ -42,7 +42,7 @@ impl Linking {
 /// link's packet session queues: what they hold is the last packet session's, and the next packet
 /// session would read it as its own, as the fate of a payload it never sent. The
 /// [`reason`](Self::reason) is intended for diagnostics and for transports that need to surface
-/// disconnect causes to application code (13-net-stack/connection.md, An unlinked link holds
+/// disconnect causes to application code (11-net-stack/connection.md, An unlinked link holds
 /// nothing of its last connection).
 #[derive(Component, Default, Debug)]
 #[component(on_insert = Unlinked::on_insert)]

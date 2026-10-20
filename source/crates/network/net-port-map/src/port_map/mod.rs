@@ -14,7 +14,7 @@ use crate::port_mapper::{MapRequest, MapTimes, PortMapper, Routes};
 use crate::thread_stop::ThreadStop;
 
 /// A server's port, which its router forwards from outside, on a thread of its own
-/// (13-net-stack/port-map.md, A server maps its own port): it maps the port by PCP or NAT-PMP at
+/// (11-net-stack/port-map.md, A server maps its own port): it maps the port by PCP or NAT-PMP at
 /// the default gateway, else by UPnP, renews the mapping, maps it anew when a renewal fails, and
 /// tries again while no router maps it, in 30 minutes, when a PCP refusal's lifetime ends, or at
 /// once when a router at an address not heard before announces itself, logging each change.
@@ -51,7 +51,7 @@ impl PortMap {
 
     /// Whether a router forwards to a socket at `local`: one bound to IPv4, all of the host's
     /// addresses or one not loopback. A socket bound to IPv6 takes IPv4 only where its OS makes it
-    /// dual-stack by default, as Linux does and Windows does not (13-net-stack/port-map.md, IPv4
+    /// dual-stack by default, as Linux does and Windows does not (11-net-stack/port-map.md, IPv4
     /// alone).
     const fn is_forwardable(local: SocketAddr) -> bool {
         matches!(local.ip(), IpAddr::V4(ip) if !ip.is_loopback())

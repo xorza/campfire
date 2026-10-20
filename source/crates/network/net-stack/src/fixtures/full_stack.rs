@@ -9,7 +9,7 @@ use crate::client_plugins::ClientPlugins;
 use crate::server_plugins::ServerPlugins;
 
 /// Every layer through the stack's plugin groups, with every layer's test protocol
-/// (13-net-stack/testing.md, The full stack's home is `net-stack`).
+/// (11-net-stack/testing.md, The full stack's home is `net-stack`).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FullStack;
 

@@ -2,7 +2,7 @@ use core::num::NonZeroU32;
 
 /// The rate an app lets each packet session send its payloads at: a sustained rate, and a burst
 /// after the packet session was quiet. The packet session's budget is the smaller of its congestion
-/// window's room and this limit's (13-net-stack/packet-session.md, Congestion control is NewReno,
+/// window's room and this limit's (11-net-stack/packet-session.md, Congestion control is NewReno,
 /// in the packet session).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BandwidthLimit {

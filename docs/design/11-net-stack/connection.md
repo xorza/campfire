@@ -7,8 +7,8 @@ How a link, a connection and a server come up and go down, and who ends each.
 - **The connection layer ends every server-side link.** `ServerConnectionPlugin` despawns each
   `ClientOf` once it is `Disconnected`, for any cause, with `try_`
   commands, and a reconnect is a new entity. Practice: bevy_replicon's backend contract, aeronet's
-  `ConnectionPlugin`, renet, naia. Refused: each IO despawning its own links, which neither the
-  packet session's endpoints nor Campfire's QUIC does; despawning on `Unlinked`, which skips
+  `ConnectionPlugin`, renet, naia. Refused: each IO despawning its own links, which the packet
+  session's endpoints do not do; despawning on `Unlinked`, which skips
   `Disconnected` and its observers; keeping the entity and stripping replicon's state, which
   replicon forbids and which leaks every per-connection component.
 - **Cleanup hangs off removal, not off one event.** The peer map entry goes with `Connected`'s
@@ -25,8 +25,8 @@ How a link, a connection and a server come up and go down, and who ends each.
 - **Each IO closes its end on a local `Unlink`,** and each IO pair has distinct addresses.
 - **An unlinked link holds nothing of its last connection.** `Unlinked` empties the link's packet
   session queues, for every IO: the next packet session would read them as its own, as the fate of a
-  payload it never sent. Refused: each IO emptying its own, as Campfire's QUIC did, which leaves the
-  defect in every IO that forgets.
+  payload it never sent. Refused: each IO emptying its own, which leaves the defect in
+  every IO that forgets.
 - **"Stopped" names a server only.** A peer whose endpoint went away, as its app exited, closes
   with `AppCode::DROPPED`, which this end reads as `ClosedByPeer(AppCode::DROPPED)`.
 - **Removing `ReplicationSender` detaches a link, and re-adding it replicates anew.** Every

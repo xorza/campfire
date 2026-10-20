@@ -10,7 +10,7 @@ use campfire_net_channels::ChannelTypeId;
 use campfire_net_core::LinkDirection;
 use campfire_net_transport::{AppChannelExt, ChannelRegistry};
 
-/// Registers Replicon's channels as the transport's, with their map (13-net-stack/transport.md,
+/// Registers Replicon's channels as the transport's, with their map (11-net-stack/transport.md,
 /// Replicon's channels map from `RepliconChannels`).
 #[derive(Debug)]
 pub(crate) struct RepliconChannelRegistrationPlugin;

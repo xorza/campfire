@@ -49,7 +49,7 @@ impl Starting {
 }
 
 /// A server that does not run, as its link unlinked or its app stopped it; a peer whose app went
-/// away closes with `AppCode::DROPPED` instead (13-net-stack/connection.md, "Stopped" names a
+/// away closes with `AppCode::DROPPED` instead (11-net-stack/connection.md, "Stopped" names a
 /// server only).
 #[derive(Component, Default, Debug, Reflect)]
 #[component(on_add = Stopped::on_add)]

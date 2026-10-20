@@ -6,7 +6,7 @@ use crate::interpolation_sample_cx::InterpolationSampleCx;
 use bevy_ecs::component::Component;
 
 /// A fn of a fraction that interpolates the rule's target `S`: `Fn(&C, &C, f32) -> C` for a
-/// component, `Fn((&A, &B), (&A, &B), f32) -> (A, B)` for a bundle (13-net-stack/api.md, A rule's
+/// component, `Fn((&A, &B), (&A, &B), f32) -> (A, B)` for a bundle (11-net-stack/api.md, A rule's
 /// fn goes through one generic constructor for each shape).
 ///
 /// `M` tells the shapes apart, so a fn item, a fn pointer or a closure with typed parameters

@@ -15,7 +15,7 @@ filter = 'test(/(^|::)scripted_match::/)'
 slow-timeout = { period = "15s", terminate-after = 4 }
 
 # The swarm and the canary run their seeds in parallel, one thread for each core
-# (13-net-stack/testing.md, A test runs in 1 s or less): each takes every core while it runs, so no
+# (11-net-stack/testing.md, A test runs in 1 s or less): each takes every core while it runs, so no
 # two of them, nor other tests, share the cores they count on.
 [[profile.default.overrides]]
 filter = 'package(campfire-net-stack) & test(/^scenario::tests::(each_seed_of_the_swarm|one_seed_repeats)/)'

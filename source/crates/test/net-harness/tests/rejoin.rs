@@ -116,7 +116,8 @@ fn a_client_whose_link_is_cut_comes_back_within_the_grace_period() {
     assert!(!units(&mut local, 0).is_empty());
 
     // An order the client sends as its link is cut never reaches the server. The server logs the
-    // seat disconnected; the client tries again, and Lightyear despawned what the link carried.
+    // seat disconnected; the client tries again, and the network stack despawned what the link
+    // carried.
     local.order(0, move_to(3, -2));
     local.client_frame(0);
     local.cut_link(0);

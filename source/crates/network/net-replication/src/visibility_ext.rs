@@ -4,7 +4,7 @@ use bevy_ecs::prelude::*;
 
 /// Shows or hides a replicated entity for a link, at once on a [`World`] and deferred on
 /// [`Commands`]; each hierarchy member follows the change unless a write of its own overrides it
-/// (13-net-stack/replication.md, A member follows its root for each aspect, unless it overrides
+/// (11-net-stack/replication.md, A member follows its root for each aspect, unless it overrides
 /// that aspect).
 pub trait VisibilityExt {
     /// Make `entity` (and its replication-hierarchy descendants) visible to `link`.

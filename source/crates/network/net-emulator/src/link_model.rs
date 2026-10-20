@@ -7,10 +7,10 @@ use crate::rate_limit::RateLimit;
 
 /// How one direction of a link carries packets, in the terms of `tc-netem(8)`: a latency with
 /// jitter, Gilbert–Elliott loss, duplication, reordering, and a rate limit with a finite queue
-/// (13-net-stack/testing.md, One `LinkModel` for emulated and real links, in netem's terms). The
+/// (11-net-stack/testing.md, One `LinkModel` for emulated and real links, in netem's terms). The
 /// MTU and the seed are the link's, in a `DuplexModel` or a `LinkConditioning`. Its probabilities
 /// are `Num`s, which a draw compares against 24 bits of a word, as `Rng::chance` does
-/// (12-lightyear-in-tree.md, One number type).
+/// (11-net-stack/time.md, One number type).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LinkModel {
     /// One-way delay of every packet. For a symmetric link this is half the round-trip time.

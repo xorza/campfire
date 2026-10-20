@@ -1,6 +1,6 @@
 //! The test stepper of the stack's layers: a server app and client apps linked over the emulated
 //! network, in plain packet sessions or sealed ones of the UDP protocol, on one virtual time. Each
-//! layer's `internals` gives its stack on the one below as a [`Stack`] (13-net-stack/testing.md,
+//! layer's `internals` gives its stack on the one below as a [`Stack`] (11-net-stack/testing.md,
 //! The stepper lives in `net-stepper`).
 
 mod app_id;

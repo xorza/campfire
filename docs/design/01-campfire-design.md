@@ -168,7 +168,7 @@ An imported game is one players already know, rebuilt on Campfire's sim: General
 
 All four pillars ship in 1.0, in this order.
 
-1. **Zero Hour on LAN.** The determinism core, the prototype that proves the sim runs the same inside Lightyear and in a bare verifier, the game model in code and sessions that restore, built with the MOBA test content; then the `import` app; then a Zero Hour skirmish with its AI on LAN or a local server, with verified replays and crash restore. Players use local Nostr key files through the final delegation, handshake and log formats; no relays, listings, launcher or payments.
+1. **Zero Hour on LAN.** The determinism core, the prototype that proves the sim runs the same inside the network stack and in a bare verifier, the game model in code and sessions that restore, built with the MOBA test content; then the `import` app; then a Zero Hour skirmish with its AI on LAN or a local server, with verified replays and crash restore. Players use local Nostr key files through the final delegation, handshake and log formats; no relays, listings, launcher or payments.
 2. **Open network.** Nostr listings, packages over Blossom and import recipes, reputation, ban lists, and the launcher with signed releases.
 3. **Payments.** Entry fees first, then wager pools, then the rest. Item sales and export wait for an imported game with a persistent world.
 4. **More imports.** Zero Hour's campaign, from its map scripts, and the next games, each with the capabilities it needs: Worms 4: Mayhem's `physics`, destructible terrain and the `spatial` metric first.

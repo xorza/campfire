@@ -9,7 +9,7 @@ use tracing::warn;
 
 /// Hides [`InterpolatedSend`] on each link the entity's [`PredictionTarget`] names, so a client
 /// that both targets name gets `Predicted` alone: Replicon shows a component where every filter of
-/// its scope does (13-net-stack/replication.md, A client that both targets name is predicted
+/// its scope does (11-net-stack/replication.md, A client that both targets name is predicted
 /// alone).
 ///
 /// It mirrors the prediction target's mode, kept in step by [`Self::follow_prediction`] and

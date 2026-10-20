@@ -2,7 +2,7 @@ use bytes::BytesMut;
 
 /// Memory that views are split off: a chunk filled from the front, each view sharing its
 /// allocation, so many small buffers cost one allocation and a view never copies
-/// (13-net-stack/packet-session.md, One `ByteArena` type, in `net-bytes`, holds every buffer that
+/// (11-net-stack/packet-session.md, One `ByteArena` type, in `net-bytes`, holds every buffer that
 /// views split off).
 ///
 /// A chunk that lacks room gives way to the first spare whose views all dropped, or to a new

@@ -10,7 +10,7 @@ pub(crate) const INITIAL_RTT: Duration = Duration::from_millis(333);
 /// The smallest span a timer tells apart (RFC 9002 §6.1.2, `kGranularity`).
 pub(crate) const GRANULARITY: Duration = Duration::from_millis(1);
 
-/// RFC 9002's estimate of a link's RTT, for the packet session's timers (13-net-stack/time.md, An
+/// RFC 9002's estimate of a link's RTT, for the packet session's timers (11-net-stack/time.md, An
 /// RTT sample is exact).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RttEstimator {

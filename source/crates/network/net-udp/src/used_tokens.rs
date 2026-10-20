@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use campfire_net_core::Instant;
 
 /// The tokens for a next connection a server took, each until it expires, so each validates one
-/// address once and a party that saw it pass cannot use it again (13-net-stack/udp.md, A server
+/// address once and a party that saw it pass cannot use it again (11-net-stack/udp.md, A server
 /// checks an address before it keeps state). It holds no token past its expiry, when the token's
 /// own check refuses it.
 #[derive(Debug, Default)]

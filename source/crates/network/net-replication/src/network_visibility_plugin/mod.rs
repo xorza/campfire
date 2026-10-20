@@ -1,5 +1,5 @@
 //! Each link's manual visibility of each replicated entity, on Replicon's visibility filters, and
-//! the hierarchy members that follow their root's (13-net-stack/replication.md, A member follows
+//! the hierarchy members that follow their root's (11-net-stack/replication.md, A member follows
 //! its root for each aspect, unless it overrides that aspect). Replicon does not replay a removal
 //! made while a retaining scope hides the entity, so a retained entity keeps a stable layout.
 

@@ -5,7 +5,7 @@ use core::num::NonZeroU32;
 
 /// A channel-held message that is due in a flush, and how it competes: one for each message, a
 /// fragmented one's included, whose fragments the packet builder takes in turn
-/// (13-net-stack/transport.md, A send candidate holds a key, and the packet builder reads the bytes
+/// (11-net-stack/transport.md, A send candidate holds a key, and the packet builder reads the bytes
 /// from the channel).
 ///
 /// The channel keeps the message until `ChannelSender::commit_send` runs after its packet goes to

@@ -12,7 +12,7 @@ use crate::received_window::MAX_ACK_DELAY;
 use crate::rtt_estimator::{GRANULARITY, RttEstimator};
 
 /// A packet this many numbers below the largest acknowledged is lost (RFC 9002 §6.1.1,
-/// `kPacketThreshold`) (13-net-stack/packet-session.md, Loss is found by the packet threshold of 3,
+/// `kPacketThreshold`) (11-net-stack/packet-session.md, Loss is found by the packet threshold of 3,
 /// or by 9/8 of the RTT).
 const PACKET_THRESHOLD: u64 = 3;
 

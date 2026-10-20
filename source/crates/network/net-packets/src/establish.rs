@@ -12,7 +12,7 @@ use campfire_common::ChannelBinding;
 /// gives the seal over a network. The endpoint calls it with the datagrams that are not a
 /// packet session's, and it hands back what it established. A client's establishment is a
 /// [`ClientEstablish`] and a server's a [`ServerEstablish`], so neither holds the calls of the
-/// other side (14-workspace-alignment.md, A state the code cannot reach is a type).
+/// other side (11-net-stack/api.md, A state the code cannot reach is a type).
 pub trait Establish: Send + core::fmt::Debug + 'static {
     /// Takes a datagram whose first bit is the IO's own: a handshake's.
     fn receive(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing);

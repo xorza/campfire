@@ -1,6 +1,6 @@
 //! The header of a packet session packet: a byte of flags, the low 16 bits of its number, and, on
 //! the types that carry them, its acknowledgements. The header is the AEAD's associated data, so it
-//! is authenticated and not encrypted (13-net-stack/packet-session.md, The header is the AEAD's
+//! is authenticated and not encrypted (11-net-stack/packet-session.md, The header is the AEAD's
 //! associated data: authenticated, not encrypted).
 
 use campfire_net_payload::PayloadKind;
@@ -9,7 +9,7 @@ use core::time::Duration;
 use crate::header_error::HeaderError;
 
 /// The first bit, which the packet session leaves 0 and its IO uses for packets of its own
-/// (13-net-stack/packet-session.md, The first bit of each datagram is the IO's).
+/// (11-net-stack/packet-session.md, The first bit of each datagram is the IO's).
 pub(crate) const IO_BIT: u8 = 0x80;
 const TYPE_SHIFT: u8 = 4;
 const TYPE_MASK: u8 = 0x70;
@@ -18,7 +18,7 @@ const KIND_MASK: u8 = 0x0c;
 const ACKS_BIT: u8 = 0x02;
 const RESERVED_BIT: u8 = 0x01;
 
-/// The span of time one unit of the ACK delay field is (13-net-stack/packet-session.md, Each ACK
+/// The span of time one unit of the ACK delay field is (11-net-stack/packet-session.md, Each ACK
 /// says how long its largest waited).
 const ACK_DELAY_UNIT: Duration = Duration::from_micros(250);
 

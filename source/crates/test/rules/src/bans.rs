@@ -150,7 +150,7 @@ const SCHEDULE_METHODS: [&str; 3] = [
 ];
 
 /// The despawns only `campfire-net-despawns` makes in the network stack's replication crates
-/// (13-net-stack/replication.md, The server alone ends a replicated entity's life on the
+/// (11-net-stack/replication.md, The server alone ends a replicated entity's life on the
 /// receiver): each of Bevy's despawns, which takes each child the server still owns.
 const DESPAWN_METHODS: [&str; 19] = [
     "bevy_ecs::system::Commands::despawn_all",

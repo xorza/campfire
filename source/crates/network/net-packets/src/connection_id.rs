@@ -3,7 +3,7 @@ use crate::header::IO_BIT;
 /// The ID a server gives a packet session, which starts each of the client's datagrams and routes
 /// it: 63 random bits, as the first bit is the IO's. No two packet sessions under one reset key
 /// share an ID, so no reset token an attacker draws from the server names a later packet session
-/// (13-net-stack/udp.md, A client packet starts with the server's random connection ID).
+/// (11-net-stack/udp.md, A client packet starts with the server's random connection ID).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ConnectionId([u8; Self::LEN]);
 

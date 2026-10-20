@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_reflect::Reflect;
 
 /// A bijection between local and remote entities. (used mostly on client because it's when we
-/// receive entity updates) (13-net-stack/layering.md, The entity maps, their views and the context
+/// receive entity updates) (11-net-stack/layering.md, The entity maps, their views and the context
 /// registry are `net-messages`')
 #[derive(Default, Debug, Reflect)]
 pub struct RemoteEntityMap {

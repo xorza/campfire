@@ -4,7 +4,7 @@ use bytes::{Buf, Bytes};
 use std::io::{Error, ErrorKind, Read, Result};
 
 /// The unread bytes of a buffer: each read takes its bytes off the front, and a split shares the
-/// buffer's memory (13-net-stack/transport.md, Decoders take only what the bytes hold).
+/// buffer's memory (11-net-stack/transport.md, Decoders take only what the bytes hold).
 #[derive(Debug, Clone, Default)]
 pub struct Reader(Bytes);
 
@@ -115,7 +115,7 @@ pub trait ReadInteger: Read {
 
 pub trait ReadVarInt: ReadInteger {
     /// Reads an unsigned variable-length integer in network byte order, and refuses one longer
-    /// than its value needs (14-workspace-alignment.md, A header decodes from one encoding).
+    /// than its value needs (11-net-stack/packet-session.md, A header decodes from one encoding).
     fn read_varint(&mut self) -> core::result::Result<u64, SerializationError> {
         let first = self.read_u8()?;
         let len = var_int::encoded_len_of(first);

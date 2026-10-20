@@ -1,6 +1,6 @@
 //! The OS's UDP sockets of the stack's own protocol: a socket read and written in batches through
 //! `quinn-udp`, with GSO and GRO, and waited on by its endpoint's IO thread, which carries a
-//! server or a client of `net-udp` (13-net-stack/layering.md, The UDP protocol is a problem crate,
+//! server or a client of `net-udp` (11-net-stack/layering.md, The UDP protocol is a problem crate,
 //! and its socket an IO crate).
 
 mod bind_error;

@@ -7,7 +7,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use crate::admission_setup::AdmissionSetup;
 
 /// What a server's endpoint admits from each address while it takes connections
-/// (13-net-stack/udp.md, Each address holds a bounded count of connections and handshakes): a
+/// (11-net-stack/udp.md, Each address holds a bounded count of connections and handshakes): a
 /// connection whose address holds fewer live connections than `per_address`, and has a handshake
 /// left in its bucket. A bucket holds `per_address` handshakes and gets one back each `refill /
 /// per_address`, as the generic cell rate algorithm keeps a token bucket in one number: the time it

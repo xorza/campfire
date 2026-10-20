@@ -1,4 +1,4 @@
-/// How a stepper client reaches the server (13-net-stack/testing.md, Every remote client kind runs
+/// How a stepper client reaches the server (11-net-stack/testing.md, Every remote client kind runs
 /// the same tests).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientKind {

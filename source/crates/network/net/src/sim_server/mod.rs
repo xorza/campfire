@@ -103,10 +103,10 @@ pub(crate) mod team_rooms;
 pub(crate) mod tick_hashes;
 pub(crate) mod viewer;
 
-/// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join, or restores
-/// a `PendingRestore`; then records the packets players send, runs one sim tick in each fixed
-/// tick, and sends each client the units its team sees. It hashes the state after a tick only
-/// while the world holds `TickHashes`. It adds Lightyear's server at its `tick_rate`, the
+/// Runs a session on a network stack server: while a `Lobby` is open, lets players join, or
+/// restores a `PendingRestore`; then records the packets players send, runs one sim tick in each
+/// fixed tick, and sends each client the units its team sees. It hashes the state after a tick only
+/// while the world holds `TickHashes`. It adds the network stack's server at its `tick_rate`, the
 /// protocol, and the replication to each new link; `SimServerPlugins` adds it.
 #[derive(Debug)]
 pub(crate) struct SimServerPlugin {
@@ -210,8 +210,8 @@ impl Plugin for SimServerPlugin {
             PostUpdate,
             (Dismissing::end, Offered::close_silent).after(LinkSystems::Send),
         );
-        // Lightyear keeps a received message for one frame only, and a frame runs no fixed tick
-        // or several, so the inputs are logged in every frame, before its fixed ticks; a frame
+        // The network stack keeps a received message for one frame only, and a frame runs no fixed
+        // tick or several, so the inputs are logged in every frame, before its fixed ticks; a frame
         // that runs several is logged, as an input that missed its start waits for all of them.
         app.add_systems(
             RunFixedMainLoop,
@@ -261,11 +261,11 @@ impl Plugin for SimServerPlugin {
     }
 }
 
-/// The steps of the server's frame in `Update`, in their order, after Lightyear's: what comes in
-/// from outside the session, a restore waiting or a spectator's choice; the door, which seats
-/// players, before the match in the lobby and after it at the door; the session's upkeep, its
-/// checkpoints and journal; the receipts of what the journal made durable; and the players'
-/// save commands, last, as a load ends the run. An app's own system of `Update` goes after them.
+/// The steps of the server's frame in `Update`, in their order, after the network stack's: what
+/// comes in from outside the session, a restore waiting or a spectator's choice; the door, which
+/// seats players, before the match in the lobby and after it at the door; the session's upkeep, its
+/// checkpoints and journal; the receipts of what the journal made durable; and the players' save
+/// commands, last, as a load ends the run. An app's own system of `Update` goes after them.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ServerFrameSystems {
     Intake,

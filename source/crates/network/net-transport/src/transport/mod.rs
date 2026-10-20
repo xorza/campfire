@@ -14,7 +14,7 @@ use tracing::{error, trace, warn};
 use crate::channel_registry::ChannelRegistry;
 
 /// The [`Channels`] of a link, on its entity: the largest payload its packet session hands over
-/// sizes their fragments, when the transport comes and at each link (13-net-stack/layering.md, The
+/// sizes their fragments, when the transport comes and at each link (11-net-stack/layering.md, The
 /// channels are a problem crate, and `Transport` the component that wraps them).
 #[derive(Component, Debug, Default, Deref, DerefMut)]
 #[component(on_add = Self::on_add)]

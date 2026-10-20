@@ -1,5 +1,5 @@
 //! The stack's packet session: one numbered, acknowledged and, on a network, sealed packet stream
-//! for each link, under the transport's messages (13-net-stack/packet-session.md, Per-packet state
+//! for each link, under the transport's messages (11-net-stack/packet-session.md, Per-packet state
 //! is the packet session's, per-message state the transport's).
 
 mod bandwidth_limit;

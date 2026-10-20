@@ -81,7 +81,7 @@ impl PacketSessionQueues {
     }
 
     /// Accepts the packet `number` carried: the packet session acknowledges it, and only it
-    /// (13-net-stack/packet-session.md, An ACK means that the transport accepted the packet).
+    /// (11-net-stack/packet-session.md, An ACK means that the transport accepted the packet).
     pub fn accept(&mut self, number: PacketNumber) {
         self.accepted.push(number);
     }

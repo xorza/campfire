@@ -1,6 +1,6 @@
 //! The seam between the frame and the packet session of each link: the queues they hand each other,
 //! the payloads in them, the numbers and fates of their packets, and the codes and reasons a link
-//! ends with (13-net-stack/packet-session.md, The seam is a set of queues on `Link`).
+//! ends with (11-net-stack/packet-session.md, The seam is a set of queues on `Link`).
 
 mod app_code;
 mod mtu;

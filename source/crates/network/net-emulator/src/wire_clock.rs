@@ -1,4 +1,4 @@
-/// The clock an `EmulatedNetwork` schedules deliveries on (13-net-stack/time.md, An emulated
+/// The clock an `EmulatedNetwork` schedules deliveries on (11-net-stack/time.md, An emulated
 /// network has its own wire clock).
 ///
 /// The wire needs a clock of its own: the apps' clocks each count from their own first update,

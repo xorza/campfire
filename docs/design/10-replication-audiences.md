@@ -52,7 +52,7 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 
 ## Where state lives
 
-- **A resource never replicates.** Lightyear replicates entities' components, so state a client receives lives on an entity.
+- **A resource never replicates.** The network stack replicates entities' components, so state a client receives lives on an entity.
 - **The match and each player are entities.** The match's start spawns one entity for the match and one for each seat, as Unreal keeps a `GameState` and a `PlayerState` for each player, each with a named stable id past the allocator's; a player's resources, supply and modifiers are its components, each of its kind, so each player learns its own resources and no other's by default.
 - **State reaches a client only by replication.** No state type goes by a message, so no code must remember to send one; messages carry the protocol alone.
 

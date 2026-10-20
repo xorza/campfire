@@ -32,7 +32,7 @@ impl Connected {
     }
 
     /// The peer map's entry goes with `Connected`, and only when it names this entity
-    /// (13-net-stack/connection.md, Cleanup hangs off removal, not off one event).
+    /// (11-net-stack/connection.md, Cleanup hangs off removal, not off one event).
     fn on_remove(mut world: DeferredWorld<'_>, context: HookContext) {
         NetworkingState::unmap_remote(&mut world, context.entity);
     }

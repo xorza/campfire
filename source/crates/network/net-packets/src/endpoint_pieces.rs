@@ -9,7 +9,7 @@ use crate::plain_establishment::PlainEstablishment;
 
 /// What an endpoint is made of: its IO, the establishment that makes its packet sessions, its side
 /// and its setup. An IO crate gives the parts, and a host builds its endpoint from them, so no IO
-/// crate depends on the host (13-net-stack/packet-session.md, An IO crate gives the parts of an
+/// crate depends on the host (11-net-stack/packet-session.md, An IO crate gives the parts of an
 /// endpoint).
 #[derive(Debug)]
 pub struct EndpointPieces<Io> {

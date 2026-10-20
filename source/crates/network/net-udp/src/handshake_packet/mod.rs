@@ -1,7 +1,7 @@
 //! The handshake's packets, whose first bit is the IO's: a type, a version, and the client's
 //! handshake ID, which routes a server's pending handshake. The first key epoch goes in the clear
 //! in `Initial` packets, as TLS over TCP sends it, and the transcript hash protects it; the
-//! handshake epoch is sealed in `Handshake` packets (13-net-stack/udp.md, The handshake is TLS 1.3
+//! handshake epoch is sealed in `Handshake` packets (11-net-stack/udp.md, The handshake is TLS 1.3
 //! by rustls's QUIC API).
 
 use bytes::{BufMut, Bytes, BytesMut};
@@ -21,7 +21,7 @@ pub(crate) const ID_LEN: usize = 8;
 pub(crate) const MAX_DATAGRAM: usize = DEFAULT_MTU;
 
 /// A client's `Initial` is padded to this, so no answer of a server to an address it has not
-/// checked is larger than what it received (13-net-stack/udp.md, A Retry checks each new address).
+/// checked is larger than what it received (11-net-stack/udp.md, A Retry checks each new address).
 pub(crate) const PADDED_INITIAL: usize = MAX_DATAGRAM;
 
 /// The long header: the type byte, the version and the ID.

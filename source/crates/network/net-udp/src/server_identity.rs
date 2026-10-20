@@ -11,7 +11,7 @@ use crate::server_secret::ServerSecret;
 use crate::tls_provider;
 use campfire_common::TlsKey;
 
-/// What a server presents to TLS, and the secret its reset key derives from (13-net-stack/udp.md, A
+/// What a server presents to TLS, and the secret its reset key derives from (11-net-stack/udp.md, A
 /// server's identity and a client's trust match).
 #[derive(Debug)]
 pub struct ServerIdentity {

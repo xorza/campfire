@@ -4,12 +4,13 @@ use campfire_units::SeenBy;
 use campfire_values::{NameId, Team, TeamSet};
 use campfire_visibility::{OutView, SpectatorFog, Visibility};
 
-/// A Lightyear room for each team: a unit stands in the rooms of the teams that see it, and a
-/// seated link in its team's, so Lightyear sends a link exactly the units its team sees, from the
-/// moment it sits, and nothing to a link with no seat. A spectator stands in the rooms of the teams
-/// it watches, or, in a session whose spectators see every unit, in the room every entity stands in
-/// then (10-replication-audiences.md, The host admits spectators, and their fog is a setting); a
-/// player out of play who sees as a spectator does, in its team's and the spectators' (D16).
+/// A network stack room for each team: a unit stands in the rooms of the teams that see it, and a
+/// seated link in its team's, so the network stack sends a link exactly the units its team sees,
+/// from the moment it sits, and nothing to a link with no seat. A spectator stands in the rooms of
+/// the teams it watches, or, in a session whose spectators see every unit, in the room every entity
+/// stands in then (10-replication-audiences.md, The host admits spectators, and their fog is a
+/// setting); a player out of play who sees as a spectator does, in its team's and the spectators'
+/// (D16).
 #[derive(Resource, Debug)]
 pub(crate) struct TeamRooms {
     /// By team index, for every index a team may take.

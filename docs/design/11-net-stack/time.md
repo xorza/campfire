@@ -13,8 +13,7 @@ How the stack answers "what time is it".
   app's `Time<Real>` of the frame, so the network clock cannot disagree with the tick clock.
   Refused: a `Manual` source a harness sets beside `TimeUpdateStrategy` (the shape of Campfire's
   `Os::Clock`), a second knob to keep equal to the first; and a `dyn` time source, an open set with
-  no second real source. Campfire's harness overwrote the stack's RTT fields every frame because
-  the stack read the wall clock (`DelayLine::pin_round_trip`); `Frame` makes that unnecessary.
+  no second real source.
 - **The default source follows how the app's time runs.** `Auto` reads the OS clock while the
   app's `TimeUpdateStrategy` is `Automatic` and the frame's `Time<Real>` once a harness drives it,
   so an app whose ticks follow a driven time can never measure its network on the OS clock.
@@ -34,6 +33,18 @@ How the stack answers "what time is it".
   between ticks and time computes the exact rational and rounds once. Practice: Netcode for
   Entities' `SimulationTickRate`, an integer in hertz. Refused: a `Duration` per tick beside the
   timestep, a second truth whose rounding made 3 ticks at 60 Hz 50_000_001 ns.
+- **One tick rate type, two resources.** `math` holds the one `TickRate`, ticks over a whole
+  number of seconds, so a paced rate, half of 21 Hz among them, stays exact, its tick rounded to
+  the nearest nanosecond, half the error of rounding down. The sim reads the match's rate,
+  `MatchRate`, which only the terms set, and the timelines their own, `TimelineRate`, which
+  `SetTickRate` sets, so a sped-up local match keeps its sim's rate, and no resource is named
+  `TickRate`. Refused: whole hertz, which holds no half of an odd rate; a float rate, which is not
+  exact; a type of the stack's own beside the sim's, two types of one quantity.
+- **One number type.** A tick span is a `Num`, the overstep a `Num` in `[0, 1)`, a span that
+  cannot be negative a checked newtype of one, and the emulator's probabilities `Num`s, as a test's
+  data gives them. A `Num` holds the ranges of tick spans, and its step of 2⁻²⁴ tick, 1 ns at
+  60 Hz, is finer than the 2⁻¹⁶ the wire carries. Refused: the `fixed` crate beside `Num`, two
+  fixed-point types with two rounding rules.
 - **A rollback replays each tick at the period it ran with.** Prediction keeps the period of each
   tick in the rollback window, and the rewind takes each one off the fixed time. Refused: one
   timestep for the whole window, which a `SetTickRate` inside it breaks.

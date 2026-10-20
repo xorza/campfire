@@ -3,7 +3,7 @@ allowed-wildcard-imports = ["x86_64", "aarch64", "arch"]
 absolute-paths-allowed-crates = ["std", "core", "alloc"]
 disallowed-types = [
     { path = "std::thread::LocalKey", reason = "state lives on an owner and travels by parameter" },
-    # One source of the OS's random bytes, `getrandom` (14-workspace-alignment.md, One source of OS random bytes).
+    # One source of the OS's random bytes, `getrandom` (02-engine-core.md, One source of OS random bytes).
     { path = "ring::rand::SystemRandom", reason = "draw the OS's random bytes through getrandom, the one source" },
     # The bans fall in groups. A group with a proxy crate is called there alone: the proxy's crate
     # root exempts the lint, and every other crate goes through the proxy, which gives what it

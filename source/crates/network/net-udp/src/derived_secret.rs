@@ -6,9 +6,9 @@ use crate::server_secret::ServerSecret;
 
 /// A secret a server's endpoint derives from its [`ServerSecret`], by HKDF-SHA256
 /// ([RFC 5869](https://www.rfc-editor.org/rfc/rfc5869)) with no salt and the secret's label
-/// (13-net-stack/udp.md, One server secret derives the raw key and the reset key). The TLS seed's
+/// (11-net-stack/udp.md, One server secret derives the raw key and the reset key). The TLS seed's
 /// label is the one QUIC's endpoint gave it, so a server's key file keeps its published key
-/// (14-workspace-alignment.md, The UDP labels keep the published key).
+/// (11-net-stack/udp.md, One server secret derives the raw key and the reset key).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DerivedSecret {
     /// The seed of the Ed25519 key the server presents to TLS.

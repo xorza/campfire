@@ -67,7 +67,7 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
 /// The root the server names for a new chain.
 const ROOT: InputHash = InputHash::new([3; 32]);
 
-/// The start of the match in seat 1, of team 1, at sim tick 0, Lightyear tick 40, with a new
+/// The start of the match in seat 1, of team 1, at sim tick 0, network tick 40, with a new
 /// chain from `ROOT`.
 const START: MatchStart = MatchStart {
     start_tick: 40,
@@ -176,7 +176,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     assert_eq!(state.playing_clock(), None);
     assert_eq!((state.seat(), state.team()), (None, None));
 
-    // The match starts once: sim tick 0 is Lightyear tick 40, and the player's chain in seat 1
+    // The match starts once: sim tick 0 is network tick 40, and the player's chain in seat 1
     // starts from the delegation's id.
     assert_eq!(
         state.start(START, Hosting::Remote),
@@ -243,7 +243,7 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
         .unwrap();
     assert_eq!(join.delegation, delegation.json());
     // The server's copy holds 2 of its 3 inputs: the third never applies, and the chain goes on
-    // from the second, at sim tick 500, Lightyear tick 7. The log holds its last stamp, 503.
+    // from the second, at sim tick 500, network tick 7. The log holds its last stamp, 503.
     let head = ChainHead {
         next_seq: 2,
         head: heads[2],

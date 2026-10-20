@@ -1,5 +1,5 @@
 //! An endpoint as its host and its IO thread share it: its core behind one mutex, and its IO, which
-//! the thread reads and waits on outside it (13-net-stack/packet-session.md, One endpoint core and
+//! the thread reads and waits on outside it (11-net-stack/packet-session.md, One endpoint core and
 //! one pass for each IO).
 
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -22,13 +22,13 @@ pub struct EndpointRuntime<Io, C> {
     core: Mutex<EndpointCore<C>>,
     io: Io,
     /// What the IO thread raises as a pass leaves the host work, so a host that waits for it runs
-    /// its frame then (13-net-stack/packet-session.md, The IO thread wakes the frame).
+    /// its frame then (11-net-stack/packet-session.md, The IO thread wakes the frame).
     host_wake: OnceLock<Arc<Signal>>,
 }
 
 /// The most datagrams a pass opens under one hold of the endpoint's lock, for which the frame's
 /// endpoint systems wait: quinn's `IO_LOOP_BOUND`, the lowest bound of its endpoint loop that did
-/// not lower throughput in its benchmarks (13-net-stack/packet-session.md, A pass opens a bounded
+/// not lower throughput in its benchmarks (11-net-stack/packet-session.md, A pass opens a bounded
 /// batch under each hold of the lock).
 const PASS_DATAGRAMS: usize = 160;
 

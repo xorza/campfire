@@ -5,12 +5,10 @@ of it. It takes a bound port and knows nothing of the protocol on it. The facts 
 in [UDP research](../../research/udp.md#port-mapping).
 
 - **A server maps its own port,** on a thread of its own. `PortMap` starts once the server's
-  socket is bound, and holds no lock the frame takes. Its drop wakes the thread, which deletes the
-  mapping, and joins it: a lifetime of 0 to PCP or NAT-PMP, one try of at most a second, or one
-  removal to UPnP of at most 10 s, as each UPnP action waits. A drop during a turn stops it before
-  its next request. Each grant is held as the router makes it, before its address outside is
-  read, so the drop deletes it whether that read came or not. An app that hosts where no router
-  answers forwards the port by hand.
+  socket is bound, and holds no lock the frame takes. Its drop deletes the mapping in one bounded
+  try and joins the thread, and each grant is held as the router makes it, so the drop deletes
+  every mapping the router made. An app that hosts where no router answers forwards the port by
+  hand.
 - **PCP, then NAT-PMP, then UPnP-IGD.** Each in turn, with its own short tries, so the first that
   answers wins within seconds: PCP's `MAP` to the default gateway, which `netdev` names; NAT-PMP
   when the gateway answers PCP with version 0; UPnP-IGD last.

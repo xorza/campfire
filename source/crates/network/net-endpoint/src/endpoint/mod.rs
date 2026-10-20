@@ -45,7 +45,7 @@ enum Driver {
 /// An endpoint: on a client's entity, its one packet session, which the entity carries; on a
 /// server's, a packet session for each peer, each carried by a `LinkOf` it spawns. A `LinkStart`
 /// opens it. Its drop closes every packet session with `AppCode::DROPPED` and joins its thread
-/// (13-net-stack/packet-session.md, The endpoint is generic over its IO, and the establishment and
+/// (11-net-stack/packet-session.md, The endpoint is generic over its IO, and the establishment and
 /// the seal are trait objects).
 #[derive(Component, Debug)]
 #[component(on_discard = Self::on_discard)]
@@ -83,7 +83,7 @@ impl<Io: DatagramIo> Endpoint<Io> {
 
     /// A `LinkStart` opens the endpoint: a client connects and links once its packet session opens,
     /// and a server accepts and is linked at once. An endpoint that is linked or linking already
-    /// keeps its packet sessions (13-net-stack/packet-session.md, A start of an endpoint that is
+    /// keeps its packet sessions (11-net-stack/packet-session.md, A start of an endpoint that is
     /// linked or linking keeps its packet sessions).
     pub(crate) fn link_start(
         start: On<'_, '_, LinkStart>,
@@ -111,7 +111,7 @@ impl<Io: DatagramIo> Endpoint<Io> {
     }
 
     /// A server's `Unlink` stops its taking of new peers; the stack unlinks each of its links,
-    /// which closes their packet sessions (13-net-stack/connection.md, Each IO closes its end on a
+    /// which closes their packet sessions (11-net-stack/connection.md, Each IO closes its end on a
     /// local `Unlink`).
     pub(crate) fn unlink(unlink: On<'_, '_, Unlink>, endpoints: Query<'_, '_, &Self>) {
         if let Ok(endpoint) = endpoints.get(unlink.entity) {
@@ -121,7 +121,7 @@ impl<Io: DatagramIo> Endpoint<Io> {
 
     /// The frame's first step: on a driven clock the pass runs here; the news then link and unlink
     /// entities, and each carried packet session hands its link's queues what it has
-    /// (13-net-stack/packet-session.md, A server's endpoint spawns each link, and links it in a
+    /// (11-net-stack/packet-session.md, A server's endpoint spawns each link, and links it in a
     /// later command).
     pub(crate) fn receive(
         mut endpoints: Query<'_, '_, (Entity, &mut Self)>,
@@ -231,7 +231,7 @@ impl<Io: DatagramIo> Endpoint<Io> {
     }
 
     /// Resolves the driver at the first frame, and runs the frame's pass on a driven clock
-    /// (13-net-stack/time.md, A real-socket IO runs on `Os`).
+    /// (11-net-stack/time.md, A real-socket IO runs on `Os`).
     fn drive(&mut self, clock: &Clock, wake: &FrameWake) {
         let driver = self.driver.get_or_insert_with(|| match clock.os_origin() {
             Some(origin) => {

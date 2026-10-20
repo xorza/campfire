@@ -4,7 +4,7 @@ use core::time::Duration;
 use crate::link_model::{LinkModel, per_mille};
 use crate::rate_limit::RateLimit;
 
-/// The models of both directions of an `EmulatedIo` link (13-net-stack/testing.md, Presets are
+/// The models of both directions of an `EmulatedIo` link (11-net-stack/testing.md, Presets are
 /// plausible profiles).
 ///
 /// The presets other than [`perfect`](Self::perfect) take the Network Link Conditioner's values as

@@ -30,7 +30,7 @@ impl EncodedTick {
 /// writes a packet number: the receiver's reference, the largest tick it read, lies between the
 /// largest tick the peer accepted and the largest sent; a tick within half the short window of both
 /// is the nearest one to that reference, whatever it is. Any other tick goes whole
-/// (13-net-stack/transport.md, A packet's tick goes in 2 bytes once the peer surely reads it
+/// (11-net-stack/transport.md, A packet's tick goes in 2 bytes once the peer surely reads it
 /// whole).
 #[derive(Debug, Default)]
 pub(crate) struct TickEncoder {

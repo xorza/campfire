@@ -12,7 +12,7 @@ pub struct LinkLost {
     pub cause: LinkLossCause,
 }
 
-/// Why the client's link to the server was lost (11-quic-transport.md, A link's end is a type).
+/// Why the client's link to the server was lost (08-sessions.md, A link's end is a type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LinkLossCause {
     /// The server closed the link, for this reason.

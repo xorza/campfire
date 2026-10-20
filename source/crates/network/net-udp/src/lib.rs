@@ -1,7 +1,7 @@
 //! The stack's own UDP protocol: sealed packet sessions over an OS socket or the emulated network,
 //! made by a TLS 1.3 handshake in the protocol's own packets, with a Retry for each new address, an
 //! admission for each address, connection IDs and stateless resets. The decisions are in
-//! (13-net-stack/udp.md).
+//! (11-net-stack/udp.md).
 
 mod address_token;
 mod admission;

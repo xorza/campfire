@@ -1,4 +1,4 @@
-//! Plugin groups that install the stack's layer crates in the order they need (13-net-stack/api.md,
+//! Plugin groups that install the stack's layer crates in the order they need (11-net-stack/api.md,
 //! One plugin group for each kind of app, and no plugin adds another).
 //!
 //! [`ClientPlugins`] and [`ServerPlugins`], one for each kind of app, are the entry points.

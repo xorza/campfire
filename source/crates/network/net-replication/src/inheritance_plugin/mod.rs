@@ -1,6 +1,6 @@
 //! Hierarchy members follow the replication aspects of their root.
 //!
-//! The policy is in (13-net-stack/replication.md, Hierarchy inheritance).
+//! The policy is in (11-net-stack/replication.md, Hierarchy inheritance).
 use crate::deferred_entity_commands::DeferredEntityCommands;
 use crate::manual_visibility::ManualVisibility;
 use crate::overridden::Overridden;
@@ -20,7 +20,7 @@ use bevy_replicon::server::visibility::client_visibility::ClientVisibility;
 use core::fmt::Debug;
 
 /// Keeps each aspect that a hierarchy member follows equal to its root's
-/// (13-net-stack/replication.md, Detaching never widens what an entity replicates).
+/// (11-net-stack/replication.md, Detaching never widens what an entity replicates).
 #[derive(Debug)]
 pub(crate) struct InheritancePlugin;
 
@@ -105,7 +105,7 @@ impl<T: Aspect> MemberAspectItem<'_, '_, T> {
 }
 
 /// The write that makes a member's copy equal to its root's value, absence included
-/// (13-net-stack/replication.md, Absence is a value).
+/// (11-net-stack/replication.md, Absence is a value).
 #[derive(Debug)]
 enum FollowWrite<T> {
     Insert(T),
@@ -179,7 +179,7 @@ struct WriteAccess<'w, 's, T: Aspect> {
 impl<T: Aspect> WriteAccess<'_, '_, T> {
     /// A write on a member overrides its root's `T` when it leaves the member's `T` different from
     /// the root's, and follows the root when it leaves them equal. A write on a root reaches every
-    /// member that follows it (13-net-stack/replication.md, A write equal to the root's value is a
+    /// member that follows it (11-net-stack/replication.md, A write equal to the root's value is a
     /// follow).
     fn written(&self, entity: Entity, write: Write, commands: &mut Commands<'_, '_>) {
         let value = match write {
@@ -320,7 +320,7 @@ impl InheritancePlugin {
     }
 
     /// A member whose attachment changes follows its new root. An entity that leaves its root keeps
-    /// only what it holds, and the copies that [`OnDetach`] keeps (13-net-stack/replication.md, An
+    /// only what it holds, and the copies that [`OnDetach`] keeps (11-net-stack/replication.md, An
     /// entity joins with what it holds).
     fn reattached(
         In(member): In<Entity>,

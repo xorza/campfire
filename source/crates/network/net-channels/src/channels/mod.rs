@@ -39,7 +39,7 @@ use campfire_net_payload::SendPayload;
 use crate::channel_setup::ChannelSetup;
 use crate::sent_packets::{SentMessage, SentPackets};
 
-/// A message that [`Channels::send`] staged for the next send (13-net-stack/transport.md, A queued
+/// A message that [`Channels::send`] staged for the next send (11-net-stack/transport.md, A queued
 /// message keeps its channel's type until the flush).
 #[derive(Debug)]
 pub(crate) struct StagedMessage {
@@ -58,7 +58,7 @@ pub struct RefusedMessage {
 }
 
 /// What became of one received packet whose bytes keep the protocol; a protocol violation is the
-/// `Err` of `receive_packet`, which closes the link (13-net-stack/transport.md, A received packet
+/// `Err` of `receive_packet`, which closes the link (11-net-stack/transport.md, A received packet
 /// ends one of three ways).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PacketOutcome {
@@ -222,7 +222,7 @@ pub struct Channels {
     /// each one's fate. The packet session reports each packet's fate once, so an entry lives until
     /// its packet is delivered or lost.
     pub(crate) sent: SentPackets,
-    /// Messages staged for the next send, in staging order (13-net-stack/transport.md, A link's
+    /// Messages staged for the next send, in staging order (11-net-stack/transport.md, A link's
     /// `Channels` queue its sends in a `Vec`, in the `Transport` component).
     pub(crate) staged: Vec<StagedMessage>,
     /// Bytes of the packets given to the packet session.
@@ -325,7 +325,7 @@ impl Channels {
     /// Sets the longest the transport stays silent: a flush with no message that comes `heartbeat`
     /// or more after the last packet sends a packet of its tick alone. The peer's timeline reads
     /// the tick of each packet, and the link's RTT samples come from its ACK, so an idle peer would
-    /// give neither (13-net-stack/transport.md, An idle transport sends its tick).
+    /// give neither (11-net-stack/transport.md, An idle transport sends its tick).
     pub const fn set_heartbeat(&mut self, heartbeat: Duration) {
         self.heartbeat = heartbeat;
     }

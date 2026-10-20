@@ -16,7 +16,7 @@ use core::time::Duration;
 use tracing::trace;
 
 /// The timeline the interpolation histories are sampled at: it trails the remote timeline at a
-/// speed its sync controls, apart from the local one (13-net-stack/time.md, Two estimates of one
+/// speed its sync controls, apart from the local one (11-net-stack/time.md, Two estimates of one
 /// link keep two promises).
 #[derive(Debug, Resource, Default, Deref, DerefMut, Reflect)]
 pub struct InterpolationTimeline(Timeline<InterpolationSetup>);

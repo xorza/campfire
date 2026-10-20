@@ -21,7 +21,7 @@ const PCP_PORT: u16 = 5351;
 /// apart; it holds a gateway that grants a very short lifetime off a loop of requests.
 const RENEWAL_MIN: Duration = Duration::from_secs(4);
 
-/// How long each part of the port map waits (13-net-stack/port-map.md, A mapping asks for 7,200 s
+/// How long each part of the port map waits (11-net-stack/port-map.md, A mapping asks for 7,200 s
 /// and renews at 1/2 to 5/8 of what it got).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct MapTimes {
@@ -75,7 +75,7 @@ pub(crate) struct PortMapper {
     /// Whether the host was told that no router maps the port, since the last mapping.
     told: bool,
     /// Where each mapping's PCP nonce, each renewal's time and each UPnP port are drawn from
-    /// (13-net-stack/port-map.md, The draws come from the mapper's `Random`, the clock from the
+    /// (11-net-stack/port-map.md, The draws come from the mapper's `Random`, the clock from the
     /// OS).
     random: Random,
 }
@@ -299,7 +299,7 @@ impl PortMapper {
     }
 
     /// Maps the port through the router a search finds, else through the last that announced
-    /// itself, whose answer a host firewall may have dropped (13-net-stack/port-map.md, A server
+    /// itself, whose answer a host firewall may have dropped (11-net-stack/port-map.md, A server
     /// maps its own port).
     fn map_by_upnp(&mut self, stop: &AtomicBool) -> Result<Held, MapError> {
         if stop.load(Ordering::SeqCst) {
@@ -327,7 +327,7 @@ impl PortMapper {
     }
 
     /// Logs where a player outside joins through `mapping`, or that another NAT stands before the
-    /// router, whose own address is then private (13-net-stack/port-map.md, The address outside is
+    /// router, whose own address is then private (11-net-stack/port-map.md, The address outside is
     /// logged, and a private one warns).
     fn announce(mapping: &Mapping) {
         let Some(external) = mapping.external() else {

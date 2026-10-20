@@ -391,7 +391,7 @@ impl JoinState {
     /// copy, which a client with a history finds in it and cuts its own back to, and a client with
     /// none takes; after a load, which may drop inputs the client's history holds, every client of
     /// a local server takes it: only a local server loads a save, so only the match start of a
-    /// server `hosting` says is local is taken as a load. Sim tick `start.first` is Lightyear tick
+    /// server `hosting` says is local is taken as a load. Sim tick `start.first` is network tick
     /// `start.start_tick`.
     pub(crate) fn start(&mut self, start: MatchStart, hosting: Hosting) -> Started {
         let answered = match mem::replace(&mut self.step, Step::Left) {
@@ -447,7 +447,7 @@ impl JoinState {
     }
 
     /// Watches the match `start` names, for a client that answered to watch: sim tick
-    /// `start.first` is Lightyear tick `start.start_tick`. Whether it did.
+    /// `start.first` is network tick `start.start_tick`. Whether it did.
     pub(crate) fn watch(&mut self, start: WatchStart) -> bool {
         let answered = match mem::replace(&mut self.step, Step::Left) {
             Step::Answered(answered) if self.player.role == JoinRole::Watch => answered,
@@ -616,7 +616,7 @@ impl Playing {
     }
 
     /// The stamp of an input sent as the client predicts tick `now`: `now`, or the last stamp
-    /// when the client's timeline went back past it, as Lightyear steps it back after the
+    /// when the client's timeline went back past it, as the network stack steps it back after the
     /// server's tick fell behind, since the log refuses a stamp that goes back.
     pub(crate) fn stamp(&self, now: Tick) -> Tick {
         self.last_stamp.map_or(now, |last| last.max(now))

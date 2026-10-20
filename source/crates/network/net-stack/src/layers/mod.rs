@@ -1,6 +1,6 @@
 //! The layers each app kind's plugin group lists: those both sides share, then a client's and a
 //! server's own, so a host server, which is both, lists the shared ones once
-//! (14-workspace-alignment.md, A plugin group lists every layer).
+//! (11-net-stack/api.md, One plugin group for each kind of app, and no plugin adds another).
 
 use bevy_app::PluginGroupBuilder;
 use campfire_math::TickRate;

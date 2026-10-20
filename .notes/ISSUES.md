@@ -5,6 +5,7 @@ The issue log: every open problem of the project, under the step it waits for. T
 ## Decide
 
 - **Lan-check.** Each `cargo drive run lan` writes a new folder of its logs and session log under `target/drive/lan-check/`, 6 to 14 MB each, and nothing removes one: 455 MB on 2026-10-20, after two days. Options: keep the folders of the newest runs, up to a count; or keep the folders of failed runs and the newest one.
+- **World.** `04-capabilities/world.md` plans deterministic multithreading over regions that do not touch, which 02's "The sim is one schedule on one thread" and "No query runs in parallel" refuse. Options: remove the plan from `world.md`; keep it as a planned exception that 02 names.
 
 ## Research
 
@@ -31,14 +32,15 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Benches.** Each of the 16 crates with a `[[bench]]` sets `[lib] bench = false`, which no command reads: the driver selects the bench targets alone, by `--bench '*'`.
 - **Client.** The player's camera has `Tonemapping::None` and Bevy's default `DebandDither::Enabled` (`view/player_camera.rs:77`), and Bevy warns at each start that the dithering has no effect.
 - **Client.** A press drags past 4 pixels along either axis, a constant of the client's code (`client/src/press.rs`, `DRAG_PIXELS`), and the Zero Hour import does not read the game's `Mouse.ini` `DragTolerance`, the pixels within which a press of the game is still a click.
-- **Import.** `MapFile` and `UnitsFile` name Zero Hour's files in `import` and Campfire's files in `package`: two types of one name (14-workspace-alignment.md, A type name that both sides declare keeps one meaning).
+- **Import.** `MapFile` and `UnitsFile` name Zero Hour's files in `import` and Campfire's files in `package`: two types of one name (02-engine-core.md, A type name that both sides declare keeps one meaning).
 - **Mode.** A spatial map's height grid and `[ground]` load into its `MapBook`, and the sim reads neither: `MapBook::point` takes a spatial map's position as its point in space.
 - **Net.** A client inserts its session's `OutView` as a resource as it answers an offer (`net/src/sim_client/mod.rs`, `answer_offer`), and no system reads that resource: the match takes the view from `MatchFacts`.
 - **Net-endpoint.** The frame's send step wakes the endpoint's IO thread at every frame, whether or not it took a payload or moved a deadline (`net-endpoint/src/endpoint/mod.rs`, `Endpoint::send`): an idle server's IO thread wakes at its tick rate.
 - **Net-messages.** The receive path passes `ParallelCommands` through `MessageReceiveCx`, the message receivers and the remote events (`message_plugin/mod.rs:287`, `message_receive_cx.rs:13`, `message_receiver/mod.rs:110`), though its systems iterate their links in order.
-- **Net-stack.** No lane of `cargo drive` measures coverage, which `13-net-stack/testing.md` plans.
-- **Protocol.** The session log's `Packet`, a player's signed inputs (`protocol/src/session_log/log_entries.rs`), has the name of the network stack's `Packet`, the payload of one datagram (14-workspace-alignment.md, A type name that both sides declare keeps one meaning).
+- **Net-stack.** No lane of `cargo drive` measures coverage, which `11-net-stack/testing.md` plans.
+- **Net-stack.** The feature that adds the emulated network's endpoint is named `sim` (`net-stack/Cargo.toml`), the match's word (02-engine-core.md, The stack's crates are `net-<name>`).
+- **Protocol.** The session log's `Packet`, a player's signed inputs (`protocol/src/session_log/log_entries.rs`), has the name of the network stack's `Packet`, the payload of one datagram (02-engine-core.md, A type name that both sides declare keeps one meaning).
 - **Rules.** `citations` reads a decision's title from its bullet's first line alone (`test/rules/src/citations.rs`, `titles`), so a title that wraps to a second line cannot be cited.
-- **Stats.** `modifier_clocks`'s `Clock` (`stats/src/modifiers/modifier_clocks.rs`) has the name of the network stack's `Clock`, the app's network clock (14-workspace-alignment.md, A type name that both sides declare keeps one meaning).
-- **Store.** `latest_writer`'s `Slot` has the word that Names gives to a unit's slot (14-workspace-alignment.md, A type name that both sides declare keeps one meaning).
+- **Stats.** `modifier_clocks`'s `Clock` (`stats/src/modifiers/modifier_clocks.rs`) has the name of the network stack's `Clock`, the app's network clock (02-engine-core.md, A type name that both sides declare keeps one meaning).
+- **Store.** `latest_writer`'s `Slot` has the word that Names gives to a unit's slot (02-engine-core.md, A type name that both sides declare keeps one meaning).
 - **Verifier.** No log or replay starts from a checkpoint's `LogCarry` (`protocol/src/checkpoint/log_carry.rs`): the log builds, writes and compares the carry, and a verifier replays every log from tick 0, so a host that prunes its logs past a checkpoint leaves a segment nothing verifies, where designs 02 (Session log) and 05 (Checkpoints and results) plan a segment's verification from its checkpoint alone.

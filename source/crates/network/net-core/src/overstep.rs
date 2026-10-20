@@ -10,7 +10,7 @@ use campfire_net_bytes::WriteInteger;
 use core::fmt::Debug;
 
 /// The fraction of the next tick a timeline has run, in `[0, 1)`, a `Num` of 24 fractional bits
-/// (12-lightyear-in-tree.md, One number type). It compares at its full precision and travels as
+/// (11-net-stack/time.md, One number type). It compares at its full precision and travels as
 /// its top 8 bits.
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "reflect", derive(Reflect))]

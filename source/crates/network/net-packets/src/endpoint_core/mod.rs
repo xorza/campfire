@@ -140,7 +140,7 @@ impl<C> Peer<C> {
 
 /// An endpoint's packet sessions and its establishment, which a host drives through an
 /// `EndpointRuntime`, and whose packet sessions each carrier `C` of the host carries
-/// (13-net-stack/packet-session.md, The endpoint core names each packet session by its carrier).
+/// (11-net-stack/packet-session.md, The endpoint core names each packet session by its carrier).
 #[derive(Debug)]
 pub struct EndpointCore<C> {
     setup: PacketSessionSetup,
@@ -149,7 +149,7 @@ pub struct EndpointCore<C> {
     /// The empty slots of `peers`, which a new packet session takes before the vector grows.
     free: Vec<usize>,
     /// The slot of each packet session by what routes its datagrams
-    /// (13-net-stack/packet-session.md, A pass touches only the packet sessions that need it).
+    /// (11-net-stack/packet-session.md, A pass touches only the packet sessions that need it).
     routes: BTreeMap<RouteKey, usize>,
     /// Each packet session's next deadline, so a pass polls only the packet sessions that are due.
     timers: BinaryHeap<Reverse<PollTimer>>,

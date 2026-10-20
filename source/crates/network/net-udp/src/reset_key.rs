@@ -6,7 +6,7 @@ use crate::server_secret::ServerSecret;
 
 /// The key of a server's stateless resets: the token of a packet session is its HMAC of the packet
 /// session's connection ID. It derives from the server's secret, so a server started again resets
-/// the packet sessions its last run held at their next packet (13-net-stack/udp.md, A stateless
+/// the packet sessions its last run held at their next packet (11-net-stack/udp.md, A stateless
 /// reset ends the packet sessions of a server that started again).
 #[derive(Debug)]
 pub(crate) struct ResetKey(hmac::Key);

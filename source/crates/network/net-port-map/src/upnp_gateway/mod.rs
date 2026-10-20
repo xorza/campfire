@@ -34,8 +34,8 @@ const SAME_PORT_VALUES_REQUIRED: u16 = 724;
 const ONLY_PERMANENT_LEASES_SUPPORTED: u16 = 725;
 
 /// A UPnP-IGD router: its WAN connection service, read from its description and its schema, and the
-/// address of this host on its side (13-net-stack/port-map.md, A server maps its own port)
-/// (13-net-stack/port-map.md, UPnP-IGD is the map's own SOAP, over `ureq` with plain HTTP alone).
+/// address of this host on its side (11-net-stack/port-map.md, A server maps its own port)
+/// (11-net-stack/port-map.md, UPnP-IGD is the map's own SOAP, over `ureq` with plain HTTP alone).
 #[derive(Debug)]
 pub(crate) struct UpnpGateway {
     http: Agent,
@@ -46,7 +46,7 @@ pub(crate) struct UpnpGateway {
 }
 
 /// What a mapping asks a router for: the port inside, a lease of `seconds`, 0 for one that never
-/// ends, and the name the router lists it by (13-net-stack/port-map.md, The app names the mapping).
+/// ends, and the name the router lists it by (11-net-stack/port-map.md, The app names the mapping).
 #[derive(Debug, Clone, Copy)]
 struct Lease<'a> {
     internal_port: u16,

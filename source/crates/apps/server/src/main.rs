@@ -136,8 +136,8 @@ fn run() -> Result<ExitCode, StartError> {
     let server = app.world_mut().spawn((Server::default(), endpoint)).id();
     app.world_mut().trigger(Start { entity: server });
     let exit = session.in_scope(|| app.run());
-    // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP
-    // request's 10 s, which no client waits for (11-quic-transport.md, A server maps its own port).
+    // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP request's
+    // 10 s, which no client waits for (11-net-stack/port-map.md, A server maps its own port).
     drop(app);
     drop(port_map);
     Ok(exit_code(exit))

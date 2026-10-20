@@ -26,7 +26,7 @@ pub(crate) mod spectators_world;
 pub(crate) struct Spectators;
 
 impl Spectators {
-    /// Tells the client of `link`, a spectator, through `sender`, the Lightyear tick of the
+    /// Tells the client of `link`, a spectator, through `sender`, the network tick of the
     /// match's next sim tick, `first`, by `clock`.
     pub(crate) fn tell_start(
         sender: &mut MessageSender<WatchStart>,

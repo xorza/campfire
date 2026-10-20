@@ -7,7 +7,7 @@ use crate::link_conditioning::LinkConditioning;
 use crate::link_model::LinkModel;
 use crate::link_model_run::LinkModelRun;
 
-/// Generic receive-side packet conditioner (13-net-stack/packet-session.md, The link conditioner
+/// Generic receive-side packet conditioner (11-net-stack/packet-session.md, The link conditioner
 /// goes into the endpoint, before the packet sessions).
 ///
 /// `LinkConditioner` delays, drops and duplicates payloads according to a [`LinkModel`], so a

@@ -5,7 +5,7 @@ use crate::message_id::MessageId;
 ///
 /// Every message is a run of parts, and a message that fits one packet is one part, as QUIC
 /// names a stream's bytes by their offsets, so a key names no shape the message could contradict
-/// (14-workspace-alignment.md, A state the code cannot reach is a type). An unreliable channel
+/// (11-net-stack/api.md, A state the code cannot reach is a type). An unreliable channel
 /// names a message by its queue index, which holds for one flush, as the channel compacts its
 /// queue only once the flush ends; a reliable channel by its id. A fragmented message's candidate
 /// names its first due part.

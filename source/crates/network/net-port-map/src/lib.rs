@@ -1,5 +1,5 @@
 //! Asks a home router to forward a server's port, on a thread of its own: PCP, then NAT-PMP, at
-//! the default gateway, then UPnP-IGD. The decisions are in (13-net-stack/port-map.md).
+//! the default gateway, then UPnP-IGD. The decisions are in (11-net-stack/port-map.md).
 
 mod control_schema;
 mod error;

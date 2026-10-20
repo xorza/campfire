@@ -16,7 +16,7 @@ use crate::pace::{Pace, PaceSpeed};
 /// fixed tick runs; a speed makes the timelines' rate the session's `rate` times it, which the
 /// stack's `SetTickRate` gives `Time<Fixed>` and the timelines while the sim keeps the session's,
 /// and scales the most time a frame advances by as much, so a frame runs as many ticks at most at
-/// every speed (12-lightyear-in-tree.md, The pace sets the tick rate).
+/// every speed (08-sessions.md, The pace sets the tick rate).
 #[derive(Debug)]
 pub struct LocalPacePlugin {
     pub pace: Arc<Pace>,

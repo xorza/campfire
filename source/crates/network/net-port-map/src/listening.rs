@@ -34,7 +34,7 @@ impl Listening {
             Ok(port) => {
                 port.socket().set_nonblocking(true)?;
                 // SAFETY: `Listening::drop` deletes the socket from this poller before it drops
-                // (13-net-stack/api.md, No `unsafe` but what an outside API requires).
+                // (11-net-stack/api.md, No `unsafe` but what an outside API requires).
                 unsafe {
                     stop.poller
                         .add(port.socket(), Event::readable(ANNOUNCEMENTS))?;

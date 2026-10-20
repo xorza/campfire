@@ -13,7 +13,7 @@ use campfire_net_transport::Transport;
 /// pairs, such as the two link entities from `SenderHello`, which replicon never sees. Only a
 /// client's side maps through it, after replicon's
 /// [`ServerEntityMap`](bevy_replicon::shared::server_entity_map::ServerEntityMap)
-/// (13-net-stack/api.md, Only a client maps the entities a message names).
+/// (11-net-stack/api.md, Only a client maps the entities a message names).
 #[derive(Debug, Component, Default, Reflect)]
 #[require(Transport)]
 pub struct LinkMessages {

@@ -8,7 +8,7 @@ use campfire_net_bytes::WriteInteger;
 use campfire_net_bytes::{ReadInteger, Reader};
 use serde::{Deserialize, Serialize};
 
-/// Monotonically increasing simulation tick shared by the server and clients (13-net-stack/time.md,
+/// Monotonically increasing simulation tick shared by the server and clients (11-net-stack/time.md,
 /// The tick family saturates).
 ///
 /// Unlike packet and message sequence IDs, ticks are numerically ordered and do not wrap. At

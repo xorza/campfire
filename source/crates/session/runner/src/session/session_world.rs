@@ -13,8 +13,8 @@ use crate::events::script_call_failed::ScriptCallFailed;
 use crate::session::Session;
 use crate::session::error::ResultMismatch;
 
-/// What a session gives the world that runs its match: a bare one on a verifier, Lightyear's on
-/// a server.
+/// What a session gives the world that runs its match: a bare one on a verifier, the network
+/// stack's on a server.
 pub trait SessionWorld {
     /// The session of the match.
     fn session(&self) -> &Session;

@@ -15,7 +15,7 @@ use crate::recv_batch::RecvBatch;
 use crate::udp_port::UdpPort;
 
 /// The socket of an endpoint: read in batches that GRO joins, written in sends that GSO joins for
-/// one peer, and waited on by the IO thread with the poller (13-net-stack/packet-session.md, One
+/// one peer, and waited on by the IO thread with the poller (11-net-stack/packet-session.md, One
 /// endpoint core and one pass for each IO).
 #[derive(Debug)]
 pub struct UdpIo {

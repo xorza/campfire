@@ -35,14 +35,23 @@ The kinds of crate, problem, IO, glue and test support, and their rules are the 
 - **The emulated wires and `net-udp`'s emulated server and client are production.** The wires are
   the packet session's IO: `net-packets` holds `EmulatedWires`, a `DatagramIo` over `net-emulator`'s
   model that needs no engine, so `net-packets` stays a problem crate; the sealed singleplayer link
-  runs the emulated server and client ([Workspace alignment](../14-workspace-alignment.md), The
-  singleplayer link is sealed). Refused: the emulated sockets behind `internals`, which the
-  singleplayer link then cannot build.
+  runs the emulated server and client (08-sessions.md, The answer binds to the TLS session).
+  Refused: the emulated sockets behind `internals`, which the singleplayer link then cannot build.
+- **`net-bytes` is the header codec alone.** `ToBytes`, `Reader` and `Writer` encode the stack's
+  own headers, and a `ToBytes` write goes into the stack's own sinks and cannot fail; the serde
+  bridge is `net-messages`', its one caller. Refused: the header codec in `codec`, which gives the
+  gateway of the serde formats a second problem; the bridge in `net-bytes`, which compiles `codec`'s
+  TOML and JSON into every problem crate of the stack.
 
 ## Edges
 
+- **A stack crate depends on Campfire's base crates, never on `sim` or a capability,** so the
+  stack serves any app of the engine and no match's type crosses into it.
 - **A crate's dev-dependencies are itself with `internals` and crates it already depends on;** a
   glue crate adds the engine and, through `internals`, the stepper. Refused: a problem crate's test
   that runs an app, which puts the engine and the glue under it.
-- **An edge that only tests need is optional, and `internals` turns it on.** It points to test
-  support or to a lower crate's `internals`; each other edge is one the crate's code uses.
+
+## Planned
+
+- **The split of interpolation.** A crate of lerp rules and frame interpolation below
+  `net-interpolation` and `net-prediction`, once a read of who owns each history shows the seam.

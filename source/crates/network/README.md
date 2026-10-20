@@ -10,4 +10,4 @@ Lightyear is licensed under MIT or Apache-2.0, at your option; `LICENSE-MIT` and
 `LICENSE-APACHE` here are its texts. Campfire's own changes take Campfire's licenses, the same
 two.
 
-The stack's decisions are in [`docs/design/13-net-stack/`](../../../docs/design/13-net-stack/).
+The stack's decisions are in [`docs/design/11-net-stack/`](../../../docs/design/11-net-stack/).

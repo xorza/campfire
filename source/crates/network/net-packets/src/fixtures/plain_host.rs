@@ -22,7 +22,7 @@ pub const CLIENT: u32 = 0;
 /// A host with no engine, for the tests of an endpoint's protocol: it runs an endpoint's frame
 /// steps as `campfire_net_endpoint` does, with a number for each packet session where the ECS has
 /// an entity and a [`HostLink`] where it has a link. Each payload a packet session opens is
-/// accepted (13-net-stack/testing.md, A protocol's test runs on the plain host of
+/// accepted (11-net-stack/testing.md, A protocol's test runs on the plain host of
 /// `net-packets::internals`).
 #[derive(Debug)]
 pub struct PlainHost<Io: DatagramIo> {

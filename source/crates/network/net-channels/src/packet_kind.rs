@@ -3,7 +3,7 @@ use campfire_net_payload::PayloadKind;
 use crate::packet_error::PacketError;
 
 /// What a packet's payload holds, which the packet session carries in its 2 bits of payload kind
-/// (13-net-stack/packet-session.md, The packet session carries 2 bits of its payload's kind, which
+/// (11-net-stack/packet-session.md, The packet session carries 2 bits of its payload's kind, which
 /// it does not read).
 ///
 /// Each payload starts with the tick, then:

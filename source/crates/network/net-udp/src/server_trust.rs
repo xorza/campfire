@@ -14,7 +14,7 @@ use campfire_common::TlsKey;
 /// The name a pinned client sends, which its verifier never reads.
 const PINNED_NAME: &str = "campfire";
 
-/// What a client takes as its server's identity (13-net-stack/udp.md, A server's identity and a
+/// What a client takes as its server's identity (11-net-stack/udp.md, A server's identity and a
 /// client's trust match).
 #[derive(Debug, Clone)]
 pub struct ServerTrust(Trust);

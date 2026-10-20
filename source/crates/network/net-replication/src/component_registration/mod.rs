@@ -14,7 +14,7 @@ use serde::{Serialize, de::DeserializeOwned};
 
 /// A component's registration, typed by how it replicates: [`NotReplicated`], [`FullReplicated`] or
 /// [`DiffReplicated`], which prediction and interpolation read their mode from
-/// (13-net-stack/api.md, One builder per protocol item, and the replication mode lives in its
+/// (11-net-stack/api.md, One builder per protocol item, and the replication mode lives in its
 /// type).
 #[derive(Debug)]
 pub struct ComponentRegistration<'a, C, M = NotReplicated> {

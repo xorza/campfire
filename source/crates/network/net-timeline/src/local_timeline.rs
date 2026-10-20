@@ -9,7 +9,7 @@ use bevy_time::{Fixed, Time};
 use tracing::trace;
 
 /// The local simulation timeline: its tick advances each `FixedUpdate`, rollback replays included,
-/// and its fraction is the overstep of [`Time<Fixed>`] (13-net-stack/time.md, Ticks stay on Bevy's
+/// and its fraction is the overstep of [`Time<Fixed>`] (11-net-stack/time.md, Ticks stay on Bevy's
 /// clocks).
 #[derive(Debug, Resource, Default, Clone, Reflect)]
 pub struct LocalTimeline {

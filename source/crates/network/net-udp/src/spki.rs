@@ -12,7 +12,7 @@ const SPKI_PREFIX: [u8; 12] = [
 const SPKI_LEN: usize = SPKI_PREFIX.len() + 32;
 
 /// A server key as TLS carries it with no certificate ([RFC 7250]): its `SubjectPublicKeyInfo`,
-/// which a server presents and a client's verifier takes (13-net-stack/udp.md, A server's identity
+/// which a server presents and a client's verifier takes (11-net-stack/udp.md, A server's identity
 /// and a client's trust match).
 ///
 /// [RFC 7250]: https://www.rfc-editor.org/rfc/rfc7250

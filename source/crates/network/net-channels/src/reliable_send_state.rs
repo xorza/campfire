@@ -49,7 +49,7 @@ struct PendingQueuedMessage {
     listed: bool,
 }
 
-/// State which differs specifically for reliable channel sends (13-net-stack/transport.md, A
+/// State which differs specifically for reliable channel sends (11-net-stack/transport.md, A
 /// reliable message goes again when the packet session finds its packet lost).
 #[derive(Debug)]
 pub(super) struct ReliableSendState {

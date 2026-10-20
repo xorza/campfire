@@ -12,7 +12,7 @@ use campfire_net_connection::Connected;
 use campfire_net_timeline::LocalTimeline;
 
 /// Matches an entity a client pre-spawned to the one its server replicates, by the hash of a
-/// `PreSpawned` on each (13-net-stack/replication.md, An unmatched pre-spawn expires when the
+/// `PreSpawned` on each (11-net-stack/replication.md, An unmatched pre-spawn expires when the
 /// server's applied state reaches its tick).
 #[derive(Debug, Default)]
 pub(crate) struct PreSpawnedPlugin;

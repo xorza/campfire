@@ -16,7 +16,7 @@ use crate::signal::Signal;
 use campfire_net_bytes::ByteArena;
 
 /// The emulated network's wires an endpoint holds: a client's one, a server's one for each client
-/// (13-net-stack/layering.md, The emulated wires and `net-udp`'s emulated server and client are
+/// (11-net-stack/layering.md, The emulated wires and `net-udp`'s emulated server and client are
 /// production).
 #[derive(Debug)]
 pub struct EmulatedWires {

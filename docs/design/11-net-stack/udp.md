@@ -12,8 +12,10 @@ socket: its handshake, its trust, and how a server guards itself. The packet ses
   9002's initial RTT of 333 ms, which doubles at each resend; the client sends its end again
   while the server sends its flight again. Each handshake packet carries a version byte and the
   client's 8-byte handshake ID. Refused: Noise, which has no WebPKI; DTLS, which has no complete
-  Rust implementation; QUIC itself, whose ACKs and number space repeat the packet session's. Source:
-  RFC 9001 §4; RFC 9147 §5.8.
+  Rust implementation; QUIC itself, whose ACKs and number space repeat the packet session's. Its
+  cost: a third-party client implements the stack's own protocol from [the protocol
+  spec](../05-protocol-spec.md), where any QUIC library connects. Source: RFC 9001 §4; RFC 9147
+  §5.8.
 - **The AEAD is ChaCha20-Poly1305 only,** with no key update. Its confidentiality limit is past the
   packets a packet session sends; a packet session ends at its integrity limit of 2^36 failed
   decryptions. Refused: AES-GCM, which needs a key update before 2^23 packets, 5 to 39 hours of
@@ -34,7 +36,9 @@ socket: its handshake, its trust, and how a server guards itself. The packet ses
   `rustls-platform-verifier`, which needs a Java component on Android.
 - **One server secret derives the raw key and the reset key,** by HKDF-SHA256 with the labels
   `campfire/tls/v1` and `campfire/udp-reset/v1`, so one file holds the identity and the pin
-  cannot be lost while the identity stays.
+  cannot be lost while the identity stays. The TLS label is the one Campfire's QUIC transport
+  took before the stack's UDP, so a server's key file keeps its published key. Refused: a new
+  label, which changes each listing's pin once.
 - **The app authenticates over the link.** No client key in TLS. Each end of a link holds RFC 9266's
   `tls-exporter` binding as `ChannelBinding`, which an app's login signs, so a party that relays a
   login holds two packet sessions with two bindings, and the relay fails. A plain packet session has
@@ -73,4 +77,4 @@ socket: its handshake, its trust, and how a server guards itself. The packet ses
   answers a datagram of an ID it does not hold with a reset shorter than it, and none to a datagram
   of 21 bytes or less, so two endpoints never reset each other in a loop. Source: RFC 9000 §10.3.
 - **The socket stays on `quinn-udp`, with GSO and GRO.** A send joins the datagrams of one peer
-  and one length; a read splits what GRO joined. `quinn-proto` goes with QUIC.
+  and one length; a read splits what GRO joined.

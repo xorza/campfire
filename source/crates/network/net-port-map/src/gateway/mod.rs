@@ -12,7 +12,7 @@ use crate::pcp_map::{MapNonce, PcpMap, PcpReply};
 const MESSAGE_MAX: usize = 1100;
 const NO_EXTERNAL: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
 
-/// A client of a gateway's port mappings (13-net-stack/port-map.md, PCP, then NAT-PMP, then
+/// A client of a gateway's port mappings (11-net-stack/port-map.md, PCP, then NAT-PMP, then
 /// UPnP-IGD): it speaks PCP, and NAT-PMP to a gateway that answers PCP with NAT-PMP's version, from
 /// a socket that only the gateway's replies reach.
 #[derive(Debug)]

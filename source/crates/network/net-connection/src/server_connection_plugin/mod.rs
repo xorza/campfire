@@ -160,7 +160,7 @@ impl ServerConnectionPlugin {
     }
 
     /// Disconnects each `Disconnecting` link and despawns each `Disconnected` one
-    /// (13-net-stack/connection.md, The connection layer ends every server-side link).
+    /// (11-net-stack/connection.md, The connection layer ends every server-side link).
     fn end_links(
         disconnecting: Query<'_, '_, (Entity, &Disconnecting), With<LinkOf>>,
         disconnected: Query<'_, '_, Entity, (With<LinkOf>, With<Disconnected>)>,

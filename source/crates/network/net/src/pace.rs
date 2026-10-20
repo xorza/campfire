@@ -15,7 +15,7 @@ pub struct Pace {
 }
 
 /// A local match's game speed: its timelines' rate is the session's times the speed, and the
-/// sim's rate stays the session's (12-lightyear-in-tree.md, The pace sets the tick rate).
+/// sim's rate stays the session's (08-sessions.md, The pace sets the tick rate).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, EnumAll)]
 pub enum PaceSpeed {
     Half,

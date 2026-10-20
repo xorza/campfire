@@ -1,6 +1,6 @@
 # UDP — research
 
-What the stack's sealed UDP and its port map are built from, read from the crates' sources, the standards and a router, for [UDP](../design/13-net-stack/udp.md) and [Port mapping](../design/13-net-stack/port-map.md). Facts only: what the design takes from them is its own. The crates are the versions in `source/Cargo.lock` on the day each section names.
+What the stack's sealed UDP and its port map are built from, read from the crates' sources, the standards and a router, for [UDP](../design/11-net-stack/udp.md) and [Port mapping](../design/11-net-stack/port-map.md). Facts only: what the design takes from them is its own. The crates are the versions in `source/Cargo.lock` on the day each section names.
 
 ## `quinn-udp` 0.6.3
 

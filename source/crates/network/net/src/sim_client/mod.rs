@@ -93,12 +93,12 @@ pub(crate) mod sim_client_world;
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
 const PREDICTION_SEED: SegmentSeed = SegmentSeed::ZERO;
 
-/// Plays a session on a Lightyear client: answers the server's offer with a delegation of a
+/// Plays a session on a network stack client: answers the server's offer with a delegation of a
 /// session key, sends the player's orders as chained inputs, signed once per message with the
 /// session key, and runs the sim in every fixed tick, rollbacks included, with the player's own
-/// inputs, on the units the client predicts. It adds Lightyear's client at the server's tick, the
-/// protocol, and the prediction; its app adds its frame loop or clock, and its link's endpoint: a
-/// UDP socket's, or the emulator's in the process.
+/// inputs, on the units the client predicts. It adds the network stack's client at the server's
+/// tick, the protocol, and the prediction; its app adds its frame loop or clock, and its link's
+/// endpoint: a UDP socket's, or the emulator's in the process.
 #[derive(Debug)]
 pub struct SimClientPlugin {
     /// The signer of the player's Nostr identity, which signs the delegation.
@@ -215,10 +215,10 @@ impl Plugin for SimClientPlugin {
             world.insert_resource(ReceiptWriter::start(Arc::clone(data)));
         }
         // Prediction covers all the latency, with no input delay: an input goes out stamped with
-        // the tick the client predicts it in, which Lightyear keeps ahead of the server's present
-        // tick by half the round trip and its margins, so the input arrives before the server
-        // runs that tick; with input delay it would keep that tick nearer, and the input would
-        // land late.
+        // the tick the client predicts it in, which the network stack keeps ahead of the server's
+        // present tick by half the round trip and its margins, so the input arrives before the
+        // server runs that tick; with input delay it would keep that tick nearer, and the input
+        // would land late.
         app.insert_resource(InputTimelineSetup::new(
             SyncSetup::default(),
             InputDelaySetup::no_input_delay(),
@@ -368,7 +368,7 @@ fn receive_match_start(
 
 /// Notes a link that failed: a client that knows the server's times drops the inputs it sent and
 /// the orders it holds, and tries again; one that does not stops, and logs the cause its link's end
-/// gives. Lightyear despawns the units the link replicated.
+/// gives. The network stack despawns the units the link replicated.
 fn lose_link(
     unlinked: On<'_, '_, Insert<Unlinked>>,
     clients: Query<'_, '_, &Unlinked, With<Client>>,
@@ -542,7 +542,7 @@ fn log_frame(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_,
 }
 
 /// The client runs a sim tick in this fixed tick; see `JoinState::sim_tick`. A match start's
-/// clock names the server's Lightyear tick, which a server started again counts from 0, while the
+/// clock names the server's network tick, which a server started again counts from 0, while the
 /// client's timeline counts the old link's until its first sync on the new one shifts it.
 fn is_playing(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_, '_>>) -> bool {
     state.sim_tick(timeline.as_ref()).is_some()
@@ -610,7 +610,7 @@ fn report_deaths(
 /// them in one message signed over the chain head after the last. The orders past the max wait for
 /// the next tick, so the log never refuses the message; an order whose payload passes the session's
 /// max length can never be sent, and is dropped. The inputs older than the deepest rollback
-/// Lightyear takes are dropped first.
+/// the network stack takes are dropped first.
 #[expect(
     clippy::too_many_arguments,
     reason = "a Bevy system takes each resource it reads"
@@ -726,9 +726,9 @@ fn send_orders(
     sender.send::<InputChannel>(InputMessage::new(inputs, signature));
 }
 
-/// Runs the sim tick of the current Lightyear tick with the player's inputs stamped for it; in a
-/// rollback, Lightyear has wound its timeline back, so the sim follows. The match's state, which
-/// every tick reads, reaches the client on the match's entity: until it holds it, the client
+/// Runs the sim tick of the current network tick with the player's inputs stamped for it; in a
+/// rollback, the network stack has wound its timeline back, so the sim follows. The match's state,
+/// which every tick reads, reaches the client on the match's entity: until it holds it, the client
 /// predicts nothing, as it holds no unit either.
 fn run_predicted_tick(world: &mut World) {
     let tick = world.resource::<LocalTimeline>().tick();

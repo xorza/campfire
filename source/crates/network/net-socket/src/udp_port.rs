@@ -14,8 +14,8 @@ const WAKE: usize = 1;
 
 /// An endpoint's UDP socket, read and written in batches through `quinn-udp`, and the poller its
 /// thread waits on: for the socket to be readable, for a deadline, or for the app's wake
-/// (13-net-stack/packet-session.md, One endpoint core and one pass for each IO). The socket is
-/// non-blocking, as `quinn-udp` makes it (13-net-stack/udp.md, The socket stays on `quinn-udp`,
+/// (11-net-stack/packet-session.md, One endpoint core and one pass for each IO). The socket is
+/// non-blocking, as `quinn-udp` makes it (11-net-stack/udp.md, The socket stays on `quinn-udp`,
 /// with GSO and GRO).
 #[derive(Debug)]
 pub(crate) struct UdpPort {
@@ -61,7 +61,7 @@ impl UdpPort {
 
     fn watch(poller: &Poller, socket: &UdpSocket, key: usize, mode: PollMode) -> io::Result<()> {
         // SAFETY: `UdpPort::drop` deletes each socket from this poller before the socket drops
-        // (13-net-stack/api.md, No `unsafe` but what an outside API requires).
+        // (11-net-stack/api.md, No `unsafe` but what an outside API requires).
         unsafe { poller.add_with_mode(socket, Event::readable(key), mode) }
     }
 

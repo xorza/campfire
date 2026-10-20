@@ -11,7 +11,7 @@ use crate::sim_tick::SimTick;
 use crate::stable_id::entity_index::EntityIndex;
 use crate::tick_inputs::TickInputs;
 
-/// The schedule that runs one sim tick. The server and client run it from Lightyear's fixed
+/// The schedule that runs one sim tick. The server and client run it from the network stack's fixed
 /// update; the verifier runs it in a bare `World`.
 #[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SimUpdate;

@@ -1,6 +1,6 @@
 //! The app's network clock and its timelines in the ECS: the [`Clock`] each frame reads, the
 //! [`LocalTimeline`] of the fixed ticks, the timelines a network layer keeps, and the
-//! [`TimelinePlugins`] that add them (13-net-stack/layering.md, The vocabulary is plain, and the
+//! [`TimelinePlugins`] that add them (11-net-stack/layering.md, The vocabulary is plain, and the
 //! clock and the timelines a glue crate of their own).
 
 #![expect(

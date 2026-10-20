@@ -11,7 +11,7 @@
 - **Brush hides who stands in it,** as League of Legends' brush does: a unit reveals a brush's cells only from inside it, and a ward in a brush sees into it.
 - **Reveals detect nothing.** A reveal shows cells, as Farsight and Snow Owl do, and detects no hidden unit.
 - **A stage that costs what units see.** Each group's bitmap clears only the words the tick before set, so the stage costs what units see, not the map.
-- **Rooms per team.** The server keeps Lightyear's rooms, one for each team, and a unit stands in the rooms of the teams that see it ([Replication audiences](../10-replication-audiences.md)).
+- **Rooms per team.** The server keeps the network stack's rooms, one for each team, and a unit stands in the rooms of the teams that see it ([Replication audiences](../10-replication-audiences.md)).
 
 ## Hidden units
 

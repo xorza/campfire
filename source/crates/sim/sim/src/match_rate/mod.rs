@@ -8,7 +8,7 @@ use campfire_math::TickRate;
 /// The match's tick rate, fixed for the whole match by the session's terms, in whole hertz as the
 /// terms give it. Data gives times in milliseconds and rates per second; they become ticks with
 /// it. A paced client's timelines run at a rate of their own, so the sim's rate never changes with
-/// the speed (14-workspace-alignment.md, One tick rate type, two resources).
+/// the speed (11-net-stack/time.md, One tick rate type, two resources).
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MatchRate(TickRate);
 

@@ -1,5 +1,5 @@
 //! The one despawn of the network stack's replication crates, which their `clippy.toml` denies
-//! Bevy's own (13-net-stack/replication.md, The server alone ends a replicated entity's life on
+//! Bevy's own (11-net-stack/replication.md, The server alone ends a replicated entity's life on
 //! the receiver).
 
 #![expect(

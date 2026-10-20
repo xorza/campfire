@@ -53,7 +53,7 @@ impl<'a> SsdpHeaders<'a> {
     }
 
     /// The router's description at `LOCATION`, when it is at the address of `from`, the message's
-    /// sender (13-net-stack/port-map.md, A router is found by its search answer or by its
+    /// sender (11-net-stack/port-map.md, A router is found by its search answer or by its
     /// announcement).
     pub(crate) fn location_of(&self, from: SocketAddr) -> Option<RouterUrl> {
         let location = RouterUrl::parse(self.get("LOCATION")?)?;

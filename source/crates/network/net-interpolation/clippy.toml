@@ -3,7 +3,7 @@ allowed-wildcard-imports = ["x86_64", "aarch64", "arch"]
 absolute-paths-allowed-crates = ["std", "core", "alloc"]
 disallowed-types = [
     { path = "std::thread::LocalKey", reason = "state lives on an owner and travels by parameter" },
-    # One source of the OS's random bytes, `getrandom` (14-workspace-alignment.md, One source of OS random bytes).
+    # One source of the OS's random bytes, `getrandom` (02-engine-core.md, One source of OS random bytes).
     { path = "ring::rand::SystemRandom", reason = "draw the OS's random bytes through getrandom, the one source" },
     # The bans fall in groups. A group with a proxy crate is called there alone: the proxy's crate
     # root exempts the lint, and every other crate goes through the proxy, which gives what it
@@ -146,7 +146,7 @@ disallowed-methods = [
     { path = "std::thread::Builder::spawn_scoped", reason = "start threads through campfire_store::Worker" },
     { path = "std::thread::Builder::spawn_unchecked", reason = "start threads through campfire_store::Worker" },
     # campfire-schedule alone sets a schedule's build settings, which can switch off the ambiguity and hierarchy checks.
-    # campfire-net-despawns alone despawns in the network stack's replication crates (13-net-stack/replication.md, The server alone ends a replicated entity's life on the receiver): Bevy's despawn takes each child the server still owns.
+    # campfire-net-despawns alone despawns in the network stack's replication crates (11-net-stack/replication.md, The server alone ends a replicated entity's life on the receiver): Bevy's despawn takes each child the server still owns.
     { path = "bevy_ecs::system::Commands::despawn_all", reason = "despawn through campfire_net_despawns::DespawnReplicated" },
     { path = "bevy_ecs::system::Commands::despawn_all_where", reason = "despawn through campfire_net_despawns::DespawnReplicated" },
     { path = "bevy_ecs::system::EntityCommands::despawn", reason = "despawn through campfire_net_despawns::DespawnReplicated" },

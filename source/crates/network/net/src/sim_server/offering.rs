@@ -43,7 +43,7 @@ const ANSWER_WINDOW: Duration = Duration::from_secs(10);
 
 /// What the server offers each new link, and how it checks the answer: the session's terms, its
 /// grace period and restore window, and a fresh challenge, which the player's session key signs
-/// with the link's channel binding (11-quic-transport.md, The answer binds to the TLS session). The
+/// with the link's channel binding (08-sessions.md, The answer binds to the TLS session). The
 /// lobby offers it before the start, and the door after it.
 #[derive(Debug)]
 pub(crate) struct Offering {
@@ -320,8 +320,8 @@ impl Offering {
         Ok(delegation)
     }
 
-    /// Checks each of a frame's `joins`, each link's offer and join, into `checked`. A query
-    /// gives the links in the order of its tables, which changes from run to run once Lightyear
+    /// Checks each of a frame's `joins`, each link's offer and join, into `checked`. A query gives
+    /// the links in the order of its tables, which changes from run to run once the network stack
     /// iterates them in parallel, so the answered ones go in an order of what they sent.
     pub(crate) fn check_all(
         &mut self,

@@ -162,7 +162,7 @@ impl ChannelSender {
 
     /// The largest message this channel sends on a link of `fragment_len`, in uncompressed bytes:
     /// its setting, or the `MAX_FRAGMENTS` fragments the link allows if fewer
-    /// (13-net-stack/transport.md, Each channel has a maximum message size).
+    /// (11-net-stack/transport.md, Each channel has a maximum message size).
     pub const fn max_message_len(&self, fragment_len: usize) -> usize {
         let fragmented = MAX_FRAGMENTS.saturating_mul(fragment_len);
         if self.setup.max_message_len < fragmented {

@@ -436,7 +436,7 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
     }
 
     /// Keep diff cursor history aligned with the oldest value retained in [`ConfirmedHistory`]
-    /// (13-net-stack/replication.md, Each frame prunes every diff receiver to its history's front).
+    /// (11-net-stack/replication.md, Each frame prunes every diff receiver to its history's front).
     ///
     /// Prediction and interpolation hold their value-retention policies. This system, the
     /// receiver's one pruner, runs afterwards and promotes the matching cursor to the receiver's

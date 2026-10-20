@@ -17,7 +17,7 @@ const MAX_WAIT: u8 = 3;
 /// The largest answer read, a datagram that fits an Ethernet frame.
 const ANSWER_MAX: usize = 1500;
 
-/// An SSDP search for a UPnP-IGD router (13-net-stack/port-map.md, A router is found by its search
+/// An SSDP search for a UPnP-IGD router (11-net-stack/port-map.md, A router is found by its search
 /// answer or by its announcement), from a socket of its own, which reads answers until its
 /// deadline.
 #[derive(Debug)]

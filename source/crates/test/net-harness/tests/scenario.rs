@@ -498,7 +498,7 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
         );
     }
     // A stall of 2 s, 60 ticks, runs 9, and drops the rest: the clients run 51 ticks ahead of
-    // the server, past the max input lead, until Lightyear steps their timelines back. Each
+    // the server, past the max input lead, until the network stack steps their timelines back. Each
     // player orders its hero on: the order waits until it is within the lead of the server, its
     // stamp never goes back past the last the log holds, and the server acknowledges the tick it
     // applies in, so the client corrects while its timeline steps back, and then no more. Each

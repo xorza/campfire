@@ -3,7 +3,7 @@ use campfire_log::LogEvent;
 use serde::Deserialize;
 use tracing::info;
 
-/// A client's match started: the server gave it `seat`, and sim tick 0 is Lightyear's
+/// A client's match started: the server gave it `seat`, and sim tick 0 is the network stack's
 /// `start_tick`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct MatchStarted {

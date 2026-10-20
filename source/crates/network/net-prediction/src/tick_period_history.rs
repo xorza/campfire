@@ -7,7 +7,7 @@ use campfire_net_timeline::{LocalTimeline, LocalTimelineShift};
 use core::time::Duration;
 
 /// The period each local tick ran with, which a rollback replays it with: a rate change inside the
-/// rollback window leaves the ticks before it at their own period (13-net-stack/time.md, A rollback
+/// rollback window leaves the ticks before it at their own period (11-net-stack/time.md, A rollback
 /// replays each tick at the period it ran with).
 ///
 /// Only the ticks where the period changed hold an entry, and a tick before every entry did not

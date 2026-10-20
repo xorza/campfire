@@ -1,7 +1,7 @@
 //! The vocabulary every stack layer shares, with no engine in it: the app's [`Instant`], a link's
 //! [`LinkDirection`], ticks and their deltas and instants, peer and network ids, the maps from
 //! types to network ids and the registries' hashes, and a link's [`Random`] bytes
-//! (13-net-stack/layering.md, The vocabulary is plain, and the clock and the timelines a glue crate
+//! (11-net-stack/layering.md, The vocabulary is plain, and the clock and the timelines a glue crate
 //! of their own).
 
 mod instant;

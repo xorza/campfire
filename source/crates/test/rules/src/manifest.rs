@@ -4,7 +4,7 @@ use campfire_codec::Toml;
 use serde::Deserialize;
 
 /// A crate's kind, which its manifest names under `[package.metadata.campfire]`
-/// (14-workspace-alignment.md, Every crate declares its kind in its manifest).
+/// (02-engine-core.md, Every crate declares its kind).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum CrateKind {

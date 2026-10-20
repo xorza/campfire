@@ -6,7 +6,7 @@ use crate::single_body::SingleBody;
 /// A message a channel holds until it is sent, or on a reliable channel acknowledged, as a run of
 /// parts: one that fits a packet is one part, a fragmented one a part for each fragment, and each
 /// part is due, in flight or acknowledged. A key names a part, so no key names a shape the
-/// message lacks (14-workspace-alignment.md, A state the code cannot reach is a type).
+/// message lacks (11-net-stack/api.md, A state the code cannot reach is a type).
 #[derive(Debug)]
 pub(crate) enum QueuedMessage {
     Whole { data: SingleBody, state: PartState },

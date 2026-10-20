@@ -22,7 +22,7 @@ use campfire_net_core::NetTick;
 use tracing::trace;
 
 /// The fragmented messages of a channel being built again, each taking its fragments' length from
-/// its fragments, as its sender derives it from its own link (13-net-stack/transport.md, A
+/// its fragments, as its sender derives it from its own link (11-net-stack/transport.md, A
 /// receiver learns each message's fragment size from its fragments).
 #[derive(Debug)]
 pub(crate) struct FragmentReceiver {

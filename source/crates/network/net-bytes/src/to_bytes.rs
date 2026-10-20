@@ -33,7 +33,7 @@ impl<M: ToBytes> ToBytes for Option<M> {
         }
     }
 
-    /// Refuses a tag other than 0 and 1 (14-workspace-alignment.md, A header decodes from one
+    /// Refuses a tag other than 0 and 1 (11-net-stack/packet-session.md, A header decodes from one
     /// encoding).
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError>
     where

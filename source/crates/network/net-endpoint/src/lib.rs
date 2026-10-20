@@ -1,6 +1,6 @@
 //! The stack's endpoints as ECS components: each IO's endpoints on their entities, the frame's two
 //! steps that hand each link's queues to its packet session and back, and the link entity of each
-//! packet session (13-net-stack/packet-session.md, One generic `EndpointPlugin<Io>` registers each
+//! packet session (11-net-stack/packet-session.md, One generic `EndpointPlugin<Io>` registers each
 //! IO's endpoints).
 
 #![expect(

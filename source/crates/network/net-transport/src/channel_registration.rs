@@ -31,7 +31,7 @@ impl<C: Channel> ChannelRegistration<'_, C> {
     /// a link of a side that receives on it its receiver only once the link holds `G`, the app's
     /// mark that it admitted the link: before, a packet on the channel unlinks the peer as a
     /// protocol violation, and nothing on it waits in the link's receive budget
-    /// (13-net-stack/transport.md, A channel opens to a link the app admits). The receiver stays
+    /// (11-net-stack/transport.md, A channel opens to a link the app admits). The receiver stays
     /// for the link's life, as `G` goes and through a reset of its transport.
     pub fn add_direction_after<G: Component>(
         &mut self,

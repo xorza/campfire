@@ -2,7 +2,7 @@ use campfire_math::SplitMix64;
 
 /// Where random bytes come from: the OS in a real run, through `getrandom`, the one source of the
 /// workspace's OS random bytes, and a seed in an emulated or tested one, so a run of a seed
-/// repeats (14-workspace-alignment.md, One source of OS random bytes).
+/// repeats (02-engine-core.md, One source of OS random bytes).
 #[derive(Debug)]
 pub enum Random {
     Os,
