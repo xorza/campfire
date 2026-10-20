@@ -240,6 +240,8 @@ derive_more = { version = "=2.1.1", default-features = false }
 fluent-bundle = { version = "=0.16.0", default-features = false }
 fluent-syntax = { version = "=0.12.0", default-features = false }
 getrandom = { version = "=0.4.3", default-features = false }
+gltf-json = { version = "=1.4.1", default-features = false }
+httparse = { version = "=1.10.1", default-features = false }
 libc = { version = "=0.2.191", default-features = false }
 lz4_flex = { version = "=0.14.0", default-features = false }
 miniz_oxide = { version = "=0.9.1", default-features = false }

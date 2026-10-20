@@ -25,10 +25,7 @@ impl SsdpAnnouncement {
     /// The announcement `datagram` holds, sent from `from`: none for anything but a gateway's
     /// `ssdp:alive` at a location of its sender's address.
     pub(crate) fn parse(datagram: &[u8], from: SocketAddr) -> Option<Self> {
-        let headers = SsdpHeaders::parse(datagram)?;
-        if !headers.start().eq_ignore_ascii_case("NOTIFY * HTTP/1.1") {
-            return None;
-        }
+        let headers = SsdpHeaders::of_notify(datagram)?;
         let alive = headers
             .get("NTS")
             .is_some_and(|nts| nts.eq_ignore_ascii_case("ssdp:alive"));

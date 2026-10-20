@@ -22,6 +22,14 @@ impl Json {
         serde_json::to_string(value).expect("a caller writes only a type JSON holds")
     }
 
+    /// `value` as a `U`, moved through JSON's data model with no text between: as a value a schema
+    /// keeps as JSON, an accessor's bounds in a glTF document among them. An error when the JSON
+    /// of `value` is no `U`; a type JSON cannot hold is a caller's error, and panics.
+    pub fn convert<T: Serialize + ?Sized, U: DeserializeOwned>(value: &T) -> Result<U, JsonError> {
+        let value = serde_json::to_value(value).expect("a caller writes only a type JSON holds");
+        Ok(U::deserialize(value)?)
+    }
+
     /// Writes `value` as `write` gives it into `out`, with no text between: an error only for
     /// `out`'s own.
     pub fn write_into<T: Serialize + ?Sized>(value: &T, out: &mut dyn fmt::Write) -> fmt::Result {
@@ -88,5 +96,9 @@ mod tests {
         let mut out = String::new();
         Json::write_into(&text, &mut out).unwrap();
         assert_eq!(out, Json::write(&text));
+        // Moved into another type of the same JSON, and refused by one of other JSON.
+        let moved: BTreeMap<String, Vec<u16>> = Json::convert(&value).unwrap();
+        assert_eq!(moved["a"], [1, 2]);
+        assert!(Json::convert::<_, Vec<u8>>(&value).is_err());
     }
 }

@@ -87,12 +87,7 @@ impl SsdpSearch {
     /// The router's location in `datagram`, which came from `from`, when it is a search's answer of
     /// success at its sender's address.
     fn answer(datagram: &[u8], from: SocketAddr) -> Option<RouterUrl> {
-        let headers = SsdpHeaders::parse(datagram)?;
-        let status = headers.start().get(..12)?;
-        if !status.eq_ignore_ascii_case("HTTP/1.1 200") {
-            return None;
-        }
-        headers.location_of(from)
+        SsdpHeaders::of_success(datagram)?.location_of(from)
     }
 }
 

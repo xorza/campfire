@@ -1,4 +1,7 @@
+use bevy_math::Vec3;
+
 use crate::pose::Pose;
+use crate::quaternion::Quaternion;
 use crate::zero_hour::format::w3d::error::W3dError;
 use crate::zero_hour::format::w3d::w3d_chunks::W3dChunks;
 use crate::zero_hour::format::w3d::w3d_fields::W3dFields;
@@ -106,8 +109,8 @@ impl Pivot {
     /// Its placement in its parent's frame.
     pub(crate) const fn pose(&self) -> Pose {
         Pose {
-            translation: self.translation,
-            rotation: self.rotation,
+            translation: Vec3::from_array(self.translation),
+            rotation: Quaternion::from_array(self.rotation),
         }
     }
 }

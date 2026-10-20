@@ -1,5 +1,11 @@
-use crate::gltf::gltf_document::GltfDocument;
+use bevy_math::Vec3;
+use campfire_codec::Json;
+use gltf_json::mesh::Semantic;
+use gltf_json::validation::Checked;
+use gltf_json::{Index, Root};
+
 use crate::pose::Pose;
+use crate::quaternion::Quaternion;
 
 /// What a model's top is measured from, as the client draws its glTF: each node's name, its
 /// children, its place in its parent, and the bounds of each primitive of the mesh it draws, by the
@@ -11,37 +17,62 @@ pub(crate) struct ModelBounds {
 }
 
 /// A node of a model as its top is measured: its name, its children, its place in its parent,
-/// and its primitives' bounds, each its least and greatest corner.
+/// and its primitives' bounds.
 #[derive(Debug)]
 struct BoundsNode {
     name: String,
     children: Vec<usize>,
     pose: Pose,
-    bounds: Vec<[[f32; 3]; 2]>,
+    bounds: Vec<BoxBounds>,
+}
+
+/// The bounds of a primitive's positions: their least and greatest corner.
+#[derive(Debug, Clone, Copy)]
+struct BoxBounds {
+    min: Vec3,
+    max: Vec3,
 }
 
 impl ModelBounds {
     /// The model of `document`'s scene.
-    pub(crate) fn of(document: &GltfDocument) -> Self {
+    pub(crate) fn of(document: &Root) -> Self {
+        let positions = Checked::Valid(Semantic::Positions);
         let nodes = document.nodes.iter().map(|node| {
-            let primitives = node.mesh.map(|mesh| &document.meshes[mesh].primitives);
+            let primitives = node
+                .mesh
+                .map(|mesh| &document.meshes[mesh.value()].primitives);
             let bounds = primitives.into_iter().flatten().filter_map(|primitive| {
-                let positions = &document.accessors[primitive.attributes.position];
-                Some([positions.min?, positions.max?])
+                let accessor = &document.accessors[primitive.attributes.get(&positions)?.value()];
+                let corner = |corner| {
+                    Json::convert::<_, Vec3>(corner).expect("a position's bound is 3 floats")
+                };
+                Some(BoxBounds {
+                    min: corner(accessor.min.as_ref()?),
+                    max: corner(accessor.max.as_ref()?),
+                })
             });
             BoundsNode {
-                name: node.name.clone(),
-                children: node.children.clone(),
+                name: node.name.clone().expect("the importer names each node"),
+                children: node.children.iter().flatten().map(Index::value).collect(),
                 pose: Pose {
-                    translation: node.translation.unwrap_or(Pose::IDENTITY.translation),
-                    rotation: node.rotation.unwrap_or(Pose::IDENTITY.rotation),
+                    translation: node
+                        .translation
+                        .map_or(Pose::IDENTITY.translation, Vec3::from_array),
+                    rotation: node.rotation.map_or(Pose::IDENTITY.rotation, |rotation| {
+                        Quaternion::from_array(rotation.0)
+                    }),
                 },
                 bounds: bounds.collect(),
             }
         });
+        let scene = document.scene.map_or(0, |scene| scene.value());
         Self {
             nodes: nodes.collect(),
-            roots: document.scenes[document.scene].nodes.clone(),
+            roots: document.scenes[scene]
+                .nodes
+                .iter()
+                .map(Index::value)
+                .collect(),
         }
     }
 
@@ -70,14 +101,14 @@ impl ModelBounds {
         top
     }
 
-    /// The height of the highest corner of the box from `bounds[0]` to `bounds[1]` placed by
-    /// `pose`: its center's height and its half extents along the rotation's row of the vertical,
-    /// in a fixed order, as `Pose` computes.
-    fn bounds_top(pose: Pose, [least, most]: [[f32; 3]; 2]) -> f32 {
-        let rise = vertical_row(pose.rotation);
-        let center = [0, 1, 2].map(|axis| f32::midpoint(least[axis], most[axis]));
-        let half = [0, 1, 2].map(|axis| (most[axis] - least[axis]) * 0.5);
-        let mut top = pose.translation[1];
+    /// The height of the highest corner of the box of `bounds` placed by `pose`: its center's
+    /// height and its half extents along the rotation's row of the vertical, in a fixed order, as
+    /// `Pose` computes.
+    fn bounds_top(pose: Pose, BoxBounds { min, max }: BoxBounds) -> f32 {
+        let rise = pose.rotation.up_row();
+        let center = Vec3::from_array([0, 1, 2].map(|axis| f32::midpoint(min[axis], max[axis])));
+        let half = (max - min) * 0.5;
+        let mut top = pose.translation.y;
         for axis in 0..3 {
             top += rise[axis] * center[axis];
         }
@@ -86,16 +117,6 @@ impl ModelBounds {
         }
         top
     }
-}
-
-/// The row of the rotation matrix of the unit quaternion `q` that gives a turned vector's height.
-fn vertical_row(q: [f32; 4]) -> [f32; 3] {
-    let [x, y, z, w] = q;
-    [
-        2.0 * (x * y + w * z),
-        1.0 - 2.0 * (x * x + z * z),
-        2.0 * (y * z - w * x),
-    ]
 }
 
 #[cfg(test)]
@@ -114,10 +135,16 @@ mod tests {
             name: name.to_owned(),
             children: children.to_vec(),
             pose: Pose {
-                translation,
-                rotation,
+                translation: Vec3::from_array(translation),
+                rotation: Quaternion::from_array(rotation),
             },
-            bounds: bounds.to_vec(),
+            bounds: bounds
+                .iter()
+                .map(|&[min, max]| BoxBounds {
+                    min: Vec3::from_array(min),
+                    max: Vec3::from_array(max),
+                })
+                .collect(),
         }
     }
 
@@ -128,7 +155,7 @@ mod tests {
         // 1 m deep.
         let quarter = std::f32::consts::FRAC_1_SQRT_2;
         let about_x = [quarter, 0.0, 0.0, quarter];
-        let identity = Pose::IDENTITY.rotation;
+        let identity = Pose::IDENTITY.rotation.to_array();
         let model = ModelBounds {
             nodes: vec![
                 node(
@@ -165,7 +192,7 @@ mod tests {
         // A turret turned the other way, its box's +z up: it spans 1 to 4, over the flash's 1.5 to
         // 2.5; hidden, it hides the flash too, and the hull stands highest.
         let mut up = model;
-        up.nodes[1].pose.rotation = [-quarter, 0.0, 0.0, quarter];
+        up.nodes[1].pose.rotation = Quaternion::from_array([-quarter, 0.0, 0.0, quarter]);
         assert!(near(up.top(&[]), 4.0), "{:?}", up.top(&[]));
         assert!(near(up.top(&["turret".to_owned()]), 1.0));
     }

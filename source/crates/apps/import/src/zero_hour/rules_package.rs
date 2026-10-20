@@ -6,10 +6,10 @@ use campfire_common::DeclaredName;
 use campfire_math::Num;
 use serde::Serialize;
 
-use crate::zero_hour::combat_import::CombatImport;
+use crate::zero_hour::combat_import::{CombatImport, ImportedWeapon};
 use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
 use crate::zero_hour::map_import::SLOTS;
-use crate::zero_hour::production_import::ProductionImport;
+use crate::zero_hour::production_import::{ImportedAction, ProductionImport};
 use crate::zero_hour::skirmish_start::SkirmishStart;
 
 /// Zero Hour's rules package as the importer ships it, `source/packages/zero-hour/`: each file but
@@ -83,65 +83,94 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         combat,
         start_money,
     } = mode;
-    let units: Vec<String> = start
-        .units
-        .iter()
-        .map(|unit| format!("\"{unit}\""))
+    debug_assert!(
+        combat
+            .actions
+            .keys()
+            .all(|name| !production.actions.contains_key(name)),
+        "a weapon and a train or build share no name, as one table holds both"
+    );
+    let teams = (1..=SLOTS)
+        .map(|player| (format!("player_{player}"), format!("team-player-{player}")))
+        .chain([(String::from("neutral"), String::from("team-neutral"))])
+        .map(|(team, name)| (team, TeamToml { name }))
         .collect();
-    let money: Vec<String> = start_money.values.iter().map(ToString::to_string).collect();
-    let mut teams = String::new();
-    for player in 1..=SLOTS {
-        write!(
-            teams,
-            "[teams.player_{player}]\nname = \"team-player-{player}\"\n\n"
-        )
-        .expect("text writes into a string");
-    }
-    let armors = ArmorsToml {
-        combat: CombatToml {
-            armors: &combat.armors,
+    Toml::write(&ModeToml {
+        name: "mode-name",
+        scripts: [ScriptToml {
+            package: "zero-hour",
+            path: "scripts/mode.rhai",
+        }],
+        teams,
+        params: ParamsToml {
+            start_building: &start.building,
+            start_units: &start.units,
+            start_offset: start.offset,
         },
-    }
-    .write();
-    let weapons = ActionsToml {
-        actions: &combat.actions,
-    }
-    .write();
-    let trains = ActionsToml {
-        actions: &production.actions,
-    }
-    .write();
-    format!(
-        r#"name = "mode-name"
-scripts = [{{ package = "zero-hour", path = "scripts/mode.rhai" }}]
-
-{teams}[teams.neutral]
-name = "team-neutral"
-
-[params]
-start_building = "{building}"
-start_units = [{units}]
-start_offset = "{offset}"
-
-[options.start_money]
-values = [{money}]
-default = {default_money}
-
-{armors}
-{weapons}
-{trains}"#,
-        building = start.building,
-        units = units.join(", "),
-        offset = start.offset,
-        money = money.join(", "),
-        default_money = start_money.default,
-    )
+        options: OptionsToml {
+            start_money: MoneyToml {
+                values: &start_money.values,
+                default: start_money.default,
+            },
+        },
+        combat: (!combat.armors.is_empty()).then_some(CombatToml {
+            armors: &combat.armors,
+        }),
+        actions: (!combat.actions.is_empty() || !production.actions.is_empty()).then_some(
+            ActionsToml {
+                weapons: &combat.actions,
+                trains: &production.actions,
+            },
+        ),
+    })
 }
 
-/// The mode data's armors, `[combat.armors.<name>]`.
+/// The imported package's mode data, `data/mode.toml`.
 #[derive(Debug, Serialize)]
-struct ArmorsToml<'a> {
-    combat: CombatToml<'a>,
+struct ModeToml<'a> {
+    name: &'static str,
+    scripts: [ScriptToml; 1],
+    teams: BTreeMap<String, TeamToml>,
+    params: ParamsToml<'a>,
+    options: OptionsToml<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    combat: Option<CombatToml<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    actions: Option<ActionsToml<'a>>,
+}
+
+/// A script of the mode, by its package and its path.
+#[derive(Debug, Serialize)]
+struct ScriptToml {
+    package: &'static str,
+    path: &'static str,
+}
+
+/// A team, by the message of its name.
+#[derive(Debug, Serialize)]
+struct TeamToml {
+    name: String,
+}
+
+/// The mode script's params of what each player starts with.
+#[derive(Debug, Serialize)]
+struct ParamsToml<'a> {
+    start_building: &'a DeclaredName,
+    start_units: &'a [DeclaredName],
+    start_offset: Num,
+}
+
+/// The mode's options: the money each player starts with.
+#[derive(Debug, Serialize)]
+struct OptionsToml<'a> {
+    start_money: MoneyToml<'a>,
+}
+
+/// An option of the money a player starts with: its values, and the one the host gets first.
+#[derive(Debug, Serialize)]
+struct MoneyToml<'a> {
+    values: &'a [u32],
+    default: u32,
 }
 
 /// The armors of `[combat]`, each a share by damage kind.
@@ -150,34 +179,13 @@ struct CombatToml<'a> {
     armors: &'a BTreeMap<DeclaredName, BTreeMap<DeclaredName, Num>>,
 }
 
-/// The mode data's `[actions]`: weapons, or trains and builds.
+/// The mode data's `[actions]`: the weapons, and the trains and builds, in one table.
 #[derive(Debug, Serialize)]
-struct ActionsToml<'a, A> {
-    actions: &'a BTreeMap<DeclaredName, A>,
-}
-
-impl ArmorsToml<'_> {
-    /// Its text; none for no armor, as an empty table writes `armors = {}` under a second
-    /// `[combat]`.
-    fn write(&self) -> String {
-        if self.combat.armors.is_empty() {
-            String::new()
-        } else {
-            Toml::write(self)
-        }
-    }
-}
-
-impl<A: Serialize> ActionsToml<'_, A> {
-    /// Its text; none for no action, as an empty table writes `actions = {}`, a key of the table
-    /// above it.
-    fn write(&self) -> String {
-        if self.actions.is_empty() {
-            String::new()
-        } else {
-            Toml::write(self)
-        }
-    }
+struct ActionsToml<'a> {
+    #[serde(flatten)]
+    weapons: &'a BTreeMap<DeclaredName, ImportedWeapon>,
+    #[serde(flatten)]
+    trains: &'a BTreeMap<DeclaredName, ImportedAction>,
 }
 
 /// The imported package's text in its own language: the names its mode data gives, and each of
@@ -195,33 +203,50 @@ pub(crate) fn mode_text(texts: &BTreeMap<String, String>) -> String {
     text
 }
 
-/// `text` as a Fluent message's value that gives it back: each brace a string literal, each line
-/// past the first indented, a line's leading `[`, `*` or `.`, which Fluent reads as syntax there,
-/// a string literal too, and an empty text an empty literal.
+/// `text` as a Fluent message's value that gives it back: each line past the first indented, and
+/// as a string literal each of what Fluent reads as syntax or drops: a brace, a later line's
+/// leading `[`, `*` or `.`, the spaces that start or end a line, and an empty line.
 fn fluent_value(text: &str) -> String {
-    if text.is_empty() {
-        return r#"{""}"#.to_owned();
-    }
     let mut value = String::with_capacity(text.len());
     for (at, line) in text.split('\n').enumerate() {
         if at > 0 {
             value.push_str("\n    ");
         }
-        for (place, char) in line.chars().enumerate() {
+        let core = line.trim_matches(' ');
+        if core.is_empty() {
+            push_literal(&mut value, line);
+            continue;
+        }
+        let lead = &line[..line.len() - line.trim_start_matches(' ').len()];
+        let trail = &line[line.trim_end_matches(' ').len()..];
+        if !lead.is_empty() {
+            push_literal(&mut value, lead);
+        }
+        for (place, char) in core.char_indices() {
             match char {
-                '{' | '}' => write!(value, r#"{{"{char}"}}"#).expect("text writes into a string"),
-                '[' | '*' | '.' if place == 0 && at > 0 => {
-                    write!(value, r#"{{"{char}"}}"#).expect("text writes into a string");
+                '{' | '}' => push_literal(&mut value, &core[place..=place]),
+                '[' | '*' | '.' if place == 0 && at > 0 && lead.is_empty() => {
+                    push_literal(&mut value, &core[place..=place]);
                 }
                 _ => value.push(char),
             }
+        }
+        if !trail.is_empty() {
+            push_literal(&mut value, trail);
         }
     }
     value
 }
 
+/// Pushes `text`, of no quote or backslash, as a Fluent string literal.
+fn push_literal(value: &mut String, text: &str) {
+    write!(value, r#"{{"{text}"}}"#).expect("text writes into a string");
+}
+
 #[cfg(test)]
 mod tests {
+    use fluent_syntax::ast::{Entry, Expression, InlineExpression, PatternElement};
+    use fluent_syntax::parser;
     use serde::de::IgnoredAny;
 
     use super::*;
@@ -318,6 +343,27 @@ mod tests {
         assert_eq!(rules.defaults.turret.slot, "weapon");
     }
 
+    /// The text the Fluent message `value` gives, as `fluent-syntax` parses it.
+    fn read_back(value: &str) -> String {
+        let source = format!("key = {value}\n");
+        let resource = parser::parse(source.as_str()).expect("a message parses");
+        let [Entry::Message(message)] = resource.body.as_slice() else {
+            panic!("one message: {source:?}");
+        };
+        let pattern = message.value.as_ref().expect("a message with a value");
+        pattern
+            .elements
+            .iter()
+            .map(|element| match element {
+                PatternElement::TextElement { value } => *value,
+                PatternElement::Placeable {
+                    expression: Expression::Inline(InlineExpression::StringLiteral { value }),
+                } => *value,
+                PatternElement::Placeable { .. } => panic!("a literal: {source:?}"),
+            })
+            .collect()
+    }
+
     #[test]
     fn a_name_is_a_fluent_value_that_gives_it_back() {
         // Plain text is itself; braces are string literals; a later line is indented, its
@@ -330,6 +376,27 @@ mod tests {
             "[x]\n    {\"[\"}y]\n    {\"*\"}z\n    {\".\"}w"
         );
         assert_eq!(fluent_value(""), r#"{""}"#);
+        // Fluent's own parser reads each back as it was, the spaces that start or end a line and
+        // the empty lines among them.
+        for text in [
+            "Dozer",
+            "",
+            "a {b}",
+            "[x]\n[y]\n*z\n.w",
+            "  lead",
+            "trail  ",
+            "a\n  b",
+            "a\n\nb",
+            "a\n",
+            "\nb",
+            "tab\tx",
+            "}{",
+            "   ",
+            " a \n b \n",
+            "a\n .b",
+        ] {
+            assert_eq!(read_back(&fluent_value(text)), text, "{text:?}");
+        }
         // A mode's text holds its names, each of its eight players' teams among them, then
         // each action's.
         let texts = [("action-train-a".to_owned(), "A & {B}".to_owned())].into();

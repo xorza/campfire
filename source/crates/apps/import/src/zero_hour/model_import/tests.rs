@@ -2,9 +2,13 @@ use campfire_client_files::{Blend, MaterialExtras, TeamPaint};
 use campfire_codec::Json;
 use campfire_store::internals::TestDir;
 
+use gltf_json::material::AlphaMode;
+use gltf_json::mesh::{Primitive, Semantic};
+use gltf_json::texture::WrappingMode;
+use gltf_json::validation::Checked;
+use gltf_json::{Accessor, Index, Material, Root};
+
 use super::*;
-use crate::gltf::glb_builder::{CLAMP_TO_EDGE, REPEAT};
-use crate::gltf::gltf_document::GltfDocument;
 use crate::texture::srgb;
 use crate::zero_hour::format::w3d::hierarchy::Pivot;
 use crate::zero_hour::format::w3d::w3d_mesh::samples::GRADIENT_MODULATE;
@@ -20,8 +24,31 @@ fn convert(name: &str, assets: &mut ModelAssets<'_>) -> ModelImport {
     }
 }
 
+/// The accessor of `semantic` that `primitive` draws with.
+fn attribute(primitive: &Primitive, semantic: Semantic) -> Option<Index<Accessor>> {
+    primitive.attributes.get(&Checked::Valid(semantic)).copied()
+}
+
+/// The places `indices` name.
+fn places<'a, T: 'a>(indices: impl IntoIterator<Item = &'a Index<T>>) -> Vec<usize> {
+    indices.into_iter().map(Index::value).collect()
+}
+
+/// `material`'s extras, which its own extension holds.
+fn extras(material: &Material) -> Option<MaterialExtras> {
+    let extensions = material.extensions.as_ref()?;
+    let value = extensions.others.get(MaterialExtras::EXTENSION)?;
+    Some(Json::convert(value).unwrap())
+}
+
+/// Whether `material` is unlit.
+fn is_unlit(material: &Material) -> bool {
+    let extensions = material.extensions.as_ref();
+    extensions.is_some_and(|extensions| extensions.unlit.is_some())
+}
+
 /// Each material's name, base color, texture, alpha mode, two-sidedness and emissive color.
-type MaterialRow<'a> = (&'a str, [f32; 4], Option<usize>, &'a str, bool, [f32; 3]);
+type MaterialRow<'a> = (&'a str, [f32; 4], Option<usize>, AlphaMode, bool, [f32; 3]);
 
 /// Each node's name, children, translation, rotation and mesh.
 type NodeRow<'a> = (
@@ -55,11 +82,11 @@ fn an_hlod_becomes_nodes_on_its_pivots_with_meshes_on_glb_axes() {
         .iter()
         .map(|node| {
             (
-                node.name.as_str(),
-                node.children.clone(),
+                node.name.as_deref().unwrap(),
+                places(node.children.iter().flatten()),
                 node.translation,
-                node.rotation,
-                node.mesh,
+                node.rotation.map(|rotation| rotation.0),
+                node.mesh.map(|mesh| mesh.value()),
             )
         })
         .collect();
@@ -88,11 +115,11 @@ fn an_hlod_becomes_nodes_on_its_pivots_with_meshes_on_glb_axes() {
             ("tank.skin", vec![], None, None, Some(3)),
         ]
     );
-    assert_eq!(document.scenes[0].nodes, [0, 6]);
+    assert_eq!(places(&document.scenes[0].nodes), [0, 6]);
     let names: Vec<&str> = document
         .meshes
         .iter()
-        .map(|mesh| mesh.name.as_str())
+        .map(|mesh| mesh.name.as_deref().unwrap())
         .collect();
     assert_eq!(
         names,
@@ -103,41 +130,48 @@ fn an_hlod_becomes_nodes_on_its_pivots_with_meshes_on_glb_axes() {
     // as no texture sorts before one, then its textured one.
     let glb = &tank.glb;
     let hull = &document.meshes[0].primitives;
-    let attributes = &hull[0].attributes;
+    let hull_of = |semantic| attribute(&hull[0], semantic).unwrap();
     assert_eq!(
-        glb.floats_of(attributes.position),
+        glb.floats_of(hull_of(Semantic::Positions)),
         [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, 0.0, -1.0]
     );
-    assert_eq!(glb.floats_of(attributes.normal), [0.0, 1.0, 0.0].repeat(4));
+    assert_eq!(
+        glb.floats_of(hull_of(Semantic::Normals)),
+        [0.0, 1.0, 0.0].repeat(4)
+    );
     // The last vertex's `NaN` and infinite coordinates are 0.
     assert_eq!(
-        glb.floats_of(attributes.texcoord.unwrap()),
+        glb.floats_of(hull_of(Semantic::TexCoords(0))),
         [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0]
     );
     assert_eq!(
-        glb.colors_of(attributes.color.unwrap()),
+        glb.colors_of(hull_of(Semantic::Colors(0))),
         [10, 20, 30, 40].repeat(4)
     );
     assert_eq!(hull.len(), 2);
-    assert_eq!(glb.indices_of(hull[0].indices), [2, 1, 3]);
-    assert_eq!(glb.indices_of(hull[1].indices), [0, 1, 2]);
-    assert_eq!((hull[0].material, hull[1].material), (0, 1));
+    assert_eq!(glb.indices_of(hull[0].indices.unwrap()), [2, 1, 3]);
+    assert_eq!(glb.indices_of(hull[1].indices.unwrap()), [0, 1, 2]);
+    assert_eq!(
+        places(hull.iter().flat_map(|primitive| &primitive.material)),
+        [0, 1]
+    );
 
     // The turret's zero normals: the first vertex's from its triangle's corners (0, 0, 0),
     // (1, 0, 0) and (0, 1, 0), whose normal is (0, 0, 1); the vertex no triangle uses, up.
     // Its other normals, (0, −1, 0), are (0, 0, 1) on glTF's axes.
     let turret = &document.meshes[1].primitives[0];
     assert_eq!(
-        glb.floats_of(turret.attributes.normal),
+        glb.floats_of(attribute(turret, Semantic::Normals).unwrap()),
         [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0]
     );
-    assert_eq!(turret.attributes.texcoord, None);
+    assert_eq!(attribute(turret, Semantic::TexCoords(0)), None);
 
     // The flash's stage of no coordinates samples D3D's (0, 0), which is glTF's, at each
     // vertex; its texture is in no archive, so its triangle is untextured.
     let flash = &document.meshes[2].primitives[0];
-    assert_eq!(glb.floats_of(flash.attributes.texcoord.unwrap()), [0.0; 6]);
-    assert_eq!(flash.attributes.color, None);
+    let flash_coordinates = attribute(flash, Semantic::TexCoords(0)).unwrap();
+    assert_eq!(glb.floats_of(flash_coordinates), [0.0; 6]);
+    assert_eq!(attribute(flash, Semantic::Colors(0)), None);
 
     // The skin's vertices placed by the turret's pose into the model's frame: the half turn
     // takes (x, y, z) to (−x, −y, z), then the move by (1, 2, 3): (1, 0, 0) to (0, 2, 3),
@@ -145,16 +179,17 @@ fn an_hlod_becomes_nodes_on_its_pivots_with_meshes_on_glb_axes() {
     // and (1, 4, −2). Its normals turn with it, (0, 0, 1) staying up.
     let skin = &document.meshes[3].primitives[0];
     assert_eq!(
-        glb.floats_of(skin.attributes.position),
+        glb.floats_of(attribute(skin, Semantic::Positions).unwrap()),
         [0.0, 3.0, -2.0, 1.0, 3.0, -1.0, 1.0, 4.0, -2.0]
     );
     assert_eq!(
-        glb.floats_of(skin.attributes.normal),
+        glb.floats_of(attribute(skin, Semantic::Normals).unwrap()),
         [0.0, 1.0, 0.0].repeat(3)
     );
     // The turret and the skin share one material: of no texture, under the default shader,
     // which textures.
-    assert_eq!((turret.material, skin.material, flash.material), (2, 2, 3));
+    let materials = [turret, skin, flash].map(|primitive| primitive.material.unwrap().value());
+    assert_eq!(materials, [2, 2, 3]);
 }
 
 #[test]
@@ -171,35 +206,36 @@ fn an_hlod_s_materials_are_its_shaders_and_its_parts_what_its_look_reads() {
         .materials
         .iter()
         .map(|material| {
-            let texture = material.pbr.texture.as_ref().map(|texture| texture.index);
+            let pbr = &material.pbr_metallic_roughness;
+            let texture = pbr.base_color_texture.as_ref();
             (
-                material.name.as_str(),
-                material.pbr.base_color,
-                texture,
-                material.alpha_mode,
+                material.name.as_deref().unwrap(),
+                pbr.base_color_factor.0,
+                texture.map(|texture| texture.index.value()),
+                *material.alpha_mode.as_ref().unwrap(),
                 material.double_sided,
-                material.emissive,
+                material.emissive_factor.0,
             )
         })
         .collect();
     assert_eq!(
         rows,
         [
-            ("tank_0", [0.0; 4], None, "OPAQUE", false, [0.0; 3]),
+            ("tank_0", [0.0; 4], None, AlphaMode::Opaque, false, [0.0; 3]),
             (
                 "tank_1",
                 [1.0, half, 0.0, 1.0],
                 Some(0),
-                "OPAQUE",
+                AlphaMode::Opaque,
                 false,
                 [0.0; 3]
             ),
-            ("tank_2", [0.0; 4], None, "OPAQUE", false, [0.0; 3]),
+            ("tank_2", [0.0; 4], None, AlphaMode::Opaque, false, [0.0; 3]),
             (
                 "tank_3",
                 [1.0, 0.0, 1.0, 127.0 / 255.0],
                 None,
-                "BLEND",
+                AlphaMode::Blend,
                 true,
                 [1.0, 0.0, 0.0]
             ),
@@ -209,15 +245,13 @@ fn an_hlod_s_materials_are_its_shaders_and_its_parts_what_its_look_reads() {
     // flash alone has extras, of its additive blend and no depth write, which its extension
     // names.
     for material in &document.materials {
-        let pbr = &material.pbr;
-        let extensions = &material.extensions;
-        assert_eq!((pbr.metallic, pbr.roughness), (0.0, 1.0));
-        assert_eq!(extensions.specular.factor, 0.0);
-        assert!(extensions.unlit.is_none());
+        let pbr = &material.pbr_metallic_roughness;
+        let extensions = material.extensions.as_ref().unwrap();
+        assert_eq!((pbr.metallic_factor.0, pbr.roughness_factor.0), (0.0, 1.0));
+        assert_eq!(extensions.specular.as_ref().unwrap().specular_factor.0, 0.0);
+        assert!(!is_unlit(material));
     }
-    let extras: Vec<Option<MaterialExtras>> = (document.materials.iter())
-        .map(|material| material.extensions.extras)
-        .collect();
+    let extras: Vec<Option<MaterialExtras>> = document.materials.iter().map(extras).collect();
     let flash = MaterialExtras {
         blend: Blend::Add,
         depth_write: false,
@@ -229,10 +263,17 @@ fn an_hlod_s_materials_are_its_shaders_and_its_parts_what_its_look_reads() {
         document.extensions_used,
         ["CAMPFIRE_material_extras", "KHR_materials_specular"]
     );
-    assert_eq!(document.images[0].uri, "../textures/art/textures/rock.ktx2");
     assert_eq!(
-        (document.samplers[0].wrap_s, document.samplers[0].wrap_t),
-        (CLAMP_TO_EDGE, REPEAT)
+        document.images[0].uri.as_deref(),
+        Some("../textures/art/textures/rock.ktx2")
+    );
+    let sampler = &document.samplers[0];
+    assert_eq!(
+        (
+            sampler.wrap_s.as_ref().unwrap(),
+            sampler.wrap_t.as_ref().unwrap()
+        ),
+        (&WrappingMode::ClampToEdge, &WrappingMode::Repeat)
     );
     // Its aggregate, which no glTF node draws, is reported by its name.
     assert_eq!(tank.aggregates, ["tank.smoke"]);
@@ -285,15 +326,18 @@ fn a_name_is_an_hlod_a_mesh_alone_or_a_render_object_that_draws_nothing() {
     let document = &hull.glb.document;
     assert_eq!(document.nodes.len(), 1);
     assert_eq!(
-        (document.nodes[0].name.as_str(), document.nodes[0].mesh),
-        ("tank.hull", Some(0))
+        (
+            document.nodes[0].name.as_deref(),
+            document.nodes[0].mesh.map(|mesh| mesh.value())
+        ),
+        (Some("tank.hull"), Some(0))
     );
-    assert_eq!(document.scenes[0].nodes, [0]);
-    assert_eq!(document.materials[0].name, "tank.hull_0");
+    assert_eq!(places(&document.scenes[0].nodes), [0]);
+    assert_eq!(document.materials[0].name.as_deref(), Some("tank.hull_0"));
     // A mesh of an empty container is named alone; its file is the language directory's, as
     // the other `Rock01.w3d` is no W3D file.
     let rock = convert("rock01", &mut assets);
-    assert_eq!(rock.glb.document.nodes[0].name, "rock01");
+    assert_eq!(rock.glb.document.nodes[0].name.as_deref(), Some("rock01"));
     // `NULL` and a box alone draw nothing; an emitter is not converted; a name of no file
     // and a name its file lacks are missing.
     let outcome = |name: &str, assets: &mut ModelAssets<'_>| match ModelImport::convert(
@@ -435,25 +479,26 @@ fn a_shader_of_no_primary_gradient_draws_its_texture_alone_unlit() {
     };
     // Each material's base color, whether it is textured, its emissive light and whether it
     // is unlit; whether each primitive has vertex colors.
-    let rows = |document: &GltfDocument| -> Vec<([f32; 4], bool, [f32; 3], bool)> {
+    let rows = |document: &Root| -> Vec<([f32; 4], bool, [f32; 3], bool)> {
         document
             .materials
             .iter()
             .map(|material| {
+                let pbr = &material.pbr_metallic_roughness;
                 (
-                    material.pbr.base_color,
-                    material.pbr.texture.is_some(),
-                    material.emissive,
-                    material.extensions.unlit.is_some(),
+                    pbr.base_color_factor.0,
+                    pbr.base_color_texture.is_some(),
+                    material.emissive_factor.0,
+                    is_unlit(material),
                 )
             })
             .collect()
     };
-    let colored = |document: &GltfDocument| -> Vec<bool> {
+    let colored = |document: &Root| -> Vec<bool> {
         document.meshes[0]
             .primitives
             .iter()
-            .map(|primitive| primitive.attributes.color.is_some())
+            .map(|primitive| attribute(primitive, Semantic::Colors(0)).is_some())
             .collect()
     };
     // Lit, the texture times the diffuse color, half opaque; the missing texture's
@@ -488,11 +533,13 @@ fn a_shader_of_no_primary_gradient_draws_its_texture_alone_unlit() {
         unlit.extensions_used,
         ["KHR_materials_specular", "KHR_materials_unlit"]
     );
-    // As glTF's JSON writes them: a specular factor of 0, and the unlit extension an empty
-    // object.
+    // As glTF's JSON writes them: a specular factor of 0 beside the default color factor, and
+    // the unlit extension an empty object.
     let json = Json::write(&unlit);
     assert!(
-        json.contains(r#""KHR_materials_specular":{"specularFactor":0.0}"#),
+        json.contains(
+            r#""KHR_materials_specular":{"specularFactor":0.0,"specularColorFactor":[1.0,1.0,1.0]}"#
+        ),
         "{json}"
     );
     assert!(json.contains(r#""KHR_materials_unlit":{}"#), "{json}");
@@ -566,15 +613,15 @@ fn a_triangle_of_no_texture_draws_what_its_shader_makes_of_the_null_vector() {
         .mesh(&mesh, None, &ModelTextures::of([&mesh], &assets))
         .unwrap();
     let document = &builder.glb.document;
-    let rows: Vec<([f32; 4], &str, [f32; 3])> = document.meshes[0]
+    let rows: Vec<([f32; 4], AlphaMode, [f32; 3])> = document.meshes[0]
         .primitives
         .iter()
         .map(|primitive| {
-            let material = &document.materials[primitive.material];
+            let material = &document.materials[primitive.material.unwrap().value()];
             (
-                material.pbr.base_color,
-                material.alpha_mode,
-                material.emissive,
+                material.pbr_metallic_roughness.base_color_factor.0,
+                *material.alpha_mode.as_ref().unwrap(),
+                material.emissive_factor.0,
             )
         })
         .collect();
@@ -588,15 +635,15 @@ fn a_triangle_of_no_texture_draws_what_its_shader_makes_of_the_null_vector() {
     assert_eq!(
         rows,
         [
-            (lit, "OPAQUE", [1.0, 0.0, 0.0]),
-            ([0.0; 4], "OPAQUE", [0.0; 3]),
-            ([0.0; 4], "MASK", [0.0; 3]),
-            ([0.0; 4], "BLEND", [0.0; 3]),
-            ([1.0, half, 0.0, 0.0], "OPAQUE", [1.0, 0.0, 0.0]),
-            ([0.0; 4], "OPAQUE", [0.0; 3]),
-            ([0.0; 4], "OPAQUE", [0.0; 3]),
-            ([0.0; 4], "BLEND", [0.0; 3]),
-            ([0.0; 4], "BLEND", [0.0; 3]),
+            (lit, AlphaMode::Opaque, [1.0, 0.0, 0.0]),
+            ([0.0; 4], AlphaMode::Opaque, [0.0; 3]),
+            ([0.0; 4], AlphaMode::Mask, [0.0; 3]),
+            ([0.0; 4], AlphaMode::Blend, [0.0; 3]),
+            ([1.0, half, 0.0, 0.0], AlphaMode::Opaque, [1.0, 0.0, 0.0]),
+            ([0.0; 4], AlphaMode::Opaque, [0.0; 3]),
+            ([0.0; 4], AlphaMode::Opaque, [0.0; 3]),
+            ([0.0; 4], AlphaMode::Blend, [0.0; 3]),
+            ([0.0; 4], AlphaMode::Blend, [0.0; 3]),
         ]
     );
 }
@@ -683,11 +730,11 @@ fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
     let [glow, fade] = [0, 1].map(|at| &document.meshes[at].primitives);
     // Each primitive of a mesh draws its one list of vertices.
     for primitives in [glow, fade] {
-        let position = primitives[0].attributes.position;
+        let position = attribute(&primitives[0], Semantic::Positions);
         assert!(
             primitives
                 .iter()
-                .all(|primitive| primitive.attributes.position == position)
+                .all(|primitive| attribute(primitive, Semantic::Positions) == position)
         );
     }
     // The glow: its first pass by shader, then its detail stage by shader, then its second
@@ -697,7 +744,7 @@ fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
         .map(|primitive| {
             builder
                 .glb
-                .floats_of(primitive.attributes.texcoord.unwrap())
+                .floats_of(attribute(primitive, Semantic::TexCoords(0)).unwrap())
         })
         .collect();
     let uv = |u: f32, v: f32| [u, v].repeat(4);
@@ -713,12 +760,15 @@ fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
     );
     let triangles: Vec<usize> = glow
         .iter()
-        .map(|primitive| document.accessors[primitive.indices].count / 3)
+        .map(|primitive| {
+            let indices = &document.accessors[primitive.indices.unwrap().value()];
+            usize::try_from(indices.count.0).unwrap() / 3
+        })
         .collect();
     assert_eq!(triangles, [1, 1, 1, 1, 2]);
     assert!(
         glow.iter()
-            .all(|primitive| primitive.attributes.color.is_none())
+            .all(|primitive| attribute(primitive, Semantic::Colors(0)).is_none())
     );
     // Each layer's material has its extras, of its blend and its depth bias over the one
     // under it: the detail stage's, white and unlit, multiplying for scale and adding for
@@ -729,18 +779,18 @@ fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
         let at = document
             .materials
             .iter()
-            .position(|material| material.name == name);
+            .position(|material| material.name.as_deref() == Some(name));
         &document.materials[at.unwrap()]
     };
-    let extras = |name: &str| material(name).extensions.extras;
-    let unlit = |name: &str| material(name).extensions.unlit.is_some();
+    let extras = |name: &str| extras(material(name));
+    let unlit = |name: &str| is_unlit(material(name));
     let layer = |blend, depth_bias| MaterialExtras {
         blend,
         depth_write: false,
         depth_bias,
         team: TeamPaint::NONE,
     };
-    let materials: Vec<usize> = glow.iter().map(|primitive| primitive.material).collect();
+    let materials = places(glow.iter().flat_map(|primitive| &primitive.material));
     assert_eq!(materials, [0, 1, 2, 3, 4]);
     assert_eq!((extras("layers_0"), extras("layers_1")), (None, None));
     assert_eq!(extras("layers_2"), Some(layer(Blend::Multiply, 1)));
@@ -750,11 +800,18 @@ fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
     assert_eq!(lit, [true, true, false]);
     // The fade: its first pass of no colors; its second of its own, alpha 64 of 255, by
     // alpha, 1 up.
-    assert_eq!(fade[0].attributes.color, None);
-    let colors = builder.glb.colors_of(fade[1].attributes.color.unwrap());
+    assert_eq!(attribute(&fade[0], Semantic::Colors(0)), None);
+    let colors = builder
+        .glb
+        .colors_of(attribute(&fade[1], Semantic::Colors(0)).unwrap());
     assert_eq!(colors, [255, 255, 255, 64].repeat(3));
     assert_eq!(extras("layers_6"), Some(layer(Blend::Alpha, 1)));
-    assert!(material("layers_6").pbr.texture.is_none());
+    assert!(
+        material("layers_6")
+            .pbr_metallic_roughness
+            .base_color_texture
+            .is_none()
+    );
     // A detail function no shipped shader uses is refused.
     let mut odd = glow_mesh;
     odd.shaders[0].detail_color = 3;

@@ -58,6 +58,12 @@ clap = { workspace = true, features = [
     "usage",
 ] }
 derive_more = { workspace = true, features = ["display"] }
+gltf-json = { workspace = true, features = [
+    "KHR_materials_specular",
+    "KHR_materials_unlit",
+    "extensions",
+    "names",
+] }
 miniz_oxide = { workspace = true, features = ["with-alloc"] }
 serde = { workspace = true, features = ["derive", "rc", "std"] }
 thiserror = { workspace = true, features = ["std"] }
@@ -67,6 +73,8 @@ tracing = { workspace = true, features = ["attributes", "std"] }
 campfire-declarations = { workspace = true, features = ["internals"] }
 campfire-import = { workspace = true, features = ["internals"] }
 campfire-sim = { workspace = true, features = ["internals"] }
+
+fluent-syntax.workspace = true
 
 [lints]
 workspace = true

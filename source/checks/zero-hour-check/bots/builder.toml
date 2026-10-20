@@ -9,57 +9,57 @@
 [[order]]
 tick = 1
 units = "americavehicledozer"
-action.orders.build = { slot = "build_americapowerplant", target.point = { at = [861, -2103], angle = -135 } }
+directive.orders.build = { slot = "build_americapowerplant", target.point = { at = [861, -2103], angle = -135 } }
 
 [[order]]
 tick = 600
 units = "americavehicledozer"
-action.orders.build = { slot = "build_americabarracks", target.point = { at = [861, -2303], angle = -135 } }
+directive.orders.build = { slot = "build_americabarracks", target.point = { at = [861, -2303], angle = -135 } }
 
 [[order]]
 tick = 1200
 units = "americavehicledozer"
-action.orders.build = { slot = "build_americasupplycenter", target.point = { at = [1161, -2103], angle = -135 } }
+directive.orders.build = { slot = "build_americasupplycenter", target.point = { at = [1161, -2103], angle = -135 } }
 
 # The barracks' rangers and missile defender.
 [[order]]
 tick = 1300
 units = "americabarracks"
-action.orders.slot = { slot = "train_americainfantryranger", target = "none" }
+directive.orders.slot = { slot = "train_americainfantryranger", target = "none" }
 
 [[order]]
 tick = 1301
 units = "americabarracks"
-action.orders.slot = { slot = "train_americainfantrymissiledefender", target = "none" }
+directive.orders.slot = { slot = "train_americainfantrymissiledefender", target = "none" }
 
 [[order]]
 tick = 1302
 units = "americabarracks"
-action.orders.slot = { slot = "train_americainfantryranger", target = "none" }
+directive.orders.slot = { slot = "train_americainfantryranger", target = "none" }
 
 [[order]]
 tick = 2050
 units = "americavehicledozer"
-action.orders.build = { slot = "build_americawarfactory", target.point = { at = [1161, -2333], angle = -135 } }
+directive.orders.build = { slot = "build_americawarfactory", target.point = { at = [1161, -2333], angle = -135 } }
 
 # The war factory's crusaders and humvee.
 [[order]]
 tick = 2950
 units = "americawarfactory"
-action.orders.slot = { slot = "train_americatankcrusader", target = "none" }
+directive.orders.slot = { slot = "train_americatankcrusader", target = "none" }
 
 [[order]]
 tick = 2951
 units = "americawarfactory"
-action.orders.slot = { slot = "train_americavehiclehumvee", target = "none" }
+directive.orders.slot = { slot = "train_americavehiclehumvee", target = "none" }
 
 [[order]]
 tick = 2952
 units = "americawarfactory"
-action.orders.slot = { slot = "train_americatankcrusader", target = "none" }
+directive.orders.slot = { slot = "train_americatankcrusader", target = "none" }
 
 # The center's second dozer.
 [[order]]
 tick = 3000
 units = "americacommandcenter"
-action.orders.slot = { slot = "train_americavehicledozer", target = "none" }
+directive.orders.slot = { slot = "train_americavehicledozer", target = "none" }

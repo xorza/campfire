@@ -164,7 +164,7 @@ fn each_action_is_a_command_of_its_owner() {
             Capability::Items,
         ),
     ];
-    for (action, capability) in owned {
-        assert_eq!(action.capability(), capability, "{action:?}");
+    for (directive, capability) in owned {
+        assert_eq!(directive.capability(), capability, "{directive:?}");
     }
 }

@@ -1,9 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use bevy_math::Vec3;
 use campfire_client_files::{Blend, TeamPaint};
 
+use gltf_json::mesh::{Mode, Primitive, Semantic};
+use gltf_json::scene::UnitQuaternion;
+use gltf_json::texture::Info;
+use gltf_json::validation::Checked;
+use gltf_json::{Accessor, Extras, Index, Material, Mesh, Node};
+
 use crate::gltf::glb_builder::GlbBuilder;
-use crate::gltf::gltf_document::{Attributes, Mesh, Node, Primitive, TextureRef};
 use crate::pose::Pose;
 use crate::zero_hour::axes;
 use crate::zero_hour::error::ModelError;
@@ -54,19 +60,25 @@ impl ModelBuilder {
             return Err(ModelError::Pivot);
         }
         let poses = hierarchy.poses();
-        for pivot in &hierarchy.pivots {
-            let pose = pivot.pose();
-            self.glb.document.nodes.push(Node {
-                name: pivot.name.clone(),
-                translation: Some(axes::y_up(pose.translation)),
-                rotation: Some(axes::y_up_rotation(pose.rotation)),
-                ..Node::default()
-            });
-        }
-        for (at, pivot) in hierarchy.pivots.iter().enumerate() {
+        let pivots: Vec<Index<Node>> = hierarchy
+            .pivots
+            .iter()
+            .map(|pivot| {
+                let pose = pivot.pose();
+                self.glb.document.push(Node {
+                    name: Some(pivot.name.clone()),
+                    translation: Some(axes::y_up(pose.translation.to_array())),
+                    rotation: Some(UnitQuaternion(axes::y_up_rotation(
+                        pose.rotation.to_array(),
+                    ))),
+                    ..Node::default()
+                })
+            })
+            .collect();
+        for (&node, pivot) in pivots.iter().zip(&hierarchy.pivots) {
             match pivot.parent {
-                Some(parent) => self.glb.document.nodes[parent].children.push(at),
-                None => self.glb.document.scenes[0].nodes.push(at),
+                Some(parent) => self.child(pivots[parent], node),
+                None => self.glb.scene().nodes.push(node),
             }
         }
         let mut nodes = ModelNodes {
@@ -91,16 +103,15 @@ impl ModelBuilder {
                 continue;
             };
             let mesh_index = self.mesh(mesh, Some(&poses), textures)?;
-            let node = self.glb.document.nodes.len();
-            self.glb.document.nodes.push(Node {
-                name: sub.name.clone(),
+            let node = self.glb.document.push(Node {
+                name: Some(sub.name.clone()),
                 mesh: Some(mesh_index),
                 ..Node::default()
             });
             if mesh.bones.is_some() {
-                self.glb.document.scenes[0].nodes.push(node);
+                self.glb.scene().nodes.push(node);
             } else {
-                self.glb.document.nodes[sub.pivot].children.push(node);
+                self.child(pivots[sub.pivot], node);
             }
             nodes.sub_objects.push(LookSubObject {
                 name: sub.name.clone(),
@@ -118,9 +129,19 @@ impl ModelBuilder {
             .iter()
             .find(|node| !names.insert(&node.name))
         {
-            return Err(ModelError::NodeName(twice.name.clone()));
+            return Err(ModelError::NodeName(
+                twice.name.clone().expect("the builder names each node"),
+            ));
         }
         Ok(nodes)
+    }
+
+    /// Makes `child` a child of `parent`.
+    fn child(&mut self, parent: Index<Node>, child: Index<Node>) {
+        self.glb.document.nodes[parent.value()]
+            .children
+            .get_or_insert_with(Vec::new)
+            .push(child);
     }
 
     /// A mesh alone: one node of it, at the scene's root.
@@ -133,12 +154,12 @@ impl ModelBuilder {
             return Err(ModelError::SkinAlone);
         }
         let mesh_index = self.mesh(mesh, None, textures)?;
-        self.glb.document.nodes.push(Node {
-            name: mesh.name.clone(),
+        let node = self.glb.document.push(Node {
+            name: Some(mesh.name.clone()),
             mesh: Some(mesh_index),
             ..Node::default()
         });
-        self.glb.document.scenes[0].nodes.push(0);
+        self.glb.scene().nodes.push(node);
         Ok(ModelNodes {
             sub_objects: vec![LookSubObject {
                 name: mesh.name.clone(),
@@ -160,7 +181,7 @@ impl ModelBuilder {
         mesh: &W3dMesh,
         poses: Option<&[Pose]>,
         textures: &ModelTextures,
-    ) -> Result<usize, ModelError> {
+    ) -> Result<Index<Mesh>, ModelError> {
         // A glTF mesh needs a primitive; none of the shipped meshes a model draws lacks one.
         if mesh.triangles.is_empty() {
             return Err(ModelError::Empty(mesh.name.clone()));
@@ -178,17 +199,26 @@ impl ModelBuilder {
         let mut normals = Vec::with_capacity(mesh.normals.len());
         for (vertex, (position, normal)) in mesh.positions.iter().zip(&mesh.normals).enumerate() {
             let pose = pose_of(vertex)?;
-            positions.push(axes::y_up(pose.place(*position)));
-            normals.push(axes::y_up(pose.rotate(*normal)));
+            positions.push(axes::y_up(
+                pose.place(Vec3::from_array(*position)).to_array(),
+            ));
+            normals.push(axes::y_up(
+                pose.rotate(Vec3::from_array(*normal)).to_array(),
+            ));
         }
         Self::fill_zero_normals(&positions, &mesh.triangles, &mut normals);
         let position = self.glb.positions(&positions);
         let normal = self.glb.vectors(&normals);
-        let attributes = |texcoord, color| Attributes {
-            position,
-            normal,
-            texcoord,
-            color,
+        let attributes = |texcoord: Option<Index<Accessor>>, color: Option<Index<Accessor>>| {
+            [
+                (Semantic::Positions, Some(position)),
+                (Semantic::Normals, Some(normal)),
+                (Semantic::TexCoords(0), texcoord),
+                (Semantic::Colors(0), color),
+            ]
+            .into_iter()
+            .filter_map(|(semantic, accessor)| Some((Checked::Valid(semantic), accessor?)))
+            .collect()
         };
         let mut primitives = Vec::new();
         // Each pass, and its detail stage, draws over what is drawn before it, one depth bias up.
@@ -232,11 +262,11 @@ impl ModelBuilder {
                 let material = self.material(key)?;
                 let indices = self.glb.indices(&indices);
                 let color = color.filter(|_| !shader.is_unlit());
-                primitives.push(Primitive {
-                    attributes: attributes(texcoord, color),
+                primitives.push(Self::primitive(
+                    attributes(texcoord, color),
                     indices,
                     material,
-                });
+                ));
             }
             depth_bias += 1;
             let Some(detail) = &pass.detail else {
@@ -270,19 +300,38 @@ impl ModelBuilder {
                 };
                 let material = self.material(key)?;
                 let indices = self.glb.indices(&indices);
-                primitives.push(Primitive {
-                    attributes: attributes(texcoord, None),
+                primitives.push(Self::primitive(
+                    attributes(texcoord, None),
                     indices,
                     material,
-                });
+                ));
             }
             depth_bias += 1;
         }
-        self.glb.document.meshes.push(Mesh {
-            name: mesh.name.clone(),
+        Ok(self.glb.document.push(Mesh {
+            extensions: None,
+            extras: Extras::default(),
+            name: Some(mesh.name.clone()),
             primitives,
-        });
-        Ok(self.glb.document.meshes.len() - 1)
+            weights: None,
+        }))
+    }
+
+    /// A primitive of triangles of `attributes`, drawn in the order of `indices` with `material`.
+    fn primitive(
+        attributes: BTreeMap<Checked<Semantic>, Index<Accessor>>,
+        indices: Index<Accessor>,
+        material: Index<Material>,
+    ) -> Primitive {
+        Primitive {
+            attributes,
+            extensions: None,
+            extras: Extras::default(),
+            indices: Some(indices),
+            material: Some(material),
+            mode: Checked::Valid(Mode::Triangles),
+            targets: None,
+        }
     }
 
     /// Whether the game's vertex colors are its diffuse color, as `MeshMatDescClass` makes them
@@ -303,7 +352,7 @@ impl ModelBuilder {
     /// texture origin at the top, which is glTF's too. A stage with no coordinates samples `0, 0`
     /// at every vertex, D3D's and glTF's alike; a coordinate that is not finite, which glTF
     /// forbids and the game's GPU samples as it will, is 0 there too.
-    fn coordinates(&mut self, stage: &Stage, vertices: usize) -> usize {
+    fn coordinates(&mut self, stage: &Stage, vertices: usize) -> Index<Accessor> {
         let finite = |value: f32| if value.is_finite() { value } else { 0.0 };
         let flipped: Vec<[f32; 2]> = if stage.coordinates.is_empty() {
             vec![[0.0; 2]; vertices]
@@ -317,9 +366,6 @@ impl ModelBuilder {
         self.glb.coordinates(&flipped)
     }
 
-    /// What a triangle of the texture `id` of `mesh` is drawn with: nothing for none, the
-    /// archives' file of its name, or `MissingTexture` for a name no archive holds, which the
-    /// report names.
     /// How a team colors a material of `mesh`, of a pass's vertex materials if `pass`, of the
     /// texture `id` that draws as `surface`: a texture no archive holds draws as the game's
     /// `MissingTexture`, which no team recolors.
@@ -334,6 +380,9 @@ impl ModelBuilder {
         w3d_material::team_paint(&mesh.name, pass, texture)
     }
 
+    /// What a triangle of the texture `id` of `mesh` is drawn with: nothing for none, the
+    /// archives' file of its name, or `MissingTexture` for a name no archive holds, which the
+    /// report names.
     fn surface(&mut self, mesh: &W3dMesh, id: Option<u32>, textures: &ModelTextures) -> Surface {
         let Some(id) = id else {
             return Surface::Untextured;
@@ -398,21 +447,30 @@ impl ModelBuilder {
     }
 
     /// The glTF material of `key`, the model's `<name>_<index>`, made at its first use.
-    fn material(&mut self, key: MaterialKey) -> Result<usize, ModelError> {
+    fn material(&mut self, key: MaterialKey) -> Result<Index<Material>, ModelError> {
         if let Some(at) = self.keys.iter().position(|known| *known == key) {
-            return Ok(at);
+            return Ok(Index::new(
+                u32::try_from(at).expect("a model's materials fit u32"),
+            ));
         }
         let name = format!("{}_{}", self.name, self.keys.len());
         let model = game_path::model(&self.name)?;
         let KeyMaterial { mut gltf, texture } = key.convert(&name, &model)?;
-        gltf.pbr.texture = texture.map(|texture| TextureRef {
+        gltf.pbr_metallic_roughness.base_color_texture = texture.map(|texture| Info {
             index: self
                 .glb
                 .texture(texture.uri, texture.wrap_s, texture.wrap_t),
+            tex_coord: 0,
+            extensions: None,
+            extras: Extras::default(),
         });
         let at = self.glb.material(gltf);
         self.keys.push(key);
-        debug_assert_eq!(at, self.keys.len() - 1, "a key is its material's index");
+        debug_assert_eq!(
+            at.value(),
+            self.keys.len() - 1,
+            "a key is its material's index"
+        );
         Ok(at)
     }
 }

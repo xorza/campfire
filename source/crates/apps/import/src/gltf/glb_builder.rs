@@ -1,28 +1,57 @@
-use campfire_client_files::MaterialExtras;
 use campfire_codec::Json;
-
-use crate::gltf::gltf_document::{
-    Accessor, Asset, Buffer, BufferView, GltfDocument, Image, Material, Sampler, Scene, Texture,
+use campfire_common::ErrorReport;
+use gltf_json::accessor::{ComponentType, GenericComponentType, Type};
+use gltf_json::buffer::{Target, View};
+use gltf_json::texture::{Sampler, WrappingMode};
+use gltf_json::validation::{Checked, USize64, Validate};
+use gltf_json::{
+    Accessor, Asset, Buffer, Extras, Image, Index, Material, Path, Root, Scene, Texture,
 };
 
-/// A glTF document and its one buffer, which `encode` writes as a GLB file: a 12-byte header,
-/// the JSON chunk padded with spaces, and the buffer's chunk padded with zeros, each to 4 bytes.
+/// A glTF document of `gltf-json`'s schema and its one buffer, which `encode` writes as a GLB
+/// file: a 12-byte header, the JSON chunk padded with spaces, and the buffer's chunk padded with
+/// zeros, each to 4 bytes.
 #[derive(Debug)]
 pub(crate) struct GlbBuilder {
-    pub(crate) document: GltfDocument,
+    pub(crate) document: Root,
     buffer: Vec<u8>,
 }
 
-/// glTF's component types and buffer targets.
-const FLOAT: u32 = 5126;
-const UNSIGNED_BYTE: u32 = 5121;
-const UNSIGNED_INT: u32 = 5125;
-const ARRAY_BUFFER: u32 = 34962;
-const ELEMENT_ARRAY_BUFFER: u32 = 34963;
+/// What an accessor's elements are, and the target of their view.
+#[derive(Debug, Clone, Copy)]
+struct Elements {
+    component: ComponentType,
+    kind: Type,
+    /// Whether an integer component reads as 0 to 1.
+    normalized: bool,
+    target: Target,
+}
 
-/// A sampler's wraps.
-pub(crate) const REPEAT: u32 = 10497;
-pub(crate) const CLAMP_TO_EDGE: u32 = 33071;
+impl Elements {
+    const VEC3: Self = Self::floats(Type::Vec3);
+    const VEC2: Self = Self::floats(Type::Vec2);
+    const COLORS: Self = Self {
+        component: ComponentType::U8,
+        kind: Type::Vec4,
+        normalized: true,
+        target: Target::ArrayBuffer,
+    };
+    const INDICES: Self = Self {
+        component: ComponentType::U32,
+        kind: Type::Scalar,
+        normalized: false,
+        target: Target::ElementArrayBuffer,
+    };
+
+    const fn floats(kind: Type) -> Self {
+        Self {
+            component: ComponentType::F32,
+            kind,
+            normalized: false,
+            target: Target::ArrayBuffer,
+        }
+    }
+}
 
 /// GLB's magic, `glTF`, its version, and its chunks' types, `JSON` and `BIN\0`.
 const MAGIC: u32 = 0x4654_6C67;
@@ -32,22 +61,34 @@ const BIN_CHUNK: u32 = 0x004E_4942;
 
 impl GlbBuilder {
     pub(crate) fn new() -> Self {
-        Self {
-            document: GltfDocument {
-                asset: Asset {
-                    version: "2.0",
-                    generator: "campfire-import",
-                },
-                scene: 0,
-                scenes: vec![Scene::default()],
-                ..GltfDocument::default()
+        let mut document = Root {
+            asset: Asset {
+                version: String::from("2.0"),
+                generator: Some(String::from("campfire-import")),
+                ..Asset::default()
             },
+            ..Root::default()
+        };
+        let scene = document.push(Scene {
+            extensions: None,
+            extras: Extras::default(),
+            name: None,
+            nodes: Vec::new(),
+        });
+        document.scene = Some(scene);
+        Self {
+            document,
             buffer: Vec::new(),
         }
     }
 
+    /// The document's one scene.
+    pub(crate) fn scene(&mut self) -> &mut Scene {
+        &mut self.document.scenes[0]
+    }
+
     /// An accessor of `vectors`, with their bounds, as glTF requires of positions.
-    pub(crate) fn positions(&mut self, vectors: &[[f32; 3]]) -> usize {
+    pub(crate) fn positions(&mut self, vectors: &[[f32; 3]]) -> Index<Accessor> {
         let mut min = [f32::INFINITY; 3];
         let mut max = [f32::NEG_INFINITY; 3];
         for vector in vectors {
@@ -56,98 +97,104 @@ impl GlbBuilder {
                 max[axis] = max[axis].max(vector[axis]);
             }
         }
-        let accessor = self.floats(vectors.iter().flatten().copied(), vectors.len(), "VEC3");
-        let bounds = &mut self.document.accessors[accessor];
-        bounds.min = Some(min);
-        bounds.max = Some(max);
+        let accessor = self.floats(
+            vectors.iter().flatten().copied(),
+            vectors.len(),
+            Elements::VEC3,
+        );
+        let bounds = &mut self.document.accessors[accessor.value()];
+        bounds.min = Some(Json::convert(&min).expect("three floats are JSON"));
+        bounds.max = Some(Json::convert(&max).expect("three floats are JSON"));
         accessor
     }
 
     /// An accessor of `vectors`.
-    pub(crate) fn vectors(&mut self, vectors: &[[f32; 3]]) -> usize {
-        self.floats(vectors.iter().flatten().copied(), vectors.len(), "VEC3")
-    }
-
-    pub(crate) fn coordinates(&mut self, coordinates: &[[f32; 2]]) -> usize {
+    pub(crate) fn vectors(&mut self, vectors: &[[f32; 3]]) -> Index<Accessor> {
         self.floats(
-            coordinates.iter().flatten().copied(),
-            coordinates.len(),
-            "VEC2",
+            vectors.iter().flatten().copied(),
+            vectors.len(),
+            Elements::VEC3,
         )
     }
 
-    /// An accessor of colors, each 4 bytes read as 0 to 1.
-    pub(crate) fn colors(&mut self, colors: &[[u8; 4]]) -> usize {
-        let view = self.view(colors.iter().flatten().copied().collect(), ARRAY_BUFFER);
-        self.accessor(Accessor {
-            buffer_view: view,
-            component_type: UNSIGNED_BYTE,
-            normalized: true,
-            count: colors.len(),
-            kind: "VEC4",
-            min: None,
-            max: None,
-        })
+    pub(crate) fn coordinates(&mut self, coordinates: &[[f32; 2]]) -> Index<Accessor> {
+        let floats = coordinates.iter().flatten().copied();
+        self.floats(floats, coordinates.len(), Elements::VEC2)
     }
 
-    pub(crate) fn indices(&mut self, indices: &[u32]) -> usize {
+    /// An accessor of colors, each 4 bytes read as 0 to 1.
+    pub(crate) fn colors(&mut self, colors: &[[u8; 4]]) -> Index<Accessor> {
+        let bytes = colors.iter().flatten().copied().collect();
+        self.accessor(bytes, colors.len(), Elements::COLORS)
+    }
+
+    pub(crate) fn indices(&mut self, indices: &[u32]) -> Index<Accessor> {
         let bytes = indices
             .iter()
             .flat_map(|index| index.to_le_bytes())
             .collect();
-        let view = self.view(bytes, ELEMENT_ARRAY_BUFFER);
-        self.accessor(Accessor {
-            buffer_view: view,
-            component_type: UNSIGNED_INT,
-            normalized: false,
-            count: indices.len(),
-            kind: "SCALAR",
-            min: None,
-            max: None,
-        })
+        self.accessor(bytes, indices.len(), Elements::INDICES)
     }
 
     /// A texture of the image at `uri`, wrapped as `wrap_s` and `wrap_t`.
-    pub(crate) fn texture(&mut self, uri: String, wrap_s: u32, wrap_t: u32) -> usize {
+    pub(crate) fn texture(
+        &mut self,
+        uri: String,
+        wrap_s: WrappingMode,
+        wrap_t: WrappingMode,
+    ) -> Index<Texture> {
         let document = &mut self.document;
-        document.images.push(Image { uri });
-        document.samplers.push(Sampler { wrap_s, wrap_t });
-        document.textures.push(Texture {
-            sampler: document.samplers.len() - 1,
-            source: document.images.len() - 1,
+        let source = document.push(Image {
+            buffer_view: None,
+            mime_type: None,
+            name: None,
+            uri: Some(uri),
+            extensions: None,
+            extras: Extras::default(),
         });
-        document.textures.len() - 1
+        let sampler = document.push(Sampler {
+            wrap_s: Checked::Valid(wrap_s),
+            wrap_t: Checked::Valid(wrap_t),
+            ..Sampler::default()
+        });
+        document.push(Texture {
+            name: None,
+            sampler: Some(sampler),
+            source,
+            extensions: None,
+            extras: Extras::default(),
+        })
     }
 
     /// `material`'s index, with each extension it uses in `extensionsUsed`, in name order.
-    pub(crate) fn material(&mut self, material: Material) -> usize {
-        let extensions = &material.extensions;
-        let unlit = extensions.unlit.is_some().then_some("KHR_materials_unlit");
-        let extras = extensions
-            .extras
-            .is_some()
-            .then_some(MaterialExtras::EXTENSION);
-        let used = &mut self.document.extensions_used;
-        for extension in ["KHR_materials_specular"]
-            .into_iter()
-            .chain(unlit)
-            .chain(extras)
-        {
-            if let Err(at) = used.binary_search(&extension) {
-                used.insert(at, extension);
+    pub(crate) fn material(&mut self, material: Material) -> Index<Material> {
+        if let Some(extensions) = &material.extensions {
+            let specular = extensions
+                .specular
+                .is_some()
+                .then_some("KHR_materials_specular");
+            let unlit = extensions.unlit.is_some().then_some("KHR_materials_unlit");
+            let others = extensions.others.keys().map(String::as_str);
+            let used = &mut self.document.extensions_used;
+            for extension in specular.into_iter().chain(unlit).chain(others) {
+                if let Err(at) = used.binary_search_by(|known| known.as_str().cmp(extension)) {
+                    used.insert(at, extension.to_owned());
+                }
             }
         }
-        self.document.materials.push(material);
-        self.document.materials.len() - 1
+        self.document.push(material)
     }
 
-    /// The GLB file's bytes.
+    /// The GLB file's bytes. A debug build checks the document against glTF's schema first.
     pub(crate) fn encode(mut self) -> Vec<u8> {
-        if !self.buffer.is_empty() {
-            self.document.buffers.push(Buffer {
-                byte_length: self.buffer.len(),
-            });
+        if let Some(buffer) = self.document.buffers.first_mut() {
+            buffer.byte_length = USize64::from(self.buffer.len());
         }
+        debug_assert_eq!(
+            Self::problems(&self.document),
+            Vec::<String>::new(),
+            "the importer writes a valid glTF"
+        );
         let mut json = Json::write(&self.document).into_bytes();
         json.resize(json.len().next_multiple_of(4), b' ');
         let mut buffer = self.buffer;
@@ -181,42 +228,64 @@ impl GlbBuilder {
         out
     }
 
+    /// Each problem glTF's schema finds in `document`, by its path.
+    fn problems(document: &Root) -> Vec<String> {
+        let mut problems = Vec::new();
+        document.validate(document, Path::new, &mut |path, error| {
+            problems.push(format!("{}: {}", path(), ErrorReport::of(&error)));
+        });
+        problems
+    }
+
     fn floats(
         &mut self,
         floats: impl Iterator<Item = f32>,
         count: usize,
-        kind: &'static str,
-    ) -> usize {
-        let view = self.view(floats.flat_map(f32::to_le_bytes).collect(), ARRAY_BUFFER);
-        self.accessor(Accessor {
-            buffer_view: view,
-            component_type: FLOAT,
-            normalized: false,
-            count,
-            kind,
-            min: None,
-            max: None,
-        })
+        elements: Elements,
+    ) -> Index<Accessor> {
+        let bytes = floats.flat_map(f32::to_le_bytes).collect();
+        self.accessor(bytes, count, elements)
     }
 
-    /// A buffer view of `bytes`, at the buffer's end aligned to 4, as every accessor's
-    /// components need.
-    fn view(&mut self, bytes: Vec<u8>, target: u32) -> usize {
+    /// An accessor of `count` `elements`, whose `bytes` its own view holds, at the buffer's end
+    /// aligned to 4, as every accessor's components need. The first adds the one buffer, whose
+    /// length `encode` sets.
+    fn accessor(&mut self, bytes: Vec<u8>, count: usize, elements: Elements) -> Index<Accessor> {
+        if self.document.buffers.is_empty() {
+            self.document.push(Buffer {
+                byte_length: USize64(0),
+                name: None,
+                uri: None,
+                extensions: None,
+                extras: Extras::default(),
+            });
+        }
         self.buffer.resize(self.buffer.len().next_multiple_of(4), 0);
-        self.document.buffer_views.push(BufferView {
-            buffer: 0,
-            byte_offset: self.buffer.len(),
-            byte_length: bytes.len(),
-            target,
+        let view = self.document.push(View {
+            buffer: Index::new(0),
+            byte_length: USize64::from(bytes.len()),
+            byte_offset: Some(USize64::from(self.buffer.len())),
+            byte_stride: None,
+            name: None,
+            target: Some(Checked::Valid(elements.target)),
+            extensions: None,
+            extras: Extras::default(),
         });
         self.buffer.extend(bytes);
-        self.document.buffer_views.len() - 1
-    }
-
-    /// Adds `accessor`; its place.
-    fn accessor(&mut self, accessor: Accessor) -> usize {
-        self.document.accessors.push(accessor);
-        self.document.accessors.len() - 1
+        self.document.push(Accessor {
+            buffer_view: Some(view),
+            byte_offset: None,
+            count: USize64::from(count),
+            component_type: Checked::Valid(GenericComponentType(elements.component)),
+            extensions: None,
+            extras: Extras::default(),
+            type_: Checked::Valid(elements.kind),
+            min: None,
+            max: None,
+            name: None,
+            normalized: elements.normalized,
+            sparse: None,
+        })
     }
 }
 
@@ -226,24 +295,29 @@ pub(crate) mod reach_in {
 
     impl GlbBuilder {
         /// The bytes of `accessor`, as its view holds them.
-        fn bytes_of(&self, accessor: usize) -> &[u8] {
-            let view = &self.document.buffer_views[self.document.accessors[accessor].buffer_view];
-            &self.buffer[view.byte_offset..view.byte_offset + view.byte_length]
+        fn bytes_of(&self, accessor: Index<Accessor>) -> &[u8] {
+            let view = self.document.accessors[accessor.value()]
+                .buffer_view
+                .expect("an accessor of a view");
+            let view = &self.document.buffer_views[view.value()];
+            let start = usize::try_from(view.byte_offset.unwrap_or_default().0).unwrap();
+            let len = usize::try_from(view.byte_length.0).unwrap();
+            &self.buffer[start..start + len]
         }
 
-        pub(crate) fn floats_of(&self, accessor: usize) -> Vec<f32> {
+        pub(crate) fn floats_of(&self, accessor: Index<Accessor>) -> Vec<f32> {
             let (words, rest) = self.bytes_of(accessor).as_chunks::<4>();
             assert!(rest.is_empty());
             words.iter().copied().map(f32::from_le_bytes).collect()
         }
 
-        pub(crate) fn indices_of(&self, accessor: usize) -> Vec<u32> {
+        pub(crate) fn indices_of(&self, accessor: Index<Accessor>) -> Vec<u32> {
             let (words, rest) = self.bytes_of(accessor).as_chunks::<4>();
             assert!(rest.is_empty());
             words.iter().copied().map(u32::from_le_bytes).collect()
         }
 
-        pub(crate) fn colors_of(&self, accessor: usize) -> Vec<u8> {
+        pub(crate) fn colors_of(&self, accessor: Index<Accessor>) -> Vec<u8> {
             self.bytes_of(accessor).to_vec()
         }
     }
@@ -258,17 +332,24 @@ mod tests {
         let mut glb = GlbBuilder::new();
         let position = glb.positions(&[[1.0, 2.0, 3.0], [4.0, -5.0, 6.0]]);
         let color = glb.colors(&[[1, 2, 3, 4]]);
-        let texture = glb.texture("../a.ktx2".to_owned(), CLAMP_TO_EDGE, REPEAT);
-        assert_eq!((position, color, texture), (0, 1, 0));
+        let texture = glb.texture(
+            "../a.ktx2".to_owned(),
+            WrappingMode::ClampToEdge,
+            WrappingMode::Repeat,
+        );
+        assert_eq!(
+            [position.value(), color.value(), texture.value()],
+            [0, 1, 0]
+        );
         assert_eq!(glb.floats_of(position), [1.0, 2.0, 3.0, 4.0, -5.0, 6.0]);
         assert_eq!(glb.colors_of(color), [1, 2, 3, 4]);
         let json = concat!(
-            r#"{"asset":{"version":"2.0","generator":"campfire-import"},"scene":0,"scenes":[{"nodes":[]}],"nodes":[],"#,
-            r#""accessors":[{"bufferView":0,"componentType":5126,"count":2,"type":"VEC3","min":[1.0,-5.0,3.0],"max":[4.0,2.0,6.0]},"#,
-            r#"{"bufferView":1,"componentType":5121,"normalized":true,"count":1,"type":"VEC4"}],"#,
-            r#""bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":24,"target":34962},{"buffer":0,"byteOffset":24,"byteLength":4,"target":34962}],"#,
-            r#""buffers":[{"byteLength":28}],"textures":[{"sampler":0,"source":0}],"images":[{"uri":"../a.ktx2"}],"#,
-            r#""samplers":[{"wrapS":33071,"wrapT":10497}]}"#,
+            r#"{"accessors":[{"bufferView":0,"count":2,"componentType":5126,"type":"VEC3","min":[1.0,-5.0,3.0],"max":[4.0,2.0,6.0]},"#,
+            r#"{"bufferView":1,"count":1,"componentType":5121,"type":"VEC4","normalized":true}],"#,
+            r#""asset":{"generator":"campfire-import","version":"2.0"},"buffers":[{"byteLength":28}],"#,
+            r#""bufferViews":[{"buffer":0,"byteLength":24,"byteOffset":0,"target":34962},{"buffer":0,"byteLength":4,"byteOffset":24,"target":34962}],"#,
+            r#""scene":0,"images":[{"uri":"../a.ktx2"}],"samplers":[{"wrapS":33071,"wrapT":10497}],"scenes":[{}],"#,
+            r#""textures":[{"sampler":0,"source":0}]}"#,
         );
         // The JSON padded with spaces to 4 bytes; the buffer, 28 bytes, needs none.
         let padded = json.len().next_multiple_of(4);
@@ -277,12 +358,12 @@ mod tests {
         assert_eq!(bytes[..4], *b"glTF");
         assert_eq!(bytes[4..8], word(2));
         assert_eq!(bytes[8..12], word(bytes.len()));
-        assert_eq!(bytes.len(), 12 + 8 + padded + 8 + 28);
         assert_eq!(bytes[12..16], word(padded));
         assert_eq!(bytes[16..20], *b"JSON");
         let text = &bytes[20..20 + padded];
-        assert_eq!(&text[..json.len()], json.as_bytes());
+        assert_eq!(str::from_utf8(&text[..json.len()]).unwrap(), json);
         assert!(text[json.len()..].iter().all(|&byte| byte == b' '));
+        assert_eq!(bytes.len(), 12 + 8 + padded + 8 + 28);
         let bin = &bytes[20 + padded..];
         assert_eq!(bin[..4], word(28));
         assert_eq!(bin[4..8], *b"BIN\0");
@@ -290,8 +371,22 @@ mod tests {
         assert_eq!(bin[32..], [1, 2, 3, 4]);
         // A model of no buffer, as one of boxes alone, holds no buffer and no BIN chunk.
         let empty = GlbBuilder::new().encode();
-        let json = r#"{"asset":{"version":"2.0","generator":"campfire-import"},"scene":0,"scenes":[{"nodes":[]}],"nodes":[]}"#;
+        let json =
+            r#"{"asset":{"generator":"campfire-import","version":"2.0"},"scene":0,"scenes":[{}]}"#;
         assert_eq!(empty.len(), 12 + 8 + json.len().next_multiple_of(4));
-        assert_eq!(&empty[20..20 + json.len()], json.as_bytes());
+        assert_eq!(str::from_utf8(&empty[20..20 + json.len()]).unwrap(), json);
+    }
+
+    /// A document that breaks glTF's schema, a primitive's accessor past the last, is found.
+    #[test]
+    fn a_document_against_gltf_s_schema_is_found() {
+        let mut glb = GlbBuilder::new();
+        glb.positions(&[[0.0; 3]]);
+        assert!(GlbBuilder::problems(&glb.document).is_empty());
+        glb.document.accessors[0].buffer_view = Some(Index::new(5));
+        assert_eq!(
+            GlbBuilder::problems(&glb.document),
+            ["accessors[0].bufferView: Index out of bounds"]
+        );
     }
 }

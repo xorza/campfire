@@ -12,6 +12,7 @@ campfire-store.workspace = true
 campfire-common.workspace = true
 campfire-net-core.workspace = true
 
+httparse.workspace = true
 netdev = { workspace = true, features = ["gateway"] }
 polling.workspace = true
 thiserror = { workspace = true, features = ["std"] }

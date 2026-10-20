@@ -1,8 +1,17 @@
 use campfire_client_files::{Blend, MaterialExtras, TeamPaint};
+use campfire_codec::Json;
 use campfire_values::PackagePath;
+use gltf_json::Material;
+use gltf_json::extensions::material::{
+    Material as MaterialExtensions, Specular, SpecularFactor, Unlit,
+};
+use gltf_json::material::{
+    AlphaCutoff, AlphaMode, EmissiveFactor, PbrBaseColorFactor, PbrMetallicRoughness,
+    StrengthFactor,
+};
+use gltf_json::texture::WrappingMode;
+use gltf_json::validation::Checked;
 
-use crate::gltf::glb_builder::{CLAMP_TO_EDGE, REPEAT};
-use crate::gltf::gltf_document::{Material, MaterialExtensions, Pbr, Specular, Unlit};
 use crate::texture::srgb;
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::ModelError;
@@ -58,8 +67,8 @@ pub(super) struct KeyMaterial {
 #[derive(Debug)]
 pub(super) struct KeyTexture {
     pub(super) uri: String,
-    pub(super) wrap_s: u32,
-    pub(super) wrap_t: u32,
+    pub(super) wrap_s: WrappingMode,
+    pub(super) wrap_t: WrappingMode,
 }
 
 /// Every material's metallic, roughness and specular factors: a W3D material is lit by its
@@ -139,7 +148,13 @@ impl MaterialKey {
         let texture = match &self.surface {
             Surface::Texture { path, flags } => {
                 let held = |flag: u16| flags & flag != 0;
-                let wrap = |flag| if held(flag) { CLAMP_TO_EDGE } else { REPEAT };
+                let wrap = |flag| {
+                    if held(flag) {
+                        WrappingMode::ClampToEdge
+                    } else {
+                        WrappingMode::Repeat
+                    }
+                };
                 Some(KeyTexture {
                     uri: game_path::relative_uri(model, &path.texture_path()?),
                     wrap_s: wrap(CLAMP_U),
@@ -149,9 +164,9 @@ impl MaterialKey {
             Surface::Untextured | Surface::Missing => None,
         };
         let (alpha_mode, alpha_cutoff, gltf_depth_write) = match blend {
-            Blend::Opaque => ("OPAQUE", None, true),
-            Blend::Mask { cutoff } => ("MASK", Some(cutoff), true),
-            _ => ("BLEND", None, false),
+            Blend::Opaque => (AlphaMode::Opaque, None, true),
+            Blend::Mask { cutoff } => (AlphaMode::Mask, Some(AlphaCutoff(cutoff)), true),
+            _ => (AlphaMode::Blend, None, false),
         };
         let says_all = matches!(blend, Blend::Opaque | Blend::Mask { .. } | Blend::Alpha)
             && gltf_depth_write == depth_write
@@ -163,23 +178,35 @@ impl MaterialKey {
             depth_bias: self.depth_bias,
             team: self.team,
         });
+        let others = extras
+            .map(|extras| {
+                let value = Json::convert(&extras).expect("a material's extras are a JSON object");
+                (MaterialExtras::EXTENSION.to_owned(), value)
+            })
+            .into_iter()
+            .collect();
         let gltf = Material {
-            name: name.to_owned(),
-            pbr: Pbr {
-                base_color,
-                texture: None,
-                metallic: METALLIC,
-                roughness: ROUGHNESS,
+            name: Some(name.to_owned()),
+            pbr_metallic_roughness: PbrMetallicRoughness {
+                base_color_factor: PbrBaseColorFactor(base_color),
+                metallic_factor: StrengthFactor(METALLIC),
+                roughness_factor: StrengthFactor(ROUGHNESS),
+                ..PbrMetallicRoughness::default()
             },
-            emissive,
-            alpha_mode,
+            emissive_factor: EmissiveFactor(emissive),
+            alpha_mode: Checked::Valid(alpha_mode),
             alpha_cutoff,
             double_sided: self.two_sided,
-            extensions: MaterialExtensions {
-                specular: Specular { factor: SPECULAR },
-                unlit: unlit.then_some(Unlit {}),
-                extras,
-            },
+            extensions: Some(MaterialExtensions {
+                specular: Some(Specular {
+                    specular_factor: SpecularFactor(SPECULAR),
+                    ..Specular::default()
+                }),
+                unlit: unlit.then(Unlit::default),
+                others,
+                ..MaterialExtensions::default()
+            }),
+            ..Material::default()
         };
         Ok(KeyMaterial { gltf, texture })
     }
@@ -298,13 +325,15 @@ mod tests {
         };
         let plain = key(TeamPaint::NONE).convert("plain", &model).unwrap().gltf;
         let tinted = key(tint).convert("tinted", &model).unwrap().gltf;
-        assert_eq!(plain.pbr.base_color[..3], [1.0, 0.0, 0.0]);
-        assert_eq!(tinted.pbr.base_color[..3], [1.0, 0.0, 1.0]);
-        assert_eq!(plain.extensions.extras, None);
-        assert_eq!(
-            tinted.extensions.extras.map(|extras| extras.team),
-            Some(tint)
-        );
+        let color = |material: &Material| material.pbr_metallic_roughness.base_color_factor.0;
+        assert_eq!(color(&plain)[..3], [1.0, 0.0, 0.0]);
+        assert_eq!(color(&tinted)[..3], [1.0, 0.0, 1.0]);
+        let extras = |material: &Material| -> Option<MaterialExtras> {
+            let others = &material.extensions.as_ref()?.others;
+            Some(Json::convert(others.get(MaterialExtras::EXTENSION)?).unwrap())
+        };
+        assert_eq!(extras(&plain), None);
+        assert_eq!(extras(&tinted).map(|extras| extras.team), Some(tint));
     }
 
     #[test]

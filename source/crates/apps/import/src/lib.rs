@@ -4,6 +4,7 @@
 
 mod gltf;
 mod pose;
+mod quaternion;
 mod texture;
 mod zero_hour;
 
