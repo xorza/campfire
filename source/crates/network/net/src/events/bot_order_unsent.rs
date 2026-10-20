@@ -1,19 +1,19 @@
 use campfire_bots::{Named, OrderUnsent};
-use campfire_capabilities::Action;
+use campfire_capabilities::Directive;
 use campfire_common::Seat;
 use campfire_log::{JsonText, LogEvent, LogLine};
 use serde::Deserialize;
 use tracing::warn;
 
 /// A bot's due order went unsent to all of the units of `seat` it commands or to some, with why
-/// and its action as its script names it.
+/// and its directive as its script names it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub(crate) struct BotOrderUnsent {
     pub seat: Seat,
     #[serde(deserialize_with = "LogLine::json")]
     pub cause: OrderUnsent,
     #[serde(deserialize_with = "LogLine::json")]
-    pub action: Action<Named>,
+    pub directive: Directive<Named>,
 }
 
 impl LogEvent for BotOrderUnsent {
@@ -24,7 +24,7 @@ impl LogEvent for BotOrderUnsent {
         warn!(
             seat = self.seat.get(),
             cause = %JsonText(&self.cause),
-            action = %JsonText(&self.action),
+            directive = %JsonText(&self.directive),
             "{}",
             Self::MESSAGE
         );
@@ -35,7 +35,7 @@ impl LogEvent for BotOrderUnsent {
 mod tests {
     use campfire_common::DeclaredName;
     use campfire_log::internals::round_trip;
-    use campfire_progression::ProgressionAction;
+    use campfire_progression::ProgressionDirective;
 
     use super::*;
 
@@ -45,7 +45,7 @@ mod tests {
         round_trip(&BotOrderUnsent {
             seat: Seat::new(1),
             cause: OrderUnsent::NoSlot,
-            action: Action::Progression(ProgressionAction::Learn { slot }),
+            directive: Directive::Progression(ProgressionDirective::Learn { slot }),
         });
     }
 }

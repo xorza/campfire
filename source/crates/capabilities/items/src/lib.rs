@@ -10,13 +10,13 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionSlots, ActionsSet, CastSpends, ProgressDues, SlotClaims, SlotsMut, UseGroup,
+    ActionSlots, ActionsSystems, CastSpends, ProgressDues, SlotClaims, SlotsMut, UseGroup,
 };
 use campfire_common::EnumAll;
-use campfire_declare::{
-    ByType, Declarations, InstallCx, Module, ModuleSet, NamedMessages, SetPlace,
+use campfire_declarations::{
+    ByType, Declarations, InstallCx, Module, ModuleSystems, NamedTexts, SetPlace,
 };
-use campfire_sim::{Capability, SimSet, StableId};
+use campfire_sim::{Capability, SimSystems, StableId};
 use campfire_units::BodyUnit;
 
 use crate::inventory::CarrierSlots;
@@ -29,9 +29,9 @@ mod item_book;
 mod item_books;
 mod item_data;
 mod item_holds;
-mod items_action;
 mod items_api;
 mod items_data;
+mod items_directive;
 mod items_rules;
 mod shop;
 mod shop_data;
@@ -45,9 +45,9 @@ pub use crate::inventory_data::InventoryData;
 pub use crate::item_book::{ItemBook, ItemSpec};
 pub use crate::item_data::ItemData;
 pub use crate::item_holds::ItemHolds;
-pub use crate::items_action::ItemsAction;
 pub use crate::items_api::ItemsApi;
 pub use crate::items_data::ItemsData;
+pub use crate::items_directive::ItemsDirective;
 pub use crate::shop::Shop;
 pub use crate::shop_data::ShopData;
 pub use crate::shopping::Shopping;
@@ -60,7 +60,7 @@ pub struct Items;
 
 /// The steps of `items`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum ItemsSet {
+pub enum ItemsSystems {
     /// The tick's orders buy, sell and swap items.
     Commands,
     /// Once the tick's trades are in: carried items push their grants.
@@ -69,17 +69,17 @@ pub enum ItemsSet {
     Want,
 }
 
-impl ModuleSet for ItemsSet {
+impl ModuleSystems for ItemsSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        let inputs = || SetPlace::stage(SimSet::Inputs);
+        let inputs = || SetPlace::stage(SimSystems::Inputs);
         match self {
-            Self::Commands => SetPlace::at(ActionsSet::Trade),
+            Self::Commands => SetPlace::at(ActionsSystems::Trade),
             Self::HoldAtInputs => inputs()
-                .after(ActionsSet::Order)
-                .before(ActionsSet::HoldAtInputs),
-            Self::Want => SetPlace::at(ActionsSet::Resolve),
+                .after(ActionsSystems::Order)
+                .before(ActionsSystems::HoldAtInputs),
+            Self::Want => SetPlace::at(ActionsSystems::Resolve),
         }
     }
 }
@@ -88,7 +88,7 @@ impl Module for Items {
     const CAPABILITY: Option<Capability> = Some(Capability::Items);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
-    type Set = ItemsSet;
+    type Systems = ItemsSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<ItemsData>();
@@ -109,7 +109,7 @@ impl Module for Items {
         d.book::<ByType<UseGroup>>(Inventory::groups);
         d.extend::<ByType<ActionSlots>>(Self::inventory_slots);
         d.extend::<SlotClaims>(Self::claim_slots);
-        d.extend::<NamedMessages>(Self::named_messages);
+        d.extend::<NamedTexts>(Self::named_texts);
         d.rule(Self::rule);
         d.part::<BodyUnit, Inventory>(|at| at.of_type::<Inventory>().cloned());
         d.part::<BodyUnit, UseGroup>(|at| at.of_type::<UseGroup>().copied());
@@ -120,10 +120,10 @@ impl Module for Items {
     /// starts once the trades are in, and in Resolve once a use may have spent an item. On the
     /// server, the tick's orders trade in Inputs, as a trade pays and refunds the server's
     /// resources; a client predicts no trade.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
-        cx.add(ItemsSet::HoldAtInputs, ItemHolds::want_items);
-        cx.add(ItemsSet::Want, ItemHolds::want_items);
-        cx.server(ItemsSet::Commands, TradeOrders::trade_items);
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
+        cx.add(ItemsSystems::HoldAtInputs, ItemHolds::want_items);
+        cx.add(ItemsSystems::Want, ItemHolds::want_items);
+        cx.server(ItemsSystems::Commands, TradeOrders::trade_items);
     }
 }
 

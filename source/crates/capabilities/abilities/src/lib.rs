@@ -14,9 +14,9 @@ use crate::casts::CastDue;
 use crate::channels::ChannelDue;
 use crate::channels::{OnChannelTick, OnInterrupt};
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{Action, ActionBook, ActionTarget, ActionsSet, CastSpends, OnResolve};
+use campfire_actions::{Action, ActionBook, ActionTarget, ActionsSystems, CastSpends, OnResolve};
 use campfire_common::{EnumAll, Ticks};
-use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_declarations::{Declarations, InstallCx, Module, ModuleSystems, SetPlace};
 use campfire_deliveries::Deliverers;
 use campfire_script::{ApiVersion, ScriptValue, Status, View};
 use campfire_sim::{Capability, MatchRate};
@@ -44,7 +44,7 @@ pub struct Abilities;
 
 /// The steps of `abilities`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum AbilitiesSet {
+pub enum AbilitiesSystems {
     /// Before the holds follow: toggles pay their seconds or turn off.
     Toggles,
     /// The due casts start.
@@ -53,14 +53,14 @@ pub enum AbilitiesSet {
     Resolve,
 }
 
-impl ModuleSet for AbilitiesSet {
+impl ModuleSystems for AbilitiesSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::at(match self {
-            Self::Toggles => ActionsSet::Toggle,
-            Self::StartCasts => ActionsSet::Start,
-            Self::Resolve => ActionsSet::Cast,
+            Self::Toggles => ActionsSystems::Toggle,
+            Self::StartCasts => ActionsSystems::Start,
+            Self::Resolve => ActionsSystems::Cast,
         })
     }
 }
@@ -69,7 +69,7 @@ impl Module for Abilities {
     const CAPABILITY: Option<Capability> = Some(Capability::Abilities);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
-    type Set = AbilitiesSet;
+    type Systems = AbilitiesSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.scratch::<Due<CastDue>>();
@@ -91,18 +91,18 @@ impl Module for Abilities {
     /// only cools down, as the server's does. On the server, each toggle that is on pays its cost
     /// each second, as the toggle's cost is the server's. The channels and the toggles install
     /// only in a match whose actions have them (02-engine-core.md, Books before the install).
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         let actions = cx.book::<ActionBook>();
         let channels = actions.is_some_and(|book| book.iter().any(Action::channels));
         let toggles = actions.is_some_and(|book| book.iter().any(Action::toggles));
-        cx.add(AbilitiesSet::StartCasts, Casts::start_casts);
+        cx.add(AbilitiesSystems::StartCasts, Casts::start_casts);
         if channels {
             cx.unscripted(
-                AbilitiesSet::Resolve,
+                AbilitiesSystems::Resolve,
                 (Casts::predict_casts, Channels::predict_channels).chain(),
             );
             cx.scripted(
-                AbilitiesSet::Resolve,
+                AbilitiesSystems::Resolve,
                 (
                     Casts::collect_casts,
                     Casts::resolve_casts,
@@ -112,14 +112,14 @@ impl Module for Abilities {
                     .chain(),
             );
         } else {
-            cx.unscripted(AbilitiesSet::Resolve, Casts::predict_casts);
+            cx.unscripted(AbilitiesSystems::Resolve, Casts::predict_casts);
             cx.scripted(
-                AbilitiesSet::Resolve,
+                AbilitiesSystems::Resolve,
                 (Casts::collect_casts, Casts::resolve_casts).chain(),
             );
         }
         if toggles {
-            cx.server(AbilitiesSet::Toggles, Toggles::run_toggles);
+            cx.server(AbilitiesSystems::Toggles, Toggles::run_toggles);
         }
     }
 }

@@ -1,7 +1,7 @@
 use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declare::MatchFacts;
+use campfire_declarations::MatchFacts;
 
 use crate::spawn_at::SpawnAt;
 use crate::spawn_callbacks::SpawnCallbacks;

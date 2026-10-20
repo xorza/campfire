@@ -13,7 +13,7 @@ use crate::input_map::{Act, InputMap};
 /// slower and faster chords step its speed down and up through 0.5, 1, 2 and 4 times, its save
 /// chord saves it, and its load chord loads its latest save.
 #[derive(Debug)]
-pub(crate) struct LocalKeys {
+pub(crate) struct LocalKeysPlugin {
     pub(crate) pace: Arc<Pace>,
 }
 
@@ -21,14 +21,14 @@ pub(crate) struct LocalKeys {
 #[derive(Resource, Debug)]
 struct Keyed(Arc<Pace>);
 
-impl Plugin for LocalKeys {
+impl Plugin for LocalKeysPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Keyed(Arc::clone(&self.pace)));
         app.add_systems(Update, Self::press);
     }
 }
 
-impl LocalKeys {
+impl LocalKeysPlugin {
     fn press(
         (keys, input): (Res<'_, ButtonInput<KeyCode>>, Res<'_, InputMap>),
         keyed: Res<'_, Keyed>,
@@ -74,9 +74,9 @@ mod tests {
     #[test]
     fn a_step_moves_the_speed_one_place_and_stops_at_its_ends() {
         let [half, one, two, four] = PaceSpeed::ALL;
-        assert_eq!(LocalKeys::stepped(one, 1), two);
-        assert_eq!(LocalKeys::stepped(one, -1), half);
-        assert_eq!(LocalKeys::stepped(half, -1), half);
-        assert_eq!(LocalKeys::stepped(four, 1), four);
+        assert_eq!(LocalKeysPlugin::stepped(one, 1), two);
+        assert_eq!(LocalKeysPlugin::stepped(one, -1), half);
+        assert_eq!(LocalKeysPlugin::stepped(half, -1), half);
+        assert_eq!(LocalKeysPlugin::stepped(four, 1), four);
     }
 }

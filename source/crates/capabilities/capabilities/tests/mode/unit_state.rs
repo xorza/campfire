@@ -1,4 +1,4 @@
-use campfire_units::{SyncOwner, UnitState};
+use campfire_units::{AudienceOwner, UnitState};
 
 use super::*;
 
@@ -59,8 +59,11 @@ fn on_input(ctx, player, name, value) {
             .iter()
             .filter(|&(_, entity)| game.get::<UnitType>(entity) == Some(&grunt_type));
         let (_, entity) = grunts.last().unwrap();
-        let owner = game.get::<UnitState<SyncOwner>>(entity).unwrap().values();
-        let all = game.get::<UnitState<SyncAll>>(entity).unwrap().values();
+        let owner = game
+            .get::<UnitState<AudienceOwner>>(entity)
+            .unwrap()
+            .values();
+        let all = game.get::<UnitState<AudienceAll>>(entity).unwrap().values();
         (owner.to_vec(), all.to_vec())
     };
     // It spawns at its type's defaults: 2, which its owner's class holds, and an empty text,

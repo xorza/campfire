@@ -1,5 +1,5 @@
 use campfire_common::{DeclaredName, Ticks};
-use campfire_declare::PerType;
+use campfire_declarations::PerType;
 use campfire_math::Num;
 use campfire_script::{Filter, TagNames, UnknownName};
 use campfire_sim::MatchRate;

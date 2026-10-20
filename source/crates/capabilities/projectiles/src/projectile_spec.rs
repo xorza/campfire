@@ -2,7 +2,7 @@ use std::num::NonZeroI64;
 
 use campfire_actions::ProjectileFlight;
 use campfire_common::Ticks;
-use campfire_declare::PerType;
+use campfire_declarations::PerType;
 use campfire_geometry::Radius;
 use campfire_math::{Num, Rounding};
 use campfire_script::{Filters, TagNames, UnknownName};

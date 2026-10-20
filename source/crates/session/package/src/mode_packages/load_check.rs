@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use campfire_actions::{ActionData, ActionKind};
 use campfire_capabilities::{LoadNames, PackageContent, Release};
 use campfire_common::DeclaredName;
-use campfire_declare::{
+use campfire_declarations::{
     BookError, BookPlace, ScriptParams, SectionReaders, SectionTable, TypePlace,
 };
 use campfire_mode::{ChoiceId, TimerId};
@@ -13,7 +13,7 @@ use campfire_script::{
 };
 use campfire_sim::{Capability, MatchRate};
 use campfire_values::{
-    ActionId, FilterData, MessageId, ModifierId, Named, PackageIndex, PackagePath, Param, Tag, Team,
+    ActionId, FilterData, ModifierId, Named, PackageIndex, PackagePath, Param, Tag, Team, TextId,
 };
 
 use crate::dependent::{Dependent, DependentKind};
@@ -98,15 +98,15 @@ impl<'a> LoadCheck<'a> {
         self.package(self.packages.mode())
     }
 
-    /// What the data of the package at `view` names: each message, of its own language's file,
+    /// What the data of the package at `view` names: each text, of its own language's file,
     /// and each script, which serves its roles and reads the params they give; and its scripts.
     fn package(&self, view: PackageView<'a>) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let of_package = |package: PackageIndex| package == view.index;
-        for named in self.names.messages() {
+        for named in self.names.texts() {
             if of_package(named.package) {
                 let at = book_place(packages, view.index, named.at.clone());
-                message(view.package, &named.message, &at)?;
+                text(view.package, &named.text, &at)?;
             }
         }
         let mut names = PackageNames::new(view.package, view.content);
@@ -183,12 +183,12 @@ impl<'a> LoadCheck<'a> {
     fn names(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let (data, mode) = (&packages.data, &packages.mode);
-        message(mode, &data.name, &Place::Mode)?;
+        text(mode, &data.name, &Place::Mode)?;
         for team in &packages.manifest.teams {
             let Some(named) = data.teams.get(&team.name) else {
                 return Err(LoadProblem::UnnamedTeam(team.name.clone()));
             };
-            message(mode, &named.name, &Place::Team(team.name.clone()))?;
+            text(mode, &named.name, &Place::Team(team.name.clone()))?;
         }
         let manifest = &packages.manifest.teams;
         if let Some(name) = data
@@ -203,7 +203,7 @@ impl<'a> LoadCheck<'a> {
             });
         }
         for (id, choice) in &data.choices {
-            message(mode, &choice.name, &Place::Choice(id.clone()))?;
+            text(mode, &choice.name, &Place::Choice(id.clone()))?;
         }
         Ok(())
     }
@@ -240,7 +240,7 @@ impl<'a> LoadCheck<'a> {
         match &dependent.kind {
             DependentKind::Avatar(avatar) => {
                 let at = Place::Avatar(package.header.name.clone());
-                message(package, &avatar.name, &at)?;
+                text(package, &avatar.name, &at)?;
                 named(actions)?;
             }
             DependentKind::Loadout => named(actions)?,
@@ -506,7 +506,7 @@ impl<'a> LoadCheck<'a> {
             None => match named.kind {
                 ModifierId::NAMES => package.content.modifiers().contains_key(name),
                 ActionId::NAMES => package.content.actions().contains_key(name),
-                MessageId::NAMES => package.package.text.gives(name),
+                TextId::NAMES => package.package.text.gives(name),
                 Param::NAMES => package
                     .scripts
                     .get(path)
@@ -751,13 +751,13 @@ impl<'a> PackageNames<'a> {
     }
 }
 
-/// Whether `package`'s own language's file gives the message `id`, which data at `at` names.
-fn message(package: &Package, id: &MessageId, at: &Place) -> Result<(), LoadProblem> {
+/// Whether `package`'s own language's file gives the text `id`, which data at `at` names.
+fn text(package: &Package, id: &TextId, at: &Place) -> Result<(), LoadProblem> {
     if package.text.gives(id.as_str()) {
         return Ok(());
     }
     Err(LoadProblem::Unknown {
-        of: MessageId::NAMES,
+        of: TextId::NAMES,
         at: at.clone(),
         name: id.to_string(),
     })

@@ -7,14 +7,14 @@ use campfire_actions::{SlotError, SlotKind};
 use campfire_capabilities::Release;
 use campfire_codec::{Toml, TomlTable};
 use campfire_common::DeclaredName;
-use campfire_declare::{UnitDefaults, UnitTypeData};
+use campfire_declarations::{UnitDefaults, UnitTypeData};
 use campfire_items::{InventoryData, ItemError, ItemsDataError, ShopData};
 use campfire_math::Num;
 use campfire_package::{ContentError, LoadError, LoadProblem, ModePackages, PackageRef, Place};
 use campfire_script::Filter;
 use campfire_sim::Capability;
 use campfire_test_packages::Edit;
-use campfire_values::{ActionId, ItemId, MessageId, ModifierId, NameKind, Named, ResourceId};
+use campfire_values::{ActionId, ItemId, ModifierId, NameKind, Named, ResourceId, TextId};
 
 use crate::package::moba::{edited, load};
 use crate::package::module_rules::{entry, rule, rule_at, rule_of};
@@ -130,7 +130,7 @@ const FLAWS: [Flaw; 23] = [
             is_unknown(
                 problem,
                 &item("health_potion"),
-                MessageId::NAMES,
+                TextId::NAMES,
                 "item-health-potion",
             )
         },

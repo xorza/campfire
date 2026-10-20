@@ -2,16 +2,16 @@ use std::time::{Duration, Instant};
 
 use bevy_ecs::resource::Resource;
 
-use crate::sim_update::SimSet;
+use crate::sim_update::SimSystems;
 
 /// The edges around the stages of a tick: before the first, between each two, after the last.
-const EDGES: usize = SimSet::ALL.len() + 1;
+const EDGES: usize = SimSystems::ALL.len() + 1;
 
-/// When the last tick passed each edge between its stages, as the probes
-/// `StageClock::install` adds to the sim's schedule note it: what each stage of a real tick
-/// costs, its `SimEdge::After` included, for a bench. The tick's start and end and `SimEdge::Start` fall outside every stage. It stays
-/// outside the sim's state, and the probes touch nothing else, so a match with them plays as one
-/// without.
+/// When the last tick passed each edge between its stages, as the probes `StageClock::install` adds
+/// to the sim's schedule note it: what each stage of a real tick costs, its `SimEdgeSystems::After`
+/// included, for a bench. The tick's start and end and `SimEdgeSystems::Start` fall outside every
+/// stage. It stays outside the sim's state, and the probes touch nothing else, so a match with them
+/// plays as one without.
 #[derive(Resource, Debug)]
 pub struct StageClock {
     edges: [Instant; EDGES],
@@ -19,8 +19,8 @@ pub struct StageClock {
 
 impl StageClock {
     /// How long `stage` took in the last tick.
-    pub fn stage(&self, stage: SimSet) -> Duration {
-        let index = SimSet::ALL
+    pub fn stage(&self, stage: SimSystems) -> Duration {
+        let index = SimSystems::ALL
             .iter()
             .position(|&each| each == stage)
             .expect("a stage of the tick");
@@ -36,11 +36,11 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
 
     use crate::sim_update::stage_clock::{EDGES, StageClock};
-    use crate::sim_update::{SimEdge, SimSet, SimUpdate, end_tick};
+    use crate::sim_update::{SimEdgeSystems, SimSystems, SimUpdate, end_tick};
 
     impl StageClock {
         /// Adds a probe at each edge of the sim schedule of `world`, after the stage before it
-        /// and its `SimEdge::After` and before the stage after it, and the clock they write.
+        /// and its `SimEdgeSystems::After` and before the stage after it, and the clock they write.
         pub fn install(world: &mut World) {
             world.insert_resource(Self {
                 edges: [Instant::now(); EDGES],
@@ -48,17 +48,21 @@ pub(crate) mod internals {
             let probe =
                 |edge: usize| move |mut clock: ResMut<'_, Self>| clock.edges[edge] = Instant::now();
             world.schedule_scope(SimUpdate, |_, schedule| {
-                schedule.add_systems(probe(0).after(SimEdge::Start).before(SimSet::Inputs));
-                for (edge, stages) in SimSet::ALL.windows(2).enumerate() {
+                schedule.add_systems(
+                    probe(0)
+                        .after(SimEdgeSystems::Start)
+                        .before(SimSystems::Inputs),
+                );
+                for (edge, stages) in SimSystems::ALL.windows(2).enumerate() {
                     schedule.add_systems(
                         probe(edge + 1)
-                            .after(SimEdge::After(stages[0]))
+                            .after(SimEdgeSystems::After(stages[0]))
                             .before(stages[1]),
                     );
                 }
                 schedule.add_systems(
                     probe(EDGES - 1)
-                        .after(SimEdge::After(SimSet::Vision))
+                        .after(SimEdgeSystems::After(SimSystems::Vision))
                         .before(end_tick),
                 );
             });
@@ -77,18 +81,18 @@ mod tests {
 
     use super::*;
     use crate::match_rate::MatchRate;
-    use crate::sim_update::{SimEdge, SimUpdate};
+    use crate::sim_update::{SimEdgeSystems, SimUpdate};
     use crate::sim_world_builder::SimWorldBuilder;
 
     /// When each test system ran, with the stage whose time holds it, or none for one before the
     /// first stage.
     #[derive(Resource, Debug, Default)]
-    struct Ran(Vec<(Option<SimSet>, Instant)>);
+    struct Ran(Vec<(Option<SimSystems>, Instant)>);
 
     #[test]
     fn each_stage_runs_between_the_probes_around_it() {
         let mut world = World::new();
-        let note = |stage: Option<SimSet>| {
+        let note = |stage: Option<SimSystems>| {
             move |mut ran: ResMut<'_, Ran>| ran.0.push((stage, Instant::now()))
         };
         let rate = MatchRate::new(NonZeroU32::new(30).unwrap());
@@ -97,11 +101,11 @@ mod tests {
         world.resource_mut::<Schedules>().add_systems(
             SimUpdate,
             (
-                note(None).in_set(SimEdge::Start),
-                note(Some(SimSet::Think)).in_set(SimSet::Think),
-                note(Some(SimSet::Think)).in_set(SimEdge::After(SimSet::Think)),
-                note(Some(SimSet::Move)).in_set(SimSet::Move),
-                note(Some(SimSet::Vision)).in_set(SimEdge::After(SimSet::Vision)),
+                note(None).in_set(SimEdgeSystems::Start),
+                note(Some(SimSystems::Think)).in_set(SimSystems::Think),
+                note(Some(SimSystems::Think)).in_set(SimEdgeSystems::After(SimSystems::Think)),
+                note(Some(SimSystems::Move)).in_set(SimSystems::Move),
+                note(Some(SimSystems::Vision)).in_set(SimEdgeSystems::After(SimSystems::Vision)),
             ),
         );
         StageClock::install(&mut world);
@@ -121,13 +125,19 @@ mod tests {
             match stage {
                 None => assert!(installed <= at && at <= clock.edges[0]),
                 Some(stage) => {
-                    let index = SimSet::ALL.iter().position(|&each| each == stage).unwrap();
+                    let index = SimSystems::ALL
+                        .iter()
+                        .position(|&each| each == stage)
+                        .unwrap();
                     assert!(clock.edges[index] <= at && at <= clock.edges[index + 1]);
                 }
             }
         }
         // The stages split the tick between the first probe and the last, whole.
-        let total: Duration = SimSet::ALL.iter().map(|&stage| clock.stage(stage)).sum();
+        let total: Duration = SimSystems::ALL
+            .iter()
+            .map(|&stage| clock.stage(stage))
+            .sum();
         assert_eq!(total, clock.edges[EDGES - 1].duration_since(clock.edges[0]));
     }
 }

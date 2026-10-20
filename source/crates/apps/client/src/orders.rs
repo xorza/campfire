@@ -14,13 +14,13 @@ use bevy::state::condition::in_state;
 use campfire_actions::{
     ActionBook, ActionSlots, ActionTarget, Aim, SlotKindBook, SlotKinds, UseGroup,
 };
-use campfire_capabilities::{Action, Order};
+use campfire_capabilities::{Directive, Order};
 use campfire_interaction::Using;
 use campfire_math::Vec3 as SimVec3;
 use campfire_net::PendingOrders;
-use campfire_orders::OrdersAction;
-use campfire_production::{ProductionAction, RallyTarget, TrainQueue};
-use campfire_progression::ProgressionAction;
+use campfire_orders::OrdersDirective;
+use campfire_production::{ProductionDirective, RallyTarget, TrainQueue};
+use campfire_progression::ProgressionDirective;
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_units::{GroundPoint, MoveStep};
 use campfire_values::Team;
@@ -44,7 +44,7 @@ use crate::view::float_num;
 /// and cast their actions. A chord aims as its slot's action takes: at the unit under the cursor,
 /// at the ground point under it, or at nothing.
 #[derive(Debug)]
-pub(crate) struct Orders;
+pub(crate) struct OrdersPlugin;
 
 /// The systems that turn clicks and keys into orders, which the build preview reads the clicks
 /// after.
@@ -58,7 +58,7 @@ type Movers<'w, 's> = Query<'w, 's, (Has<MoveStep>, Has<TrainQueue>), Allow<Unpr
 type Casters<'w, 's> =
     Query<'w, 's, (&'static ActionSlots, Option<&'static UseGroup>), Allow<Unpredicted>>;
 
-impl Plugin for Orders {
+impl Plugin for OrdersPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
@@ -75,7 +75,7 @@ impl Plugin for Orders {
     }
 }
 
-impl Orders {
+impl OrdersPlugin {
     fn click(
         pointer: Pointer<'_, '_>,
         own: OwnPlayer<'_, '_>,
@@ -105,11 +105,11 @@ impl Orders {
             point,
             selected: Selected::of(held),
         };
-        let order = match Self::click_action(click, uses) {
-            Some(action @ Action::Orders(OrdersAction::Use { .. })) => {
-                avatar.map(|avatar| Order::one(avatar.id, action))
+        let order = match Self::click_directive(click, uses) {
+            Some(directive @ Directive::Orders(OrdersDirective::Use { .. })) => {
+                avatar.map(|avatar| Order::one(avatar.id, directive))
             }
-            action => action.and_then(|action| selection.order(action)),
+            directive => directive.and_then(|directive| selection.order(directive)),
         };
         if let Some(order) = order {
             orders.push(order);
@@ -163,13 +163,13 @@ impl Orders {
             let target = Takes::of(aim).target(under, point);
             orders.push(Order::one(
                 avatar.id,
-                Self::slot_action(slot, key_use, target),
+                Self::slot_directive(slot, key_use, target),
             ));
         }
     }
 
     fn stop(selection: Res<'_, Selection>, mut orders: ResMut<'_, PendingOrders>) {
-        if let Some(order) = selection.order(OrdersAction::Stop) {
+        if let Some(order) = selection.order(OrdersDirective::Stop) {
             orders.push(order);
         }
     }
@@ -178,7 +178,7 @@ impl Orders {
     /// use; for a selection of producers, a rally point at the unit or the point; an attack on
     /// the unit when it is of another team than the player's; else a move to the point. None far
     /// off any map.
-    fn click_action(click: Click, uses: impl Fn(StableId) -> bool) -> Option<Action> {
+    fn click_directive(click: Click, uses: impl Fn(StableId) -> bool) -> Option<Directive> {
         let Click {
             under,
             team,
@@ -190,8 +190,8 @@ impl Orders {
             let z = float_num::to_num(point.z)?;
             Some([x, z])
         };
-        let action = match under {
-            Some(unit) if uses(unit.id) => OrdersAction::Use { target: unit.id }.into(),
+        let directive = match under {
+            Some(unit) if uses(unit.id) => OrdersDirective::Use { target: unit.id }.into(),
             _ if selected == Selected::Producers => {
                 let target = if let Some(unit) = under {
                     RallyTarget::Unit(unit.id)
@@ -200,20 +200,20 @@ impl Orders {
                     RallyTarget::Point(GroundPoint { x, z })
                 };
                 let target = Some(target);
-                ProductionAction::Rally { target }.into()
+                ProductionDirective::Rally { target }.into()
             }
             Some(unit) if team.is_some_and(|team| unit.team != team) => {
-                OrdersAction::Attack { target: unit.id }.into()
+                OrdersDirective::Attack { target: unit.id }.into()
             }
             _ => {
                 let [x, z] = ground()?;
-                OrdersAction::Move {
+                OrdersDirective::Move {
                     to: GroundPoint { x, z },
                 }
                 .into()
             }
         };
-        Some(action)
+        Some(directive)
     }
 
     /// The slots of `slots` that hold abilities, of the kinds of `kinds` whose ranks the player
@@ -237,10 +237,10 @@ impl Orders {
     }
 
     /// What a key of `slot` orders as `key_use` says: a learn, or a cast at `target`.
-    const fn slot_action(slot: u8, key_use: KeyUse, target: ActionTarget) -> Action {
+    const fn slot_directive(slot: u8, key_use: KeyUse, target: ActionTarget) -> Directive {
         match key_use {
-            KeyUse::Learn => Action::Progression(ProgressionAction::Learn { slot }),
-            KeyUse::Cast => Action::Orders(OrdersAction::Slot { slot, target }),
+            KeyUse::Learn => Directive::Progression(ProgressionDirective::Learn { slot }),
+            KeyUse::Cast => Directive::Orders(OrdersDirective::Slot { slot, target }),
         }
     }
 }
@@ -363,7 +363,7 @@ mod tests {
         let kinds = SlotKinds::new(kinds).unwrap();
         let held = |kind| (ActionId::new(0), SlotKind::new(kind), Some(Rank::FIRST));
         let slots = ActionSlots::new([held(0), held(1), held(1), held(2)]);
-        let abilities: Vec<u8> = Orders::abilities(&slots, &kinds).collect();
+        let abilities: Vec<u8> = OrdersPlugin::abilities(&slots, &kinds).collect();
         assert_eq!(abilities, [1, 2, 3]);
     }
 
@@ -407,12 +407,12 @@ mod tests {
     fn a_cast_key_casts_at_its_target_and_with_ctrl_learns() {
         let target = ActionTarget::None;
         assert_eq!(
-            Orders::slot_action(2, KeyUse::Cast, target),
-            Action::Orders(OrdersAction::Slot { slot: 2, target })
+            OrdersPlugin::slot_directive(2, KeyUse::Cast, target),
+            Directive::Orders(OrdersDirective::Slot { slot: 2, target })
         );
         assert_eq!(
-            Orders::slot_action(2, KeyUse::Learn, target),
-            Action::Progression(ProgressionAction::Learn { slot: 2 })
+            OrdersPlugin::slot_directive(2, KeyUse::Learn, target),
+            Directive::Progression(ProgressionDirective::Learn { slot: 2 })
         );
     }
 
@@ -431,7 +431,7 @@ mod tests {
         // To (3, −2.5): x = 3, z = −5 / 2, the height not sent.
         let (x, z) = (Num::int(3), Num::int(-5) / Num::int(2));
         let walk = Some(
-            OrdersAction::Move {
+            OrdersDirective::Move {
                 to: GroundPoint { x, z },
             }
             .into(),
@@ -445,12 +445,12 @@ mod tests {
                 point,
                 selected,
             };
-            Orders::click_action(click, usable)
+            OrdersPlugin::click_directive(click, usable)
         };
         let click = |under, team| click_by(Selected::Movers, under, team, point);
         assert_eq!(
             click(Some(enemy), Some(north)),
-            Some(OrdersAction::Attack { target: enemy.id }.into())
+            Some(OrdersDirective::Attack { target: enemy.id }.into())
         );
         assert_eq!(click(Some(friend), Some(north)), walk);
         assert_eq!(click(None, Some(north)), walk);
@@ -458,13 +458,13 @@ mod tests {
         assert_eq!(click(Some(enemy), None), walk);
         // A unit the avatar may use is used, before an attack of an enemy or a walk: the
         // hostile shrine by either team's client.
-        let used = Some(OrdersAction::Use { target: shrine.id }.into());
+        let used = Some(OrdersDirective::Use { target: shrine.id }.into());
         assert_eq!(click(Some(shrine), Some(north)), used);
         assert_eq!(click(Some(shrine), Some(south)), used);
         // Producers rally to the point, or to the unit under the cursor, an enemy's too.
         let rally = |target| {
             Some(
-                ProductionAction::Rally {
+                ProductionDirective::Rally {
                     target: Some(target),
                 }
                 .into(),

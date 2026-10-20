@@ -61,7 +61,7 @@ campfire-players = { workspace = true, features = ["internals"] }
 campfire-progression = { workspace = true, features = ["internals"] }
 campfire-projectiles = { workspace = true, features = ["internals"] }
 campfire-script = { workspace = true, features = ["internals"] }
-campfire-state-types = { workspace = true, features = ["internals"] }
+campfire-states = { workspace = true, features = ["internals"] }
 campfire-stats = { workspace = true, features = ["internals"] }
 
 bevy_replicon = { workspace = true, features = ["client", "server"] }

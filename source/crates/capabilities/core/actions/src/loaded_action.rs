@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, Section};
 use campfire_script::UnknownName;
 use campfire_values::{ActionId, PackageIndex};
 

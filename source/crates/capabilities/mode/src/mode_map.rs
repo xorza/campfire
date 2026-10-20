@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Fact};
+use campfire_declarations::{BookCx, BookError, BookPlace, Fact};
 use campfire_navigation::{MarkerPoint, NavigationBook, Paths, PlacedBody};
 use campfire_units::{BodyForm, MapPoint, TeamNames};
 use campfire_values::{

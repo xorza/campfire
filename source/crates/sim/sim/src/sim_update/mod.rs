@@ -21,7 +21,7 @@ pub struct SimUpdate;
 /// The stages of a tick, in this order. Each capability puts its systems into them, and orders
 /// them within a stage against the capabilities it builds on.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum SimSet {
+pub enum SimSystems {
     /// The tick's commands reach the capabilities that own them.
     Inputs,
     /// AI of the units due this tick issues orders.
@@ -46,42 +46,47 @@ pub enum SimSet {
 /// again from what the stage before changed. A stage's time, as `StageClock` measures it, holds
 /// the gap after it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SimEdge {
+pub enum SimEdgeSystems {
     /// Before the first stage: work on what changed between ticks.
     Start,
     /// After a stage, and before the next: work on what that stage changed.
-    After(SimSet),
+    After(SimSystems),
 }
 
 /// The close of a tick, after its last gap: the tick advances, its inputs clear, and the records
 /// a tick keeps for the next age.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct TickEnd;
+pub(crate) struct TickEndSystems;
 
 impl SimUpdate {
-    /// The schedule with no game systems yet: the stages in order, each with its `SimEdge` after
-    /// it, and `SimEdge::Start` before the first. The tick's random sequences start before
-    /// `SimEdge::Start`; after `SimEdge::After(SimSet::Vision)`, in `TickEnd`, the tick advances,
-    /// its inputs are cleared and its removal records age, so an edge's systems read the tick's
-    /// random sequences and inputs. It is a `StrictSchedule`, so an ambiguity or a redundant edge
-    /// fails every test that builds it, not only as a log line of a running match. It runs on one
-    /// thread whatever features the build turns on, Bevy's parallel executor among them
-    /// (02-engine-core.md, The sim is one schedule on one thread).
+    /// The schedule with no game systems yet: the stages in order, each with its `SimEdgeSystems`
+    /// after it, and `SimEdgeSystems::Start` before the first. The tick's random sequences start
+    /// before `SimEdgeSystems::Start`; after `SimEdgeSystems::After(SimSystems::Vision)`, in
+    /// `TickEndSystems`, the tick advances, its inputs are cleared and its removal records age, so
+    /// an edge's systems read the tick's random sequences and inputs. It is a `StrictSchedule`, so
+    /// an ambiguity or a redundant edge fails every test that builds it, not only as a log line of
+    /// a running match. It runs on one thread whatever features the build turns on, Bevy's parallel
+    /// executor among them (02-engine-core.md, The sim is one schedule on one thread).
     pub(crate) fn schedule() -> Schedule {
         let mut schedule = StrictSchedule::of(Self);
         schedule.set_executor(SingleThreadedExecutor::new());
-        schedule.configure_sets(SimEdge::Start.before(SimSet::Inputs));
-        for stages in SimSet::ALL.windows(2) {
+        schedule.configure_sets(SimEdgeSystems::Start.before(SimSystems::Inputs));
+        for stages in SimSystems::ALL.windows(2) {
             schedule.configure_sets((
                 stages[1].after(stages[0]),
-                SimEdge::After(stages[0]).after(stages[0]).before(stages[1]),
+                SimEdgeSystems::After(stages[0])
+                    .after(stages[0])
+                    .before(stages[1]),
             ));
         }
         schedule.configure_sets((
-            SimEdge::After(SimSet::Vision).after(SimSet::Vision),
-            TickEnd.after(SimEdge::After(SimSet::Vision)),
+            SimEdgeSystems::After(SimSystems::Vision).after(SimSystems::Vision),
+            TickEndSystems.after(SimEdgeSystems::After(SimSystems::Vision)),
         ));
-        schedule.add_systems((begin_tick.before(SimEdge::Start), end_tick.in_set(TickEnd)));
+        schedule.add_systems((
+            begin_tick.before(SimEdgeSystems::Start),
+            end_tick.in_set(TickEndSystems),
+        ));
         schedule
     }
 

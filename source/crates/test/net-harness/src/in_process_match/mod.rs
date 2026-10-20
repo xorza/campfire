@@ -12,7 +12,7 @@ use bevy_ecs::schedule::{Schedules, SingleThreadedExecutor};
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_bots::{BotNames, BotScript, OrderScript};
-use campfire_capabilities::{Action, Order};
+use campfire_capabilities::{Directive, Order};
 use campfire_codec::Toml;
 use campfire_common::TlsKey;
 use campfire_log::internals::LogCheck;
@@ -20,10 +20,10 @@ use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::TickHashes;
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
-    ClientDir, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup, LocalPace,
+    ClientDir, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup, LocalPacePlugin,
     MatchClock, Os, Pace, PendingOrders, PendingRestore, SeatScript, ServerBots, ServerDir,
-    ServerPin, ServerSetup, SessionDir, SessionOpening, SessionSigner, SessionTimes, SimClient,
-    SimServerPlugins, SimServerWorld, UdpLinks, UncheckedRestore, UnixClock,
+    ServerPin, ServerSetup, SessionDir, SessionOpening, SessionSigner, SessionTimes,
+    SimClientPlugin, SimServerPlugins, SimServerWorld, UdpLinks, UncheckedRestore, UnixClock,
 };
 use campfire_net_connection::{Connect, Connected, Start};
 use campfire_net_core::LinkDirection;
@@ -223,8 +223,8 @@ impl InProcessMatch {
     /// The first order waits for the clients' lead on the server to settle: the stack's sync brings
     /// it to its target by 5 % of a tick a frame.
     pub const SCENARIO_SCRIPTS: [&str; 2] = [
-        "[[order]]\ntick = 60\naction.orders.move.to = [4, -2]\n[[order]]\ntick = 450\naction.orders.move.to = [-3, -2]\n",
-        "[[order]]\ntick = 60\naction.orders.move.to = [-4, 3]\n[[order]]\ntick = 450\naction.orders.move.to = [3, 4]\n",
+        "[[order]]\ntick = 60\ndirective.orders.move.to = [4, -2]\n[[order]]\ntick = 450\ndirective.orders.move.to = [-3, -2]\n",
+        "[[order]]\ntick = 60\ndirective.orders.move.to = [-4, 3]\n[[order]]\ntick = 450\ndirective.orders.move.to = [3, 4]\n",
     ];
 
     /// A match of the test lane mode at its default rate, its clients connected and synced.
@@ -313,9 +313,9 @@ impl InProcessMatch {
             capabilities: packages.manifest().capabilities,
             hosting: Hosting::Local,
         });
-        server.add_plugins(LocalPace {
+        server.add_plugins(LocalPacePlugin {
             pace: Arc::clone(pace),
-            rate: rate.rate(),
+            tick_rate: rate.rate(),
         });
         server.init_resource::<TickHashes>();
         let tick = rate.length();
@@ -742,12 +742,12 @@ impl InProcessMatch {
     }
 
     /// Gives `client`'s avatar an order, sent in the client's next tick.
-    pub fn order(&mut self, client: usize, action: impl Into<Action>) {
+    pub fn order(&mut self, client: usize, directive: impl Into<Directive>) {
         let unit = self.avatar(client);
         self.clients[client]
             .world_mut()
             .resource_mut::<PendingOrders>()
-            .push(Order::one(unit, action));
+            .push(Order::one(unit, directive));
     }
 
     /// Makes `client` play `script`, as a bot does.
@@ -936,7 +936,7 @@ impl ClientApp {
                 RollbackMode::Check,
             ),
         };
-        let sim_client = SimClient {
+        let sim_client = SimClientPlugin {
             main: Arc::new(Signer::new(keys.main, Entropy::Fixed(4))),
             session: SessionSigner::new(Signer::new(keys.session, Entropy::Fixed(4))),
             server: ServerPin {
@@ -957,9 +957,9 @@ impl ClientApp {
         let mut client = App::new();
         client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
         client.add_plugins(sim_client);
-        client.add_plugins(LocalPace {
+        client.add_plugins(LocalPacePlugin {
             pace: Arc::clone(&local.pace),
-            rate: rate.rate(),
+            tick_rate: rate.rate(),
         });
         client.insert_resource(TimeUpdateStrategy::ManualDuration(rate.length()));
         client
@@ -967,7 +967,7 @@ impl ClientApp {
             .resource_mut::<PredictionSetup>()
             .rollback_setup
             .mode = rollback;
-        let entity = SimClient::spawn(client.world_mut());
+        let entity = SimClientPlugin::spawn(client.world_mut());
         Self {
             app: client,
             entity,
@@ -994,7 +994,7 @@ pub(crate) mod bench {
     use campfire_bots::OrderScript;
     use campfire_math::{Num, Vec3};
     use campfire_net_prediction::RollbackMode;
-    use campfire_orders::OrdersAction;
+    use campfire_orders::OrdersDirective;
     use campfire_sim::{Position, SimWorld};
     use campfire_store::DurableDir;
     use campfire_test_packages::TestMode;
@@ -1129,7 +1129,7 @@ pub(crate) mod bench {
                         let (x, z) = (point.x, point.z + side);
                         self.order(
                             client,
-                            OrdersAction::Move {
+                            OrdersDirective::Move {
                                 to: GroundPoint { x, z },
                             },
                         );

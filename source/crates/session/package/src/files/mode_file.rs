@@ -1,6 +1,6 @@
 use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
-use campfire_declare::UnitDefaults;
+use campfire_declarations::UnitDefaults;
 use campfire_mode::ModeData;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};

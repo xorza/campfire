@@ -12,7 +12,7 @@ internals = [
     "campfire-actions/internals",
     "campfire-capabilities/internals",
     "campfire-codec/internals",
-    "campfire-declare/internals",
+    "campfire-declarations/internals",
     "campfire-mode/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
@@ -25,7 +25,7 @@ campfire-actions.workspace = true
 campfire-capabilities.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
-campfire-declare.workspace = true
+campfire-declarations.workspace = true
 campfire-mode.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true

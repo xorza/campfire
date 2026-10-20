@@ -4,7 +4,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_sim::{HostRule, SimComponent, StableId};
-use campfire_state_types::{Replication, SentOnce};
+use campfire_states::{Replication, SentOnce};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 

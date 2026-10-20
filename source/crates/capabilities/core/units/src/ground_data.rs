@@ -1,4 +1,4 @@
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use serde::{Deserialize, Serialize};
 
 use crate::ground::{CellSplit, CoarseSpan};

@@ -34,8 +34,8 @@ How a game is content: its package, its scripts, its state and its numbers.
 
 ## Script state
 
-- **Declared, never invented.** The mode and each unit type declare their fields under `[state]`, and the mode each player's under `[player_state]`, each with a type, a default and its `sync` class; a write to an undeclared field, or of another type, fails the call. Unreal declares each replicated property with its condition, as Roblox types its attributes; Dota 2's custom games keep such values where nothing checks them.
-- **A component for each sync class.** A unit holds a `UnitState<S>` for each `sync` class its type declares a field of, and a player's entity a `PlayerState<S>` for each class, its owner the player; the values are state, hashed, saved and restored, and each class is a kind of [Replication audiences](10-replication-audiences.md).
+- **Declared, never invented.** The mode and each unit type declare their fields under `[state]`, and the mode each player's under `[player_state]`, each with a type, a default and its `audience` class; a write to an undeclared field, or of another type, fails the call. Unreal declares each replicated property with its condition, as Roblox types its attributes; Dota 2's custom games keep such values where nothing checks them.
+- **A component for each audience class.** A unit holds a `UnitState<S>` for each `audience` class its type declares a field of, and a player's entity a `PlayerState<S>` for each class, its owner the player; the values are state, hashed, saved and restored, and each class is a kind of [Replication audiences](10-replication-audiences.md).
 - **An enum field holds one of its members.** A field of type `enum` declares its `values`, and holds the text of one, so a phase reads as `ctx.state.phase == "play"` and a write of any other text fails the call, as Unreal's `UENUM` properties and Godot's enum exports hold one of a declared list. Refused: a plain string, which takes a misspelled phase in silence; and a member by number, which a script reads as nothing.
 - **Writes apply when the call ends.** A write goes to the call's overlay and applies in call order, so a later call of the stage reads it, and a failed call writes nothing ([Scripting](02-engine-core.md#scripting)).
 - **Misspellings fail the load.** A literal field name after `.state` must be one some state of the match declares.
@@ -47,4 +47,4 @@ How a game is content: its package, its scripts, its state and its numbers.
 
 ## Network sync
 
-- **Scripts never deal with networking.** Inputs go to the server as lists of commands, stamped, hash-chained and signed ([Protocol Spec](05-protocol-spec.md#session-log)); each part of the state goes to its audience, script state by its `sync`; clients that see a presentation event will run its presentation scripts, which are planned.
+- **Scripts never deal with networking.** Inputs go to the server as lists of commands, stamped, hash-chained and signed ([Protocol Spec](05-protocol-spec.md#session-log)); each part of the state goes to its audience, script state by its `audience`; clients that see a presentation event will run its presentation scripts, which are planned.

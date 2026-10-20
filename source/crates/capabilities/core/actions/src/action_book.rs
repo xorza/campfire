@@ -2,7 +2,7 @@ use std::slice;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::Book;
+use campfire_declarations::Book;
 use campfire_script::{MatchNames, ScriptId, ScriptRole};
 use campfire_units::ScriptBook;
 use campfire_values::{ActionId, NameId, Names, PackageIndex, Rank};

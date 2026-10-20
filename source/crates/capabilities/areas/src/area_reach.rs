@@ -1,5 +1,5 @@
 use bevy_ecs::system::{Res, SystemParam};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_math::Num;
 use campfire_values::UnitType;
 

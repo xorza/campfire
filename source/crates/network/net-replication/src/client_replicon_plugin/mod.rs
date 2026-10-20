@@ -16,7 +16,7 @@ use crate::remote_parent::RemoteParent;
 use crate::replication_receiver::ReplicationReceiver;
 use crate::replication_systems::ReplicationSystems;
 use crate::replicon_channel_map::RepliconChannelMap;
-use campfire_net_despawn::DespawnReplicated;
+use campfire_net_despawns::DespawnReplicated;
 use campfire_net_messages::MessageSystems;
 use tracing::debug;
 use tracing::error;

@@ -1,6 +1,6 @@
 use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_geometry::Placed;
 use campfire_math::Vec3;
 use campfire_players::OnMatch;

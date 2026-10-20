@@ -10,29 +10,29 @@ use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
 use campfire_bots::BotScript;
 use campfire_common::EnumAll;
-use campfire_declare::CapabilitySet;
-use campfire_net::{Pace, PacedRunner};
+use campfire_declarations::CapabilitySet;
+use campfire_net::{Pace, PacedRunnerPlugin};
 use campfire_package::ModePackages;
 use campfire_sim::Capability;
 
-use crate::action_names::ActionNames;
-use crate::bot::Bot;
-use crate::build_preview::BuildPreview;
-use crate::command_panel::CommandPanel;
-use crate::hud::Hud;
-use crate::inventory_bar::InventoryBar;
-use crate::item_names::ItemNames;
-use crate::local_keys::LocalKeys;
-use crate::orders::Orders;
-use crate::selecting::Selecting;
-use crate::shop_panel::ShopPanel;
-use crate::view::View;
-use crate::view::area_view::AreaView;
-use crate::view::client_data::ClientFiles;
+use crate::action_names::ActionNamesPlugin;
+use crate::bot::BotPlugin;
+use crate::build_preview::BuildPreviewPlugin;
+use crate::command_panel::CommandPanelPlugin;
+use crate::hud::HudPlugin;
+use crate::inventory_bar::InventoryBarPlugin;
+use crate::item_names::ItemNamesPlugin;
+use crate::local_keys::LocalKeysPlugin;
+use crate::orders::OrdersPlugin;
+use crate::selecting::SelectingPlugin;
+use crate::shop_panel::ShopPanelPlugin;
+use crate::view::ViewPlugin;
+use crate::view::area_view::AreaViewPlugin;
+use crate::view::client_data::ClientFilesPlugin;
 use crate::view::package_source::PackageSource;
-use crate::view::player_camera::PlayerCamera;
-use crate::view::terrain_view::TerrainView;
-use crate::view::unit_models::UnitModels;
+use crate::view::player_camera::PlayerCameraPlugin;
+use crate::view::terrain_view::TerrainViewPlugin;
+use crate::view::unit_models::UnitModelsPlugin;
 
 /// A part of a window's end, one entry of the client's one list: the matches it joins, the
 /// capabilities a mode holds for it, and the plugin it adds, so a client of any mode adds what the
@@ -148,8 +148,8 @@ impl ClientEnd {
                     TaskPoolPlugin::default(),
                     TimePlugin,
                     StatesPlugin,
-                    PacedRunner,
-                    Bot { script },
+                    PacedRunnerPlugin,
+                    BotPlugin { script },
                 ));
                 return;
             }
@@ -190,56 +190,56 @@ impl ClientModule {
             }
             Self::LocalKeys => {
                 let pace = cx.local.expect("the local keys join a local match alone");
-                app.add_plugins(LocalKeys {
+                app.add_plugins(LocalKeysPlugin {
                     pace: Arc::clone(pace),
                 });
             }
             Self::ClientFiles => {
-                app.add_plugins(ClientFiles {
+                app.add_plugins(ClientFilesPlugin {
                     packages: Arc::clone(packages),
                 });
             }
             Self::View => {
-                app.add_plugins(View);
+                app.add_plugins(ViewPlugin);
             }
             Self::AreaView => {
-                app.add_plugins(AreaView);
+                app.add_plugins(AreaViewPlugin);
             }
             Self::PlayerCamera => {
-                app.add_plugins(PlayerCamera);
+                app.add_plugins(PlayerCameraPlugin);
             }
             Self::UnitModels => {
-                app.add_plugins(UnitModels);
+                app.add_plugins(UnitModelsPlugin);
             }
             Self::TerrainView => {
-                app.add_plugins(TerrainView);
+                app.add_plugins(TerrainViewPlugin);
             }
             Self::Hud => {
-                app.add_plugins(Hud);
+                app.add_plugins(HudPlugin);
             }
             Self::Selecting => {
-                app.add_plugins(Selecting);
+                app.add_plugins(SelectingPlugin);
             }
             Self::Orders => {
-                app.add_plugins(Orders);
+                app.add_plugins(OrdersPlugin);
             }
             Self::ItemNames => {
-                app.add_plugins(ItemNames);
+                app.add_plugins(ItemNamesPlugin);
             }
             Self::ShopPanel => {
-                app.add_plugins(ShopPanel);
+                app.add_plugins(ShopPanelPlugin);
             }
             Self::InventoryBar => {
-                app.add_plugins(InventoryBar);
+                app.add_plugins(InventoryBarPlugin);
             }
             Self::ActionNames => {
-                app.add_plugins(ActionNames);
+                app.add_plugins(ActionNamesPlugin);
             }
             Self::CommandPanel => {
-                app.add_plugins(CommandPanel);
+                app.add_plugins(CommandPanelPlugin);
             }
             Self::BuildPreview => {
-                app.add_plugins(BuildPreview);
+                app.add_plugins(BuildPreviewPlugin);
             }
         }
     }

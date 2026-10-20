@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_common::Seat;
 use campfire_script::MatchNames;
 use campfire_sim::SimComponent;
-use campfire_state_types::{Replication, SentOnInsert};
+use campfire_states::{Replication, SentOnInsert};
 use campfire_values::Team;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};

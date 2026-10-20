@@ -12,7 +12,7 @@ use campfire_combat::internals::Armed;
 use campfire_combat::internals::TestWeapon;
 use campfire_combat::{Combat, OnDeath};
 use campfire_common::{Seat, Tick, Ticks};
-use campfire_declare::MatchFacts;
+use campfire_declarations::MatchFacts;
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
@@ -246,7 +246,7 @@ fn lone() -> StableId {
 fn move_to(id: StableId, x: i64, z: i64) -> Vec<u8> {
     Order::payload(&[Order::one(
         id,
-        OrdersAction::Move {
+        OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::int(x),
                 z: Num::int(z),
@@ -256,7 +256,7 @@ fn move_to(id: StableId, x: i64, z: i64) -> Vec<u8> {
 }
 
 fn attack(id: StableId, target: StableId) -> Vec<u8> {
-    Order::payload(&[Order::one(id, OrdersAction::Attack { target })])
+    Order::payload(&[Order::one(id, OrdersDirective::Attack { target })])
 }
 
 /// The heroes of slots 0 and 1, a meter a tick: slot 0 at the origin, slot 1 at x = 4 and y = 2.
@@ -331,7 +331,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     let slot = |slot| {
         Order::payload(&[Order::one(
             hero,
-            OrdersAction::Slot {
+            OrdersDirective::Slot {
                 slot,
                 target: ActionTarget::None,
             },
@@ -359,7 +359,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     let at_unit = |unit| {
         Order::payload(&[Order::one(
             hero,
-            OrdersAction::Slot {
+            OrdersDirective::Slot {
                 slot: 1,
                 target: ActionTarget::Unit(unit),
             },
@@ -417,7 +417,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     // Past the world's bound, which bounds a match without a map: it clamps to the edge.
     let beyond = Order::payload(&[Order::one(
         first,
-        OrdersAction::Move {
+        OrdersDirective::Move {
             to: GroundPoint {
                 x: Vec3::BOUND + Num::EPSILON,
                 z: -Num::int(1),
@@ -426,7 +426,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     )]);
     let edge = Order::payload(&[Order::one(
         second,
-        OrdersAction::Move {
+        OrdersDirective::Move {
             to: GroundPoint {
                 x: Vec3::BOUND,
                 z: Num::ZERO,
@@ -440,7 +440,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     // A valid order, sent to a capability the mode did not declare.
     let order = Order::one(
         first,
-        OrdersAction::Move {
+        OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::int(9),
                 z: Num::int(9),
@@ -1311,9 +1311,9 @@ fn every_orders_type_is_state_and_restores() {
     assert!(restored.try_part::<Resetting>(still).is_some());
 }
 
-/// The payload of an order of `action` to `units`, in the order given, as a client may send it.
-fn order_to(units: &[StableId], action: OrdersAction) -> Vec<u8> {
-    let body = Binary::encode(&(units, action));
+/// The payload of an order of `directive` to `units`, in the order given, as a client may send it.
+fn order_to(units: &[StableId], directive: OrdersDirective) -> Vec<u8> {
+    let body = Binary::encode(&(units, directive));
     Command::encode(&[Command {
         capability: Capability::Orders,
         body: &body,
@@ -1353,7 +1353,7 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
         .map(|at| Orders::hero(&mut game, hero, at, Team::new(0), 0));
         let other = Orders::hero(&mut game, hero, (3, 0, 3), Team::new(1), 1);
         let still = Orders::hero(&mut game, still, (0, 0, 0), Team::new(0), 0);
-        let action = OrdersAction::Move {
+        let action = OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::int(goal.0),
                 z: Num::int(goal.1),
@@ -1381,7 +1381,7 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
 fn a_list_of_units_out_of_order_or_twice_orders_nothing() {
     let mut game = orders_match();
     let TwoHeroes { first, second } = TwoHeroes::place(&mut game);
-    let to = OrdersAction::Move {
+    let to = OrdersDirective::Move {
         to: GroundPoint {
             x: Num::int(0),
             z: Num::int(5),
@@ -1419,7 +1419,7 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     });
     game.step_with(&[]);
     assert!(Orders::strikes_at(&game, walker).is_some());
-    let stop = order_to(&[walker], OrdersAction::Stop);
+    let stop = order_to(&[walker], OrdersDirective::Stop);
     game.step_with(&[(Seat::new(1), &stop)]);
     assert!(Orders::strikes_at(&game, walker).is_some());
     game.step_with(&[(Seat::new(0), &stop)]);

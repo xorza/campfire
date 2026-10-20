@@ -6,7 +6,7 @@ use crate::replication_target::Replicate;
 use crate::visibility_ext::VisibilityExt;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;
-use campfire_net_despawn::DespawnReplicated;
+use campfire_net_despawns::DespawnReplicated;
 use campfire_net_messages::LinkMessages;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;

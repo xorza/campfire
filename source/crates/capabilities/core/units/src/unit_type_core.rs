@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{Section, SectionTable, UnitTypeData};
-use campfire_script::SyncedStateDecl;
+use campfire_declarations::{Section, SectionTable, UnitTypeData};
+use campfire_script::StateFieldDecl;
 use campfire_values::Scalar;
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 pub struct UnitTypeCore {
     pub tags: Vec<DeclaredName>,
     pub params: BTreeMap<DeclaredName, Scalar>,
-    pub state: BTreeMap<DeclaredName, SyncedStateDecl>,
+    pub state: BTreeMap<DeclaredName, StateFieldDecl>,
 }
 
 /// A unit type's `tags`.
@@ -39,7 +39,7 @@ impl Section for TypeParamsData {
 /// A unit type's `state`, each field by name.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct TypeStateData(pub BTreeMap<DeclaredName, SyncedStateDecl>);
+pub(crate) struct TypeStateData(pub BTreeMap<DeclaredName, StateFieldDecl>);
 
 impl Section for TypeStateData {
     const TABLE: SectionTable = SectionTable::AnyType;

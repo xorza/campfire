@@ -1,4 +1,4 @@
-use campfire_declare::PerType;
+use campfire_declarations::PerType;
 use campfire_script::Filter;
 use campfire_values::{ActionId, Relation, TagSet};
 

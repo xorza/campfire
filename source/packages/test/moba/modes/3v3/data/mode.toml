@@ -87,8 +87,8 @@ hero = "string"
 spells = "string_list"
 
 [state]
-phase = { type = "string", default = "pick", sync = "all" }
-first_blood = { type = "bool", default = false, sync = "all" }
+phase = { type = "string", default = "pick", audience = "all" }
+first_blood = { type = "bool", default = false, audience = "all" }
 
 [params]
 pick_ms = 60000

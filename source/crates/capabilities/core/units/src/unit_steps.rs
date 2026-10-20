@@ -1,4 +1,4 @@
-use campfire_declare::{BookCx, BookError, ByType, Fact};
+use campfire_declarations::{BookCx, BookError, ByType, Fact};
 
 use crate::move_step::MoveStep;
 use crate::turn_step::TurnStep;

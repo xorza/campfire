@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs};
 use bevy_ecs::system::{Res, ResMut, ScheduleSystem, SystemParam};
 use bevy_ecs::world::World;
-use campfire_declare::Cache;
+use campfire_declarations::Cache;
 use campfire_geometry::{BodyGrid, Indexed, Placed};
 use campfire_sim::StableId;
 

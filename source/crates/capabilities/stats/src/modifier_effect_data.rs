@@ -6,7 +6,7 @@ use campfire_actions::{
 };
 use campfire_common::DeclaredName;
 use campfire_common::Ticks;
-use campfire_declare::{BookError, Listed};
+use campfire_declarations::{BookError, Listed};
 use campfire_script::{
     ApiBuilder, Applies, CallError, Checked, Ctx, Frame, MemberDecl, ScriptTicks, Unit, View,
 };

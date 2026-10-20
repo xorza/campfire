@@ -45,7 +45,7 @@ mod ecs {
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
     use campfire_sim::{OnAny, SimComponent};
-    use campfire_state_types::{Replication, SentOnce};
+    use campfire_states::{Replication, SentOnce};
     use campfire_visibility::DataKind;
 
     use crate::unit_type::UnitType;

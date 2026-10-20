@@ -6,7 +6,7 @@ use campfire_actions::{
 };
 use campfire_codec::{TomlError, TomlTable, TomlValue};
 use campfire_common::DeclaredName;
-use campfire_declare::{BookError, Listed, ReadValue, SectionReaders};
+use campfire_declarations::{BookError, Listed, ReadValue, SectionReaders};
 use campfire_deliveries::Delivering;
 use campfire_script::{ApiBuilder, CallError, Frame, View};
 use campfire_sim::Capability;

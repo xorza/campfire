@@ -205,7 +205,7 @@ fn a_package_refuses_what_an_os_would_hold_another_way() {
 }
 
 fn walker() -> PackageDir {
-    PackageDir::new(PackageDir::workspace("test/heroes/walker"))
+    PackageDir::new(PackageDir::workspace("test/engine/heroes/walker"))
 }
 
 #[test]

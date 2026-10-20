@@ -1,5 +1,5 @@
 use campfire_actions::LoadoutRanks;
-use campfire_declare::{BookCx, BookError, BookSource, ByType, Given};
+use campfire_declarations::{BookCx, BookError, BookSource, ByType, Given};
 use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeTeams, ModeUnits};
 use campfire_navigation::{Walker, WalkerKinds};
 use campfire_stats::MoveSpeedCap;
@@ -83,7 +83,7 @@ impl Release {
             given.add(heights);
         }
         let source = BookSource {
-            rate: input.rate,
+            tick_rate: input.tick_rate,
             set: input.set,
             engine_tags: input.engine_tags,
             mode: &input.data.sections,

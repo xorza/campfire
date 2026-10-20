@@ -5,17 +5,17 @@ use campfire_net::JoinState;
 
 /// Ends the app with failure once the client stops: its link failed before it could take its
 /// match up again, the server rewrote its chain, or it refused the session. A client whose link
-/// fails while it plays tries again, which `SimClient` runs, and logs its loss when it stops.
+/// fails while it plays tries again, which `SimClientPlugin` runs, and logs its loss when it stops.
 #[derive(Debug)]
-pub(crate) struct LinkWatch;
+pub(crate) struct LinkWatchPlugin;
 
-impl Plugin for LinkWatch {
+impl Plugin for LinkWatchPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, Self::stopped);
     }
 }
 
-impl LinkWatch {
+impl LinkWatchPlugin {
     fn stopped(state: Res<'_, JoinState>, mut exit: MessageWriter<'_, AppExit>) {
         if state.loss().is_some() || state.refusal().is_some() {
             exit.write(AppExit::error());

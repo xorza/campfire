@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_actions::ActionSlots;
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_players::OnMatch;
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_units::Dead;

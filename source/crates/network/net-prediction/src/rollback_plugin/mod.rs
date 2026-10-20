@@ -33,7 +33,7 @@ The replay rewinds `Time<Fixed>` and `Time<()>`, which the stack holds. Any othe
 holds the value of each tick.
  */
 
-use campfire_net_despawn::DespawnReplicated;
+use campfire_net_despawns::DespawnReplicated;
 
 use crate::disable_rollback::DisableRollback;
 use crate::disabled_during_rollback::DisabledDuringRollback;
@@ -45,8 +45,8 @@ use crate::prediction_registry::PredictionRegistry;
 use crate::prediction_setup::PredictionSetup;
 use crate::prediction_systems::PredictionSystems;
 use crate::previous_visual::PreviousVisual;
-use crate::rollback_check_stage::RollbackCheckStage;
 use crate::rollback_check_state::{RollbackCheckState, RollbackKind};
+use crate::rollback_check_systems::RollbackCheckSystems;
 use crate::rollback_mode::RollbackMode;
 use crate::rollback_scan::RollbackScan;
 use crate::rollback_systems::RollbackSystems;
@@ -109,11 +109,11 @@ impl Plugin for RollbackPlugin {
         app.configure_sets(
             PreUpdate,
             (
-                RollbackCheckStage::Begin,
-                RollbackCheckStage::Survey,
-                RollbackCheckStage::Decide,
-                RollbackCheckStage::Scan,
-                RollbackCheckStage::Finish,
+                RollbackCheckSystems::Begin,
+                RollbackCheckSystems::Survey,
+                RollbackCheckSystems::Decide,
+                RollbackCheckSystems::Scan,
+                RollbackCheckSystems::Finish,
             )
                 .chain()
                 .in_set(RollbackSystems::Check),
@@ -140,9 +140,9 @@ impl Plugin for RollbackPlugin {
                 Self::check_received_replication_messages
                     .after(ClientSystems::ReceivePackets)
                     .before(ClientSystems::Receive),
-                Self::begin_rollback_check.in_set(RollbackCheckStage::Begin),
-                Self::check_rollback.in_set(RollbackCheckStage::Decide),
-                Self::end_rollback_check.in_set(RollbackCheckStage::Finish),
+                Self::begin_rollback_check.in_set(RollbackCheckSystems::Begin),
+                Self::check_rollback.in_set(RollbackCheckSystems::Decide),
+                Self::end_rollback_check.in_set(RollbackCheckSystems::Finish),
                 (Self::begin_rollback, Self::remove_prediction_despawned)
                     .chain()
                     .in_set(RollbackSystems::RestoreDespawned),

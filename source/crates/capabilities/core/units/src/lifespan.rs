@@ -4,7 +4,7 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::{DeferredWorld, World};
 use campfire_common::{Tick, Ticks};
 use campfire_sim::{DueIndex, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
-use campfire_state_types::{NotSent, Replication};
+use campfire_states::{NotSent, Replication};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 

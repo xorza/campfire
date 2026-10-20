@@ -1,6 +1,6 @@
 use campfire_actions::ActionsData;
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, Fact};
+use campfire_declarations::{BookCx, BookError, Fact};
 use campfire_script::{AppliedModifier, Applies, ScriptUses};
 use campfire_values::{PackageIndex, PackagePath};
 

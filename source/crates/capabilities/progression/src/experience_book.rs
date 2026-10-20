@@ -5,7 +5,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, SystemState};
 use bevy_ecs::world::World;
 use campfire_actions::Targets;
-use campfire_declare::{Book, BookCx, BookError, BookPlace, ByType, Section};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByType, Section};
 use campfire_geometry::Placed;
 use campfire_math::{Num, Rounding};
 use campfire_script::{Filter, MatchNames, UnknownName};

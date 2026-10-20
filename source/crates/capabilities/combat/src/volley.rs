@@ -3,7 +3,7 @@ use bevy_ecs::query::Without;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::{ActionProgress, ProgressIndexes, ResolveKind};
-use campfire_declare::{Role, Scratch};
+use campfire_declarations::{Role, Scratch};
 use campfire_sim::{DueUnit, SimTick, StableId};
 use campfire_units::Dead;
 

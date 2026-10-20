@@ -9,8 +9,8 @@ use campfire_common::{ErrorReport, ExitStatus};
 use campfire_math::TickRate;
 use campfire_mode::OptionValue;
 use campfire_net::{
-    ClientDir, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Os, Pace, SeatBotFile,
-    ServerPin, UdpLinks,
+    ClientDir, LocalPacePlugin, LocalRelinkPlugin, LocalServer, LocalServerSetup, Os, Pace,
+    SeatBotFile, ServerPin, UdpLinks,
 };
 use campfire_net_endpoint::Endpoint;
 use campfire_net_socket::ClientSocket;
@@ -141,11 +141,11 @@ impl Connection {
                     .entity_mut(client)
                     .insert(server.take_link());
                 app.add_plugins((
-                    LocalPace {
+                    LocalPacePlugin {
                         pace: Arc::clone(pace),
-                        rate,
+                        tick_rate: rate,
                     },
-                    LocalRelink {
+                    LocalRelinkPlugin {
                         relinks: server.relinks(),
                     },
                 ));

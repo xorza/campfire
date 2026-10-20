@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_actions::{SlotKinds, TrackNames};
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Section};
 use campfire_script::UnknownName;
 use campfire_values::{Named, PackageIndex, TrackId};
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::Book;
+use campfire_declarations::Book;
 use campfire_geometry::BodyBox;
 use campfire_math::Vec3;
 use campfire_script::MatchNames;

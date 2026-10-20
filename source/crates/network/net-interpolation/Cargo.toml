@@ -23,7 +23,7 @@ internals = [
 campfire-math.workspace = true
 campfire-net-timeline.workspace = true
 campfire-net-core.workspace = true
-campfire-net-despawn.workspace = true
+campfire-net-despawns.workspace = true
 campfire-net-connection.workspace = true
 campfire-net-stepper = { workspace = true, optional = true }
 campfire-net-messages.workspace = true

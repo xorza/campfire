@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, RangeTakes, Takes};
 use campfire_common::DeclaredName;
-use campfire_declare::Listed;
+use campfire_declarations::Listed;
 use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
 use campfire_script::ApiBuilder;

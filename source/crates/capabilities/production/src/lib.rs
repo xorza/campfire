@@ -12,16 +12,16 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
-use campfire_actions::{ActionsSet, ByAction};
+use campfire_actions::{ActionsSystems, ByAction};
 use campfire_common::EnumAll;
-use campfire_declare::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
+use campfire_declarations::{
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSystems, ServerForm, SetPlace,
 };
 use campfire_players::Player;
 use campfire_script::{ApiVersion, Status};
-use campfire_sim::{Capability, SimSet};
-use campfire_stats::StatsSet;
-use campfire_units::{BodyUnit, StatusTags, UnitGrid, UnitTypes, UnitsSet};
+use campfire_sim::{Capability, SimSystems};
+use campfire_stats::StatsSystems;
+use campfire_units::{BodyUnit, StatusTags, UnitGrid, UnitTypes, UnitsSystems};
 use campfire_values::{Block, EngineTag, TagProperties};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
@@ -52,11 +52,11 @@ mod order_dues;
 mod placement;
 mod placement_data;
 mod player_supply;
-mod production_action;
 mod production_api;
 mod production_books;
 mod production_column;
 mod production_data;
+mod production_directive;
 mod production_orders;
 mod rally;
 mod rally_target;
@@ -96,10 +96,10 @@ pub use crate::node_data::NodeData;
 pub use crate::placement::Placement;
 pub use crate::placement_data::{PlacementData, PlacementRule};
 pub use crate::player_supply::PlayerSupply;
-pub use crate::production_action::ProductionAction;
 pub use crate::production_api::ProductionApi;
 pub use crate::production_column::ProductionColumn;
 pub use crate::production_data::ProductionData;
+pub use crate::production_directive::ProductionDirective;
 pub use crate::production_orders::ProductionOrders;
 pub use crate::rally::Rally;
 pub use crate::rally_target::RallyTarget;
@@ -123,7 +123,7 @@ pub struct Production;
 
 /// The steps of `production`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum ProductionSet {
+pub enum ProductionSystems {
     /// The tick's orders cancel trains and builds, and set rally points.
     Commands,
     /// The build orders that changed are checked, after the orders apply.
@@ -136,21 +136,21 @@ pub enum ProductionSet {
     Supply,
 }
 
-impl ModuleSet for ProductionSet {
+impl ModuleSystems for ProductionSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        let inputs = || SetPlace::stage(SimSet::Inputs);
+        let inputs = || SetPlace::stage(SimSystems::Inputs);
         match self {
-            Self::Commands => SetPlace::at(ActionsSet::Queue),
+            Self::Commands => SetPlace::at(ActionsSystems::Queue),
             // After the actions' last step of Inputs too, as a match without stats has no grant
             // to order through.
             Self::CheckBuilds => inputs()
-                .after(ActionsSet::HoldAtInputs)
-                .after(StatsSet::GrantAtInputs),
-            Self::Start => SetPlace::stage(SimSet::Act).after(ActionsSet::Start),
-            Self::Finish => SetPlace::stage(SimSet::Mode),
-            Self::Supply => SetPlace::at(UnitsSet::End),
+                .after(ActionsSystems::HoldAtInputs)
+                .after(StatsSystems::GrantAtInputs),
+            Self::Start => SetPlace::stage(SimSystems::Act).after(ActionsSystems::Start),
+            Self::Finish => SetPlace::stage(SimSystems::Mode),
+            Self::Supply => SetPlace::at(UnitsSystems::End),
         }
     }
 }
@@ -159,7 +159,7 @@ impl Module for Production {
     const CAPABILITY: Option<Capability> = Some(Capability::Production);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[Capability::Stats, Capability::Vision];
-    type Set = ProductionSet;
+    type Systems = ProductionSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<ProductionData>();
@@ -242,46 +242,46 @@ impl Module for Production {
     /// server's vision sees, or, on a predicting client, the units it holds. On the server, a
     /// player spawns with its supply, which the refresh of a mode that counts supply writes in
     /// place; a client receives its own player's.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.by_role(
-            ProductionSet::Commands,
+            ProductionSystems::Commands,
             ProductionOrders::apply_cancels::<ByVision>,
             ProductionOrders::apply_cancels::<ByHolding>,
         );
-        cx.server(ProductionSet::Commands, ProductionOrders::set_rallies);
+        cx.server(ProductionSystems::Commands, ProductionOrders::set_rallies);
         if cx.book::<SupplyBook>().is_some_and(|book| book.counts()) {
-            cx.server(ProductionSet::Supply, PlayerSupply::refresh);
+            cx.server(ProductionSystems::Supply, PlayerSupply::refresh);
         }
         // A build places a box, which only navigation tests for room, and a worker walks.
         if !cx.has(Capability::Navigation) {
             cx.by_role(
-                ProductionSet::Start,
+                ProductionSystems::Start,
                 Trains::start_trains::<ServerForm>,
                 Trains::start_trains::<ClientForm>,
             );
-            cx.server(ProductionSet::Finish, Trains::finish_trains);
+            cx.server(ProductionSystems::Finish, Trains::finish_trains);
             return;
         }
         cx.by_role(
-            ProductionSet::CheckBuilds,
+            ProductionSystems::CheckBuilds,
             Self::check_builds::<ByVision>(),
             Self::check_builds::<ByHolding>(),
         );
         cx.by_role(
-            ProductionSet::Start,
+            ProductionSystems::Start,
             Self::start_builds::<ByVision>(),
             Self::start_builds::<ByHolding>(),
         );
         cx.by_role(
-            ProductionSet::Finish,
+            ProductionSystems::Finish,
             Construction::progress_sites::<ServerForm>,
             Construction::progress_sites::<ClientForm>,
         );
         cx.server(
-            ProductionSet::Finish,
+            ProductionSystems::Finish,
             Trains::finish_trains.after(Construction::progress_sites::<ServerForm>),
         );
-        cx.server(ProductionSet::Supply, GatherLoop::despawn_empty_nodes);
+        cx.server(ProductionSystems::Supply, GatherLoop::despawn_empty_nodes);
     }
 }
 
@@ -335,8 +335,8 @@ pub mod internals {
         ActionData, ActionKind, ActionRange, ActionTarget, Actions, Aim, ByAction, ProgressDues,
     };
     use campfire_common::Ticks;
-    use campfire_declare::ByType;
-    use campfire_declare::internals::BookLoad;
+    use campfire_declarations::ByType;
+    use campfire_declarations::internals::BookLoad;
     use campfire_math::Num;
     use campfire_players::ResourceAmount;
     use campfire_script::{Filter, MatchNames};

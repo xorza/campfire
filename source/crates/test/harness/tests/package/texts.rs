@@ -5,7 +5,7 @@ use campfire_package::{
     Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, PackageName, PackageRef, Texts,
 };
 use campfire_test_packages::Edit;
-use campfire_values::MessageId;
+use campfire_values::TextId;
 
 use crate::package::moba::{edited, edited_at, load};
 
@@ -27,7 +27,7 @@ fn german<'a>(
 #[test]
 fn a_heros_name_reads_in_the_players_language_or_else_in_the_heros_own() {
     let packages = load(&edited([])).unwrap();
-    let name = MessageId::new("hero-name").unwrap();
+    let name = TextId::new("hero-name").unwrap();
     let texts = Texts::new(&packages, &[german([]).unwrap()]).unwrap();
     let text =
         |package, language_text| texts.text(&named(package), &name, &language(language_text));
@@ -38,7 +38,7 @@ fn a_heros_name_reads_in_the_players_language_or_else_in_the_heros_own() {
     assert_eq!(text("hero-husk", "en").as_deref(), Some("Husk"));
     assert_eq!(text("hero-husk", "fr").as_deref(), Some("Husk"));
     // No message of that id, and no package of that name, give none.
-    let title = MessageId::new("hero-title").unwrap();
+    let title = TextId::new("hero-title").unwrap();
     assert_eq!(
         texts.text(&named("hero-husk"), &title, &language("en")),
         None

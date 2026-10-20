@@ -1,10 +1,10 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declare::PerType;
+use campfire_declarations::PerType;
 use campfire_math::Num;
 use campfire_sim::{MatchRate, SimComponent};
-use campfire_state_types::{Replication, SentOnChange};
+use campfire_states::{Replication, SentOnChange};
 use campfire_units::{Meter, PoolId, UnitEntity};
 use campfire_values::NameId;
 use campfire_visibility::DataKind;

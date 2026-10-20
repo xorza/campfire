@@ -4,7 +4,7 @@ use std::ops::{ControlFlow, Range};
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_declare::Cache;
+use campfire_declarations::Cache;
 use campfire_geometry::{
     BodyBox, CellLevels, Grid, MAX_BOUND, Placed, RowEntries, RowIndex, Shape,
 };

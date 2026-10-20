@@ -6,13 +6,13 @@ use std::sync::Arc;
 
 use campfire_codec::{StructFields, TomlError, TomlTable, TomlValue};
 use campfire_common::DeclaredName;
-use campfire_declare::SectionReaders;
+use campfire_declarations::SectionReaders;
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
 use campfire_script::DataTable;
 use campfire_units::PoolCost;
 use campfire_values::{
-    Distance, FilterData, MessageId, Number, PackagePath, Param, Rank, Ranked, Scalar,
+    Distance, FilterData, Number, PackagePath, Param, Rank, Ranked, Scalar, TextId,
 };
 use serde::Deserialize;
 use serde::de::Error;
@@ -38,7 +38,7 @@ pub(crate) mod error;
 #[derive(Debug, Clone)]
 pub struct ActionData {
     /// The message of the name players see, which an avatar's or a loadout's action needs.
-    pub name: Option<MessageId>,
+    pub name: Option<TextId>,
     /// The script, if the action needs one.
     pub script: Option<PackagePath>,
     pub targeting: Targeting,
@@ -133,7 +133,7 @@ impl Eq for ActionData {}
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PipelineKeys {
-    name: Option<MessageId>,
+    name: Option<TextId>,
     #[serde(default)]
     kind: ActionKind,
     script: Option<PackagePath>,

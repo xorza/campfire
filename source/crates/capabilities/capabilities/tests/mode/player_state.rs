@@ -1,4 +1,4 @@
-use campfire_units::{SyncOwner, SyncTeam};
+use campfire_units::{AudienceOwner, AudienceTeam};
 
 use super::*;
 
@@ -32,10 +32,26 @@ fn on_input(ctx, player, name, value) {
         let entity = game.player_entity(Seat::new(slot)).unwrap();
         let values = |values: &[StateValue]| values.to_vec();
         (
-            values(game.get::<PlayerState<SyncOwner>>(entity).unwrap().values()),
-            values(game.get::<PlayerState<SyncAll>>(entity).unwrap().values()),
-            values(game.get::<PlayerState<SyncNone>>(entity).unwrap().values()),
-            values(game.get::<PlayerState<SyncTeam>>(entity).unwrap().values()),
+            values(
+                game.get::<PlayerState<AudienceOwner>>(entity)
+                    .unwrap()
+                    .values(),
+            ),
+            values(
+                game.get::<PlayerState<AudienceAll>>(entity)
+                    .unwrap()
+                    .values(),
+            ),
+            values(
+                game.get::<PlayerState<AudienceNone>>(entity)
+                    .unwrap()
+                    .values(),
+            ),
+            values(
+                game.get::<PlayerState<AudienceTeam>>(entity)
+                    .unwrap()
+                    .values(),
+            ),
         )
     };
     let text = |text: &str| StateValue::Text(text.into());

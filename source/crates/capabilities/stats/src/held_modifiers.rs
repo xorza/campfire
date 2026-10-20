@@ -1,14 +1,14 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Role, Scratch};
+use campfire_declarations::{Role, Scratch};
 use campfire_sim::StableId;
 use campfire_values::{ActionId, ModifierId, Rank};
 
 use crate::projection::Projection;
 
-/// The modifiers capabilities other than stats hold on units this tick, each on its unit or on
-/// the units a projection selects, which stats hold in `StatsSet::Hold` as they hold auras': each
-/// producer adds to it before that set, whose pass takes all it holds, so every producer's
-/// entries reach it, and none outlives its tick. Not state.
+/// The modifiers capabilities other than stats hold on units this tick, each on its unit or on the
+/// units a projection selects, which stats hold in `StatsSystems::Hold` as they hold auras': each
+/// producer adds to it before that set, whose pass takes all it holds, so every producer's entries
+/// reach it, and none outlives its tick. Not state.
 #[derive(Resource, Debug, Default)]
 pub struct HeldModifiers {
     pub(crate) held: Vec<Held>,

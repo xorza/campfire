@@ -65,7 +65,7 @@ impl PlayerTemplate {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// `Data\INI\PlayerTemplate.ini` of the fixture install: America's, whose skirmish starts it
     /// with a command center and a dozer, and the observer's, which starts with neither.
     pub(crate) const PLAYER_TEMPLATES: &str = "PlayerTemplate FactionObserver\r
@@ -82,7 +82,7 @@ End\r
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::ini::player_template_ini::internals::PLAYER_TEMPLATES;
+    use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
 
     #[test]
     fn a_template_takes_its_start_objects_a_later_file_last() {

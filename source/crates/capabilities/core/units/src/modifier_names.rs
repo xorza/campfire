@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use campfire_declare::Fact;
+use campfire_declarations::Fact;
 use campfire_values::{ModifierId, Names};
 
 /// The names of the modifiers the packages declare, each by its package and its name, which an

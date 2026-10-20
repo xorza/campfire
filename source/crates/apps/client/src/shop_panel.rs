@@ -16,7 +16,7 @@ use bevy::picking::pointer::PointerButton;
 use bevy::text::TextColor;
 use bevy::ui::widget::Text;
 use campfire_capabilities::Order;
-use campfire_items::{Inventory, ItemsAction, Purchase, Shopping};
+use campfire_items::{Inventory, ItemsDirective, Purchase, Shopping};
 use campfire_net::PendingOrders;
 use campfire_sim::{StableId, Unpredicted};
 use campfire_values::ItemId;
@@ -33,7 +33,7 @@ use crate::view::ViewSystems;
 /// with its name and its price for the avatar now, and the player's amount of the shop's
 /// resource above; an item the avatar cannot buy now is dimmed, and a click buys it.
 #[derive(Debug)]
-pub(crate) struct ShopPanel;
+pub(crate) struct ShopPanelPlugin;
 
 /// The panel's root, shown while it is open.
 #[derive(Component, Debug)]
@@ -59,7 +59,7 @@ struct ShopRow {
 #[derive(Resource, Debug, Default)]
 struct Shown(Option<StableId>);
 
-impl Plugin for ShopPanel {
+impl Plugin for ShopPanelPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Shown>();
         app.add_systems(Startup, Self::spawn);
@@ -72,7 +72,7 @@ impl Plugin for ShopPanel {
     }
 }
 
-impl ShopPanel {
+impl ShopPanelPlugin {
     fn spawn(mut commands: Commands<'_, '_>) {
         let panel = Panel::spawn(&mut commands, Corner::TopRight, 280.0);
         commands.entity(panel.root).insert(PanelRoot);
@@ -185,7 +185,7 @@ impl ShopPanel {
         else {
             return;
         };
-        let action = ItemsAction::Buy {
+        let action = ItemsDirective::Buy {
             item: row.item,
             shop,
         };
@@ -218,17 +218,17 @@ mod tests {
     fn the_panel_takes_no_conflicting_access_and_p_shows_it() {
         // Bevy checks that a system's queries do not conflict as it initializes the system.
         let mut world = World::new();
-        let mut panel = IntoSystem::into_system(ShopPanel::show);
+        let mut panel = IntoSystem::into_system(ShopPanelPlugin::show);
         panel.initialize(&mut world);
         // P shows the panel, hidden as it spawns, and P again hides it.
-        world.run_system_once(ShopPanel::spawn).unwrap();
+        world.run_system_once(ShopPanelPlugin::spawn).unwrap();
         let shown = |world: &mut World| {
             let mut panel = world.query_filtered::<&Visibility, With<PanelRoot>>();
             *panel.single(world).unwrap() != Visibility::Hidden
         };
         assert!(!shown(&mut world));
         for open in [true, false] {
-            world.run_system_once(ShopPanel::toggle).unwrap();
+            world.run_system_once(ShopPanelPlugin::toggle).unwrap();
             assert_eq!(shown(&mut world), open);
         }
     }

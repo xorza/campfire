@@ -4,7 +4,7 @@ use bevy_ecs::query::Without;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemId};
 use campfire_common::Tick;
-use campfire_declare::OneShot;
+use campfire_declarations::OneShot;
 use campfire_sim::{DueIndex, SimTick, StableId};
 use campfire_units::{Body, Dead, Destination, Tracking};
 

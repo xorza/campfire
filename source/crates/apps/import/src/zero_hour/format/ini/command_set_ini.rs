@@ -42,7 +42,7 @@ impl CommandSetIni {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// `Data\INI\CommandSet.ini` of the fixture install: the command center's, the dozer's and
     /// the barracks', each of a button the import drops among those it converts.
     pub(crate) const COMMAND_SETS: &str = "CommandSet AmericaCommandCenterCommandSet\r
@@ -68,7 +68,7 @@ End\r
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::ini::command_set_ini::internals::COMMAND_SETS;
+    use crate::zero_hour::format::ini::command_set_ini::samples::COMMAND_SETS;
 
     #[test]
     fn a_set_lists_its_buttons_by_place_a_later_file_over_the_places_it_names() {

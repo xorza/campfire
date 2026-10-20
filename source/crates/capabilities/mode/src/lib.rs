@@ -13,23 +13,24 @@ use std::sync::Arc;
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, ActionsSet};
+use campfire_actions::{ActionSlots, ActionsSystems};
 use campfire_combat::{Weigh, Weighers};
 use campfire_common::{EnumAll, Seat};
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_declarations::{ByType, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
 use campfire_navigation::{
     ModeNavigationData, Navigation, NavigationBook, OnPath, PathArrivals, WalkerOnPath,
 };
 use campfire_players::{MatchEntity, Player, Players, PlayersWorld, SeatStart, Seating};
-use campfire_production::{CompletedSites, ProductionSet, TrainedUnits};
+use campfire_production::{CompletedSites, ProductionSystems, TrainedUnits};
 use campfire_progression::LevelUps;
 use campfire_script::{
     ApiVersion, CallError, Ctx, Hook, HookSet, MatchNames, ModeEvents, PlannedCapability,
     ScriptRole, ScriptText, Status,
 };
-use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick};
+use campfire_sim::{Breach, Capability, IdAllocator, SimSystems, SimTick};
 use campfire_units::{
-    BodyForm, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitsSet,
+    AudienceAll, AudienceNone, AudienceOwner, AudienceTeam, BodyForm, ScriptBook, SpawnAt, Spawner,
+    UnitsSystems,
 };
 use campfire_values::Relations;
 
@@ -135,7 +136,7 @@ pub use crate::mode_load::ModeLoad;
 pub use crate::mode_map::{MapInput, ModeMap};
 pub use crate::mode_setup::ModeSetup;
 pub use crate::mode_spec::{MapStart, ModeSpec, SpecLoad};
-pub use crate::mode_state::{ModeState, ModeSync};
+pub use crate::mode_state::{ModeAudience, ModeState};
 pub use crate::mode_teams::ModeTeams;
 pub use crate::mode_units::ModeUnits;
 pub use crate::mode_world::ModeWorld;
@@ -144,7 +145,7 @@ pub use crate::option_data::OptionData;
 pub use crate::option_picks::OptionPicks;
 pub use crate::option_value::OptionValue;
 pub use crate::placed_unit::PlacedUnit;
-pub use crate::player_state::{PlayerState, PlayerSync};
+pub use crate::player_state::{PlayerAudience, PlayerState};
 pub use crate::players_data::PlayersData;
 pub use crate::region_data::RegionData;
 pub use crate::relation_data::RelationData;
@@ -166,7 +167,7 @@ pub struct Mode;
 
 /// The mode's steps.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum ModeSet {
+pub enum ModeSystems {
     /// The tick's mode inputs run its script, once the tick started and before any order.
     Inputs,
     /// Once the trains spawned: the tick's deaths end players and the match, then pay their
@@ -187,21 +188,20 @@ pub enum ModeSet {
     OutOfPlay,
 }
 
-impl ModuleSet for ModeSet {
+impl ModuleSystems for ModeSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            Self::Inputs => {
-                (SetPlace::stage(SimSet::Inputs).after(UnitsSet::Begin)).before(ActionsSet::Toggle)
-            }
-            Self::Deaths => SetPlace::stage(SimSet::Mode).after(ProductionSet::Finish),
-            Self::Hooks => SetPlace::stage(SimSet::Mode).after(Self::Deaths),
-            Self::LevelUps => SetPlace::stage(SimSet::Mode).after(Self::Hooks),
-            Self::Trained => SetPlace::stage(SimSet::Mode).after(Self::LevelUps),
-            Self::Sites => SetPlace::stage(SimSet::Mode).after(Self::Trained),
-            Self::PathEnds => SetPlace::stage(SimSet::Mode).after(Self::Sites),
-            Self::OutOfPlay => SetPlace::at(UnitsSet::End),
+            Self::Inputs => (SetPlace::stage(SimSystems::Inputs).after(UnitsSystems::Begin))
+                .before(ActionsSystems::Toggle),
+            Self::Deaths => SetPlace::stage(SimSystems::Mode).after(ProductionSystems::Finish),
+            Self::Hooks => SetPlace::stage(SimSystems::Mode).after(Self::Deaths),
+            Self::LevelUps => SetPlace::stage(SimSystems::Mode).after(Self::Hooks),
+            Self::Trained => SetPlace::stage(SimSystems::Mode).after(Self::LevelUps),
+            Self::Sites => SetPlace::stage(SimSystems::Mode).after(Self::Trained),
+            Self::PathEnds => SetPlace::stage(SimSystems::Mode).after(Self::Sites),
+            Self::OutOfPlay => SetPlace::at(UnitsSystems::End),
         }
     }
 }
@@ -216,7 +216,7 @@ impl Module for Mode {
         Capability::Progression,
         Capability::Stats,
     ];
-    type Set = ModeSet;
+    type Systems = ModeSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.callback::<Weighers>(
@@ -226,12 +226,12 @@ impl Module for Mode {
                 heal: Calls::weigh_heal,
             },
         );
-        d.component::<ModeState<SyncNone>>();
-        d.component::<ModeState<SyncAll>>();
-        d.component::<PlayerState<SyncNone>>();
-        d.component::<PlayerState<SyncOwner>>();
-        d.component::<PlayerState<SyncTeam>>();
-        d.component::<PlayerState<SyncAll>>();
+        d.component::<ModeState<AudienceNone>>();
+        d.component::<ModeState<AudienceAll>>();
+        d.component::<PlayerState<AudienceNone>>();
+        d.component::<PlayerState<AudienceOwner>>();
+        d.component::<PlayerState<AudienceTeam>>();
+        d.component::<PlayerState<AudienceAll>>();
         d.resource::<Choices>();
         d.resource::<Timers>();
         d.resource::<UnansweredDeaths>();
@@ -242,27 +242,27 @@ impl Module for Mode {
         d.part::<MatchEntity, Relations>(|at| {
             Some(at.world().resource::<MatchMode>().relations.clone())
         });
-        d.part::<MatchEntity, ModeState<SyncNone>>(|at| {
+        d.part::<MatchEntity, ModeState<AudienceNone>>(|at| {
             Some(ModeState::initial(
                 &at.world().resource::<MatchMode>().schema,
             ))
         });
-        d.part::<MatchEntity, ModeState<SyncAll>>(|at| {
+        d.part::<MatchEntity, ModeState<AudienceAll>>(|at| {
             Some(ModeState::initial(
                 &at.world().resource::<MatchMode>().schema,
             ))
         });
-        d.part::<Player, PlayerState<SyncNone>>(|at| {
+        d.part::<Player, PlayerState<AudienceNone>>(|at| {
             Some(PlayerState::initial(
                 &at.world().resource::<MatchMode>().schema.players,
             ))
         });
-        d.part::<Player, PlayerState<SyncOwner>>(|at| {
+        d.part::<Player, PlayerState<AudienceOwner>>(|at| {
             Some(PlayerState::initial(
                 &at.world().resource::<MatchMode>().schema.players,
             ))
         });
-        d.part::<Player, PlayerState<SyncTeam>>(|at| {
+        d.part::<Player, PlayerState<AudienceTeam>>(|at| {
             Some(PlayerState::initial(
                 &at.world().resource::<MatchMode>().schema.players,
             ))
@@ -272,7 +272,7 @@ impl Module for Mode {
             let start = at.world().resource::<BountyBook>().start();
             start.map(BountyShare)
         });
-        d.part::<Player, PlayerState<SyncAll>>(|at| {
+        d.part::<Player, PlayerState<AudienceAll>>(|at| {
             Some(PlayerState::initial(
                 &at.world().resource::<MatchMode>().schema.players,
             ))
@@ -297,7 +297,7 @@ impl Module for Mode {
     /// `on_site_complete`, and the walkers at their paths' ends `on_path_end`, each in that order,
     /// or clear in a mode without the hook. Each hook's system installs only in a mode whose
     /// script defines its hook, a fact of the load; `Mode::load` gives them the mode they run.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         let book = cx.book::<ScriptBook>();
         let book = book.expect("a match that runs its mode holds its scripts' hooks");
         let hooks = cx.mode_scripts().map_or_else(HookSet::default, |listed| {
@@ -308,47 +308,47 @@ impl Module for Mode {
             .and_then(|book| book.victory())
             .is_some()
         {
-            cx.add(ModeSet::Deaths, Victory::follow);
+            cx.add(ModeSystems::Deaths, Victory::follow);
         }
         if cx
             .book::<BountyBook>()
             .and_then(BountyBook::bounty)
             .is_some()
         {
-            cx.add(ModeSet::Deaths, Bounty::pay.after(Victory::follow));
+            cx.add(ModeSystems::Deaths, Bounty::pay.after(Victory::follow));
         }
         let defines = |hook| hooks.contains(hook);
         let answers = |queue_hooks: &[Hook]| queue_hooks.iter().any(|&hook| defines(hook));
         let timers = (ModeHooks::run_timers, ModeHooks::fire_timers);
         if defines(Hook::of::<OnInput>()) {
-            cx.add(ModeSet::Inputs, ModeHooks::mode_inputs);
+            cx.add(ModeSystems::Inputs, ModeHooks::mode_inputs);
         }
         let seat_events = ModeHooks::answer::<UnansweredSeatEvents>;
         if answers(UnansweredSeatEvents::HOOKS) {
             cx.add(
-                ModeSet::Hooks,
+                ModeSystems::Hooks,
                 seat_events.before(timers.0).before(timers.1),
             );
         }
         if defines(Hook::of::<OnTimer>()) {
-            cx.add(ModeSet::Hooks, timers.0);
+            cx.add(ModeSystems::Hooks, timers.0);
         } else {
-            cx.add(ModeSet::Hooks, timers.1);
+            cx.add(ModeSystems::Hooks, timers.1);
         }
         let deaths = ModeHooks::answer::<UnansweredDeaths>;
         if answers(UnansweredDeaths::HOOKS) {
-            cx.add(ModeSet::Hooks, deaths.after(timers.0).after(timers.1));
+            cx.add(ModeSystems::Hooks, deaths.after(timers.0).after(timers.1));
         }
-        cx.add(ModeSet::OutOfPlay, OutOfPlayMarks::refresh);
+        cx.add(ModeSystems::OutOfPlay, OutOfPlayMarks::refresh);
         if cx.has(Capability::Progression) {
-            Self::events::<LevelUps>(cx, ModeSet::LevelUps, &hooks);
+            Self::events::<LevelUps>(cx, ModeSystems::LevelUps, &hooks);
         }
         if cx.has(Capability::Production) {
-            Self::events::<TrainedUnits>(cx, ModeSet::Trained, &hooks);
-            Self::events::<CompletedSites>(cx, ModeSet::Sites, &hooks);
+            Self::events::<TrainedUnits>(cx, ModeSystems::Trained, &hooks);
+            Self::events::<CompletedSites>(cx, ModeSystems::Sites, &hooks);
         }
         if cx.has(Capability::Navigation) {
-            Self::events::<PathArrivals>(cx, ModeSet::PathEnds, &hooks);
+            Self::events::<PathArrivals>(cx, ModeSystems::PathEnds, &hooks);
         }
     }
 }
@@ -356,7 +356,11 @@ impl Module for Mode {
 impl Mode {
     /// Adds, in `set`, the answer of a capability's events `Q` in a mode whose script defines one
     /// of their hooks, `hooks` being those it defines, or else their drop.
-    fn events<Q: ModeEvents>(cx: &mut InstallCx<'_, ModeSet>, set: ModeSet, hooks: &HookSet) {
+    fn events<Q: ModeEvents>(
+        cx: &mut InstallCx<'_, ModeSystems>,
+        set: ModeSystems,
+        hooks: &HookSet,
+    ) {
         if Q::HOOKS.iter().any(|&hook| hooks.contains(hook)) {
             cx.add(set, ModeHooks::answer::<Q>);
         } else {

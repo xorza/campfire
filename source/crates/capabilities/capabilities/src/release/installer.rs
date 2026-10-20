@@ -8,24 +8,24 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemCondition};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
-use campfire_declare::{
+use campfire_declarations::{
     Book, BuildFn, BuiltBooks, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations,
     EntityKind, EntityParts, ExtendFn, Fact, InstallFacts, KindSpawn, KindVisitor, Listed,
-    ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section, SpawnParts,
+    ModuleSystems, OneShot, Report, Role, RuleFn, Scratch, Section, SpawnParts,
 };
 use campfire_script::{
     ApiBuilder, CallExtension, CallParams, Ctx, HookDecl, PlannedCapability, RowReads, Status,
     ViewColumn,
 };
 use campfire_sim::{
-    Breach, Capability, DueIndex, HostRule, OwnResources, Removals, SimComponent, SimEdge,
-    SimResource, SimSet, StateRegistryBuilder, TimedProcess, TimedRuns,
+    Breach, Capability, DueIndex, HostRule, OwnResources, Removals, SimComponent, SimEdgeSystems,
+    SimResource, SimSystems, StateRegistryBuilder, TimedProcess, TimedRuns,
 };
-use campfire_state_types::{Replication, StateTypes};
+use campfire_states::{Replication, StateTypes};
 use campfire_units::{EntityKinds, ViewReader};
 use campfire_values::EngineTag;
 
-use crate::release::stage_span::StageSpan;
+use crate::release::stage_span_systems::StageSpanSystems;
 
 /// The consumer that puts a module's declarations into a match: its state types and restore
 /// checks into the state registry, its system sets into the schedule, its books from the built
@@ -157,7 +157,7 @@ impl Declarations for Installer<'_> {
 
     fn listed<L: Listed>(&mut self) {}
 
-    fn sets<S: ModuleSet>(&mut self) {
+    fn sets<S: ModuleSystems>(&mut self) {
         for &set in S::ALL {
             set.place().configure(set, self.schedule);
         }
@@ -280,16 +280,16 @@ impl Declarations for Installer<'_> {
 
     fn loaded<R: Resource>(&mut self) {}
 
-    /// Each stage checks `condition` once, as it starts, with `SimEdge::Start` before them all,
-    /// so the stage it turns false in is the last to run, its closing set with it.
+    /// Each stage checks `condition` once, as it starts, with `SimEdgeSystems::Start` before them
+    /// all, so the stage it turns false in is the last to run, its closing set with it.
     fn stages_run_if<M>(&mut self, condition: impl SystemCondition<M> + Clone) {
         self.schedule
-            .configure_sets(SimEdge::Start.run_if(condition.clone()));
-        for stage in SimSet::ALL {
-            let span = StageSpan(stage);
+            .configure_sets(SimEdgeSystems::Start.run_if(condition.clone()));
+        for stage in SimSystems::ALL {
+            let span = StageSpanSystems(stage);
             self.schedule.configure_sets((
                 stage.in_set(span),
-                SimEdge::After(stage).in_set(span),
+                SimEdgeSystems::After(stage).in_set(span),
                 span.run_if(condition.clone()),
             ));
         }

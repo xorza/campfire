@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::fmt::Debug;
 
-use campfire_declare::ListedSet;
+use campfire_declarations::ListedSet;
 use campfire_script::DataTable;
 use campfire_sim::Capability;
 use campfire_values::{Number, Ranked};
@@ -50,7 +50,7 @@ impl ListedSet for KindSections {
 pub(crate) mod tests {
     use std::sync::Arc;
 
-    use campfire_declare::{Listed, SectionReaders};
+    use campfire_declarations::{Listed, SectionReaders};
     use campfire_script::ApiBuilder;
     use campfire_sim::Capability;
     use campfire_values::{Number, Ranked};

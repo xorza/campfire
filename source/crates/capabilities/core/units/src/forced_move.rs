@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::{Num, Rounding, Vec3};
 use campfire_sim::{SimComponent, StableId};
-use campfire_state_types::{Replication, SentPredicted};
+use campfire_states::{Replication, SentPredicted};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 

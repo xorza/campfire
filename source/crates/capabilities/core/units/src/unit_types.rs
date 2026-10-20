@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Fact, SourceKind};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Fact, SourceKind};
 use campfire_script::{StateSchema, TagNames};
 use campfire_values::{
     EngineTag, NameId, NameTable, Names, NamesError, PackageIndex, Scalar, Tag, TagProperties,
@@ -101,7 +101,7 @@ impl UnitTypes {
         let run = Arc::make_mut(&mut self.params).push(params);
         debug_assert_eq!(run, unit_type.index(), "one run of params per type");
         let fields = data.state.iter();
-        let fields = fields.map(|(name, field)| (name.as_str(), field.sync, &field.decl));
+        let fields = fields.map(|(name, field)| (name.as_str(), field.audience, &field.decl));
         self.states.push(StateSchema::new(fields));
         debug_assert_eq!(
             self.states.len(),
@@ -307,7 +307,7 @@ impl UnitTypes {
 pub(crate) mod internals {
     use std::sync::Arc;
 
-    use campfire_declare::BuiltBooks;
+    use campfire_declarations::BuiltBooks;
 
     use crate::tag_book::TagBook;
     use crate::unit_type_book::UnitTypeBook;

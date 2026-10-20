@@ -6,21 +6,19 @@ use campfire_store::internals::TestDir;
 use serde::Deserialize;
 
 use super::*;
-use crate::texture::internals::ktx2;
+use crate::texture::samples::ktx2;
 use crate::zero_hour::error::{NameClash, VersionDifference};
-use crate::zero_hour::format::big::big_archive::internals::big;
-use crate::zero_hour::format::csf::string_table::internals::strings;
-use crate::zero_hour::format::ini::armor_ini::internals::ARMORS;
-use crate::zero_hour::format::ini::command_button_ini::internals::COMMAND_BUTTONS;
-use crate::zero_hour::format::ini::command_set_ini::internals::COMMAND_SETS;
-use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
-use crate::zero_hour::format::ini::object_ini::internals::{
-    DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS,
-};
-use crate::zero_hour::format::ini::player_template_ini::internals::PLAYER_TEMPLATES;
-use crate::zero_hour::format::ini::weapon_ini::internals::WEAPONS;
-use crate::zero_hour::format::map::map_file::internals::map;
-use crate::zero_hour::install::internals::{fixture, packed_map};
+use crate::zero_hour::format::big::big_archive::samples::big;
+use crate::zero_hour::format::csf::string_table::samples::strings;
+use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
+use crate::zero_hour::format::ini::command_button_ini::samples::COMMAND_BUTTONS;
+use crate::zero_hour::format::ini::command_set_ini::samples::COMMAND_SETS;
+use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
+use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
+use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
+use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
+use crate::zero_hour::format::map::map_file::samples::map;
+use crate::zero_hour::install::samples::{fixture, packed_map};
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::production_import::DropCause;
 use crate::zero_hour::weapon_drop::WeaponDrop;

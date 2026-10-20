@@ -7,9 +7,9 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
-use campfire_declare::{
+use campfire_declarations::{
     Book, BuildFn, BuiltBooks, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn,
-    Fact, KindSpawn, KindVisitor, Listed, ModuleSet, OneShot, Report, Role, RuleFn, Scratch,
+    Fact, KindSpawn, KindVisitor, Listed, ModuleSystems, OneShot, Report, Role, RuleFn, Scratch,
     Section,
 };
 use campfire_script::{
@@ -19,7 +19,7 @@ use campfire_script::{
 use campfire_sim::{
     Breach, Capability, HostRule, OwnResources, SimComponent, SimResource, TimedProcess,
 };
-use campfire_state_types::{Replication, StateTypes};
+use campfire_states::{Replication, StateTypes};
 use campfire_values::EngineTag;
 
 /// The end of the books' install, a walk of every module's declarations: each book of a module
@@ -69,7 +69,7 @@ impl Declarations for LeftoverBooks<'_> {
 
     fn listed<L: Listed>(&mut self) {}
 
-    fn sets<S: ModuleSet>(&mut self) {}
+    fn sets<S: ModuleSystems>(&mut self) {}
 
     fn scratch<R: Scratch>(&mut self) {}
 

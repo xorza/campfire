@@ -128,11 +128,11 @@ fn registry() -> StateRegistry {
 /// tick; `reversed` adds the same systems in the opposite order.
 fn workload(reversed: bool) -> Schedule {
     let mut systems: [ScheduleConfigs<ScheduleSystem>; 5] = [
-        spawn_unit.in_set(SimSet::Inputs),
-        count_inputs.in_set(SimSet::Inputs),
-        wander.in_set(SimSet::Act),
-        grow_older.in_set(SimSet::Act),
-        sum_ticks.in_set(SimSet::Resolve),
+        spawn_unit.in_set(SimSystems::Inputs),
+        count_inputs.in_set(SimSystems::Inputs),
+        wander.in_set(SimSystems::Act),
+        grow_older.in_set(SimSystems::Act),
+        sum_ticks.in_set(SimSystems::Resolve),
     ];
     if reversed {
         systems.reverse();
@@ -184,14 +184,14 @@ fn conflicts(add: fn(&mut Schedule)) -> Vec<[String; 2]> {
     }
 }
 
-/// A set inside `SimSet::Act`, for a system to join both.
+/// A set inside `SimSystems::Act`, for a system to join both.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct Inner;
+struct InnerSystems;
 
-/// The schedule with `Inner` inside `SimSet::Act`, and what `add` adds.
+/// The schedule with `InnerSystems` inside `SimSystems::Act`, and what `add` adds.
 fn with_inner(add: fn(&mut Schedule)) -> Schedule {
     let mut schedule = SimUpdate::schedule();
-    schedule.configure_sets(Inner.in_set(SimSet::Act));
+    schedule.configure_sets(InnerSystems.in_set(SimSystems::Act));
     add(&mut schedule);
     schedule
 }
@@ -228,21 +228,24 @@ fn conflicting_unordered_systems_fail_the_build() {
         Case {
             name: "two writers of one component in one step",
             add: |s| {
-                s.add_systems((wander, push).in_set(SimSet::Act));
+                s.add_systems((wander, push).in_set(SimSystems::Act));
             },
             expected: &[["push", "wander"]],
         },
         Case {
             name: "the same writers in order",
             add: |s| {
-                s.add_systems((wander, push).chain().in_set(SimSet::Act));
+                s.add_systems((wander, push).chain().in_set(SimSystems::Act));
             },
             expected: &[],
         },
         Case {
             name: "the same writers in two steps",
             add: |s| {
-                s.add_systems((wander.in_set(SimSet::Act), push.in_set(SimSet::Resolve)));
+                s.add_systems((
+                    wander.in_set(SimSystems::Act),
+                    push.in_set(SimSystems::Resolve),
+                ));
             },
             expected: &[],
         },
@@ -264,8 +267,8 @@ fn conflicting_unordered_systems_fail_the_build() {
             name: "an RNG reader and a tick reader at the tick's edges, inside its start and end",
             add: |s| {
                 s.add_systems((
-                    wander.in_set(SimEdge::Start),
-                    sum_ticks.in_set(SimEdge::After(SimSet::Vision)),
+                    wander.in_set(SimEdgeSystems::Start),
+                    sum_ticks.in_set(SimEdgeSystems::After(SimSystems::Vision)),
                 ));
             },
             expected: &[],
@@ -273,7 +276,7 @@ fn conflicting_unordered_systems_fail_the_build() {
         Case {
             name: "systems with disjoint access in one step",
             add: |s| {
-                s.add_systems((wander, grow_older, sum_ticks).in_set(SimSet::Mode));
+                s.add_systems((wander, grow_older, sum_ticks).in_set(SimSystems::Mode));
             },
             expected: &[],
         },
@@ -289,14 +292,14 @@ fn redundant_set_membership_fails_the_build() {
         Case {
             name: "a system in a set and in the step the set is in",
             add: |s| {
-                s.add_systems(wander.in_set(SimSet::Act).in_set(Inner));
+                s.add_systems(wander.in_set(SimSystems::Act).in_set(InnerSystems));
             },
-            expected: &[["Act", "wander (in sets Act, Inner)"]],
+            expected: &[["Act", "wander (in sets Act, InnerSystems)"]],
         },
         Case {
             name: "the same system in the set only",
             add: |s| {
-                s.add_systems(wander.in_set(Inner));
+                s.add_systems(wander.in_set(InnerSystems));
             },
             expected: &[],
         },
@@ -334,42 +337,49 @@ fn a_system_in_no_stage_and_no_edge_is_found() {
         PlacementCase {
             name: "in stages, with commands, so a sync point follows the spawn",
             add: |s| {
-                s.add_systems((spawn_unit.in_set(SimSet::Inputs), push.in_set(SimSet::Move)));
+                s.add_systems((
+                    spawn_unit.in_set(SimSystems::Inputs),
+                    push.in_set(SimSystems::Move),
+                ));
             },
             outside: &[],
         },
         PlacementCase {
             name: "in the gap after a stage",
             add: |s| {
-                s.add_systems(push.in_set(SimEdge::After(SimSet::Move)));
+                s.add_systems(push.in_set(SimEdgeSystems::After(SimSystems::Move)));
             },
             outside: &[],
         },
         PlacementCase {
             name: "in the gap before the first stage",
             add: |s| {
-                s.add_systems(push.in_set(SimEdge::Start));
+                s.add_systems(push.in_set(SimEdgeSystems::Start));
             },
             outside: &[],
         },
         PlacementCase {
             name: "ordered between two stages",
             add: |s| {
-                s.add_systems(push.after(SimSet::Move).before(SimSet::Collide));
+                s.add_systems(push.after(SimSystems::Move).before(SimSystems::Collide));
             },
             outside: &["push"],
         },
         PlacementCase {
             name: "a sync point the code added between two stages",
             add: |s| {
-                s.add_systems(ApplyDeferred.after(SimSet::Move).before(SimSet::Collide));
+                s.add_systems(
+                    ApplyDeferred
+                        .after(SimSystems::Move)
+                        .before(SimSystems::Collide),
+                );
             },
             outside: &["apply_deferred"],
         },
         PlacementCase {
             name: "ordered after the last stage",
             add: |s| {
-                s.add_systems(push.after(SimSet::Vision));
+                s.add_systems(push.after(SimSystems::Vision));
             },
             outside: &["push"],
         },

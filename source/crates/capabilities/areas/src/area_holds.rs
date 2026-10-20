@@ -1,5 +1,5 @@
 use bevy_ecs::system::{Query, Res, ResMut};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_sim::Position;
 use campfire_stats::{HeldModifiers, Projection};
 use campfire_values::{Team, UnitType};

@@ -4,7 +4,7 @@ use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut, SystemStat
 use bevy_ecs::world::{EntityMut, World};
 use campfire_actions::{ActionBook, ActionKind, ActionSlots, Payer, SlotCommit, SlotTimes};
 use campfire_common::Tick;
-use campfire_declare::{ByType, RoleForm};
+use campfire_declarations::{ByType, RoleForm};
 use campfire_geometry::Placed;
 use campfire_math::Num;
 use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};

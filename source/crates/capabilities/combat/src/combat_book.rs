@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_common::Ticks;
-use campfire_declare::Book;
+use campfire_declarations::Book;
 use campfire_script::MatchNames;
 use campfire_sim::MatchRate;
 use campfire_units::StatId;

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::{Block, TagProperties};
 use serde::Deserialize;

@@ -1,7 +1,7 @@
 use campfire_bots::{BotScriptError, OrderScriptError};
 use campfire_math::{Num, Vec3};
 use campfire_mode::PickError;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use derive_more::Display;
 
 use crate::pins::{
@@ -50,7 +50,7 @@ pub(crate) enum Failure {
     ProductionStart,
     /// A step of the production play does not end within its limit.
     #[display("the production step {_0:?} does not end")]
-    ProductionStep(OrdersAction),
+    ProductionStep(OrdersDirective),
     /// The production play's ticks or money differ from the expected.
     #[display("it played production as {_0}")]
     Production(Box<Differs<ProductionSteps>>),

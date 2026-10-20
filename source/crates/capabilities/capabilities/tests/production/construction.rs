@@ -1,7 +1,7 @@
 use campfire_codec::Toml;
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_navigation::{Navigation, Walker};
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_production::internals::TestBuild;
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position};
@@ -13,7 +13,7 @@ use serde::Deserialize;
 use super::*;
 
 /// A build of slot 0 at (`x`, `z`), its box unturned.
-const fn at_point(x: i64, z: i64) -> OrdersAction {
+const fn at_point(x: i64, z: i64) -> OrdersDirective {
     let target = BuildTarget::Point {
         at: GroundPoint {
             x: Num::int(x),
@@ -21,12 +21,12 @@ const fn at_point(x: i64, z: i64) -> OrdersAction {
         },
         angle: Num::ZERO,
     };
-    OrdersAction::Build { slot: 0, target }
+    OrdersDirective::Build { slot: 0, target }
 }
 
 /// A build of slot 0 at the site `site`.
-const fn at_site(site: StableId) -> OrdersAction {
-    OrdersAction::Build {
+const fn at_site(site: StableId) -> OrdersDirective {
+    OrdersDirective::Build {
         slot: 0,
         target: BuildTarget::Site(site),
     }
@@ -392,7 +392,7 @@ fn a_builder_that_leaves_stops_its_site_and_one_that_comes_back_goes_on() {
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
-    let away = OrdersAction::Move {
+    let away = OrdersDirective::Move {
         to: GroundPoint {
             x: Num::int(-10),
             z: Num::ZERO,
@@ -446,9 +446,9 @@ fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing(
     Production::build_at(&mut game, builder, 0, 0);
     let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
     assert_eq!(shop.gold(&game), 85);
-    Production::tick_ordering(&mut game, 1, depot, ProductionAction::CancelBuild);
+    Production::tick_ordering(&mut game, 1, depot, ProductionDirective::CancelBuild);
     assert!(game.try_part::<Site>(depot).is_some());
-    Production::tick_ordering(&mut game, 0, depot, ProductionAction::CancelBuild);
+    Production::tick_ordering(&mut game, 0, depot, ProductionDirective::CancelBuild);
     assert_eq!(shop.gold(&game), 92);
     let index = game.resource::<EntityIndex>();
     assert_eq!(index.get(depot), None);
@@ -469,7 +469,7 @@ fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing(
         (shop.gold(&game), Production::site(&game, depot).1),
         (85, Some(Num::ONE))
     );
-    Production::tick_ordering(&mut game, 0, depot, ProductionAction::CancelBuild);
+    Production::tick_ordering(&mut game, 0, depot, ProductionDirective::CancelBuild);
     assert_eq!(
         (shop.gold(&game), Production::site(&game, depot).1),
         (85, Some(Num::ONE))

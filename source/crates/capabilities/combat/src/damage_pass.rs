@@ -9,7 +9,7 @@ use campfire_actions::{
     ProgressDues,
 };
 use campfire_common::Tick;
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_math::{Num, Rounding};
 use campfire_script::{CallStart, Ctx, Hook, HookDecl, ScriptBatch, ScriptRole, ScriptsWorld};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};

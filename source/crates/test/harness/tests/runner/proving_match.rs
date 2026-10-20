@@ -10,11 +10,11 @@ use campfire_actions::{ActionProgress, ActionSlots, ActionTarget};
 use campfire_areas::Area;
 use campfire_capabilities::{MatchKind, MatchSetup, Order, Release};
 use campfire_common::{Seat, SegmentSeed};
-use campfire_declare::{CapabilitySet, MatchFacts, Role};
+use campfire_declarations::{CapabilitySet, MatchFacts, Role};
 use campfire_harness::{ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
 use campfire_math::{Num, Vec3};
 use campfire_mode::ModeWorld;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_production::TrainQueue;
 use campfire_progression::Experience;
 use campfire_projectiles::Projectile;
@@ -494,7 +494,7 @@ fn every_slot_orders(world: &World) -> Vec<(Seat, Vec<u8>)> {
         for slot in 0..slots.iter().count() {
             let (target, _) = units[(at + slot + 1) % units.len()];
             let slot = u8::try_from(slot).expect("a unit's slots fit u8");
-            let action = OrdersAction::Slot {
+            let action = OrdersDirective::Slot {
                 slot,
                 target: ActionTarget::Unit(target),
             };

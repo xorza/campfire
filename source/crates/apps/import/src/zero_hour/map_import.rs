@@ -440,17 +440,17 @@ mod tests {
 
     use campfire_client_files::ClientUnit;
     use campfire_codec::TomlTable;
-    use campfire_declare::SectionReaders;
+    use campfire_declarations::SectionReaders;
     use campfire_mode::MapData;
     use campfire_units::{GroundError, MetricData};
 
     use super::*;
-    use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
+    use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
     use crate::zero_hour::format::ini::object_ini::ObjectIni;
-    use crate::zero_hour::format::ini::object_ini::internals::{
+    use crate::zero_hour::format::ini::object_ini::samples::{
         DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS,
     };
-    use crate::zero_hour::format::map::map_file::internals::map;
+    use crate::zero_hour::format::map::map_file::samples::map;
     use crate::zero_hour::format::map::terrain::{BlendShape, BlendTile};
 
     /// The map of `text`, read as the engine reads the sections the import writes.

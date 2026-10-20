@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section, SourceKind, UnitTypeData};
+use campfire_declarations::{
+    BookCx, BookError, BookPlace, Fact, Section, SourceKind, UnitTypeData,
+};
 use campfire_values::PackageIndex;
 
 use crate::actions_data::ActionsData;

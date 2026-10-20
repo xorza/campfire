@@ -6,7 +6,7 @@ use bevy_replicon::prelude::ScopeLifetime;
 use bevy_replicon::prelude::SingleComponent;
 use bevy_replicon::prelude::VisibilityFilter;
 use campfire_net_connection::RemoteId;
-use campfire_net_despawn::DespawnReplicated;
+use campfire_net_despawns::DespawnReplicated;
 use tracing::trace;
 
 /// Sender-side component that associates the entity with a

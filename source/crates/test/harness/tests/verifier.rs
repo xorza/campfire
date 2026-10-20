@@ -14,7 +14,7 @@ use campfire_common::{AfterLeave, PackageFingerprint, Seat, StateHash, Tick, Tic
 use campfire_harness::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
 use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Vec3};
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
 use campfire_package_disk::{PackageDir, PackageStore, StoreError};
 use campfire_projectiles::Projectile;
@@ -382,7 +382,7 @@ fn run_and_replay_agree_on_every_tick() {
 fn move_order(fixed: &FixedMatch, seat: u32, x: i64, z: i64) -> Vec<u8> {
     Order::payload(&[Order::one(
         MatchUnits::of(fixed.game()).hero(seat),
-        OrdersAction::Move {
+        OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::int(x),
                 z: Num::int(z),

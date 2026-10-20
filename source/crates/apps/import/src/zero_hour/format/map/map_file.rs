@@ -508,11 +508,11 @@ fn entry(value: i16) -> Result<Option<u16>, MapReadError> {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     use std::f32::consts::PI;
 
-    use crate::zero_hour::format::map::chunk_reader::internals::ChunkWriter;
-    use crate::zero_hour::format::map::map_object::internals::object;
+    use crate::zero_hour::format::map::chunk_reader::samples::ChunkWriter;
+    use crate::zero_hour::format::map::map_object::samples::object;
 
     /// The heights of the fixture map, 4 × 3 samples in the file's order: the first cell spans
     /// 16 steps, the cells beside it 15, and the cell at column 2, row 1, 34.
@@ -658,10 +658,10 @@ mod tests {
     use miniz_oxide::deflate::compress_to_vec_zlib;
 
     use super::*;
-    use crate::zero_hour::format::map::chunk_reader::internals::ChunkWriter;
-    use crate::zero_hour::format::map::map_file::internals::{HEIGHTS, map};
+    use crate::zero_hour::format::map::chunk_reader::samples::ChunkWriter;
+    use crate::zero_hour::format::map::map_file::samples::{HEIGHTS, map};
     use crate::zero_hour::format::map::map_object::Waypoint;
-    use crate::zero_hour::format::ref_pack::internals::literal;
+    use crate::zero_hour::format::ref_pack::samples::literal;
 
     #[test]
     fn lighting_of_an_older_version_keeps_the_game_s_dark_lights_and_needs_a_time_of_day() {

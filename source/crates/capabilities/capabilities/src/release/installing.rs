@@ -1,6 +1,6 @@
 use std::fmt;
 
-use campfire_declare::{BuiltBooks, InstallCx, InstallFacts, Module, ModuleVisitor};
+use campfire_declarations::{BuiltBooks, InstallCx, InstallFacts, Module, ModuleVisitor};
 use campfire_sim::SimFields;
 
 use crate::release::declaring::{Declaring, Scripts};
@@ -67,7 +67,9 @@ impl<'a> Installing<'a> {
         let SimFields {
             world, schedule, ..
         } = &mut self.fields;
-        M::install(&mut InstallCx::<M::Set>::new(schedule, self.facts, world));
+        M::install(&mut InstallCx::<M::Systems>::new(
+            schedule, self.facts, world,
+        ));
     }
 }
 

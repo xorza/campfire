@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
 use campfire_values::{EngineStat, Stat};
 use serde::{Deserialize, Serialize};

@@ -2,7 +2,7 @@ use std::iter;
 
 use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
-use campfire_declare::UnitDefaults;
+use campfire_declarations::UnitDefaults;
 use campfire_script::{ScriptApi, ScriptHost};
 
 use crate::avatar_unit::AvatarUnit;

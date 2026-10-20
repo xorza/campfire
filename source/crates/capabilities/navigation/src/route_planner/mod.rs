@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_declare::Cache;
+use campfire_declarations::Cache;
 use campfire_geometry::Grid;
 use campfire_math::Vec3;
 

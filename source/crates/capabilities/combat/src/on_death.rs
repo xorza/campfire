@@ -1,4 +1,4 @@
-use campfire_declare::PerType;
+use campfire_declarations::PerType;
 use serde::{Deserialize, Serialize};
 
 /// What becomes of a unit when it dies, as its unit type says: in data, `stay` or `despawn`. A

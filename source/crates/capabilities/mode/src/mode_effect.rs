@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, SlotKind, SlotsMut, SlotsMutItem, TimedSlots};
 use campfire_combat::Respawn;
 use campfire_common::{Seat, Ticks};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_math::Num;
 use campfire_players::{HeldOut, PlayersWorld};
 use campfire_script::{Effect, EffectKind, Frame, ListPlace};

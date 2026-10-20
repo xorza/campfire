@@ -7,7 +7,7 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
 use campfire_common::{Seat, Tick, Ticks};
-use campfire_declare::{ByType, PerType};
+use campfire_declarations::{ByType, PerType};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_players::{Players, PlayersWorld, ResourceAmount};

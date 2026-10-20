@@ -43,7 +43,7 @@ impl<'a> W3dFields<'a> {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// `name` in a field of `len` bytes, the rest NUL.
     pub(crate) fn name(name: &str, len: usize) -> Vec<u8> {
         assert!(name.len() <= len, "{name} fits {len} bytes");
@@ -57,7 +57,7 @@ pub(crate) mod internals {
 mod tests {
     use super::*;
     use crate::zero_hour::format::error::Short;
-    use crate::zero_hour::format::w3d::w3d_fields::internals::name;
+    use crate::zero_hour::format::w3d::w3d_fields::samples::name;
 
     #[test]
     fn fields_read_little_endian_and_names_up_to_their_nul() {

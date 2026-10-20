@@ -24,7 +24,7 @@ impl TestMode {
     /// it depends on.
     pub(crate) const fn tree(self) -> &'static str {
         match self {
-            Self::Lane | Self::Proving | Self::Ruled => "test",
+            Self::Lane | Self::Proving | Self::Ruled => "test/engine",
             Self::Moba3v3 => "test/moba",
             Self::Skirmish => "",
         }
@@ -37,7 +37,7 @@ impl TestMode {
             Self::Proving => "modes/proving",
             Self::Moba3v3 => "modes/3v3",
             Self::Ruled => "modes/ruled",
-            Self::Skirmish => "test/modes/skirmish",
+            Self::Skirmish => "test/engine/modes/skirmish",
         }
     }
 

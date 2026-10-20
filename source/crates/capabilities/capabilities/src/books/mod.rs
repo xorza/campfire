@@ -1,7 +1,7 @@
 //! What a match is built from: each package's content, as the load reads it, and the books a
 //! match reads, built from it with no world.
 
-use campfire_declare::{Book, BuiltBooks};
+use campfire_declarations::{Book, BuiltBooks};
 use campfire_mode::{MarkerSpec, ModeInputs};
 
 pub(crate) mod book_cells;
@@ -38,7 +38,7 @@ impl Books {
 pub(crate) mod internals {
     use std::any::type_name;
 
-    use campfire_declare::Book;
+    use campfire_declarations::Book;
     use campfire_mode::ModeUnits;
 
     use crate::books::Books;

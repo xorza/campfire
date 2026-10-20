@@ -1,5 +1,5 @@
 use campfire_math::Num;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_sim::IdAllocator;
 use campfire_units::GroundPoint;
 
@@ -51,7 +51,7 @@ fn a_unit_the_client_no_longer_holds_leaves_and_an_empty_selection_takes_the_ava
 fn a_selection_orders_its_units_as_one_group() {
     let mut ids = IdAllocator::default();
     let [a, b] = [ids.allocate(), ids.allocate()];
-    let action = OrdersAction::Move {
+    let action = OrdersDirective::Move {
         to: GroundPoint {
             x: Num::int(3),
             z: Num::int(-2),
@@ -62,10 +62,10 @@ fn a_selection_orders_its_units_as_one_group() {
     selection.pick(&[b, a]);
     let order = selection.order(action).unwrap();
     assert_eq!(order.units.get(), [a, b]);
-    assert_eq!(order.action, Action::from(action));
+    assert_eq!(order.directive, Directive::from(action));
     selection.pick(&[b]);
     assert_eq!(
-        selection.order(OrdersAction::Stop),
-        Some(Order::one(b, OrdersAction::Stop))
+        selection.order(OrdersDirective::Stop),
+        Some(Order::one(b, OrdersDirective::Stop))
     );
 }

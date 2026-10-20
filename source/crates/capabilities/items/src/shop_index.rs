@@ -5,7 +5,7 @@ use bevy_ecs::query::Allow;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_declare::{ByType, Cache};
+use campfire_declarations::{ByType, Cache};
 use campfire_sim::{StableId, Unpredicted};
 use campfire_values::UnitType;
 

@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_capabilities::{Match, MatchKind, MatchSetup, ModeStart, Release};
 use campfire_common::SegmentSeed;
-use campfire_declare::Role;
+use campfire_declarations::Role;
 use campfire_mode::{ModeSetup, OptionPicks};
 use campfire_package::ModePackages;
 use campfire_script::ScriptPools;
@@ -101,7 +101,7 @@ pub(crate) mod internals {
     #[derive(Debug)]
     pub struct ArenaSetup<'a> {
         pub packages: &'a ModePackages,
-        pub rate: MatchRate,
+        pub tick_rate: MatchRate,
         pub players: u32,
         pub vision: VisionBook,
     }
@@ -114,7 +114,7 @@ pub(crate) mod internals {
         pub fn arena(arena: ArenaSetup<'_>) -> Match {
             let ArenaSetup {
                 packages,
-                rate,
+                tick_rate: rate,
                 players,
                 vision,
             } = arena;

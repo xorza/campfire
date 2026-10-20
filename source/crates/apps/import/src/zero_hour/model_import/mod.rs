@@ -170,11 +170,11 @@ impl<'a> RenderObject<'a> {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     use crate::zero_hour::format::w3d::hierarchy::{Hierarchy, Pivot};
     use crate::zero_hour::format::w3d::hlod::{Hlod, SubObject};
-    use crate::zero_hour::format::w3d::w3d_file::internals::{box_chunk, emitter_chunk};
-    use crate::zero_hour::format::w3d::w3d_mesh::internals::SKIN_GEOMETRY;
+    use crate::zero_hour::format::w3d::w3d_file::samples::{box_chunk, emitter_chunk};
+    use crate::zero_hour::format::w3d::w3d_mesh::samples::SKIN_GEOMETRY;
     use crate::zero_hour::format::w3d::w3d_mesh::{
         Ids, Pass, Shader, Stage, TWO_SIDED, Texture, VertexMaterial, W3dMesh,
     };

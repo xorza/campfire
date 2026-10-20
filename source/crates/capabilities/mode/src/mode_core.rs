@@ -1,10 +1,10 @@
 use campfire_actions::{LoadoutRanks, SlotClaims, SlotError, SlotKind, SlotKinds};
 use campfire_common::DeclaredName;
-use campfire_declare::{
-    BookCx, BookError, BookPlace, ByType, Declarations, InstallCx, Module, NoSet,
+use campfire_declarations::{
+    BookCx, BookError, BookPlace, ByType, Declarations, InstallCx, Module, NoSystems,
 };
 use campfire_navigation::{ModeNavigationData, NavigationBook, WalkCheck, Walker, WalkerKinds};
-use campfire_script::{SyncTo, UnknownName};
+use campfire_script::{Audience, UnknownName};
 use campfire_sim::Capability;
 use campfire_units::{BodyForm, MapBook, TeamNames, WallBook};
 use campfire_values::{Named, PackageIndex, UnitType};
@@ -30,7 +30,7 @@ impl Module for ModeCore {
     const CAPABILITY: Option<Capability> = Some(Capability::Mode);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
-    type Set = NoSet;
+    type Systems = NoSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.fact::<TeamNames>(ModeMap::team_fact);
@@ -49,12 +49,12 @@ impl Module for ModeCore {
         d.stages_run_if(MatchEnd::is_running);
     }
 
-    fn install(_: &mut InstallCx<'_, Self::Set>) {}
+    fn install(_: &mut InstallCx<'_, Self::Systems>) {}
 }
 
 impl ModeCore {
     /// The rules of the mode's own data: a bot takes a leaver's place only where players join
-    /// late, no field of its state syncs to an owner or a team, and no option shares a param's
+    /// late, no field of its state goes to an owner or a team, and no option shares a param's
     /// name.
     fn data_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         let data = cx
@@ -72,9 +72,9 @@ impl ModeCore {
         let owned = data
             .state
             .iter()
-            .find(|(_, field)| matches!(field.sync, SyncTo::Owner | SyncTo::Team));
+            .find(|(_, field)| matches!(field.audience, Audience::Owner | Audience::Team));
         if let Some((name, _)) = owned {
-            return fail(entry(ModeData::STATE, name), ModeDataError::StateSync);
+            return fail(entry(ModeData::STATE, name), ModeDataError::StateAudience);
         }
         let shared = data
             .options

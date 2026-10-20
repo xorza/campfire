@@ -27,7 +27,7 @@ use crate::view::{DrawSystems, ground};
 /// Draws each area the client receives, of a mode with areas: a see-through disc of its radius
 /// on the ground, which glides as a unit's drawing does.
 #[derive(Debug)]
-pub(crate) struct AreaView;
+pub(crate) struct AreaViewPlugin;
 
 /// The disc of radius 1 an area's drawing scales to its radius, and its see-through tint, which
 /// shows the ground under it.
@@ -55,14 +55,14 @@ type NewAreas<'w, 's> = Query<
 const AREA_THICKNESS: f32 = 0.02;
 pub(crate) const AREA_LIFT: f32 = 0.03;
 
-impl Plugin for AreaView {
+impl Plugin for AreaViewPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::set_palette);
         app.add_systems(Update, Self::draw_areas.in_set(DrawSystems));
     }
 }
 
-impl AreaView {
+impl AreaViewPlugin {
     fn set_palette(
         mut commands: Commands<'_, '_>,
         mut meshes: ResMut<'_, Assets<Mesh>>,

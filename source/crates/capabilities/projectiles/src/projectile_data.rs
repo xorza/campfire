@@ -1,5 +1,5 @@
 use campfire_actions::ProjectileFlight;
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};

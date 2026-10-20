@@ -1,4 +1,4 @@
-use campfire_declare::{CapabilitySet, Declarations, Module, ModuleVisitor};
+use campfire_declarations::{CapabilitySet, Declarations, Module, ModuleVisitor};
 
 /// The walk that visits, with `D`, the declarations of each module a match of its set runs, the
 /// mode's scripted part when `scripts` says.
@@ -26,7 +26,7 @@ impl<'a, D: Declarations> Declaring<'a, D> {
     /// Visits the declarations of `M`, after the mark of its start and its sets.
     pub(super) fn declare<M: Module>(&mut self) {
         self.d.module(M::CAPABILITY);
-        self.d.sets::<M::Set>();
+        self.d.sets::<M::Systems>();
         M::declare(self.d);
     }
 }

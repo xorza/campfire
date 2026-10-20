@@ -1,4 +1,6 @@
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Fact, NamesListError, SourceType};
+use campfire_declarations::{
+    BookCx, BookError, BookPlace, ByType, Fact, NamesListError, SourceType,
+};
 use campfire_math::Num;
 use campfire_script::UnknownName;
 use campfire_units::{Life, Meter, PoolId, PoolNames};

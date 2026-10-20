@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use campfire_actions::Reached;
 use campfire_common::StableNumber;
-use campfire_declare::{Role, Scratch};
+use campfire_declarations::{Role, Scratch};
 use campfire_math::Vec3;
 use campfire_sim::StableId;
 use campfire_values::Hit;

@@ -1,6 +1,6 @@
 use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
-use campfire_declare::UnitDefaults;
+use campfire_declarations::UnitDefaults;
 use serde::de::Error;
 
 /// A data file's table, of which a package's content is a part.

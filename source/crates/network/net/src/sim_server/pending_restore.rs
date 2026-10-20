@@ -16,9 +16,9 @@ use crate::sim_server::server_phase::ServerPhase;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::RestoredSession;
 
-/// A session to restore in an app's first frame, as a match starts in a fixed tick: the one a
-/// stop ended, as its server starts again, or the one a load went back to. `SimServer` restores
-/// it while the world holds it.
+/// A session to restore in an app's first frame, as a match starts in a fixed tick: the one a stop
+/// ended, as its server starts again, or the one a load went back to. `SimServerPlugin` restores it
+/// while the world holds it.
 #[derive(Resource, Debug)]
 pub struct PendingRestore {
     pub session: RestoredSession,

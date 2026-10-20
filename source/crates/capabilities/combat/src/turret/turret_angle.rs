@@ -1,10 +1,10 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_math::{Num, Vec3};
 use campfire_sim::SimComponent;
-use campfire_state_types::{Replication, SentPredicted};
+use campfire_states::{Replication, SentPredicted};
 use campfire_units::{Facing, TurnStep, UnitEntity};
 use campfire_values::UnitType;
 use campfire_visibility::DataKind;

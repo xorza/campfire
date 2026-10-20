@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use campfire_capabilities::Order;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position};
 use campfire_units::{GroundPoint, Layer, MapBook};
@@ -271,7 +271,7 @@ fn a_node_frees_to_its_waiting_worker_as_its_holder_dies_or_takes_another_order(
             game.insert_parts(first, Dead);
             game.step();
         } else {
-            let away = OrdersAction::Move {
+            let away = OrdersDirective::Move {
                 to: GroundPoint {
                     x: Num::int(10),
                     z: Num::ZERO,

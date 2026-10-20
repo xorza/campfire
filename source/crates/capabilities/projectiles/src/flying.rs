@@ -3,7 +3,7 @@ use bevy_ecs::observer::On;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::Targets;
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_deliveries::{DeliveryQueue, Died, Teleported};
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, StableId};

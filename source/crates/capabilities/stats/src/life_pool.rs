@@ -1,4 +1,4 @@
-use campfire_declare::Fact;
+use campfire_declarations::Fact;
 use campfire_units::PoolId;
 
 /// The mode's life pool, the one a unit dies at zero of, which the module that kills units names;

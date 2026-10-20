@@ -75,7 +75,7 @@ mod tests {
         let packages = TestMode::Lane.packages();
         let script = |units: &str| {
             let text =
-                format!("[[order]]\ntick = 0\nunits = \"{units}\"\naction.orders = \"stop\"\n");
+                format!("[[order]]\ntick = 0\nunits = \"{units}\"\ndirective.orders = \"stop\"\n");
             OrderScript::parse(&text).unwrap()
         };
         let bots = |seat: &str, takeover: Option<&str>| {

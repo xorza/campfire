@@ -4,7 +4,7 @@ use std::sync::Arc;
 use campfire_actions::{CostTarget, DamageKindBook, SlotKind, SlotKindBook, TrackNames};
 use campfire_combat::{Armor, ModeCombatData};
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, NamedMessages, NamedScripts, StateFields};
+use campfire_declarations::{BookCx, BookError, NamedScripts, NamedTexts, StateFields};
 use campfire_items::ItemsData;
 use campfire_mode::{ChoiceId, MapData, MarkerTag, ModeData, TimerId};
 use campfire_navigation::{ModeNavigationData, NavigationBook};
@@ -15,8 +15,8 @@ use campfire_units::{
     Layer, LayerNames, PoolId, PoolNames, StatId, TeamNames, TypeParamsData, UnitTypes,
 };
 use campfire_values::{
-    ActionId, DamageKind, ItemId, MessageId, ModifierId, NameKind, Named, Names, PackageIndex,
-    Param, PathId, ResourceId, Stat, Tag, Team, TrackId, TypeScope, UnitType,
+    ActionId, DamageKind, ItemId, ModifierId, NameKind, Named, Names, PackageIndex, Param, PathId,
+    ResourceId, Stat, Tag, Team, TextId, TrackId, TypeScope, UnitType,
 };
 
 /// The names of a match's packages that scripts and data name, each kind as the book or the fact
@@ -45,7 +45,7 @@ pub struct LoadNames {
     /// The mode's item types.
     items: BTreeSet<DeclaredName>,
     scripts: NamedScripts,
-    messages: NamedMessages,
+    texts: NamedTexts,
     state_fields: StateFields,
     /// The params a handle holds: each unit type's, each map marker's, and each the mode declares
     /// its maps' markers may hold.
@@ -98,7 +98,7 @@ impl LoadNames {
             stats: stats.cloned().collect(),
             items: items.cloned().collect(),
             scripts: cx.take_fact::<NamedScripts>()?.unwrap_or_default(),
-            messages: cx.take_fact::<NamedMessages>()?.unwrap_or_default(),
+            texts: cx.take_fact::<NamedTexts>()?.unwrap_or_default(),
             state_fields: cx.take_fact::<StateFields>()?.unwrap_or_default(),
             handle_params,
             resources: resources.unwrap_or_default(),
@@ -124,9 +124,9 @@ impl LoadNames {
         &self.scripts
     }
 
-    /// The messages the packages' data names.
-    pub const fn messages(&self) -> &NamedMessages {
-        &self.messages
+    /// The texts the packages' data names.
+    pub const fn texts(&self) -> &NamedTexts {
+        &self.texts
     }
 
     /// Whether a unit type or a map marker holds the param `name`, as a script may read it after
@@ -162,7 +162,7 @@ impl LoadNames {
             ItemId::NAMES => self.items.contains(name),
             ModifierId::NAMES
             | ActionId::NAMES
-            | MessageId::NAMES
+            | TextId::NAMES
             | Param::NAMES
             | Filter::NAMES
             | ChoiceId::NAMES

@@ -157,14 +157,16 @@ pub use crate::unit_entity::body_unit::BodyUnit;
 pub use crate::unit_entity::delivery_entity::DeliveryEntity;
 pub use crate::unit_grid::{GridBuild, GridUnits, UnitGrid, UnitsNear};
 pub use crate::unit_ordered::{OrderKind, UnitOrdered};
-pub use crate::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
+pub use crate::unit_state::{
+    AudienceAll, AudienceNone, AudienceOwner, AudienceTeam, StateAudience, UnitState,
+};
 pub use crate::unit_state_book::UnitStateBook;
 pub use crate::unit_steps::UnitSteps;
 pub use crate::unit_tracker::{TrackedUnit, TrackedUnits, Tracking, UnitTracker};
 pub use crate::unit_type_book::UnitTypeBook;
 pub use crate::unit_type_core::{TypeParamsData, TypeTagsData, UnitTypeCore};
 pub use crate::unit_types::{UnitTypeBooks, UnitTypes};
-pub use crate::units::{Units, UnitsSet};
+pub use crate::units::{Units, UnitsSystems};
 pub use crate::units_api::UnitsApi;
 pub use crate::units_call::UnitsCall;
 pub use crate::units_world::UnitsWorld;

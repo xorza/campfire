@@ -7,7 +7,7 @@ use campfire_common::{DeclaredName, Seat};
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::Num;
 use campfire_mode::{MatchEnd, OptionPicks, OptionValue};
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
 use campfire_players::{OrderUnits, PlayersWorld};
 use campfire_production::{Site, TrainQueue};
@@ -174,7 +174,7 @@ impl Play<'_> {
             return Err(Failure::ProductionStart);
         };
         // The center trains a dozer: its second, once its time ends.
-        let train = OrdersAction::Slot {
+        let train = OrdersDirective::Slot {
             slot: self.slot(CENTER, "train_americavehicledozer")?,
             target: ActionTarget::None,
         };
@@ -184,7 +184,7 @@ impl Play<'_> {
         let after_dozer = self.money(play);
         // The start dozer places the barracks as the order applies, and builds it whole.
         let [x, z, angle] = BARRACKS_AT.map(Num::int);
-        let build = OrdersAction::Build {
+        let build = OrdersDirective::Build {
             slot: self.slot(DOZER, "build_americabarracks")?,
             target: BuildTarget::Point {
                 at: GroundPoint { x, z },
@@ -201,7 +201,7 @@ impl Play<'_> {
             return Err(Failure::ProductionStart);
         };
         // The barracks trains a ranger, which needs the barracks whole.
-        let ranger = OrdersAction::Slot {
+        let ranger = OrdersDirective::Slot {
             slot: self.slot(BARRACKS, "train_americainfantryranger")?,
             target: ActionTarget::None,
         };
@@ -237,7 +237,7 @@ impl Play<'_> {
         let mut ticks = [0; FACTORY_CHAIN.len()];
         for (building, ticks) in FACTORY_CHAIN.iter().zip(&mut ticks) {
             let [x, z, angle] = building.at.map(Num::int);
-            let build = OrdersAction::Build {
+            let build = OrdersDirective::Build {
                 slot: self.slot(DOZER, building.action)?,
                 target: BuildTarget::Point {
                     at: GroundPoint { x, z },
@@ -262,7 +262,7 @@ impl Play<'_> {
         let [factory] = play.owned(FACTORY, 0)?[..] else {
             return Err(Failure::ProductionStart);
         };
-        let train = OrdersAction::Slot {
+        let train = OrdersDirective::Slot {
             slot: self.slot(FACTORY, "train_americatankcrusader")?,
             target: ActionTarget::None,
         };
@@ -313,7 +313,7 @@ impl Play<'_> {
         let units = OrderUnits::new(&crusaders).expect("the play's crusaders");
         play.order(&[Order {
             units,
-            action: OrdersAction::Attack { target }.into(),
+            directive: OrdersDirective::Attack { target }.into(),
         }]);
         let full = Self::life(play, target);
         let (mut shot_ticks, mut hit_ticks) = (None, None);
@@ -352,23 +352,23 @@ impl Play<'_> {
         unit.get::<Life>().map(|life| life.current())
     }
 
-    /// Orders `unit` to `action` in the tick `play` runs next, then runs ticks until `done`; the
+    /// Orders `unit` to `directive` in the tick `play` runs next, then runs ticks until `done`; the
     /// ticks it took, the order's own among them, or a failure past `STEP_LIMIT`.
     fn until(
         &self,
         play: &mut MatchPlay,
         unit: StableId,
-        action: OrdersAction,
+        directive: OrdersDirective,
         done: impl Fn(&MatchPlay) -> Result<bool, Failure>,
     ) -> Result<u64, Failure> {
-        play.order(&[Order::one(unit, action)]);
+        play.order(&[Order::one(unit, directive)]);
         for ticks in 1..=STEP_LIMIT {
             play.step();
             if done(play)? {
                 return Ok(ticks);
             }
         }
-        Err(Failure::ProductionStep(action))
+        Err(Failure::ProductionStep(directive))
     }
 
     /// The slot of `action` among the actions of the type `unit` in its slot kind `command`; a

@@ -1,4 +1,4 @@
-use campfire_declare::PerType;
+use campfire_declarations::PerType;
 use campfire_values::{NameId, TrackId};
 
 /// The tracks a unit has, of the mode's at most `TrackId::LIMIT`.

@@ -12,13 +12,13 @@
 
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, ActionsSet};
+use campfire_actions::{ActionTarget, ActionsSystems};
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_declarations::{ByType, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_math::Vec3;
-use campfire_sim::{Capability, SimSet, StableId};
-use campfire_stats::{ModifierAppliers, StatsSet};
+use campfire_sim::{Capability, SimSystems, StableId};
+use campfire_stats::{ModifierAppliers, StatsSystems};
 use campfire_units::{DeliveryEntity, UnitGrid, UnitTypes};
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
@@ -55,7 +55,7 @@ pub struct Areas;
 
 /// The steps of `areas`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum AreasSet {
+pub enum AreasSystems {
     /// Areas trigger and end.
     Trigger,
     /// The areas the tick's actions deliver land.
@@ -67,17 +67,17 @@ pub enum AreasSet {
     HoldInside,
 }
 
-impl ModuleSet for AreasSet {
+impl ModuleSystems for AreasSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            Self::Trigger => SetPlace::at(ActionsSet::Trigger),
-            Self::Land => SetPlace::at(ActionsSet::Land),
-            Self::LandAtResolve => SetPlace::at(ActionsSet::Resolve),
-            Self::HoldInside => {
-                (SetPlace::stage(SimSet::Resolve).after(StatsSet::ClearDead)).before(StatsSet::Hold)
-            }
+            Self::Trigger => SetPlace::at(ActionsSystems::Trigger),
+            Self::Land => SetPlace::at(ActionsSystems::Land),
+            Self::LandAtResolve => SetPlace::at(ActionsSystems::Resolve),
+            Self::HoldInside => (SetPlace::stage(SimSystems::Resolve)
+                .after(StatsSystems::ClearDead))
+            .before(StatsSystems::Hold),
         }
     }
 }
@@ -86,7 +86,7 @@ impl Module for Areas {
     const CAPABILITY: Option<Capability> = Some(Capability::Areas);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
-    type Set = AreasSet;
+    type Systems = AreasSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<AreaData>();
@@ -111,14 +111,14 @@ impl Module for Areas {
     /// land, and then, before stats hold their modifiers, each area lists those it holds on the
     /// units inside. A launch queues as an effect of `areas`. A predicting client predicts no
     /// delivery, so it lands none and triggers none.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.server(
-            AreasSet::Trigger,
+            AreasSystems::Trigger,
             UnitGrid::before_reading(AreaLife::trigger),
         );
-        cx.server(AreasSet::Land, AreaLife::land);
-        cx.server(AreasSet::LandAtResolve, AreaLife::land);
-        cx.add(AreasSet::HoldInside, AreaHolds::hold_inside);
+        cx.server(AreasSystems::Land, AreaLife::land);
+        cx.server(AreasSystems::LandAtResolve, AreaLife::land);
+        cx.add(AreasSystems::HoldInside, AreaHolds::hold_inside);
     }
 }
 
@@ -164,7 +164,7 @@ impl Areas {
 pub mod internals {
     use bevy_ecs::world::World;
     use campfire_common::DeclaredName;
-    use campfire_declare::ByType;
+    use campfire_declarations::ByType;
     use campfire_script::UnknownName;
     use campfire_sim::MatchRate;
     use campfire_stats::Stats;

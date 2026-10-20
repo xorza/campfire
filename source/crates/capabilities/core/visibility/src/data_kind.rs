@@ -25,7 +25,7 @@ pub enum DataKind {
     /// The match's public state, on the match's entity and each player's: the teams' relations,
     /// the match's end, the players' slots.
     Match,
-    /// The mode's script state fields of `sync = "all"`, on the match's entity.
+    /// The mode's script state fields of `audience = "all"`, on the match's entity.
     ModeState,
     /// A player's resources, on its entity.
     Resources,
@@ -38,17 +38,17 @@ pub enum DataKind {
     /// What only the owner's prediction reads: a unit's spawn point, route, progress,
     /// modifiers' clocks and respawn.
     Prediction,
-    /// A unit's script state fields of `sync = "owner"`.
+    /// A unit's script state fields of `audience = "owner"`.
     UnitStateOwner,
-    /// A unit's script state fields of `sync = "team"`.
+    /// A unit's script state fields of `audience = "team"`.
     UnitStateTeam,
-    /// A unit's script state fields of `sync = "all"`.
+    /// A unit's script state fields of `audience = "all"`.
     UnitStateAll,
-    /// A player's script state fields of `sync = "owner"`, on its entity.
+    /// A player's script state fields of `audience = "owner"`, on its entity.
     PlayerStateOwner,
-    /// A player's script state fields of `sync = "team"`, on its entity.
+    /// A player's script state fields of `audience = "team"`, on its entity.
     PlayerStateTeam,
-    /// A player's script state fields of `sync = "all"`, on its entity.
+    /// A player's script state fields of `audience = "all"`, on its entity.
     PlayerStateAll,
     /// State no client receives.
     Server,

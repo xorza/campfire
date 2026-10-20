@@ -14,7 +14,7 @@ use campfire_sim::{
     DueIndex, SimComponent, StableId, StateRewritten, TimedKept, TimedProcess, TimedRuns,
     Unpredicted,
 };
-use campfire_state_types::{Replication, SentPredicted};
+use campfire_states::{Replication, SentPredicted};
 use campfire_units::{ArrivedShort, Body, Facing, UnitEntity};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};

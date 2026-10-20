@@ -78,26 +78,12 @@ Six causes explain nearly every finding. Each section of the decisions removes o
 - **A type name that both sides declare keeps one meaning.** The narrower use takes a qualified name, as `ByteArena`, `StepOrder` and `UnixClock`; `store`'s `Slot` and `import`'s `MapFile` and `UnitsFile` follow (D10, D30, D31; C23).
 - **Nothing names the fork.** The WebAssembly remarks, the `Raw*` connections, and the documents' "simulated", `SimWires` and `CrossbeamIo` for the emulator go; the `lightyear_*` bans go with Campfire's Lightyear (D29).
 - **A test name is a sentence.** The stack's 318 short test names are written as Campfire's are (D23).
-- **A Bevy plugin is a `*Plugin`.** Every plugin is a `*Plugin` and every group `*Plugins`, as Bevy and the stack name theirs, so a bare name is a Campfire `Module`. Refused: bare plugin names, which give the client's `Orders` plugin the name of the `Orders` module (D13).
-- **A system set is `*Systems`.** Every system set ends in `*Systems`, as Bevy 0.17 and the stack name theirs, and `*Set` names a collection alone. Refused: `*Set`, which also names 15 collections (D14).
-- **Script state's receivers are its audience.** `StateSync` and its kin become `StateAudience` and its kin, and the scripts' key `sync` becomes `audience`, as `10-replication-audiences.md` names it; `sync` stays the timelines' sync and `store`'s fsync. Refused: one word for three meanings (D3).
-- **A localized text is a text.** `MessageId` and `NamedMessage` become `TextId` and `NamedText`, as the network and Bevy mean a sent value by "message" (D6).
-- **A field of a tick rate is `tick_rate`,** and a module gated by `test` is not named `internals` (D19, A16).
-- **`rules` holds the suffixes.** A test reads the declared names and refuses a system set not named `*Systems`, a plugin not named `*Plugin`, a `*Manager`, a `*_hook` function outside the scripts, and a `*Kind` that wraps a `TypeId`. Refused: review alone, which let both sides drift.
 
 ### One way to test
 
 - **One rule of test homes.** A test lives in the lowest crate whose dependencies hold everything it uses, and no crate dev-depends on a crate above it; 02's "Tests live at the top" is this rule for a whole match, and `testing.md`'s for a layer of the stack. Refused: two rules in two documents (B23).
 - **The harness splits at the network.** The session harness, fixed sessions, goldens and the proving and scripted matches, has no network; the network harness glues it to the stack's stepper and emulator. So `zero-hour-check` builds without the network (A7).
 - **Planned: one driver of integrated tests.** The network harness runs on the stack's stepper, as 12 plans, so one clock, one link model, one log check and one schedule serve every integrated test (B23, C19).
-
-## Open decisions
-
-The issue log's three Decide items touch the same words and layout. The batch of Campfire's words takes each once it is settled.
-
-- **The order's `Action`.** The order's sum becomes `Directive`, `Instruction` or `Task`, or both keep `Action` (E1).
-- **The test packages' layout.** Every package by what it is, or every package by its game first (E2).
-- **Crate names that are not nouns.** `declare` and `state-types` become `declarations` and `states`, or both stay; `net-despawn`, a verb, follows the same choice (E3).
 
 ## Checks
 

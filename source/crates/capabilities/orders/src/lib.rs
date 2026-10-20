@@ -12,14 +12,14 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
-use campfire_actions::ActionsSet;
+use campfire_actions::ActionsSystems;
 use campfire_common::EnumAll;
-use campfire_declare::{
-    ByType, Declarations, InstallCx, Module, ModuleSet, NamedScripts, SetPlace,
+use campfire_declarations::{
+    ByType, Declarations, InstallCx, Module, ModuleSystems, NamedScripts, SetPlace,
 };
-use campfire_navigation::NavigationSet;
+use campfire_navigation::NavigationSystems;
 use campfire_script::{ApiVersion, Status};
-use campfire_sim::{Capability, SimSet};
+use campfire_sim::{Capability, SimSystems};
 use campfire_stats::ModifierAppliers;
 use campfire_units::{BodyUnit, Due};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
@@ -32,8 +32,8 @@ mod ai_data;
 mod destinations;
 mod error;
 mod next_think;
-mod orders_action;
 mod orders_api;
+mod orders_directive;
 mod orders_effect;
 mod resetting;
 mod thinking;
@@ -45,16 +45,16 @@ pub use crate::ai_data::AiData;
 pub use crate::destinations::Destinations;
 pub use crate::error::{AiError, OrdersRefusal};
 pub use crate::next_think::NextThink;
-pub use crate::orders_action::OrdersAction;
 pub use crate::orders_api::OrdersApi;
+pub use crate::orders_directive::OrdersDirective;
 pub use crate::resetting::Resetting;
 pub use crate::thinking::Thinking;
 pub use crate::unit_order::{UnitDues, UnitOrder};
-pub use crate::unit_orders::{PlayerOrders, UnitOrders};
+pub use crate::unit_orders::{OrderQueue, UnitOrders};
 
 /// The steps of `orders`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum OrdersSet {
+pub enum OrdersSystems {
     /// The tick's commands become each unit's current order.
     Commands,
     /// Units chase their targets, after path walkers walk, before attacks start.
@@ -63,14 +63,16 @@ pub enum OrdersSet {
     Think,
 }
 
-impl ModuleSet for OrdersSet {
+impl ModuleSystems for OrdersSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            Self::Commands => SetPlace::at(ActionsSet::Order),
-            Self::Chase => SetPlace::at(ActionsSet::Chase).after(NavigationSet::FollowPaths),
-            Self::Think => SetPlace::stage(SimSet::Think),
+            Self::Commands => SetPlace::at(ActionsSystems::Order),
+            Self::Chase => {
+                SetPlace::at(ActionsSystems::Chase).after(NavigationSystems::FollowPaths)
+            }
+            Self::Think => SetPlace::stage(SimSystems::Think),
         }
     }
 }
@@ -84,7 +86,7 @@ impl Module for Orders {
     const CAPABILITY: Option<Capability> = Some(Capability::Orders);
     const NEEDS: &'static [Capability] = &[Capability::Navigation, Capability::Stats];
     const USES: &'static [Capability] = &[Capability::Vision];
-    type Set = OrdersSet;
+    type Systems = OrdersSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<AiData>();
@@ -94,7 +96,7 @@ impl Module for Orders {
         d.part::<BodyUnit, NextThink>(|at| at.of_type::<Ai>().map(|_| NextThink::FIRST));
         d.component::<Resetting>();
         d.state::<BodyUnit, Resetting>();
-        d.scratch::<PlayerOrders>();
+        d.scratch::<OrderQueue>();
         d.scratch::<Due<ThinkDue>>();
         d.book::<ByType<Ai>>(Ai::book);
         d.rule(Ai::avatar_rule);
@@ -110,15 +112,15 @@ impl Module for Orders {
     /// walk, units chase their targets. It builds on the core `Units` installs, on navigation and
     /// on stats. Without the core's scripts, as on a client, no unit thinks. An order's targets are
     /// checked as the server's vision sees them, or, on a predicting client, as the units it holds.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.by_role(
-            OrdersSet::Commands,
+            OrdersSystems::Commands,
             Self::check_orders::<ByVision>(),
             Self::check_orders::<ByHolding>(),
         );
-        cx.add(OrdersSet::Chase, Destinations::chase);
+        cx.add(OrdersSystems::Chase, Destinations::chase);
         cx.scripted(
-            OrdersSet::Think,
+            OrdersSystems::Think,
             (
                 Thinking::end_dead_resets,
                 Thinking::collect_thinkers,
@@ -146,7 +148,7 @@ pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::{ActionProgress, InProgress, SlotTimes};
     use campfire_common::{Seat, Tick};
-    use campfire_declare::ByType;
+    use campfire_declarations::ByType;
     use campfire_script::{ScriptFailures, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{MatchRate, StableId};

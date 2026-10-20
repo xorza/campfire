@@ -64,7 +64,7 @@ thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
-campfire-declare = { workspace = true, features = ["internals"] }
+campfire-declarations = { workspace = true, features = ["internals"] }
 campfire-import = { workspace = true, features = ["internals"] }
 campfire-sim = { workspace = true, features = ["internals"] }
 

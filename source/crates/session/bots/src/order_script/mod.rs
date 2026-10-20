@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use campfire_capabilities::Action;
+use campfire_capabilities::Directive;
 use campfire_codec::Toml;
 use campfire_common::{DeclaredName, Tick};
 use campfire_mode::{InputValue, ModeInput};
@@ -16,8 +16,8 @@ pub(crate) mod error;
 /// and optionally the tick the player leaves after: what a bot plays. It reads from TOML: an
 /// optional `end`; one `[[order]]` table each, with its `tick`, optionally `units = "<type>"`,
 /// the player's living units of that unit type as the order is due, its avatar without, and its
-/// `action`, an `Action` as serde reads it with names, such as
-/// `action.orders.slot = { slot = "<action>", target.unit = "enemies:avatar" }`; and one
+/// `directive`, a `Directive` as serde reads it with names, such as
+/// `directive.orders.slot = { slot = "<action>", target.unit = "enemies:avatar" }`; and one
 /// `[[input]]` table each, with its `tick`, the mode input's `name` and its `value`, a string or
 /// a list of strings, as the mode declares the input (04-capabilities/control.md, A bot's script
 /// names what it orders).
@@ -51,7 +51,7 @@ pub enum ScriptedValue {
 pub struct ScriptedOrder {
     pub tick: Tick,
     pub units: ScriptedUnits,
-    pub action: Action<Named>,
+    pub directive: Directive<Named>,
 }
 
 /// The units of its player an order commands.
@@ -123,14 +123,14 @@ impl OrderScript {
         struct Entry {
             tick: u64,
             units: Option<DeclaredName>,
-            action: Action<Named>,
+            directive: Directive<Named>,
         }
         let file: File = Toml::parse(text).map_err(OrderScriptError::Toml)?;
         let mut orders: Vec<ScriptedOrder> = Vec::with_capacity(file.order.len());
         for Entry {
             tick,
             units,
-            action,
+            directive,
         } in file.order
         {
             let tick = Tick::new(tick);
@@ -140,7 +140,7 @@ impl OrderScript {
             orders.push(ScriptedOrder {
                 tick,
                 units: units.map_or(ScriptedUnits::Avatar, ScriptedUnits::Typed),
-                action,
+                directive,
             });
         }
         let mut inputs: Vec<ScriptedInput> = Vec::with_capacity(file.input.len());

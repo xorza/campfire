@@ -60,7 +60,7 @@ visibility.
   (Epic Developer Community, "How can you destroy attached actors when parent is destroyed?").
 - **Every despawn of the replication crates is `DespawnReplicated`, in a proxy crate of its own.**
   `net-replication`, `net-interpolation` and `net-prediction` each have a `clippy.toml`, the
-  workspace's plus its own entries, that bans Bevy's despawns, and `net-despawn`, the one crate
+  workspace's plus its own entries, that bans Bevy's despawns, and `net-despawns`, the one crate
   whose root exempts that ban, holds `DespawnReplicated`, which every despawn of the three calls; on
   an entity with no `Remote` entity under it, as each on a server, it despawns as Bevy does.
   Refused: an `expect` at each other despawn naming why its entity is not a replicated one, which

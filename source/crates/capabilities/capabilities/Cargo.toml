@@ -16,7 +16,7 @@ internals = [
     "campfire-areas/internals",
     "campfire-codec/internals",
     "campfire-combat/internals",
-    "campfire-declare/internals",
+    "campfire-declarations/internals",
     "campfire-deliveries/internals",
     "campfire-geometry/internals",
     "campfire-interaction/internals",
@@ -32,7 +32,7 @@ internals = [
     "campfire-projectiles/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
-    "campfire-state-types/internals",
+    "campfire-states/internals",
     "campfire-stats/internals",
     "campfire-units/internals",
     "campfire-values/internals",
@@ -47,7 +47,7 @@ campfire-areas.workspace = true
 campfire-codec.workspace = true
 campfire-combat.workspace = true
 campfire-common.workspace = true
-campfire-declare.workspace = true
+campfire-declarations.workspace = true
 campfire-deliveries.workspace = true
 campfire-geometry = { workspace = true, optional = true }
 campfire-interaction.workspace = true
@@ -63,7 +63,7 @@ campfire-progression.workspace = true
 campfire-projectiles.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
-campfire-state-types.workspace = true
+campfire-states.workspace = true
 campfire-stats.workspace = true
 campfire-units.workspace = true
 campfire-values = { workspace = true, features = ["ecs"] }

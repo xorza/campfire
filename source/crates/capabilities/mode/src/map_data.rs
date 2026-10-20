@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{Section, SectionReaders, SectionTable, Sections, TableRead};
+use campfire_declarations::{Section, SectionReaders, SectionTable, Sections, TableRead};
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{MapPathsData, PathData, PathEnd};
@@ -176,7 +176,7 @@ pub(crate) mod internals {
     use std::collections::BTreeMap;
 
     use campfire_common::DeclaredName;
-    use campfire_declare::{Section, SectionTable, Sections};
+    use campfire_declarations::{Section, SectionTable, Sections};
     use campfire_geometry::Bounds;
     use campfire_math::Num;
     use campfire_units::{BoundsData, MapPoint};

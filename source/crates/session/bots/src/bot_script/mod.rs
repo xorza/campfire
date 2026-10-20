@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_capabilities::{Action, Order};
+use campfire_capabilities::{Directive, Order};
 use campfire_common::{Seat, Tick};
 use campfire_math::Vec3;
 use campfire_players::OrderUnits;
@@ -34,15 +34,15 @@ pub struct BotScript {
 }
 
 /// One order of a bot's script: the sim tick it is sent in, the units it commands, what they do,
-/// and that action as the script names it, which a report of an unsent order gives.
+/// and that directive as the script names it, which a report of an unsent order gives.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BotOrder {
     pub(crate) tick: Tick,
     pub units: BotUnits,
-    action: Action<Loaded>,
-    /// The action's slot, when it names one, which each commanded unit finds among its own.
+    directive: Directive<Loaded>,
+    /// The slot it names, when it names one, which each commanded unit finds among its own.
     slot: Option<ActionName>,
-    pub named: Action<Named>,
+    pub named: Directive<Named>,
 }
 
 /// Where a bot's step sends what its script has due: each payload, a mode input's or an order's,
@@ -51,9 +51,9 @@ pub trait BotSink {
     /// Takes `payload`, an input of the bot of `seat`.
     fn send(&mut self, seat: Seat, payload: &[u8]);
 
-    /// Hears that the order of `action`, as its script names it, of the bot of `seat` goes
+    /// Hears that the order of `directive`, as its script names it, of the bot of `seat` goes
     /// unsent to all of its units or to some, as `cause` says.
-    fn unsent(&mut self, seat: Seat, action: &Action<Named>, cause: OrderUnsent);
+    fn unsent(&mut self, seat: Seat, directive: &Directive<Named>, cause: OrderUnsent);
 }
 
 /// The buffers of a bot's step, kept so that no input allocates: the payload, the body of the
@@ -101,13 +101,13 @@ impl BotScript {
                 ScriptedUnits::Typed(name) => BotUnits::Typed(names.unit_type(name)?),
             };
             let mut refs = names.refs();
-            let action = order.action.clone().map_refs(&mut refs)?;
+            let directive = order.directive.clone().map_refs(&mut refs)?;
             Ok(BotOrder {
                 tick: order.tick,
                 units,
-                action,
+                directive,
                 slot: refs.slot,
-                named: order.action.clone(),
+                named: order.directive.clone(),
             })
         });
         Ok(Self {
@@ -245,9 +245,9 @@ impl BotOrder {
             from: units[0],
             slot,
         };
-        let action = self.action.clone().map_refs(&mut refs)?;
+        let directive = self.directive.clone().map_refs(&mut refs)?;
         let units = OrderUnits::new(units).expect("an order commands a unit at least");
-        out.push(Order { units, action });
+        out.push(Order { units, directive });
         Ok(())
     }
 }

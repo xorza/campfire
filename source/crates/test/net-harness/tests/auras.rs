@@ -9,7 +9,7 @@ use campfire_bots::OrderScript;
 use campfire_math::Num;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_prediction::RollbackMode;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_sim::{EntityIndex, StableId};
 use campfire_stats::Modifiers;
 use campfire_test_packages::Edit;
@@ -85,7 +85,7 @@ fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_on
     // not predict may steer round it there, and correct once, as the cast scenario shows.
     local.order(
         0,
-        OrdersAction::Move {
+        OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::int(-8),
                 z: Num::int(-33),
@@ -100,7 +100,7 @@ fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_on
     // server: it walks Cinder as the server does, at the server's step, and corrects nothing.
     local.order(
         0,
-        OrdersAction::Move {
+        OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::int(-4),
                 z: Num::int(-31),
@@ -124,7 +124,7 @@ fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_on
     // keeps the server's instance while Cinder stands in it.
     local.order(
         0,
-        OrdersAction::Move {
+        OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::int(-1),
                 z: Num::int(-24),

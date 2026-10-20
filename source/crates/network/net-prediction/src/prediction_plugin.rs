@@ -4,7 +4,7 @@ use crate::prediction_setup::PredictionSetup;
 use crate::rollback_plugin::RollbackPlugin;
 use crate::rollback_scan::RollbackScan;
 use bevy_ecs::error;
-use campfire_net_despawn::DespawnReplicated;
+use campfire_net_despawns::DespawnReplicated;
 use campfire_net_replication::PreSpawnedReceiver;
 use campfire_net_sync::InputTimelineSetup;
 use campfire_net_timeline::LocalTimeline;
@@ -15,7 +15,7 @@ use crate::prediction_despawned::PredictionDespawned;
 
 use crate::prediction_registry;
 use crate::prediction_systems::PredictionSystems;
-use crate::rollback_check_stage::RollbackCheckStage;
+use crate::rollback_check_systems::RollbackCheckSystems;
 
 use crate::rollback_systems::RollbackSystems;
 use bevy_app::prelude::*;
@@ -89,8 +89,8 @@ pub(crate) fn add_prediction_systems<C: HistoryComponent>(app: &mut App) {
     app.add_systems(
         PreUpdate,
         (
-            RollbackScan::survey_check_targets::<C>.in_set(RollbackCheckStage::Survey),
-            RollbackScan::scan_mismatches::<C>.in_set(RollbackCheckStage::Scan),
+            RollbackScan::survey_check_targets::<C>.in_set(RollbackCheckSystems::Survey),
+            RollbackScan::scan_mismatches::<C>.in_set(RollbackCheckSystems::Scan),
             RollbackPlugin::prepare_rollback::<C>.in_set(RollbackSystems::Prepare),
         ),
     );
@@ -104,7 +104,7 @@ pub(crate) fn add_prediction_diff_systems<C: HistoryComponent + RepliconDiffable
     app.add_observer(PredictionHistory::<C>::add_diff_receiver);
     app.add_systems(
         PreUpdate,
-        RollbackScan::survey_pending_diffs::<C>.in_set(RollbackCheckStage::Survey),
+        RollbackScan::survey_pending_diffs::<C>.in_set(RollbackCheckSystems::Survey),
     );
 }
 

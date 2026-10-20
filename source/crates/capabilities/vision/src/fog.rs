@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_declare::Cache;
+use campfire_declarations::Cache;
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Vec3};
 use campfire_values::{Relations, Team, TeamSet};

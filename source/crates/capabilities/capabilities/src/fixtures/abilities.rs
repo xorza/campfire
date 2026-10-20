@@ -5,7 +5,7 @@ use campfire_abilities::internals::{MANA, RAGE};
 use campfire_actions::{ActionData, ActionSlots, Actions, ProgressDues, SlotKind, TimedSlots};
 use campfire_combat::OnDeath;
 use campfire_common::Seat;
-use campfire_declare::MatchFacts;
+use campfire_declarations::MatchFacts;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_sim::{Capability, StableId};

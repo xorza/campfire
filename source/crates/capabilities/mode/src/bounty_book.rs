@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_common::Seat;
-use campfire_declare::{Book, BookCx, BookError, BookPlace, ByType, Section};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByType, Section};
 use campfire_math::Num;
 use campfire_players::{PlayersWorld, ResourceBook};
 use campfire_script::{Filter, MatchNames, UnknownName};

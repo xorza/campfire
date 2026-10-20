@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_declare::{CallbackTable, Callbacks};
+use campfire_declarations::{CallbackTable, Callbacks};
 use campfire_sim::Capability;
 
 /// What a capability above the core does to a unit the mode's spawner spawned, once its parts are

@@ -7,7 +7,7 @@ use campfire_script::{
     CallError, CallExtension, CallParams, CallStart, Commit, Frame, ListPlace, ParamScope,
     ScriptRole, ScriptValue, StateValue,
 };
-use campfire_units::{SyncAll, SyncNone};
+use campfire_units::{AudienceAll, AudienceNone};
 use campfire_values::Scalar;
 
 use crate::choices::Choices;
@@ -68,8 +68,8 @@ impl CallExtension for ModeCall {
         }
         if self.holds_mode() {
             let (none, all) = (
-                world.mode_fields::<SyncNone>(),
-                world.mode_fields::<SyncAll>(),
+                world.mode_fields::<AudienceNone>(),
+                world.mode_fields::<AudienceAll>(),
             );
             self.book.schema.merge_state(none, all, &mut self.state);
         }
@@ -92,8 +92,8 @@ impl CallExtension for ModeCall {
         }
         let (none, all) = (&mut self.none, &mut self.all);
         self.book.schema.split_state(&self.state, none, all);
-        world.commit_mode_fields::<SyncNone>(none);
-        world.commit_mode_fields::<SyncAll>(all);
+        world.commit_mode_fields::<AudienceNone>(none);
+        world.commit_mode_fields::<AudienceAll>(all);
         if *world.resource::<Choices>() != self.choices {
             world.resource_mut::<Choices>().clone_from(&self.choices);
         }

@@ -61,7 +61,7 @@ impl Arena {
     fn start_with(&self, rate: MatchRate, players: u32, vision: VisionBook) -> Match {
         let mut game = MatchBuild::arena(ArenaSetup {
             packages: &self.packages,
-            rate,
+            tick_rate: rate,
             players,
             vision,
         });

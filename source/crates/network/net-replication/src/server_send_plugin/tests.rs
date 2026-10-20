@@ -16,7 +16,7 @@ use campfire_net_channels::internals::ChannelCounts;
 use campfire_net_channels::internals::TransportCounts;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_connection::RemoteId;
-use campfire_net_despawn::DespawnReplicated;
+use campfire_net_despawns::DespawnReplicated;
 use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;

@@ -13,7 +13,7 @@ use campfire_codec::StructFields;
 use campfire_combat::{
     AttackData, CombatData, DamageHandle, HealHandle, LeechData, ModeCombatData, TurretData,
 };
-use campfire_declare::{ListedSet, SectionTable};
+use campfire_declarations::{ListedSet, SectionTable};
 use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ShopData};
 use campfire_math::Num;

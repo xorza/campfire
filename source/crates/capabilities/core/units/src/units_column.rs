@@ -3,22 +3,24 @@ use std::ops::Range;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_script::{
-    AnyKeptRows, ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptValue,
-    StateField, StateSchema, StateValue, SyncTo, View, ViewColumn,
+    AnyKeptRows, ApiError, Audience, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptValue,
+    StateField, StateSchema, StateValue, View, ViewColumn,
 };
 use campfire_values::{NameId, UnitType};
 
-use crate::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
+use crate::unit_state::{
+    AudienceAll, AudienceNone, AudienceOwner, AudienceTeam, StateAudience, UnitState,
+};
 use crate::unit_state_book::UnitStateBook;
 
 /// The parts of a unit the core reads into its row of script state: its type, which names the
 /// class of each field, and its state of each class.
 pub(crate) type StateRowReads = (
     Option<&'static UnitType>,
-    Option<&'static UnitState<SyncNone>>,
-    Option<&'static UnitState<SyncOwner>>,
-    Option<&'static UnitState<SyncTeam>>,
-    Option<&'static UnitState<SyncAll>>,
+    Option<&'static UnitState<AudienceNone>>,
+    Option<&'static UnitState<AudienceOwner>>,
+    Option<&'static UnitState<AudienceTeam>>,
+    Option<&'static UnitState<AudienceAll>>,
 );
 
 /// A row's parts of `StateRowReads`, as the view reads them.
@@ -84,7 +86,7 @@ impl UnitsColumn {
     /// Adds the row of a unit of `unit_type` with `state`, its fields of each class, merged into
     /// the order of their names as the type's schema places each field.
     fn push(&mut self, unit_type: Option<UnitType>, state: StateParts<'_, '_>) {
-        fn class<S: StateSync>(state: Option<&UnitState<S>>) -> &[StateValue] {
+        fn class<S: StateAudience>(state: Option<&UnitState<S>>) -> &[StateValue] {
             state.map_or(&[][..], UnitState::values)
         }
         let (_, none, owner, team, all) = state;
@@ -92,19 +94,19 @@ impl UnitsColumn {
         let start = len(rows.values.len());
         if let Some(schema) = unit_type.and_then(|unit_type| self.book.schema(unit_type)) {
             let classes = [
-                (SyncTo::None, class(none)),
-                (SyncTo::Owner, class(owner)),
-                (SyncTo::Team, class(team)),
-                (SyncTo::All, class(all)),
+                (Audience::None, class(none)),
+                (Audience::Owner, class(owner)),
+                (Audience::Team, class(team)),
+                (Audience::All, class(all)),
             ];
             debug_assert!(
                 classes
                     .iter()
-                    .all(|&(sync, values)| schema.holds(sync, values)),
+                    .all(|&(audience, values)| schema.holds(audience, values)),
                 "a unit holds exactly the fields its type declares"
             );
             for place in schema.places() {
-                let values = classes[place.sync.index()].1;
+                let values = classes[place.audience.index()].1;
                 rows.values.push(values[place.at].clone());
             }
         }

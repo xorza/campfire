@@ -221,7 +221,7 @@ impl GlbBuilder {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use super::*;
 
     impl GlbBuilder {

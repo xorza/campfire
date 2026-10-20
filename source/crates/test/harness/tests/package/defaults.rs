@@ -85,8 +85,8 @@ fn a_modes_default_lies_under_each_unit_types_section_and_the_types_own_field_st
 #[test]
 fn a_rules_packages_defaults_lie_under_the_modes_unit_types_and_the_modes_own_over_them() {
     const RULES: &str = "zero-hour/data/rules.toml";
-    const MODE: &str = "test/modes/skirmish/data/mode.toml";
-    const UNITS: &str = "test/modes/skirmish/data/units.toml";
+    const MODE: &str = "test/engine/modes/skirmish/data/mode.toml";
+    const UNITS: &str = "test/engine/modes/skirmish/data/units.toml";
     // The skirmish's center gives no death of its own, and the dozer its `despawn`; Zero Hour's
     // rules make a unit stay as it dies, in place of their own `despawn`.
     let center = (
@@ -116,7 +116,7 @@ fn a_zero_hour_type_takes_the_games_fixed_rules_from_its_rules_data() {
     // A type of a turn rate alone, as the import writes one, and of a `combat` of no death: its
     // turret takes the original's tolerance, 0.035 radians to the nearest bit, and the weapon slot
     // kind, and it despawns as it dies.
-    const UNITS: &str = "test/modes/skirmish/data/units.toml";
+    const UNITS: &str = "test/engine/modes/skirmish/data/units.toml";
     let gunner = "\n[units.gunner]\npools = [\"life\"]\nstats = { life = { base = 100 } }\ncombat = {}\n\
                   turret = { turn_rate = 60 }\n";
     let skirmish = load(TestMode::Skirmish, &[(UNITS, Edit::Append(gunner))]).unwrap();

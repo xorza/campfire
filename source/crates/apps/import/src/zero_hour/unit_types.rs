@@ -110,7 +110,7 @@ impl UnitTypes {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use std::collections::BTreeMap;
 
     use crate::zero_hour::unit_types::{TypeAdditions, UnitTypes, UnitsFile};

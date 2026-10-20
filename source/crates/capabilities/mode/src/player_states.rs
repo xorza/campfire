@@ -2,11 +2,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Seat;
 use campfire_players::PlayersWorld;
-use campfire_script::{StateField, StateSchema, StateValue, SyncTo};
-use campfire_units::{SyncAll, SyncNone, SyncOwner, SyncTeam};
+use campfire_script::{Audience, StateField, StateSchema, StateValue};
+use campfire_units::{AudienceAll, AudienceNone, AudienceOwner, AudienceTeam};
 use campfire_values::NameId;
 
-use crate::player_state::{PlayerState, PlayerSync};
+use crate::player_state::{PlayerAudience, PlayerState};
 
 /// The players' script state as a call sees it: each player's fields in turn, every field in the
 /// order of their names, read once a batch, as each call of the batch commits its writes into
@@ -42,11 +42,11 @@ impl PlayerStates {
         for slot in (0..players).map(Seat::new) {
             let entity = Self::entity(world, slot);
             for place in schema.places() {
-                let class = match place.sync {
-                    SyncTo::None => Self::class::<SyncNone>(world, entity),
-                    SyncTo::Owner => Self::class::<SyncOwner>(world, entity),
-                    SyncTo::Team => Self::class::<SyncTeam>(world, entity),
-                    SyncTo::All => Self::class::<SyncAll>(world, entity),
+                let class = match place.audience {
+                    Audience::None => Self::class::<AudienceNone>(world, entity),
+                    Audience::Owner => Self::class::<AudienceOwner>(world, entity),
+                    Audience::Team => Self::class::<AudienceTeam>(world, entity),
+                    Audience::All => Self::class::<AudienceAll>(world, entity),
                 };
                 self.values.push(class[place.at].clone());
             }
@@ -65,11 +65,11 @@ impl PlayerStates {
             self.values[seat.index() * self.fields + field.index()].clone_from(&value);
             let entity = Self::entity(world, seat);
             let place = schema.place(field);
-            match place.sync {
-                SyncTo::None => Self::write::<SyncNone>(world, entity, place.at, value),
-                SyncTo::Owner => Self::write::<SyncOwner>(world, entity, place.at, value),
-                SyncTo::Team => Self::write::<SyncTeam>(world, entity, place.at, value),
-                SyncTo::All => Self::write::<SyncAll>(world, entity, place.at, value),
+            match place.audience {
+                Audience::None => Self::write::<AudienceNone>(world, entity, place.at, value),
+                Audience::Owner => Self::write::<AudienceOwner>(world, entity, place.at, value),
+                Audience::Team => Self::write::<AudienceTeam>(world, entity, place.at, value),
+                Audience::All => Self::write::<AudienceAll>(world, entity, place.at, value),
             }
         }
     }
@@ -96,7 +96,7 @@ impl PlayerStates {
             .expect("a match that started has each player's entity")
     }
 
-    fn class<S: PlayerSync>(world: &World, entity: Entity) -> &[StateValue] {
+    fn class<S: PlayerAudience>(world: &World, entity: Entity) -> &[StateValue] {
         world
             .get::<PlayerState<S>>(entity)
             .expect("each player's entity holds each class of its state")
@@ -105,7 +105,7 @@ impl PlayerStates {
 
     /// Writes `value` to the field at `at` of class `S`, unless it holds it, as a write marks it
     /// changed.
-    fn write<S: PlayerSync>(world: &mut World, entity: Entity, at: usize, value: StateValue) {
+    fn write<S: PlayerAudience>(world: &mut World, entity: Entity, at: usize, value: StateValue) {
         let mut state = world
             .get_mut::<PlayerState<S>>(entity)
             .expect("each player's entity holds each class of its state");

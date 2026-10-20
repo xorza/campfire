@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_areas::{Area, AreaSpec, Areas, Inside};
 use campfire_common::{Tick, Ticks};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_deliveries::Delivering;
 use campfire_math::Num;
 use campfire_script::Filter;

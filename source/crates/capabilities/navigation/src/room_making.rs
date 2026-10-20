@@ -3,7 +3,7 @@ use bevy_ecs::query::{QueryState, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{In, Local, SystemId};
 use bevy_ecs::world::World;
-use campfire_declare::OneShot;
+use campfire_declarations::OneShot;
 use campfire_geometry::Shape;
 use campfire_sim::{Keyed, Position, SimTick, StableId};
 use campfire_units::{Body, Dead, MoveStep};

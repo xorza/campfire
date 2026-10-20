@@ -1,4 +1,4 @@
-use campfire_declare::PerType;
+use campfire_declarations::PerType;
 use campfire_geometry::BodyBox;
 use campfire_math::Num;
 

@@ -54,7 +54,7 @@ pub struct View(Rc<ViewFields>);
 /// The fields of the view.
 #[derive(Debug)]
 struct ViewFields {
-    rate: MatchRate,
+    tick_rate: MatchRate,
     names: RefCell<ViewNames>,
     /// The revision of the match's `MatchNames` that `names` derive from; none before the first.
     names_at: Cell<Option<u64>>,
@@ -71,7 +71,7 @@ impl View {
     /// until the load and the mode give them.
     pub fn new(rate: MatchRate, read: fn(&mut World)) -> Self {
         Self(Rc::new(ViewFields {
-            rate,
+            tick_rate: rate,
             names: RefCell::default(),
             names_at: Cell::new(None),
             rows: RefCell::default(),
@@ -140,7 +140,7 @@ impl View {
 
     /// The match's tick rate.
     pub fn rate(&self) -> MatchRate {
-        self.0.rate
+        self.0.tick_rate
     }
 
     /// How `of` regards `other`, as the units were read.

@@ -52,7 +52,7 @@ pub use crate::seat_event::{SeatEvent, SeatEventKind};
 pub use crate::sim_rng::{RngOpener, SimRng};
 pub use crate::sim_state::{SimComponent, SimResource};
 pub use crate::sim_tick::SimTick;
-pub use crate::sim_update::{SimEdge, SimSet, SimUpdate};
+pub use crate::sim_update::{SimEdgeSystems, SimSystems, SimUpdate};
 pub use crate::sim_world::SimWorld;
 pub use crate::sim_world_builder::{SimFields, SimWorldBuilder};
 pub use crate::stable_id::StableId;

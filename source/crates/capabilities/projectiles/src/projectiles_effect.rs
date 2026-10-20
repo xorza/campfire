@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_actions::ProjectileFlight;
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_deliveries::Delivering;
 use campfire_math::Vec3;
 use campfire_script::{Effect, EffectKind, Frame};

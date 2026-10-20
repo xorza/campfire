@@ -2,17 +2,17 @@ use std::fmt;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declare::PartWriter;
-use campfire_script::{StatePlace, StateValue, SyncTo};
+use campfire_declarations::PartWriter;
+use campfire_script::{Audience, StatePlace, StateValue};
 use campfire_values::UnitType;
 
-use crate::unit_state::{StateSync, SyncCall, UnitState};
+use crate::unit_state::{AudienceCall, StateAudience, UnitState};
 use crate::unit_state_book::UnitStateBook;
 
 /// A new unit's script state: the values of each class of its fields, in the order of their
 /// names, by the class's place, each class a `UnitState` of its own as the unit spawns.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct UnitStates([Vec<StateValue>; SyncTo::ALL.len()]);
+pub(crate) struct UnitStates([Vec<StateValue>; Audience::ALL.len()]);
 
 /// Adds a class's values to a spawning unit's write as its `UnitState`, unless it has none.
 struct InsertClass<'t, 'w, 's> {
@@ -35,24 +35,24 @@ impl UnitStates {
         let mut states = Self::default();
         if let Some(schema) = book.schema(unit_type) {
             for (value, place) in schema.initial().iter().zip(schema.places()) {
-                states.push(place.sync, value.clone());
+                states.push(place.audience, value.clone());
             }
         }
         states
     }
 
-    const fn class_mut(&mut self, sync: SyncTo) -> &mut Vec<StateValue> {
-        &mut self.0[sync.index()]
+    const fn class_mut(&mut self, audience: Audience) -> &mut Vec<StateValue> {
+        &mut self.0[audience.index()]
     }
 
-    /// Adds `value`, the next field of class `sync`.
-    pub(crate) fn push(&mut self, sync: SyncTo, value: StateValue) {
-        self.class_mut(sync).push(value);
+    /// Adds `value`, the next field of class `audience`.
+    pub(crate) fn push(&mut self, audience: Audience, value: StateValue) {
+        self.class_mut(audience).push(value);
     }
 
     /// Sets the field at `place`, of a value of its type, as a call's write.
     pub(crate) fn set(&mut self, place: StatePlace, value: StateValue) {
-        let held = &mut self.class_mut(place.sync)[place.at];
+        let held = &mut self.class_mut(place.audience)[place.at];
         debug_assert_eq!(held.kind(), value.kind(), "a value of the field's type");
         *held = value;
     }
@@ -60,8 +60,8 @@ impl UnitStates {
     /// Adds a component to `target`, a spawning unit's write, for each class it holds a field
     /// of.
     pub(crate) fn push_into(self, target: &mut PartWriter<'_, '_>) {
-        for (sync, values) in SyncTo::ALL.into_iter().zip(self.0) {
-            InsertClass { target, values }.on(sync);
+        for (audience, values) in Audience::ALL.into_iter().zip(self.0) {
+            InsertClass { target, values }.on(audience);
         }
     }
 
@@ -75,7 +75,7 @@ impl UnitStates {
             at,
             value,
         }
-        .on(place.sync);
+        .on(place.audience);
     }
 }
 
@@ -88,20 +88,20 @@ impl fmt::Debug for InsertClass<'_, '_, '_> {
     }
 }
 
-impl SyncCall for InsertClass<'_, '_, '_> {
+impl AudienceCall for InsertClass<'_, '_, '_> {
     type Output = ();
 
-    fn call<S: StateSync>(self) {
+    fn call<S: StateAudience>(self) {
         if !self.values.is_empty() {
             self.target.push(UnitState::<S>::new(self.values));
         }
     }
 }
 
-impl SyncCall for WriteClass<'_> {
+impl AudienceCall for WriteClass<'_> {
     type Output = ();
 
-    fn call<S: StateSync>(self) {
+    fn call<S: StateAudience>(self) {
         let mut state = self
             .world
             .get_mut::<UnitState<S>>(self.entity)

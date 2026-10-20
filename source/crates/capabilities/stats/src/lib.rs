@@ -15,18 +15,20 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_actions::ActionsSet;
-use campfire_declare::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, NamedScripts, ServerForm,
+use campfire_actions::ActionsSystems;
+use campfire_declarations::{
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSystems, NamedScripts, ServerForm,
     SetPlace, StateFields,
 };
 use campfire_math::Num;
 use campfire_players::Player;
 use campfire_script::{ApiVersion, Status};
-use campfire_sim::{Capability, MatchRate, SimEdge, SimSet, SimTick, SimWorld, StableId};
+use campfire_sim::{
+    Capability, MatchRate, SimEdgeSystems, SimSystems, SimTick, SimWorld, StableId,
+};
 use campfire_units::{
     BodyUnit, Dead, DeclaredTags, Due, ModifierNames, Owner, PoolId, PoolNames, SpawnCallbacks,
-    StatNames, UnitGrid, UnitSteps, UnitsSet,
+    StatNames, UnitGrid, UnitSteps, UnitsSystems,
 };
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
@@ -189,7 +191,7 @@ pub struct Stats;
 
 /// The steps of `stats`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum StatsSet {
+pub enum StatsSystems {
     /// The modifiers and stacks that hold no longer end.
     Expire,
     /// The living units' pools regenerate.
@@ -211,10 +213,10 @@ pub enum StatsSet {
     Hold,
     /// In its gap: every unit whose level or modifiers changed, or that is new, derives its stats
     /// and states again.
-    Refresh(SimEdge),
+    Refresh(SimEdgeSystems),
 }
 
-impl StatsSet {
+impl StatsSystems {
     /// The steps in the stages.
     const STEPS: [Self; 9] = [
         Self::Expire,
@@ -228,40 +230,41 @@ impl StatsSet {
         Self::Hold,
     ];
 
-    /// The steps in the stages, then a refresh in each gap, `SimEdge::Start` first.
-    const ALL: [Self; Self::STEPS.len() + 1 + SimSet::ALL.len()] = {
+    /// The steps in the stages, then a refresh in each gap, `SimEdgeSystems::Start` first.
+    const ALL: [Self; Self::STEPS.len() + 1 + SimSystems::ALL.len()] = {
         let steps = Self::STEPS.len();
-        let mut all = [Self::Refresh(SimEdge::Start); Self::STEPS.len() + 1 + SimSet::ALL.len()];
+        let mut all =
+            [Self::Refresh(SimEdgeSystems::Start); Self::STEPS.len() + 1 + SimSystems::ALL.len()];
         let mut at = 0;
         while at < steps {
             all[at] = Self::STEPS[at];
             at += 1;
         }
         let mut stage = 0;
-        while stage < SimSet::ALL.len() {
-            all[steps + 1 + stage] = Self::Refresh(SimEdge::After(SimSet::ALL[stage]));
+        while stage < SimSystems::ALL.len() {
+            all[steps + 1 + stage] = Self::Refresh(SimEdgeSystems::After(SimSystems::ALL[stage]));
             stage += 1;
         }
         all
     };
 }
 
-impl ModuleSet for StatsSet {
+impl ModuleSystems for StatsSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         let stage = SetPlace::stage;
         match self {
-            Self::Expire | Self::Regenerate => SetPlace::at(UnitsSet::Begin),
-            Self::GrantAtInputs => stage(SimSet::Inputs).after(ActionsSet::HoldAtInputs),
+            Self::Expire | Self::Regenerate => SetPlace::at(UnitsSystems::Begin),
+            Self::GrantAtInputs => stage(SimSystems::Inputs).after(ActionsSystems::HoldAtInputs),
             Self::GrantAtStrike => {
-                (stage(SimSet::Hit).after(ActionsSet::Pay)).before(ActionsSet::Strike)
+                (stage(SimSystems::Hit).after(ActionsSystems::Pay)).before(ActionsSystems::Strike)
             }
-            Self::Interval => stage(SimSet::Hit).after(ActionsSet::Land),
-            Self::GrantAtResolve => stage(SimSet::Resolve).after(ActionsSet::Resolve),
-            Self::ClearDead => stage(SimSet::Resolve).after(Self::GrantAtResolve),
-            Self::Hold => stage(SimSet::Resolve).after(Self::ClearDead),
-            Self::GrantAtEnd => stage(SimSet::Vision).before(UnitsSet::End),
+            Self::Interval => stage(SimSystems::Hit).after(ActionsSystems::Land),
+            Self::GrantAtResolve => stage(SimSystems::Resolve).after(ActionsSystems::Resolve),
+            Self::ClearDead => stage(SimSystems::Resolve).after(Self::GrantAtResolve),
+            Self::Hold => stage(SimSystems::Resolve).after(Self::ClearDead),
+            Self::GrantAtEnd => stage(SimSystems::Vision).before(UnitsSystems::End),
             Self::Refresh(edge) => SetPlace::gap(edge),
         }
     }
@@ -271,7 +274,7 @@ impl Module for Stats {
     const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
-    type Set = StatsSet;
+    type Systems = StatsSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.timed::<ActionPassives>();
@@ -339,45 +342,44 @@ impl Module for Stats {
         d.part::<BodyUnit, Pools>(|at| at.of_type::<Pools>().copied());
     }
 
-    /// Adds stats to a match: in `SimEdge::Start` and in the `SimEdge::After` of each stage,
-    /// every unit whose level or modifiers changed, or that is new, has its stats and states
-    /// derived again, and the components that hold their effect follow them; as each tick
-    /// starts, the living units' pools regenerate. The grants the sources push apply as each
-    /// tick starts, before attacks strike, before units die and as the tick ends. With no stat
-    /// book, as before a mode loads one, nothing changes. The regen and the intervals install
-    /// only in a match whose pools and modifiers have them (02-engine-core.md, Books before the
-    /// install).
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+    /// Adds stats to a match: in `SimEdgeSystems::Start` and in the `SimEdgeSystems::After` of each
+    /// stage, every unit whose level or modifiers changed, or that is new, has its stats and states
+    /// derived again, and the components that hold their effect follow them; as each tick starts,
+    /// the living units' pools regenerate. The grants the sources push apply as each tick starts,
+    /// before attacks strike, before units die and as the tick ends. With no stat book, as before a
+    /// mode loads one, nothing changes. The regen and the intervals install only in a match whose
+    /// pools and modifiers have them (02-engine-core.md, Books before the install).
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         let regenerates = cx.book::<PoolBook>().is_some_and(PoolBook::regenerates);
         let intervals = cx
             .book::<ModifierBook>()
             .is_some_and(ModifierBook::has_intervals);
-        cx.add(StatsSet::Expire, ModifierEnds::expire_modifiers);
+        cx.add(StatsSystems::Expire, ModifierEnds::expire_modifiers);
         if regenerates {
-            cx.add(StatsSet::Regenerate, Refresh::regenerate);
+            cx.add(StatsSystems::Regenerate, Refresh::regenerate);
         }
         // The actions' passives and holds push their grants right before each pass applies them.
         for set in [
-            StatsSet::GrantAtInputs,
-            StatsSet::GrantAtStrike,
-            StatsSet::GrantAtEnd,
+            StatsSystems::GrantAtInputs,
+            StatsSystems::GrantAtStrike,
+            StatsSystems::GrantAtEnd,
         ] {
             cx.add(set, (ActionPassives::want, GrantPass::run).chain());
         }
         cx.add(
-            StatsSet::GrantAtResolve,
+            StatsSystems::GrantAtResolve,
             (ActionPassives::want, PlayerGrants::want, GrantPass::run).chain(),
         );
-        cx.add(StatsSet::ClearDead, ModifierEnds::clear_dead_modifiers);
+        cx.add(StatsSystems::ClearDead, ModifierEnds::clear_dead_modifiers);
         if intervals {
-            cx.add(StatsSet::Interval, ModifierIntervals::count_intervals);
+            cx.add(StatsSystems::Interval, ModifierIntervals::count_intervals);
             cx.scripted(
-                StatsSet::Interval,
+                StatsSystems::Interval,
                 ModifierIntervals::run_intervals.after(ModifierIntervals::count_intervals),
             );
         }
         cx.by_role(
-            StatsSet::Hold,
+            StatsSystems::Hold,
             (
                 AuraCarriers::track,
                 UnitGrid::before_reading(HeldPass::run::<ServerForm>),
@@ -389,8 +391,8 @@ impl Module for Stats {
             )
                 .chain(),
         );
-        for set in StatsSet::ALL {
-            if let StatsSet::Refresh(_) = set {
+        for set in StatsSystems::ALL {
+            if let StatsSystems::Refresh(_) = set {
                 cx.add(set, Refresh::run);
             }
         }
@@ -440,7 +442,7 @@ impl Stats {
         }
         let at = ApplyAt {
             now: world.resource::<SimTick>().start(),
-            rate: *world.resource::<MatchRate>(),
+            tick_rate: *world.resource::<MatchRate>(),
             params: world.resource::<ParamBook>(),
         };
         let source = add
@@ -507,8 +509,8 @@ pub mod internals {
 
     use bevy_ecs::world::{Mut, World};
     use campfire_common::DeclaredName;
-    use campfire_declare::Book;
-    use campfire_declare::internals::BookLoad;
+    use campfire_declarations::Book;
+    use campfire_declarations::internals::BookLoad;
     use campfire_math::Num;
     use campfire_script::ScriptId;
     use campfire_sim::internals::SimWorldInternals;
@@ -636,7 +638,7 @@ pub mod internals {
                     scripts,
                     tags,
                     stat: |stat: &Stat| Ok(places[stat]),
-                    rate: *world.resource::<MatchRate>(),
+                    tick_rate: *world.resource::<MatchRate>(),
                 };
                 let modifier = PackageModifier {
                     name: &name,

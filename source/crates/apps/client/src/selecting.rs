@@ -30,7 +30,7 @@ use crate::view::ViewSystems;
 /// selection as it is, and a press while the player places a build is the preview's. Each frame, a
 /// unit the client no longer holds leaves the selection, and an empty selection takes the avatar.
 #[derive(Debug)]
-pub(crate) struct Selecting;
+pub(crate) struct SelectingPlugin;
 
 /// The left button, held down over the match: the point of the window it went down at, where the
 /// cursor is now, and whether it moved far enough to drag.
@@ -53,7 +53,7 @@ struct DragBox;
 const BOX_EDGE: Color = Color::srgb(0.3, 0.95, 0.4);
 const BOX_FILL: Color = Color::srgba(0.3, 0.95, 0.4, 0.12);
 
-impl Plugin for Selecting {
+impl Plugin for SelectingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Selection>();
         app.init_resource::<Held>();
@@ -77,7 +77,7 @@ impl Plugin for Selecting {
     }
 }
 
-impl Selecting {
+impl SelectingPlugin {
     fn add_box(mut commands: Commands<'_, '_>) {
         commands.spawn((
             DragBox,

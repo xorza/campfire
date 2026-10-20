@@ -5,7 +5,7 @@ use campfire_actions::{ActionBook, ActionKind};
 use campfire_math::{Num, Rounding};
 use campfire_players::{PlayersWorld, ResourceAmount};
 use campfire_sim::{SimComponent, StableId};
-use campfire_state_types::{Replication, SentPredicted};
+use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{ActionId, NameId, Rank};
 use campfire_visibility::DataKind;

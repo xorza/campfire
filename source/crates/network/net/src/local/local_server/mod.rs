@@ -23,11 +23,11 @@ use tracing::error;
 use crate::hosting::Hosting;
 use crate::key_file::KeyFile;
 use crate::local::local_link::LocalLink;
-use crate::local::local_pace::LocalPace;
+use crate::local::local_pace::LocalPacePlugin;
 use crate::local::local_server::error::LocalServerError;
 use crate::os::Os;
 use crate::pace::Pace;
-use crate::paced_runner::PacedRunner;
+use crate::paced_runner::PacedRunnerPlugin;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_server::ServerFrameSystems;
@@ -60,7 +60,7 @@ pub struct LocalServer {
 }
 
 /// The client's end of the new link a local server makes once it starts again after a load,
-/// which the client takes; see `LocalRelink`.
+/// which the client takes; see `LocalRelinkPlugin`.
 #[derive(Clone, Default)]
 pub struct Relinks(Arc<Mutex<Option<LocalLink>>>);
 
@@ -303,10 +303,10 @@ impl Runs {
                 capabilities: self.packages.manifest().capabilities,
                 hosting: Hosting::Local,
             },
-            PacedRunner,
-            LocalPace {
+            PacedRunnerPlugin,
+            LocalPacePlugin {
                 pace: Arc::clone(&self.pace),
-                rate: MatchRate::new(self.tick_hz).rate(),
+                tick_rate: MatchRate::new(self.tick_hz).rate(),
             },
         ));
         app.insert_resource(dir);

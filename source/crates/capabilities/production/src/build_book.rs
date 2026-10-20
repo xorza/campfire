@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
 use campfire_actions::{ActionBook, ActionSlots};
-use campfire_declare::Book;
+use campfire_declarations::Book;
 use campfire_math::Num;
 use campfire_script::{Filter, MatchNames};
 use campfire_units::BodyForm;

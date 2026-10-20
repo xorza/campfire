@@ -2,7 +2,7 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Query, Res};
 use campfire_actions::{ActionProgress, Targets};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_sim::Position;
 use campfire_units::{Dead, Facing};
 use campfire_values::UnitType;

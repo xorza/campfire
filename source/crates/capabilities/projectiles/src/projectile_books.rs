@@ -1,5 +1,5 @@
 use campfire_actions::{ActionsData, DeliveryData, Flights, ListHook, Targeting};
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Section};
 use campfire_math::Num;
 use campfire_script::ScriptRole;
 use campfire_stats::MoveSpeedCap;

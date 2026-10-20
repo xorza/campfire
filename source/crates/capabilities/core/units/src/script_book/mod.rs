@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Book, BookCx, BookError};
+use campfire_declarations::{Book, BookCx, BookError};
 use campfire_script::{Hook, HookSet, MatchNames, ScriptId, ScriptRole};
 
 /// The hooks each script of a match defines, by `ScriptId`, in the order the match compiles its

@@ -14,7 +14,7 @@ use bevy_time::TimePlugin;
 use campfire_common::ExitStatus;
 use campfire_log::LogLine;
 use campfire_math::TickRate;
-use campfire_net::{Listening, NetProtocol, UdpLinks};
+use campfire_net::{Listening, NetProtocolPlugin, UdpLinks};
 use campfire_net_connection::{Client, Connect};
 use campfire_net_endpoint::Endpoint;
 use campfire_net_link::{Link, Linked, Unlinked};
@@ -150,7 +150,7 @@ impl ClientApp {
         app.add_plugins(ClientPlugins {
             tick_rate: TickRate::try_from(listening.tick_hz.get()).unwrap(),
         });
-        app.add_plugins(NetProtocol {
+        app.add_plugins(NetProtocolPlugin {
             capabilities: mode.packages().manifest().capabilities,
         });
         app.finish();

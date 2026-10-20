@@ -11,7 +11,7 @@ use bevy_ecs::lifecycle::AddEvent;
 use bevy_ecs::observer::{Observer, On};
 use bevy_ecs::world::World;
 use campfire_capabilities::Release;
-use campfire_declare::{EntityKind, KindVisitor};
+use campfire_declarations::{EntityKind, KindVisitor};
 use campfire_sim::{EntityIndex, StableId};
 
 /// The parts each entity of a running match held as a tick first found it, by its stable id:

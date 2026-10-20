@@ -3,11 +3,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_actions::SlotKinds;
 use campfire_common::DeclaredName;
-use campfire_declare::{Section, SectionReaders, SectionTable, Sections, TableRead};
+use campfire_declarations::{Section, SectionReaders, SectionTable, Sections, TableRead};
 use campfire_script::{
-    DataSection, DataTable, ScriptList, ScriptText, ScriptValue, SyncedStateDecl,
+    DataSection, DataTable, ScriptList, ScriptText, ScriptValue, StateFieldDecl,
 };
-use campfire_values::{MessageId, Scalar};
+use campfire_values::{Scalar, TextId};
 use campfire_visibility::ModeVisibility;
 use serde::de::DeserializeSeed;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -27,7 +27,7 @@ use crate::team_data::TeamData;
 #[serde(deny_unknown_fields)]
 pub struct ModeData {
     /// The message of the name players see.
-    pub name: MessageId,
+    pub name: TextId,
     /// What its players choose before their units spawn, by name.
     #[serde(default)]
     pub choices: BTreeMap<DeclaredName, ChoiceData>,
@@ -44,10 +44,10 @@ pub struct ModeData {
     pub marker_params: BTreeSet<DeclaredName>,
     pub state_version: Option<u32>,
     #[serde(default)]
-    pub state: BTreeMap<DeclaredName, SyncedStateDecl>,
+    pub state: BTreeMap<DeclaredName, StateFieldDecl>,
     /// The fields of each player's state, by name.
     #[serde(default)]
-    pub player_state: BTreeMap<DeclaredName, SyncedStateDecl>,
+    pub player_state: BTreeMap<DeclaredName, StateFieldDecl>,
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, ModeParam>,
     /// The params whose values a session's host picks, by name.
@@ -189,8 +189,8 @@ impl DataSection for ModeData {
 pub(crate) mod internals {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use campfire_declare::{Section, SectionTable, Sections};
-    use campfire_values::MessageId;
+    use campfire_declarations::{Section, SectionTable, Sections};
+    use campfire_values::TextId;
     use campfire_visibility::ModeVisibility;
 
     use crate::mode_data::ModeData;
@@ -200,7 +200,7 @@ pub(crate) mod internals {
     impl ModeData {
         /// The data of a mode of the name `name` and nothing more: no team, input, timer, state,
         /// param or section.
-        pub fn named(name: MessageId) -> Self {
+        pub fn named(name: TextId) -> Self {
             Self {
                 name,
                 choices: BTreeMap::new(),

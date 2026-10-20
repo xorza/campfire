@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use bevy_ecs::world::World;
-use campfire_declare::MatchFacts;
+use campfire_declarations::MatchFacts;
 use campfire_sim::StateRegistry;
 
 use crate::books::Books;
@@ -77,8 +77,8 @@ pub(crate) mod internals {
     use campfire_codec::Binary;
     use campfire_combat::Combat;
     use campfire_common::{DeclaredName, SegmentSeed};
-    use campfire_declare::Role;
-    use campfire_declare::internals::BookLoad;
+    use campfire_declarations::Role;
+    use campfire_declarations::internals::BookLoad;
     use campfire_log::internals::LogCheck;
     use campfire_players::Players;
     use campfire_script::ScriptPools;

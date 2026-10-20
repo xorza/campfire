@@ -48,7 +48,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
             shop.spawns(game).len(),
         )
     };
-    let cancel = |place| ProductionAction::CancelTrain { place };
+    let cancel = |place| ProductionDirective::CancelTrain { place };
     // Tick 0: the entry behind the head gives back its 20; the head keeps its time. Another
     // player's cancel, and one past the queue's end, do nothing.
     Production::tick_ordering(&mut game, 0, producer, cancel(1));
@@ -129,7 +129,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         None,
         Some(half),
     );
-    let rally = |target| ProductionAction::Rally {
+    let rally = |target| ProductionDirective::Rally {
         target: Some(target),
     };
     let point = |x: i64, z: i64| {
@@ -158,7 +158,12 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         (None, halves(0, 0), None),
     ];
     for (at, (target, place, walks)) in cases.into_iter().enumerate() {
-        Production::tick_ordering(&mut game, 0, producer, ProductionAction::Rally { target });
+        Production::tick_ordering(
+            &mut game,
+            0,
+            producer,
+            ProductionDirective::Rally { target },
+        );
         Production::order_train(&mut game, producer);
         game.step();
         let spawned = Shop::spawned(&mut game, shop.grunt)[at];
@@ -226,7 +231,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         (Some(point(8, 0)), Some(halves(16, 0))),
     ];
     for (at, (target, walks)) in cases.into_iter().enumerate() {
-        Production::tick_ordering(&mut game, 0, gate, ProductionAction::Rally { target });
+        Production::tick_ordering(&mut game, 0, gate, ProductionDirective::Rally { target });
         Production::order_train(&mut game, gate);
         game.step();
         let spawned = Shop::spawned(&mut game, shop.grunt)[7 + at];
@@ -252,7 +257,7 @@ fn a_predicting_clients_train_reads_only_what_it_holds() {
         let flag =
             Navigation::spawn_unit(game, halves(0, 12), Team::new(1), None, None, Some(form));
         game.insert_parts(flag, Unpredicted);
-        let rally = ProductionAction::Rally {
+        let rally = ProductionDirective::Rally {
             target: Some(RallyTarget::Unit(flag)),
         };
         Production::tick_ordering(game, 0, producer, rally);

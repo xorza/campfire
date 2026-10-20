@@ -10,7 +10,9 @@ use campfire_production::{Gatherer, NodeAt, QueueDues};
 use campfire_progression::{LevelUp, LevelUps};
 use campfire_sim::{HostRule, Position, SimWorld, SnapshotError, StateDelta, StateRegistry};
 use campfire_stats::{Ends, Lifetime, StackEnd};
-use campfire_units::{DashTo, ForcedMove, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState};
+use campfire_units::{
+    AudienceOwner, AudienceTeam, DashTo, ForcedMove, SpawnPoint, UnitEntity, UnitState,
+};
 use campfire_values::{ActionStart, DashDelivery, VisionShare};
 
 use super::*;
@@ -54,7 +56,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert_eq!(checked_with(&mut game, grunt, unloaded), class);
     let mut unit = game.entity_mut(grunt);
     let classes = unit
-        .take::<(UnitState<SyncOwner>, UnitState<SyncAll>)>()
+        .take::<(UnitState<AudienceOwner>, UnitState<AudienceAll>)>()
         .unwrap();
     let refused = invalid("units.unit_type");
     assert_eq!(checked_with(&mut game, grunt, unloaded), refused);
@@ -94,16 +96,16 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(!chose(&[(2, 0), (6, 0)]));
     // A grunt's state: `hits`, an integer, its owner's, and `mark`, a text, of all; neither class
     // a field short, nor a value of another type, and no class it declares no field of.
-    let owner_state = game.get::<UnitState<SyncOwner>>(grunt).unwrap();
-    let all_state = game.get::<UnitState<SyncAll>>(grunt).unwrap();
+    let owner_state = game.get::<UnitState<AudienceOwner>>(grunt).unwrap();
+    let all_state = game.get::<UnitState<AudienceAll>>(grunt).unwrap();
     assert!(owner_state.check(&game, grunt) && all_state.check(&game, grunt));
     let int = || vec![StateValue::Int(0)];
     let text = || vec![StateValue::Text("".into())];
-    assert!(!UnitState::<SyncOwner>::new(vec![]).check(&game, grunt));
-    assert!(!UnitState::<SyncOwner>::new(text()).check(&game, grunt));
-    assert!(!UnitState::<SyncOwner>::new([int(), text()].concat()).check(&game, grunt));
-    assert!(!UnitState::<SyncAll>::new(int()).check(&game, grunt));
-    assert!(!UnitState::<SyncTeam>::new(int()).check(&game, grunt));
+    assert!(!UnitState::<AudienceOwner>::new(vec![]).check(&game, grunt));
+    assert!(!UnitState::<AudienceOwner>::new(text()).check(&game, grunt));
+    assert!(!UnitState::<AudienceOwner>::new([int(), text()].concat()).check(&game, grunt));
+    assert!(!UnitState::<AudienceAll>::new(int()).check(&game, grunt));
+    assert!(!UnitState::<AudienceTeam>::new(int()).check(&game, grunt));
     // Actions: one the book holds, at a rank it has or 0, and an order of a slot it has.
     let book = game.resource::<ActionBook>();
     let strike = book.names().named((PackageIndex::MODE, "strike")).unwrap();
@@ -188,8 +190,8 @@ fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
         [match_entity, first, grunt].map(|entity| hosted(&game, entity))
     };
     assert_eq!(on(hosts::<MatchEnd>), [true, false, false]);
-    assert_eq!(on(hosts::<ModeState<SyncNone>>), [true, false, false]);
-    assert_eq!(on(hosts::<ModeState<SyncAll>>), [true, false, false]);
+    assert_eq!(on(hosts::<ModeState<AudienceNone>>), [true, false, false]);
+    assert_eq!(on(hosts::<ModeState<AudienceAll>>), [true, false, false]);
     assert_eq!(on(hosts::<PlayerResources>), [false, true, false]);
     assert_eq!(on(hosts::<Life>), [false, false, true]);
     // A team sits on a unit or a player's entity, and the relations on the match's, as `units`
@@ -238,13 +240,13 @@ fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
     // The mode's state, on the match's entity, each class its fields of their types in the order
     // of their names: `kind`, a text, and `seen`, an integer, kept on the server; the rest sent
     // to all, `count`, an integer, first.
-    let none = game.get::<ModeState<SyncNone>>(match_entity).unwrap();
-    let all = game.get::<ModeState<SyncAll>>(match_entity).unwrap();
+    let none = game.get::<ModeState<AudienceNone>>(match_entity).unwrap();
+    let all = game.get::<ModeState<AudienceAll>>(match_entity).unwrap();
     assert!(none.check(&game, match_entity) && all.check(&game, match_entity));
     let text = StateValue::Text("".into());
     assert_eq!(none.values(), [text, StateValue::Int(0)]);
     let class = |values: &[StateValue]| {
-        ModeState::<SyncAll>::new(values.to_vec()).check(&game, match_entity)
+        ModeState::<AudienceAll>::new(values.to_vec()).check(&game, match_entity)
     };
     assert!(!class(&all.values()[1..]) && !class(none.values()));
     let mut retyped = all.values().to_vec();
@@ -273,8 +275,8 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
         },
         |world| {
             let entity = world.match_entity().unwrap();
-            world.entity_mut(entity).remove::<ModeState<SyncAll>>();
-            invalid(ModeState::<SyncAll>::NAME, Some(StableId::MATCH))
+            world.entity_mut(entity).remove::<ModeState<AudienceAll>>();
+            invalid(ModeState::<AudienceAll>::NAME, Some(StableId::MATCH))
         },
         // A seat the session has with no player's entity is a breach of the whole match.
         |world| {
@@ -303,8 +305,8 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
             invalid(Level::NAME, Some(id_of(world, unit)))
         },
         |world| {
-            let unit = first::<UnitState<SyncOwner>>(world);
-            world.entity_mut(unit).remove::<UnitState<SyncOwner>>();
+            let unit = first::<UnitState<AudienceOwner>>(world);
+            world.entity_mut(unit).remove::<UnitState<AudienceOwner>>();
             invalid(UnitType::NAME, Some(id_of(world, unit)))
         },
         |world| {

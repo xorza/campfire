@@ -2,7 +2,7 @@ use std::num::{NonZeroI64, NonZeroU32};
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::Book;
+use campfire_declarations::Book;
 use campfire_players::ResourceAmount;
 use campfire_script::MatchNames;
 use campfire_values::{ActionId, ItemId, ModifierId, NameId, Names, ResourceId};

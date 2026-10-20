@@ -103,7 +103,7 @@ impl MultiplayerIni {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// `Data\INI\Multiplayer.ini` of the fixture install: settings, which the import passes over,
     /// two colors, and three choices of starting money, the second the default.
     pub(crate) const MULTIPLAYER: &str = "MultiplayerSettings\r
@@ -133,7 +133,7 @@ End\r
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::ini::multiplayer_ini::internals::MULTIPLAYER;
+    use crate::zero_hour::format::ini::multiplayer_ini::samples::MULTIPLAYER;
 
     #[test]
     fn a_skirmish_starts_with_the_one_choice_marked_default() {

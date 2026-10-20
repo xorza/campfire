@@ -1,5 +1,5 @@
 use campfire_actions::{ActionBook, ActionSlots, SlotKind, SlotKindBook};
-use campfire_declare::{BookCx, BookError, BookPlace, ByType};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType};
 use campfire_script::{Filter, UnknownName};
 use campfire_units::UnitTypes;
 use campfire_values::{ActionId, Named};

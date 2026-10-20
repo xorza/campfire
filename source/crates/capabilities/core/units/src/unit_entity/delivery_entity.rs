@@ -1,5 +1,5 @@
 use bevy_ecs::component::Component;
-use campfire_declare::{EntityKind, KindAudience};
+use campfire_declarations::{EntityKind, KindAudience};
 use campfire_sim::KindMarker;
 
 use crate::entity_kinds::EntityKinds;

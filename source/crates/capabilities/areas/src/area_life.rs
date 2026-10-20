@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{Reached, Targets};
 use campfire_common::{StableNumber, Ticks};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_deliveries::{
     Delivered, DeliveredPayload, DeliveryQueue, DeliverySpawner, NewDelivery,
 };

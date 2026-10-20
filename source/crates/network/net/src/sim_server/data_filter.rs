@@ -15,10 +15,10 @@ use bevy_replicon::shared::replication::registry::receive_fns::MutWrite;
 use bevy_replicon::shared::replication::visibility::VisibilityScope;
 use campfire_capabilities::Release;
 use campfire_common::Seat;
-use campfire_declare::CapabilitySet;
+use campfire_declarations::CapabilitySet;
 use campfire_players::Player;
 use campfire_sim::SimResource;
-use campfire_state_types::{Declared, Replication, Sending, SendingWays, StateTypes};
+use campfire_states::{Declared, Replication, Sending, SendingWays, StateTypes};
 use campfire_units::Owner;
 use campfire_values::Team;
 use campfire_visibility::{DataKind, Recipients};
@@ -87,7 +87,7 @@ filtered_kinds! {
     ProgressionKind: Progression;
     /// A unit's inventory.
     InventoryKind: Inventory;
-    /// The mode's script state fields of `sync = "all"`.
+    /// The mode's script state fields of `audience = "all"`.
     ModeStateKind: ModeState;
     /// A player's resources.
     ResourcesKind: Resources;
@@ -99,17 +99,17 @@ filtered_kinds! {
     PlayerModifiersKind: PlayerModifiers;
     /// What only the owner's prediction reads.
     PredictionKind: Prediction;
-    /// A unit's script state fields of `sync = "owner"`.
+    /// A unit's script state fields of `audience = "owner"`.
     UnitStateOwnerKind: UnitStateOwner;
-    /// A unit's script state fields of `sync = "team"`.
+    /// A unit's script state fields of `audience = "team"`.
     UnitStateTeamKind: UnitStateTeam;
-    /// A unit's script state fields of `sync = "all"`.
+    /// A unit's script state fields of `audience = "all"`.
     UnitStateAllKind: UnitStateAll;
-    /// A player's script state fields of `sync = "owner"`.
+    /// A player's script state fields of `audience = "owner"`.
     PlayerStateOwnerKind: PlayerStateOwner;
-    /// A player's script state fields of `sync = "team"`.
+    /// A player's script state fields of `audience = "team"`.
     PlayerStateTeamKind: PlayerStateTeam;
-    /// A player's script state fields of `sync = "all"`.
+    /// A player's script state fields of `audience = "all"`.
     PlayerStateAllKind: PlayerStateAll;
 }
 
@@ -425,8 +425,8 @@ mod tests {
     use campfire_codec::Toml;
     use campfire_progression::{Experience, Points};
     use campfire_sim::{OnAny, SimComponent};
-    use campfire_state_types::SentOnChange;
-    use campfire_units::{SyncAll, UnitState};
+    use campfire_states::SentOnChange;
+    use campfire_units::{AudienceAll, UnitState};
     use campfire_values::TeamSet;
     use campfire_visibility::{ModeVisibility, Visibility};
     use serde::{Deserialize, Serialize};
@@ -469,13 +469,16 @@ mod tests {
     #[test]
     fn each_filtered_kinds_scope_holds_the_types_the_lists_give_it() {
         // Progression's kind holds its experience and its points; that of a unit's script state
-        // fields of `sync = "all"`, their one component alone.
+        // fields of `audience = "all"`, their one component alone.
         let mut app = App::new();
         let progression = mask::<KindScope<ProgressionKind>>(&mut app);
         assert_eq!(progression, mask::<(Experience, Points)>(&mut app));
         let all = mask::<KindScope<UnitStateAllKind>>(&mut app);
         assert_ne!(all, progression);
-        assert_eq!(all, mask::<SingleComponent<UnitState<SyncAll>>>(&mut app));
+        assert_eq!(
+            all,
+            mask::<SingleComponent<UnitState<AudienceAll>>>(&mut app)
+        );
         // Every kind is filtered once but the three the dispatch names as unfiltered.
         for kind in DataKind::ALL {
             let filters = FILTERED

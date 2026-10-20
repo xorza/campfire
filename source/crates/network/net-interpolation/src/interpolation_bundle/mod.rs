@@ -5,19 +5,19 @@ use crate::frame_interpolate::FrameInterpolate;
 use crate::frame_interpolation_history::FrameInterpolationHistory;
 use crate::frame_interpolation_rules::{FrameSampler, frame_sample};
 use crate::frame_interpolation_systems::FrameInterpolationSystems;
+use crate::frame_phase_systems::FramePhaseSystems;
 use crate::frame_source::{FrameSamples, FrameSource};
-use crate::frame_stage::FrameStage;
 use crate::history_component::HistoryComponent;
 use crate::interpolate::{history_bracket, set_if_neq};
 use crate::interpolation_fn::InterpolationFn;
 use crate::interpolation_fns::{InterpolationFns, InterpolationPipeline};
 use crate::interpolation_holders::InterpolationHolders;
+use crate::interpolation_phase_systems::InterpolationPhaseSystems;
 use crate::interpolation_registry;
 use crate::interpolation_rule::InterpolationRule;
 use crate::interpolation_rule_component::InterpolationRuleComponent;
 use crate::interpolation_rule_id::InterpolationRuleId;
 use crate::interpolation_sample_cx::InterpolationSampleCx;
-use crate::interpolation_stage::InterpolationStage;
 use crate::interpolation_timeline::InterpolationTimeline;
 use crate::into_interpolation_fn::{IntoCxLerpFn, IntoLerpFn};
 use crate::pipelines::Pipelines;
@@ -401,7 +401,7 @@ macro_rules! impl_interpolation_bundle {
                         )+
                     }
                 };
-                app.add_systems(Update, system.in_set(InterpolationStage::Apply));
+                app.add_systems(Update, system.in_set(InterpolationPhaseSystems::Apply));
             }
 
             fn install_frame_interpolation(
@@ -549,7 +549,7 @@ macro_rules! impl_interpolation_bundle {
                     PostUpdate,
                     system
                         .in_set(FrameInterpolationSystems::Interpolate)
-                        .in_set(FrameStage::Run),
+                        .in_set(FramePhaseSystems::Run),
                 );
             }
 

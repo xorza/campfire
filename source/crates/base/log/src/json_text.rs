@@ -4,7 +4,7 @@ use campfire_codec::Json;
 use serde::Serialize;
 
 /// A field an event logs as its JSON text, with `%`, for a value with no text form of its own,
-/// such as an order's action; `LogLine::json` reads it back.
+/// such as an order's directive; `LogLine::json` reads it back.
 #[derive(Debug, Clone, Copy)]
 pub struct JsonText<'a, T>(pub &'a T);
 

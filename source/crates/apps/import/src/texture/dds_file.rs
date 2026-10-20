@@ -103,7 +103,7 @@ impl<'a> DdsFile<'a> {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// A DDS of `four_cc` blocks, `width` by `height`, of `levels` mip levels whose bytes follow,
     /// with the mip count flag set.
     pub(crate) fn dds(
@@ -131,7 +131,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::texture::dds_file::internals::dds;
+    use crate::texture::dds_file::samples::dds;
 
     /// The little-endian bytes of `words`.
     fn words(words: &[u32]) -> Vec<u8> {

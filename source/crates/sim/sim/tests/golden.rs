@@ -20,8 +20,8 @@ use campfire_common::{SegmentSeed, Tick};
 use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Rng, RngStream, Rounding, Vec3};
 use campfire_sim::{
-    EntityIndex, IdAllocator, MatchRate, OnAny, SimComponent, SimRng, SimSet, SimTick, SimUpdate,
-    SimWorld, SimWorldBuilder, StableId, StateRegistry,
+    EntityIndex, IdAllocator, MatchRate, OnAny, SimComponent, SimRng, SimSystems, SimTick,
+    SimUpdate, SimWorld, SimWorldBuilder, StableId, StateRegistry,
 };
 use serde::{Deserialize, Serialize};
 
@@ -279,9 +279,9 @@ fn tick_section(hasher: &mut Hasher) {
     world.resource_mut::<Schedules>().add_systems(
         SimUpdate,
         (
-            arrive.in_set(SimSet::Inputs),
-            drift.in_set(SimSet::Act),
-            wear.in_set(SimSet::Resolve),
+            arrive.in_set(SimSystems::Inputs),
+            drift.in_set(SimSystems::Act),
+            wear.in_set(SimSystems::Resolve),
         ),
     );
     for _ in 0..TICKS {

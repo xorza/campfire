@@ -1,5 +1,5 @@
 use campfire_bots::{BotBuffers, BotScript, BotSink, HeldBotView, Named, OrderUnsent};
-use campfire_capabilities::{Action, Match, Order};
+use campfire_capabilities::{Directive, Match, Order};
 use campfire_common::{Seat, Tick};
 use campfire_harness::{FixedMatch, MatchUnits};
 use campfire_math::{Num, Vec3};
@@ -51,7 +51,7 @@ impl BotSink for DuePayloads {
         self.0.push(payload.to_vec());
     }
 
-    fn unsent(&mut self, _: Seat, _: &Action<Named>, _: OrderUnsent) {}
+    fn unsent(&mut self, _: Seat, _: &Directive<Named>, _: OrderUnsent) {}
 }
 
 impl MatchPlay {

@@ -1,12 +1,12 @@
 use bevy_ecs::world::World;
 use campfire_common::{Seat, Tick};
 use campfire_script::StateValue;
-use campfire_units::{SyncAll, SyncNone, UnitsWorld};
+use campfire_units::{AudienceAll, AudienceNone, UnitsWorld};
 use campfire_values::Team;
 
 use crate::match_end::MatchEnd;
 use crate::match_mode::MatchMode;
-use crate::mode_state::{ModeState, ModeSync};
+use crate::mode_state::{ModeAudience, ModeState};
 use crate::save_asked::SaveAsked;
 
 /// What the mode module gives a world, for every crate.
@@ -39,8 +39,8 @@ impl ModeWorld for World {
     fn mode_state(&self) -> Vec<StateValue> {
         let mut state = Vec::new();
         let (none, all) = (
-            self.mode_fields::<SyncNone>(),
-            self.mode_fields::<SyncAll>(),
+            self.mode_fields::<AudienceNone>(),
+            self.mode_fields::<AudienceAll>(),
         );
         self.resource::<MatchMode>()
             .schema
@@ -55,17 +55,17 @@ impl ModeWorld for World {
 
 /// What the mode module gives a world, for its own crate.
 pub(crate) trait ModeWorldCrate {
-    /// The fields of the mode's state class of sync `S`, on the match's entity, which every
+    /// The fields of the mode's state class of audience `S`, on the match's entity, which every
     /// match with a mode spawns with them.
-    fn mode_fields<S: ModeSync>(&self) -> &[StateValue];
+    fn mode_fields<S: ModeAudience>(&self) -> &[StateValue];
 
-    /// Writes `values`, the fields of the class of sync `S` as a call left them, unless they are
-    /// what the match holds, so a call that changed none marks nothing changed.
-    fn commit_mode_fields<S: ModeSync>(&mut self, values: &[StateValue]);
+    /// Writes `values`, the fields of the class of audience `S` as a call left them, unless they
+    /// are what the match holds, so a call that changed none marks nothing changed.
+    fn commit_mode_fields<S: ModeAudience>(&mut self, values: &[StateValue]);
 }
 
 impl ModeWorldCrate for World {
-    fn mode_fields<S: ModeSync>(&self) -> &[StateValue] {
+    fn mode_fields<S: ModeAudience>(&self) -> &[StateValue] {
         let entity = self
             .match_entity()
             .expect("a match that started has its entity");
@@ -75,7 +75,7 @@ impl ModeWorldCrate for World {
             .values()
     }
 
-    fn commit_mode_fields<S: ModeSync>(&mut self, values: &[StateValue]) {
+    fn commit_mode_fields<S: ModeAudience>(&mut self, values: &[StateValue]) {
         let entity = self
             .match_entity()
             .expect("a match that started has its entity");

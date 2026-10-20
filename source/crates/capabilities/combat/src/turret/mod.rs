@@ -1,7 +1,7 @@
 use std::num::NonZeroI64;
 
 use campfire_actions::SlotKind;
-use campfire_declare::PerType;
+use campfire_declarations::PerType;
 use campfire_math::{Num, Rounding};
 use campfire_sim::MatchRate;
 use campfire_units::TurnStep;

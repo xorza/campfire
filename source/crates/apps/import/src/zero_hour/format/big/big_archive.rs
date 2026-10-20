@@ -77,7 +77,7 @@ fn be32(bytes: &[u8]) -> u32 {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// The bytes of a `.big` archive of `files`, each a path and its bytes, in that order, as the
     /// game writes one: the header, the list of entries, then each file's bytes in turn.
     pub(crate) fn big(files: &[(&str, &[u8])]) -> Vec<u8> {

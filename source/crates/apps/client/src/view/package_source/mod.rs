@@ -178,7 +178,7 @@ impl fmt::Debug for HeldReader {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     use campfire_package::PackageReader;
     use campfire_package_disk::{PackageDir, PackageWriter};
     use campfire_store::internals::TestDir;

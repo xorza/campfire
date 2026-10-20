@@ -12,7 +12,7 @@ use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_core::Ticked;
 use campfire_net_core::{NetTick, PositiveTickSpan};
-use campfire_net_despawn::DespawnReplicated;
+use campfire_net_despawns::DespawnReplicated;
 use campfire_net_emulator::LinkModel;
 use campfire_net_interpolation::internals::CompFull;
 use campfire_net_replication::ConfirmedHistory;

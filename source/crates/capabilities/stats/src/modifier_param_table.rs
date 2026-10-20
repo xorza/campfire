@@ -1,4 +1,4 @@
-use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, Fact, Section};
 
 use crate::modifiers_data::ModifiersData;
 use crate::param_table::ParamTable;

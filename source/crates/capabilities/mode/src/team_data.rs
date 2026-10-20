@@ -1,5 +1,5 @@
 use campfire_script::{DataSection, DataTable};
-use campfire_values::MessageId;
+use campfire_values::TextId;
 use serde::Deserialize;
 
 /// A team of the manifest, as the mode's `[teams.<team>]` gives it: the message of the name
@@ -7,7 +7,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TeamData {
-    pub name: MessageId,
+    pub name: TextId,
 }
 
 impl DataSection for TeamData {

@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use bevy_ecs::query::{QueryItem, ReadOnlyQueryData};
-use campfire_declare::RoleForm;
+use campfire_declarations::RoleForm;
 use campfire_math::Vec3;
 use campfire_units::SeenBy;
 use campfire_values::Team;

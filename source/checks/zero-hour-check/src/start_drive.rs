@@ -6,7 +6,7 @@ use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_mode::internals::MarkerOf;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
 use campfire_sim::Position;
 use campfire_units::{Body, Destination, GroundPoint, WallBook};
@@ -101,7 +101,7 @@ impl StartDrive {
             .collect();
         play.order(&[Order::one(
             dozer,
-            OrdersAction::Move {
+            OrdersDirective::Move {
                 to: GroundPoint {
                     x: goal.x,
                     z: goal.z,

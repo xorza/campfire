@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::ResMut;
 use campfire_bots::{BotBuffers, BotScript, BotSink, BotView, Named, OrderUnsent};
-use campfire_capabilities::Action;
+use campfire_capabilities::Directive;
 use campfire_common::ErrorReport;
 use campfire_common::{Seat, Tick};
 use campfire_log::LogEvent;
@@ -146,11 +146,11 @@ impl BotSink for BotServer<'_> {
         .log();
     }
 
-    fn unsent(&mut self, seat: Seat, action: &Action<Named>, cause: OrderUnsent) {
+    fn unsent(&mut self, seat: Seat, directive: &Directive<Named>, cause: OrderUnsent) {
         BotOrderUnsent {
             seat,
             cause,
-            action: action.clone(),
+            directive: directive.clone(),
         }
         .log();
     }
@@ -186,7 +186,7 @@ mod tests {
         // built at tick 15, as a restore does, script ticks 0 to 4 were logged, so it plays the
         // second only, at tick 16.
         let script = OrderScript::parse(
-            "[[order]]\ntick = 2\naction.orders.move.to = [1, 0]\n[[order]]\ntick = 6\naction.orders.move.to = [2, 0]\n",
+            "[[order]]\ntick = 2\ndirective.orders.move.to = [1, 0]\n[[order]]\ntick = 6\ndirective.orders.move.to = [2, 0]\n",
         )
         .unwrap();
         let books = TestMode::Lane.packages().name_books();

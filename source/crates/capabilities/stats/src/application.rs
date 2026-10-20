@@ -30,7 +30,7 @@ pub struct Application<S = Vec<StatShare>, T = Vec<StateValue>> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ApplyAt<'a> {
     pub(crate) now: Tick,
-    pub(crate) rate: MatchRate,
+    pub(crate) tick_rate: MatchRate,
     pub(crate) params: &'a ParamBook,
 }
 

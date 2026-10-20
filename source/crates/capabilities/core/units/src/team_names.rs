@@ -1,4 +1,4 @@
-use campfire_declare::Fact;
+use campfire_declarations::Fact;
 use campfire_values::{Names, Team};
 
 /// The names of the match's playing teams, by team, in the manifest's order, which the mode

@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use serde::Deserialize;
 
 /// A unit type's `tracks`: the mode's tracks it gains experience on.

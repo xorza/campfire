@@ -445,13 +445,13 @@ mod tests {
 
     use super::*;
     use crate::zero_hour::error::NameClash;
-    use crate::zero_hour::format::ini::armor_ini::internals::ARMORS;
+    use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
     use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
-    use crate::zero_hour::format::ini::object_ini::internals::{DEFAULT_OBJECTS, OBJECTS};
+    use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
     use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
-    use crate::zero_hour::format::ini::weapon_ini::internals::WEAPONS;
+    use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
     use crate::zero_hour::import_names::ImportNames;
-    use crate::zero_hour::imported_type::internals::shell_projectile;
+    use crate::zero_hour::imported_type::samples::shell_projectile;
 
     /// A rocket of no `DumbProjectileBehavior`, a missile's.
     const ROCKET: &str = "Object Rocket\n  Behavior = MissileAIUpdate ModuleTag_01\n  End\nEnd\n";

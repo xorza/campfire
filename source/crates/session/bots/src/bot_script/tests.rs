@@ -2,7 +2,7 @@ use campfire_actions::{ActionBook, ActionTarget};
 use campfire_capabilities::Books;
 use campfire_common::DeclaredName;
 use campfire_math::Num;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_script::UnknownName;
 use campfire_sim::IdAllocator;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
@@ -25,8 +25,8 @@ fn lane_books() -> Books {
 fn a_bot_takes_its_inputs_and_its_orders_apart_each_once() {
     let script = OrderScript::parse(
         "[[input]]\ntick = 0\nname = \"hero\"\nvalue = \"hero-x\"\n\
-         [[order]]\ntick = 2\naction.orders.move.to = [1, 0]\n\
-         [[order]]\ntick = 5\naction.orders.move.to = [0, 1]\n",
+         [[order]]\ntick = 2\ndirective.orders.move.to = [1, 0]\n\
+         [[order]]\ntick = 5\ndirective.orders.move.to = [0, 1]\n",
     )
     .unwrap();
     let ticks =
@@ -67,13 +67,13 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
     let enemies = FilterData::parse("enemies:avatar").unwrap();
     let tags = books.get::<UnitTypeBook>().unwrap().tags();
     let cast = first(
-        &bot("action.orders.slot = { slot = \"first\", target.unit = \"enemies:avatar\" }")
+        &bot("directive.orders.slot = { slot = \"first\", target.unit = \"enemies:avatar\" }")
             .unwrap(),
     );
     assert_eq!(cast.slot, Some(ActionName(firsts.clone().into())));
     assert_eq!(
-        cast.action,
-        Action::Orders(OrdersAction::Slot {
+        cast.directive,
+        Directive::Orders(OrdersDirective::Slot {
             slot: ActionName(firsts.into()),
             target: ActionTarget::Unit(Filter::resolve(&enemies, tags).unwrap()),
         })
@@ -81,10 +81,13 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
     // A marker's point, the east spawn's at (0, 2), and a point of the map; neither names a slot.
     let walk = |text| first(&bot(text).unwrap());
     let ground = |x, z| GroundPoint::new(Num::int(x), Num::int(z));
-    let east = walk("action.orders.move.to.marker = \"east_spawn\"");
-    let point = walk("action.orders.move.to = [3, -4]");
+    let east = walk("directive.orders.move.to.marker = \"east_spawn\"");
+    let point = walk("directive.orders.move.to = [3, -4]");
     for (order, to) in [(&east, ground(0, 2)), (&point, ground(3, -4))] {
-        assert_eq!(order.action, Action::Orders(OrdersAction::Move { to }));
+        assert_eq!(
+            order.directive,
+            Directive::Orders(OrdersDirective::Move { to })
+        );
         assert_eq!(order.slot, None);
     }
     // The first name the match lacks fails the start: a unit type, an action, a tag of a filter,
@@ -95,7 +98,7 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
         BotScriptError::Unknown(UnknownName { of, name }) => (of.to_string(), name),
         error => panic!("{error:?}"),
     };
-    let stop = "action.orders = \"stop\"";
+    let stop = "directive.orders = \"stop\"";
     let named = |of: &str, name: &str| (of.to_owned(), name.to_owned());
     for (text, refused) in [
         (
@@ -103,19 +106,19 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
             named("unit type", "tank"),
         ),
         (
-            "action.progression.learn.slot = \"nope\"".to_owned(),
+            "directive.progression.learn.slot = \"nope\"".to_owned(),
             named("action", "nope"),
         ),
         (
-            "action.orders.attack.target = \"enemies:flying\"".to_owned(),
+            "directive.orders.attack.target = \"enemies:flying\"".to_owned(),
             named("filter", "enemies:flying"),
         ),
         (
-            "action.orders.move.to.marker = \"nowhere\"".to_owned(),
+            "directive.orders.move.to.marker = \"nowhere\"".to_owned(),
             named("marker", "nowhere"),
         ),
         (
-            "action.items.buy = { item = \"potion\", shop = \"allies\" }".to_owned(),
+            "directive.items.buy = { item = \"potion\", shop = \"allies\" }".to_owned(),
             named("item type", "potion"),
         ),
     ] {
@@ -123,11 +126,11 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
     }
     let refused = |text| bot(text).unwrap_err();
     assert_eq!(
-        refused("action.orders.move.to.marker = \"camp\""),
+        refused("directive.orders.move.to.marker = \"camp\""),
         BotScriptError::NoPoint(DeclaredName::new("camp").unwrap())
     );
     let past = format!(
-        "action.orders.move.to = [\"{}\", 0]",
+        "directive.orders.move.to = [\"{}\", 0]",
         Vec3::BOUND + Num::EPSILON
     );
     assert_eq!(
@@ -135,11 +138,11 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
         BotScriptError::Point(MapPointError::OutOfBounds)
     );
     assert_eq!(
-        walk("action.orders.move.to = [21, 0]").action,
-        Action::Orders(OrdersAction::Move { to: ground(21, 0) })
+        walk("directive.orders.move.to = [21, 0]").directive,
+        Directive::Orders(OrdersDirective::Move { to: ground(21, 0) })
     );
     assert_eq!(
-        refused("action.orders.move.to = [1, 0, 1]"),
+        refused("directive.orders.move.to = [1, 0, 1]"),
         BotScriptError::Point(MapPointError::Shape)
     );
 }

@@ -70,7 +70,7 @@ fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {
         scripts: &ScriptBook::new(Release::hooks()),
         tags: types.tags(),
         stat: |_: &_| Ok(StatId::new(0)),
-        rate,
+        tick_rate: rate,
     };
     let modifiers = data.each_ref().map(|(name, data)| PackageModifier {
         name,

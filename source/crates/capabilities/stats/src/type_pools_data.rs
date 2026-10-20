@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use serde::{Deserialize, Serialize};
 
 /// A unit type's `pools`: the mode's pools its units have, by name.

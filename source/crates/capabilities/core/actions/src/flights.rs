@@ -1,4 +1,4 @@
-use campfire_declare::{ByType, Fact};
+use campfire_declarations::{ByType, Fact};
 
 use crate::delivery::ProjectileFlight;
 

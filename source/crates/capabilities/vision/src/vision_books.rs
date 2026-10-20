@@ -1,4 +1,4 @@
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, Sections};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Section, Sections};
 use campfire_geometry::{Grid, Polygon};
 use campfire_math::Num;
 use campfire_units::{MapBook, TeamNames};

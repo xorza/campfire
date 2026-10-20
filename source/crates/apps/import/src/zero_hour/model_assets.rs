@@ -81,7 +81,7 @@ mod tests {
     use campfire_store::internals::TestDir;
 
     use super::*;
-    use crate::zero_hour::install::internals::fixture;
+    use crate::zero_hour::install::samples::fixture;
 
     #[test]
     fn a_texture_is_its_dds_else_its_tga_as_named() {

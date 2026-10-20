@@ -177,7 +177,7 @@ impl TgaFile {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// A TGA of `width` by `height` texels of `depth` bits, `descriptor` its last header byte,
     /// `texels` as stored, and the TGA 2.0 footer that names no extension area.
     pub(crate) fn tga(
@@ -200,7 +200,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::texture::tga_file::internals::tga;
+    use crate::texture::tga_file::samples::tga;
 
     fn words(words: &[u32]) -> Vec<u8> {
         words.iter().flat_map(|word| word.to_le_bytes()).collect()

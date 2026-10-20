@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, SectionTable};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Section, SectionTable};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable, UnknownName};
 use campfire_values::Named;

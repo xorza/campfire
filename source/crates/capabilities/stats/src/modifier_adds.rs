@@ -74,7 +74,7 @@ impl HeldModifierAdds {
         };
         let at = ApplyAt {
             now: clock.start(),
-            rate: clock.rate(),
+            tick_rate: clock.rate(),
             params: params.book(),
         };
         let source = add.applier.source.and_then(|source| params.source(source));

@@ -3,7 +3,7 @@ use bevy_ecs::system::ResMut;
 use bevy_ecs::world::Mut;
 use campfire_common::Tick;
 use campfire_script::CapabilityRefusal;
-use campfire_sim::{Position, SimEdge, SimSet, SimUpdate};
+use campfire_sim::{Position, SimEdgeSystems, SimSystems, SimUpdate};
 use campfire_values::Named;
 
 use super::*;
@@ -179,9 +179,9 @@ fn on_input(ctx, player, name, value) {
     game.init_resource::<GapRuns>();
     game.schedule_scope(SimUpdate, |_, schedule| {
         let count = |mut runs: ResMut<'_, GapRuns>| runs.0 += 1;
-        schedule.add_systems(count.in_set(SimEdge::Start));
-        for stage in SimSet::ALL {
-            schedule.add_systems(count.in_set(SimEdge::After(stage)));
+        schedule.add_systems(count.in_set(SimEdgeSystems::Start));
+        for stage in SimSystems::ALL {
+            schedule.add_systems(count.in_set(SimEdgeSystems::After(stage)));
         }
     });
 

@@ -3,7 +3,7 @@ use std::ops::Range;
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_actions::Targets;
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_script::{
     AnyKeptRows, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptList, ScriptValue,
     ScriptWindow, Unit, ViewColumn,

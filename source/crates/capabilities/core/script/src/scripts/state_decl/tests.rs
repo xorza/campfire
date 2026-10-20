@@ -8,7 +8,7 @@ use crate::script_host::error::ScriptError;
 use crate::scripts::error::{CallError, FailureKind};
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::script_list::ScriptList;
-use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
+use crate::scripts::state_decl::state_field_decl::StateFieldDecl;
 use crate::scripts::view::View;
 
 #[test]
@@ -115,7 +115,7 @@ fn an_enum_starts_at_its_default_or_first_member_and_holds_only_its_members() {
     assert!(!string.holds(&StateValue::Int(0)));
     // Data gives an enum its members as `values`, which no other type takes, and an enum
     // needs.
-    let read = |text: &str| Toml::parse::<SyncedStateDecl>(text).map(|field| field.decl);
+    let read = |text: &str| Toml::parse::<StateFieldDecl>(text).map(|field| field.decl);
     let phase = read("type = \"enum\"\nvalues = [\"pick\", \"play\"]\ndefault = \"play\"");
     assert_eq!(phase.unwrap().initial(), &StateValue::Text("play".into()));
     assert!(read("type = \"int\"\nvalues = [\"a\"]").is_err());

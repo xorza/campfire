@@ -105,7 +105,7 @@ impl<'a> Reader<'a> {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// `bytes` as a `RefPack` stream of literal runs alone: its header of 3 length bytes, runs
     /// of up to 112 bytes in fours, and the end with the last 0 to 3.
     pub(crate) fn literal(bytes: &[u8]) -> Vec<u8> {

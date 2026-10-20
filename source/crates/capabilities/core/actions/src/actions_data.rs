@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use campfire_codec::{TomlError, TomlTable, TomlValue};
 use campfire_common::DeclaredName;
-use campfire_declare::{ReadValue, Section, SectionReaders, SectionTable};
+use campfire_declarations::{ReadValue, Section, SectionReaders, SectionTable};
 
 use crate::action_data::ActionData;
 

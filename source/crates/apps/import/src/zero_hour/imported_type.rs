@@ -322,7 +322,7 @@ fn declared(name: &str) -> DeclaredName {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     use campfire_math::Num;
     use campfire_projectiles::{CurveData, ProjectileData, ProjectileHits};
     use campfire_values::FilterData;
@@ -353,11 +353,11 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
+    use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
     use crate::zero_hour::format::ini::object_ini::ObjectIni;
-    use crate::zero_hour::format::ini::object_ini::internals::{DEFAULT_OBJECTS, OBJECTS};
+    use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
     use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
-    use crate::zero_hour::imported_type::internals::shell_projectile;
+    use crate::zero_hour::imported_type::samples::shell_projectile;
 
     /// The objects of each kind the import's rule of bodies tells apart.
     const BODIES: &str = "Object Tank

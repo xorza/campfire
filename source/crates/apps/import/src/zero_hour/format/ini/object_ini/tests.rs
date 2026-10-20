@@ -3,7 +3,7 @@ use campfire_math::Num;
 use super::*;
 use crate::zero_hour::format::ini::object_ini::fight_data::{IniShell, IniTurret};
 use crate::zero_hour::format::ini::object_ini::ini_build::{Prerequisite, ProductionExit};
-use crate::zero_hour::format::ini::object_ini::internals::{DEFAULT_OBJECTS, OBJECTS};
+use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
 
 /// Objects of each kind a placed object can be, their reskins, and lists of each form.
 const PLACED: &str = "Object Oak

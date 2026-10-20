@@ -31,6 +31,7 @@ mod interpolation_fns;
 mod interpolation_holders;
 mod interpolation_marker_plugin;
 mod interpolation_mode;
+mod interpolation_phase_systems;
 mod interpolation_plugin;
 mod interpolation_plugins;
 mod interpolation_registration_ext;
@@ -41,7 +42,6 @@ mod interpolation_rule_component;
 mod interpolation_rule_id;
 mod interpolation_sample_cx;
 mod interpolation_setup;
-mod interpolation_stage;
 mod interpolation_state;
 mod interpolation_systems;
 mod interpolation_timeline;
@@ -59,8 +59,8 @@ mod update_history_cx;
 
 mod frame_interpolate;
 mod frame_interpolation_history;
+mod frame_phase_systems;
 mod frame_source;
-mod frame_stage;
 
 pub use crate::app_interpolation_ext::AppInterpolationExt;
 pub use crate::frame_interpolate::FrameInterpolate;

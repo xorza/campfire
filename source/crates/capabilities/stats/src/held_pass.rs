@@ -3,7 +3,7 @@ use std::ops::ControlFlow;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Has, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
-use campfire_declare::RoleForm;
+use campfire_declarations::RoleForm;
 use campfire_geometry::Placed;
 use campfire_players::OnMatch;
 use campfire_sim::{EntityIndex, Position, StableId, TickClock, Unpredicted};
@@ -109,7 +109,7 @@ impl HeldPass {
         let relations = relations.get();
         let at = ApplyAt {
             now: clock.start(),
-            rate: clock.rate(),
+            tick_rate: clock.rate(),
             params: params.book(),
         };
         held.clear();

@@ -4,7 +4,7 @@ use bevy_ecs::query::Allow;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_declare::Cache;
+use campfire_declarations::Cache;
 use campfire_sim::{Removals, Unpredicted};
 
 use crate::modifier_book::ModifierBook;

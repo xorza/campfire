@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
-use campfire_script::{Filter, StateSchema, SyncTo, TagNames, UnknownName};
+use campfire_script::{Audience, Filter, StateSchema, TagNames, UnknownName};
 use campfire_sim::MatchRate;
 use campfire_units::StatId;
 use campfire_values::{FilterData, ModifierId, Names, Number, Param, Stat};
@@ -91,7 +91,7 @@ struct ParamPlaces<'a> {
 pub struct SpecNames<'a, S, M> {
     pub stat: S,
     pub tags: &'a TagNames,
-    pub rate: MatchRate,
+    pub tick_rate: MatchRate,
     pub modifier: M,
 }
 
@@ -115,7 +115,7 @@ impl ModifierSpec {
         let mut time = |field: &Option<Number>| {
             field
                 .as_ref()
-                .map(|field| places.time(field, names.rate))
+                .map(|field| places.time(field, names.tick_rate))
                 .transpose()
         };
         let duration = time(&data.duration_ms)?;
@@ -157,7 +157,7 @@ impl ModifierSpec {
             state: Arc::new(StateSchema::new(
                 data.state
                     .iter()
-                    .map(|(name, decl)| (name.as_str(), SyncTo::None, decl)),
+                    .map(|(name, decl)| (name.as_str(), Audience::None, decl)),
             )),
         })
     }

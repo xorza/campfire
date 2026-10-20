@@ -28,7 +28,9 @@ use bevy::app::App;
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_common::{ErrorReport, ExitStatus};
 use campfire_log::Logging;
-use campfire_net::{Hosting, KeyFile, Os, Pace, SessionSigner, SimClient, WatchRequest, exit_code};
+use campfire_net::{
+    Hosting, KeyFile, Os, Pace, SessionSigner, SimClientPlugin, WatchRequest, exit_code,
+};
 use campfire_net_connection::Connect;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
@@ -41,7 +43,7 @@ use tracing::error;
 use crate::client_module::ClientEnd;
 use crate::command_line::{Args, CommandLine};
 use crate::connection::Connection;
-use crate::link_watch::LinkWatch;
+use crate::link_watch::LinkWatchPlugin;
 
 mod action_names;
 mod bot;
@@ -127,7 +129,7 @@ fn main() -> ExitCode {
     };
     let pin = connection.pin();
     let rate = MatchRate::new(pin.tick_hz).rate();
-    let sim_client = SimClient {
+    let sim_client = SimClientPlugin {
         main,
         session: SessionSigner::new(Signer::new(
             Os::SYSTEM.entropy.keypair(),
@@ -159,8 +161,8 @@ fn main() -> ExitCode {
         },
     };
     end.add(&mut app, &packages);
-    app.add_plugins((sim_client, LinkWatch));
-    let client = SimClient::spawn(app.world_mut());
+    app.add_plugins((sim_client, LinkWatchPlugin));
+    let client = SimClientPlugin::spawn(app.world_mut());
     if let Err(code) = connection.link(&mut app, client, &pace, rate) {
         return code;
     }

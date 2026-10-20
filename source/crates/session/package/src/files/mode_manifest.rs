@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use campfire_capabilities::{CapabilityError, Release};
 use campfire_common::Version;
-use campfire_declare::CapabilitySet;
+use campfire_declarations::CapabilitySet;
 use campfire_mode::TeamManifest;
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;

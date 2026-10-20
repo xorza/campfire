@@ -23,7 +23,7 @@ use campfire_values::{ActionId, DamageKind, PackageIndex, PackagePath, Rank};
 
 use super::*;
 use crate::test_app::client_app;
-use crate::view::area_view::{AREA_LIFT, AreaView};
+use crate::view::area_view::{AREA_LIFT, AreaViewPlugin};
 use crate::view::unit_looks::LookNodes;
 
 /// A unit type the client data draws with no model, as every type of a view with no looks: its
@@ -38,7 +38,7 @@ fn view() -> App {
 /// The view `view` gives, which `setup` gives what it adds before the view's first frame.
 fn view_of(setup: impl FnOnce(&mut App)) -> App {
     let mut app = client_app();
-    app.add_plugins(View);
+    app.add_plugins(ViewPlugin);
     setup(&mut app);
     app.update();
     app
@@ -548,7 +548,7 @@ fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
     let mut app = view_of(|app| {
         let radius = Num::from_bits(5 << (Num::FRAC_BITS - 1));
         area = Some(Areas::standing(app.world_mut(), unit_type, radius));
-        app.add_plugins(AreaView);
+        app.add_plugins(AreaViewPlugin);
     });
     let area = area.unwrap();
     let lies = app

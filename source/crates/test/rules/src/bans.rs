@@ -138,7 +138,7 @@ const SCHEDULE_METHODS: [&str; 2] = [
     "bevy_ecs::schedule::Schedules::configure_schedules",
 ];
 
-/// The despawns only `campfire-net-despawn` makes in the network stack's replication crates
+/// The despawns only `campfire-net-despawns` makes in the network stack's replication crates
 /// (13-net-stack/replication.md, The server alone ends a replicated entity's life on the
 /// receiver): each of Bevy's despawns, which takes each child the server still owns.
 const DESPAWN_METHODS: [&str; 19] = [
@@ -216,14 +216,14 @@ pub(crate) const PROXIES: [Proxy; 4] = [
         crates: &[],
     },
     Proxy {
-        dir: "network/net-despawn",
+        dir: "network/net-despawns",
         lints: &[LINTS[0]],
         methods: &DESPAWN_METHODS,
         types: &[],
         dependencies: &["bevy_ecs", "bevy_replicon"],
         names: &["despawn"],
         crates: &[
-            "network/net-despawn",
+            "network/net-despawns",
             "network/net-interpolation",
             "network/net-prediction",
             "network/net-replication",

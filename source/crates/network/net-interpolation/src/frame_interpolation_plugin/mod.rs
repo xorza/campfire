@@ -2,7 +2,7 @@
 //! tick late, between its last two ticks at the fixed overstep, rather than step a partial tick.
 
 use crate::frame_interpolation_systems::FrameInterpolationSystems;
-use crate::frame_stage::FrameStage;
+use crate::frame_phase_systems::FramePhaseSystems;
 use crate::interpolation_holders::InterpolationHolders;
 use crate::interpolation_registry::InterpolationRegistry;
 use crate::pipelines::Pipelines;
@@ -45,33 +45,33 @@ impl Plugin for FrameInterpolationPlugin {
         app.init_resource::<InterpolationHolders>();
         app.configure_sets(
             RunFixedMainLoop,
-            (FrameStage::Refresh, FrameStage::Run)
+            (FramePhaseSystems::Refresh, FramePhaseSystems::Run)
                 .chain()
                 .in_set(FrameInterpolationSystems::Restore),
         );
         app.configure_sets(
             FixedPostUpdate,
-            (FrameStage::Refresh, FrameStage::Run)
+            (FramePhaseSystems::Refresh, FramePhaseSystems::Run)
                 .chain()
                 .in_set(FrameInterpolationSystems::Update),
         );
         app.configure_sets(
             PostUpdate,
-            (FrameStage::Refresh, FrameStage::Run)
+            (FramePhaseSystems::Refresh, FramePhaseSystems::Run)
                 .chain()
                 .in_set(FrameInterpolationSystems::Interpolate),
         );
         app.add_systems(
             RunFixedMainLoop,
-            Self::refresh_frame_holders.in_set(FrameStage::Refresh),
+            Self::refresh_frame_holders.in_set(FramePhaseSystems::Refresh),
         );
         app.add_systems(
             FixedPostUpdate,
-            Self::refresh_frame_holders.in_set(FrameStage::Refresh),
+            Self::refresh_frame_holders.in_set(FramePhaseSystems::Refresh),
         );
         app.add_systems(
             PostUpdate,
-            Self::refresh_frame_holders.in_set(FrameStage::Refresh),
+            Self::refresh_frame_holders.in_set(FramePhaseSystems::Refresh),
         );
     }
 }

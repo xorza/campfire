@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Role, Scratch};
+use campfire_declarations::{Role, Scratch};
 use campfire_sim::StableId;
 use campfire_values::{ActionId, ModifierId, Rank};
 

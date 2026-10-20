@@ -13,7 +13,7 @@ use bevy_state::condition::in_state;
 use bevy_time::{Real, Time, Virtual};
 use campfire_common::ErrorReport;
 use campfire_common::{Seat, Tick};
-use campfire_declare::CapabilitySet;
+use campfire_declarations::CapabilitySet;
 use campfire_log::LogEvent;
 use campfire_math::TickRate;
 use campfire_mode::MatchEnd;
@@ -48,7 +48,7 @@ use crate::faults::fault::Fault;
 use crate::hosting::Hosting;
 use crate::match_clock::MatchClock;
 
-use crate::net_protocol::NetProtocol;
+use crate::net_protocol::NetProtocolPlugin;
 use crate::net_protocol::input_message::InputMessage;
 use crate::net_protocol::save_command::SaveCommand;
 use crate::sim_server::ack_sender::AckSender;
@@ -57,7 +57,7 @@ use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::data_filter::DataFilters;
 use crate::sim_server::door::Door;
 use crate::sim_server::journal_watch::JournalWatch;
-use crate::sim_server::kind_shows::{KindShows, Shows};
+use crate::sim_server::kind_shows::{KindShows, ShowSystems};
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::offering::{Dismissing, Offered, Offering};
 use crate::sim_server::pending_restore::PendingRestore;
@@ -106,23 +106,23 @@ pub(crate) mod viewer;
 /// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join, or restores
 /// a `PendingRestore`; then records the packets players send, runs one sim tick in each fixed
 /// tick, and sends each client the units its team sees. It hashes the state after a tick only
-/// while the world holds `TickHashes`. It adds Lightyear's server at the tick's length `tick`, the
+/// while the world holds `TickHashes`. It adds Lightyear's server at its `tick_rate`, the
 /// protocol, and the replication to each new link; `SimServerPlugins` adds it.
 #[derive(Debug)]
-pub(crate) struct SimServer {
-    pub(crate) rate: TickRate,
+pub(crate) struct SimServerPlugin {
+    pub(crate) tick_rate: TickRate,
     /// The mode's declared capabilities, whose components alone replicate.
     pub(crate) capabilities: CapabilitySet,
     pub(crate) hosting: Hosting,
 }
 
-impl Plugin for SimServer {
+impl Plugin for SimServerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ServerPlugins {
-            tick_rate: self.rate,
+            tick_rate: self.tick_rate,
         });
         app.add_plugins((
-            NetProtocol {
+            NetProtocolPlugin {
                 capabilities: self.capabilities,
             },
             RoomPlugin,
@@ -253,7 +253,7 @@ impl Plugin for SimServer {
         );
         app.configure_sets(
             FixedUpdate,
-            Shows
+            ShowSystems
                 .in_set(SimTickSystems)
                 .after(Self::at_boundary)
                 .before(report_deaths),
@@ -286,7 +286,7 @@ type SaveLinks = QueryState<(
     &'static mut MessageReceiver<SaveCommand>,
 )>;
 
-impl SimServer {
+impl SimServerPlugin {
     /// At the boundary before the next tick: ends the session when its log is full, which the
     /// room the log keeps lets it do; else begins the checkpoint due there, as
     /// `Checkpoints::begin` does when the session keeps them, and ends the session when that

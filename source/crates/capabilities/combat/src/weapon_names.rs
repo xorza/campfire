@@ -2,7 +2,7 @@ use std::num::NonZeroU16;
 
 use campfire_actions::{Action, DeliveryShape, LoadedAction, ProjectileFlight};
 use campfire_common::{DeclaredName, Ticks};
-use campfire_declare::BookError;
+use campfire_declarations::BookError;
 use campfire_math::Num;
 use campfire_script::{TagNames, UnknownName};
 use campfire_sim::MatchRate;
@@ -22,7 +22,7 @@ use crate::weapon::{ClipRule, Pitch, Rate, Scatter, ScatterTag, Weapon, WeaponDa
 pub(crate) struct WeaponNames<'c> {
     pub(crate) loaded: LoadedAction<'c>,
     pub(crate) action: &'c Action,
-    pub(crate) rate: MatchRate,
+    pub(crate) tick_rate: MatchRate,
     pub(crate) stats: Option<&'c StatBook>,
     pub(crate) kinds: Option<&'c Names<DamageKind>>,
     pub(crate) tags: &'c TagNames,
@@ -134,7 +134,7 @@ impl WeaponNames<'_> {
 
     /// `ms` in ticks at the match's rate.
     fn ticks(self, ms: u64) -> Result<Ticks, CombatDataError> {
-        Ok(self.rate.ticks(ms).ok_or(TimeTooLarge)?)
+        Ok(self.tick_rate.ticks(ms).ok_or(TimeTooLarge)?)
     }
 
     fn stat(self, stat: &Stat) -> Result<StatId, BookError> {

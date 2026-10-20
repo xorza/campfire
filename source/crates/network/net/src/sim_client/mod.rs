@@ -17,7 +17,7 @@ use campfire_bots::{BotOrder, BotScript, BotUnits, BotView, OrderScratch, Script
 use campfire_capabilities::{MatchKind, MatchSetup, Order, Release};
 use campfire_common::ErrorReport;
 use campfire_common::{SegmentSeed, Tick};
-use campfire_declare::Role;
+use campfire_declarations::Role;
 use campfire_log::LogEvent;
 use campfire_mode::MatchEnd;
 use campfire_net_connection::{Client, Connect, Disconnect};
@@ -69,7 +69,7 @@ use crate::net_protocol::offer::Offer;
 use crate::net_protocol::save_command::SaveCommand;
 use crate::net_protocol::watch_start::WatchStart;
 use crate::net_protocol::watch_teams::WatchTeams;
-use crate::net_protocol::{InputChannel, JoinChannel, NetProtocol};
+use crate::net_protocol::{InputChannel, JoinChannel, NetProtocolPlugin};
 use crate::os::Os;
 use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::{JoinState, Joining, LinkLoss, Retry, Started};
@@ -100,7 +100,7 @@ const PREDICTION_SEED: SegmentSeed = SegmentSeed::ZERO;
 /// protocol, and the prediction; its app adds its frame loop or clock, and its link's endpoint: a
 /// UDP socket's, or the emulator's in the process.
 #[derive(Debug)]
-pub struct SimClient {
+pub struct SimClientPlugin {
     /// The signer of the player's Nostr identity, which signs the delegation.
     pub main: Arc<Signer>,
     /// The signer of this session's key, which the delegation lets sign the player's inputs.
@@ -165,7 +165,7 @@ impl PendingOrders {
     }
 }
 
-impl SimClient {
+impl SimClientPlugin {
     /// An error when its packages do not run at the rate its server is pinned to, as a listing
     /// may name a rate the mode does not run at. Its caller checks before it adds the plugin.
     pub fn check(&self) -> Result<(), TermsError> {
@@ -180,7 +180,7 @@ impl SimClient {
     }
 }
 
-impl Plugin for SimClient {
+impl Plugin for SimClientPlugin {
     fn build(&self, app: &mut App) {
         assert!(
             self.check().is_ok(),
@@ -190,7 +190,7 @@ impl Plugin for SimClient {
         app.add_plugins(ClientPlugins {
             tick_rate: rate.rate(),
         });
-        app.add_plugins(NetProtocol {
+        app.add_plugins(NetProtocolPlugin {
             capabilities: self.packages.manifest().capabilities,
         });
         app.insert_resource(PredictionSetup::default());
@@ -667,7 +667,7 @@ fn send_orders(
                 BotOrderUnsent {
                     seat,
                     cause,
-                    action: scripted.named.clone(),
+                    directive: scripted.named.clone(),
                 }
                 .log();
             }
@@ -692,7 +692,7 @@ fn send_orders(
                     OrderDropped {
                         unit: units[0],
                         units: units.len(),
-                        action: order.action,
+                        directive: order.directive,
                     }
                     .log();
                 }

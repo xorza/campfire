@@ -2,7 +2,7 @@ use crate::history_component::HistoryComponent;
 use crate::history_seed::{insert_confirmed_history, insert_confirmed_history_diff};
 use crate::interpolate::{drain_old_history, queue_history_presence, update_history_inner};
 use crate::interpolation_holders::InterpolationHolders;
-use crate::interpolation_stage::InterpolationStage;
+use crate::interpolation_phase_systems::InterpolationPhaseSystems;
 use crate::interpolation_timeline::InterpolationTimeline;
 use crate::update_history_cx::UpdateHistoryCx;
 use bevy_app::{App, Update};
@@ -39,7 +39,7 @@ impl ConfirmedHistoryFns {
             install: |app| {
                 app.add_systems(
                     Update,
-                    Self::update_confirmed_history::<C>.in_set(InterpolationStage::History),
+                    Self::update_confirmed_history::<C>.in_set(InterpolationPhaseSystems::History),
                 );
             },
         }
@@ -52,7 +52,8 @@ impl ConfirmedHistoryFns {
             install: |app| {
                 app.add_systems(
                     Update,
-                    Self::update_confirmed_history_diff::<C>.in_set(InterpolationStage::History),
+                    Self::update_confirmed_history_diff::<C>
+                        .in_set(InterpolationPhaseSystems::History),
                 );
             },
         }

@@ -1,0 +1,74 @@
+use std::borrow::Borrow;
+
+use derive_more::Display;
+use serde::de::Error;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::name_kind::{Article, NameKind, NameScope, Named};
+
+/// The id of a text of a package, a message as Fluent names one: a letter, then letters, digits,
+/// `-` and `_`. Data names a text by it, and the package's `locale/` files give it in each
+/// language.
+#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TextId(Box<str>);
+
+impl TextId {
+    /// `text` as an id; `None` unless it is of that form.
+    pub fn new(text: &str) -> Option<Self> {
+        let mut chars = text.chars();
+        let first = chars.next()?;
+        let rest = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
+        (first.is_ascii_alphabetic() && chars.all(rest)).then(|| Self(text.into()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// By its text, so a map keyed by ids finds the id a file gives.
+impl Borrow<str> for TextId {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+/// As its text, which `Deserialize` reads.
+impl Serialize for TextId {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextId {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Self::new(&text).ok_or_else(|| {
+            D::Error::custom(format!(
+                "{text:?} is not a text id: a letter, then letters, digits, - and _"
+            ))
+        })
+    }
+}
+
+impl Named for TextId {
+    const NAMES: NameKind = NameKind::new("text", Article::A, NameScope::Package);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_id_starts_with_a_letter_and_holds_letters_digits_dashes_and_underscores() {
+        for good in ["hero-name", "Name", "a", "tooltip_2"] {
+            assert_eq!(
+                TextId::new(good).map(|id| id.to_string()),
+                Some(good.to_owned())
+            );
+        }
+        for bad in ["", "-name", "2name", "_name", "hero name", "hero.name", "é"] {
+            assert_eq!(TextId::new(bad), None, "{bad:?}");
+        }
+    }
+}

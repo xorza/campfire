@@ -672,7 +672,7 @@ fn a_bundle_rule_does_not_fall_back_when_one_history_it_holds_is_missing() {
         .id();
 
     // Apply alone, as the history pass would seed the missing history first.
-    app.configure_sets(Update, InterpolationStage::History.run_if(|| false));
+    app.configure_sets(Update, InterpolationPhaseSystems::History.run_if(|| false));
     app.world_mut().run_schedule(Update);
 
     // The bundle holds both history initialization and application. Its

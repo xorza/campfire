@@ -12,7 +12,7 @@ internals = [
     "campfire-actions/internals",
     "campfire-codec/internals",
     "campfire-combat/internals",
-    "campfire-declare/internals",
+    "campfire-declarations/internals",
     "campfire-geometry/internals",
     "campfire-math/internals",
     "campfire-navigation/internals",
@@ -21,7 +21,7 @@ internals = [
     "campfire-progression/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
-    "campfire-state-types/internals",
+    "campfire-states/internals",
     "campfire-stats/internals",
     "campfire-units/internals",
     "campfire-values/internals",
@@ -32,7 +32,7 @@ campfire-actions.workspace = true
 campfire-codec.workspace = true
 campfire-combat.workspace = true
 campfire-common.workspace = true
-campfire-declare.workspace = true
+campfire-declarations.workspace = true
 campfire-geometry.workspace = true
 campfire-math.workspace = true
 campfire-navigation.workspace = true
@@ -41,7 +41,7 @@ campfire-production.workspace = true
 campfire-progression.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
-campfire-state-types.workspace = true
+campfire-states.workspace = true
 campfire-stats = { workspace = true, optional = true }
 campfire-units.workspace = true
 campfire-values = { workspace = true, features = ["ecs"] }

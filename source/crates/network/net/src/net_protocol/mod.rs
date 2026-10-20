@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use bevy_app::{App, Plugin};
 use bevy_ecs::component::{Component, Immutable, Mutable};
 use campfire_capabilities::Release;
-use campfire_declare::CapabilitySet;
+use campfire_declarations::CapabilitySet;
 use campfire_net_channels::{Channel, ChannelMode, ChannelSetup};
 use campfire_net_core::LinkDirection;
 use campfire_net_messages::AppMessageExt;
@@ -12,7 +12,7 @@ use campfire_net_replication::AppComponentExt;
 use campfire_net_transport::AppChannelExt;
 use campfire_protocol::SignedReceipt;
 use campfire_sim::{SimResource, StableId};
-use campfire_state_types::{Declared, Replication, Sending, SendingWays, StateTypes};
+use campfire_states::{Declared, Replication, Sending, SendingWays, StateTypes};
 
 use crate::net_protocol::dismissed::Dismissed;
 use crate::net_protocol::input_ack::InputAck;
@@ -73,11 +73,11 @@ impl Channel for JoinChannel {}
 /// match's end and each player's state on the match's and the players' entities, which replicate as
 /// units do.
 #[derive(Debug)]
-pub struct NetProtocol {
+pub struct NetProtocolPlugin {
     pub capabilities: CapabilitySet,
 }
 
-impl Plugin for NetProtocol {
+impl Plugin for NetProtocolPlugin {
     fn build(&self, app: &mut App) {
         let reliable = ChannelSetup {
             mode: ChannelMode::OrderedReliable,
@@ -120,7 +120,7 @@ impl Plugin for NetProtocol {
     }
 }
 
-/// Reads the capabilities' lists for `NetProtocol`: registers each type of a kind a client
+/// Reads the capabilities' lists for `NetProtocolPlugin`: registers each type of a kind a client
 /// receives for replication, as its list says it is sent.
 #[derive(Debug)]
 struct Replicated<'a>(&'a mut App);
@@ -256,7 +256,7 @@ mod tests {
         app.add_plugins(ServerPlugins {
             tick_rate: TickRate::try_from(20).unwrap(),
         });
-        app.add_plugins(NetProtocol { capabilities: set });
+        app.add_plugins(NetProtocolPlugin { capabilities: set });
         app
     }
 

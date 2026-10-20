@@ -13,7 +13,7 @@ use tracing::info;
 /// Plays an order script for the player, and leaves after the script's end tick when it names
 /// one.
 #[derive(Debug)]
-pub(crate) struct Bot {
+pub(crate) struct BotPlugin {
     pub(crate) script: BotScript,
 }
 
@@ -24,7 +24,7 @@ struct Leave {
     asked: bool,
 }
 
-impl Plugin for Bot {
+impl Plugin for BotPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(self.script.clone());
         if let Some(after) = self.script.end() {
@@ -37,7 +37,7 @@ impl Plugin for Bot {
     }
 }
 
-impl Bot {
+impl BotPlugin {
     /// Once the client ran the end tick, tells the server the player leaves; once the server
     /// ended the link, ends the app.
     fn leave(

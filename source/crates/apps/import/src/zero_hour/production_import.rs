@@ -5,7 +5,7 @@ use campfire_actions::{ActionKind, ActionRange, RangeField, Targeting};
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::{Num, Rounding};
 use campfire_production::{BuildData, BuildStart, ConstructData, RequiresData, TrainData};
-use campfire_values::{MessageId, Number, Ranked, Share};
+use campfire_values::{Number, Ranked, Share, TextId};
 use serde::Serialize;
 
 use crate::zero_hour::format::csf::string_table::StringTable;
@@ -41,7 +41,7 @@ pub(crate) struct ProductionImport {
 /// gives, and its kind's section.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ImportedAction {
-    name: MessageId,
+    name: TextId,
     kind: ActionKind,
     targeting: Targeting,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -238,7 +238,7 @@ impl ProductionImport {
         self.actions
             .entry(id.clone())
             .or_insert_with(|| ImportedAction {
-                name: MessageId::new(&message).expect("an action's message is a message id"),
+                name: TextId::new(&message).expect("an action's message is a message id"),
                 kind,
                 targeting: match making {
                     Making::Train => Targeting::None,

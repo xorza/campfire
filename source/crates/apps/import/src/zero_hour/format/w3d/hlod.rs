@@ -85,10 +85,10 @@ impl Hlod {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use super::*;
-    use crate::zero_hour::format::w3d::w3d_chunks::internals::chunk;
-    use crate::zero_hour::format::w3d::w3d_fields::internals::name;
+    use crate::zero_hour::format::w3d::w3d_chunks::samples::chunk;
+    use crate::zero_hour::format::w3d::w3d_fields::samples::name;
 
     impl Hlod {
         /// The HLOD chunk the game reads as this HLOD, of `levels` levels of detail and as many

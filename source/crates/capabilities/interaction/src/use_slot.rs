@@ -1,5 +1,5 @@
 use campfire_actions::{ActionSlots, SlotKind};
-use campfire_declare::PerType;
+use campfire_declarations::PerType;
 
 /// A user type's use slot, package data and not state: the slot kind of the one empty slot its
 /// units spawn with, which a use fills with its object's action.

@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Role, Scratch};
+use campfire_declarations::{Role, Scratch};
 use campfire_math::Vec3;
 use campfire_sim::StableId;
 use campfire_values::UnitType;
@@ -8,8 +8,8 @@ use crate::action_target::ActionTarget;
 use crate::shot_damage::ShotDamage;
 
 /// The projectiles the tick's ranged attacks fire, delivery requests that `projectiles` launches at
-/// `ActionsSet::Fire`, in the order they were fired, which no reader changes. Not state: it empties
-/// within the tick.
+/// `ActionsSystems::Fire`, in the order they were fired, which no reader changes. Not state: it
+/// empties within the tick.
 #[derive(Resource, Debug, Default)]
 pub struct Shots(Vec<Shot>);
 

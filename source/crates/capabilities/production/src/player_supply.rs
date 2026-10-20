@@ -5,7 +5,7 @@ use bevy_ecs::system::{Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_players::Player;
 use campfire_sim::SimComponent;
-use campfire_state_types::{Replication, SentOnChange};
+use campfire_states::{Replication, SentOnChange};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 

@@ -145,7 +145,7 @@ pub(crate) mod internals {
 
     use crate::restoring::Restoring;
     use crate::sim_tick::SimTick;
-    use crate::sim_update::{SimUpdate, TickEnd, begin_tick};
+    use crate::sim_update::{SimUpdate, TickEndSystems, begin_tick};
     use crate::sim_world::SimWorld;
     use crate::sim_world_builder::internals::OpenBuild;
     use crate::stable_id::StableId;
@@ -233,10 +233,10 @@ pub(crate) mod internals {
             }
             self.schedule_scope(SimUpdate, |_, schedule| {
                 let graph = schedule.graph();
-                let sets = sets
-                    .iter()
-                    .copied()
-                    .chain([begin_tick.into_system_set().intern(), TickEnd.intern()]);
+                let sets = sets.iter().copied().chain([
+                    begin_tick.into_system_set().intern(),
+                    TickEndSystems.intern(),
+                ]);
                 let mut placed = BTreeSet::new();
                 for set in sets {
                     let systems = graph

@@ -9,7 +9,7 @@ use bevy_ecs::query::{QueryState, ROQueryItem};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut, SystemState};
 use bevy_ecs::world::World;
-use campfire_declare::Cache;
+use campfire_declarations::Cache;
 use campfire_script::{ReadOf, RowFill, RowReads, UnitRow, View, ViewColumn, ViewRows};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use campfire_values::{Team, UnitTags, UnitType};

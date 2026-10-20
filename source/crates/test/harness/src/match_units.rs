@@ -1,5 +1,5 @@
 use bevy_ecs::world::{EntityRef, World};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_items::Shop;
 use campfire_math::Vec3;
 use campfire_progression::Experience;

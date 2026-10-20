@@ -1,7 +1,7 @@
 use campfire_capabilities::{Match, Release};
 use campfire_codec::{Binary, Toml};
 use campfire_common::DeclaredName;
-use campfire_declare::internals::BookLoad;
+use campfire_declarations::internals::BookLoad;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_progression::*;

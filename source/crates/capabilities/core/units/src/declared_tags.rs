@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, Fact};
+use campfire_declarations::{BookCx, BookError, Fact};
 use campfire_values::EngineTag;
 
 use crate::tag_data::ModeTagsData;

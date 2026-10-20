@@ -1,4 +1,4 @@
-use campfire_declare::ListedSet;
+use campfire_declarations::ListedSet;
 use campfire_script::{ApiBuilder, ApiVersion, Status};
 
 use crate::action_data::ActionData;

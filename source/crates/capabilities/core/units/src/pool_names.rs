@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use campfire_declare::Fact;
+use campfire_declarations::Fact;
 use campfire_values::Names;
 
 use crate::pool_id::PoolId;

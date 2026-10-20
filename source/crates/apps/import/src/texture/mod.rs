@@ -8,10 +8,10 @@ pub(crate) mod srgb;
 pub(crate) mod tga_file;
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     use crate::texture::dds_file::DdsFile;
-    use crate::texture::dds_file::internals::dds;
-    use crate::texture::tga_file::internals::tga;
+    use crate::texture::dds_file::samples::dds;
+    use crate::texture::tga_file::samples::tga;
     use crate::texture::tga_file::{TgaAlpha, TgaFile};
 
     /// A DXT1 texture of 8 × 8 texels and its full chain, and a TGA of 2 × 1.
@@ -40,7 +40,7 @@ mod tests {
 
     use campfire_store::internals::PinnedFile;
 
-    use crate::texture::internals::ktx2;
+    use crate::texture::samples::ktx2;
 
     #[test]
     fn the_clients_fixtures_are_the_textures_the_import_writes() {

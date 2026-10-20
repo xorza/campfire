@@ -10,8 +10,8 @@ use crate::scripts::script_value::ScriptValue;
 use crate::scripts::state_type::StateType;
 use crate::scripts::state_value::StateValue;
 
+pub(crate) mod state_field_decl;
 pub(crate) mod state_schema;
-pub(crate) mod synced_state_decl;
 
 /// A declared field of script state: its type, its first value, which is of its type, and for an
 /// enum, its members. Script state is declared, never invented at run time.

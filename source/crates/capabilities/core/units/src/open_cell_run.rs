@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{In, SystemId};
-use campfire_declare::OneShot;
+use campfire_declarations::OneShot;
 use campfire_math::Vec3;
 use campfire_values::UnitType;
 

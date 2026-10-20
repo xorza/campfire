@@ -3,7 +3,7 @@ use std::num::NonZeroI64;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Book, BookCx, BookError, BookPlace};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace};
 use campfire_math::{Num, Rounding};
 use campfire_script::{MatchNames, UnknownName};
 use campfire_sim::MatchRate;

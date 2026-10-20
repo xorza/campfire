@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Book, BookCx, BookError, BookPlace, NamesListError, Section};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, NamesListError, Section};
 use campfire_script::MatchNames;
 use campfire_values::{Names, NamesError, PackageIndex, ResourceId};
 

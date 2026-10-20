@@ -12,7 +12,7 @@ use campfire_common::{Seat, Tick};
 use campfire_interaction::{UseActionData, UseSlot, UseSpec};
 use campfire_math::Num;
 use campfire_mode::Mode;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_players::Players;
 use campfire_script::internals::FailedCall;
 use campfire_script::{Filter, ScriptFailures, ScriptLimits, ScriptPools};
@@ -155,14 +155,14 @@ fn object(game: &mut Match, object: UnitType, x: i16, team: u8) -> StableId {
     Mode::spawn(game, object, (x, 0, 0), Team::new(team), ())
 }
 
-/// Runs a tick in which player 0 orders `unit` `action`.
-fn order(game: &mut Match, unit: StableId, action: OrdersAction) {
-    let payload = Order::payload(&[Order::one(unit, action)]);
+/// Runs a tick in which player 0 orders `unit` `directive`.
+fn order(game: &mut Match, unit: StableId, directive: OrdersDirective) {
+    let payload = Order::payload(&[Order::one(unit, directive)]);
     game.step_with(&[(Seat::new(0), &payload)]);
 }
 
-const fn use_of(target: StableId) -> OrdersAction {
-    OrdersAction::Use { target }
+const fn use_of(target: StableId) -> OrdersDirective {
+    OrdersDirective::Use { target }
 }
 
 /// The action the use slot of `user` holds.
@@ -186,24 +186,25 @@ fn a_use_runs_on_its_object_and_its_held_use_ends_whole_or_by_an_order_a_block_a
     // `cut` acts before tick 8, between the channel's first and second ticks, and gives an order
     // for that tick, if any. The object's health after each of ticks 0 to 14.
     let mut x = 0;
-    let mut run = |game: &mut Match,
-                   object_type: UnitType,
-                   cut: &dyn Fn(&mut Match, StableId) -> Option<OrdersAction>| {
-        x += 20;
-        let user = user(game, "walking caster", x);
-        let used = object(game, object_type, x + 1, 0);
-        order(game, user, use_of(used));
-        let mut seen = vec![Stats::health(game, used)];
-        for tick in 1..=14 {
-            match (tick == 8).then(|| cut(game, user)).flatten() {
-                Some(action) => order(game, user, action),
-                None => game.step(),
+    let mut run =
+        |game: &mut Match,
+         object_type: UnitType,
+         cut: &dyn Fn(&mut Match, StableId) -> Option<OrdersDirective>| {
+            x += 20;
+            let user = user(game, "walking caster", x);
+            let used = object(game, object_type, x + 1, 0);
+            order(game, user, use_of(used));
+            let mut seen = vec![Stats::health(game, used)];
+            for tick in 1..=14 {
+                match (tick == 8).then(|| cut(game, user)).flatten() {
+                    Some(action) => order(game, user, action),
+                    None => game.step(),
+                }
+                seen.push(Stats::health(game, used));
             }
-            seen.push(Stats::health(game, used));
-        }
-        assert_eq!(failed(game), []);
-        seen
-    };
+            assert_eq!(failed(game), []);
+            seen
+        };
     // Whole: ordered in tick 0, it winds up 3 ticks and resolves in tick 3 for 1; it channels
     // from tick 4, ticking each 3 ticks, in ticks 7, 10 and 13, its end, for 10 each.
     let whole = [
@@ -216,7 +217,9 @@ fn a_use_runs_on_its_object_and_its_held_use_ends_whole_or_by_an_order_a_block_a
     let cut = [
         500, 500, 500, 499, 499, 499, 499, 489, 389, 389, 389, 389, 389, 389, 389,
     ];
-    let stopped = run(&mut game, objects.shrine, &|_, _| Some(OrdersAction::Stop));
+    let stopped = run(&mut game, objects.shrine, &|_, _| {
+        Some(OrdersDirective::Stop)
+    });
     assert_eq!(stopped, cut);
     let blocked = run(&mut game, objects.shrine, &|game, user| {
         Units::set_blocks(game, user, &[Block::Use]);
@@ -287,7 +290,7 @@ fn a_use_is_dropped_by_a_unit_with_no_use_slot_one_its_users_refuse_or_one_beyon
     assert!(!is_busy(&game, user));
     // An order of the use slot by its index starts nothing: only a use runs a use.
     let target = ActionTarget::Unit(shrine);
-    order(&mut game, user, OrdersAction::Slot { slot: 0, target });
+    order(&mut game, user, OrdersDirective::Slot { slot: 0, target });
     assert!(!is_busy(&game, user));
     // A user that stands 5 m from the shrine, beyond the prayer's 2 m, fills its slot but drops
     // the use as it would start; one that walks walks in range, 1 m a tick, and uses it.

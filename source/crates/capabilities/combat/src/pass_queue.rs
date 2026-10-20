@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
-use campfire_declare::{Role, Scratch};
+use campfire_declarations::{Role, Scratch};
 use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 

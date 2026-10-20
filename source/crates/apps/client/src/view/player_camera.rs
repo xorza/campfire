@@ -31,7 +31,7 @@ use crate::view::scene_lights::EXPOSURE;
 /// within it while it has the focus, so the cursor reaches the edges that scroll, and lets it go
 /// when it loses the focus.
 #[derive(Debug)]
-pub(crate) struct PlayerCamera;
+pub(crate) struct PlayerCameraPlugin;
 
 /// The primary window and its cursor, in a frame the window changed.
 type FocusChanged<'w, 's> = Query<
@@ -44,7 +44,7 @@ type FocusChanged<'w, 's> = Query<
 /// The pixels of a trackpad's scroll that count as a notch of a wheel.
 const PIXELS_PER_NOTCH: f32 = 50.0;
 
-impl Plugin for PlayerCamera {
+impl Plugin for PlayerCameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::spawn);
         app.add_systems(
@@ -57,7 +57,7 @@ impl Plugin for PlayerCamera {
     }
 }
 
-impl PlayerCamera {
+impl PlayerCameraPlugin {
     fn spawn(data: Res<'_, ClientData>, mut commands: Commands<'_, '_>) {
         let file = data.camera.unwrap_or(CameraRig::DEFAULT);
         let grid = data.heights.as_ref().map(GroundHeights::grid);
@@ -234,7 +234,7 @@ mod tests {
             ))
             .id();
         let grab = |world: &mut World| {
-            world.run_system_once(PlayerCamera::confine).unwrap();
+            world.run_system_once(PlayerCameraPlugin::confine).unwrap();
             world.get::<CursorOptions>(window).unwrap().grab_mode
         };
         assert_eq!(grab(&mut world), CursorGrabMode::Confined);

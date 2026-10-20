@@ -1,7 +1,7 @@
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::ActionProgress;
-use campfire_declare::RoleForm;
+use campfire_declarations::RoleForm;
 use campfire_sim::{Position, StableId};
 use campfire_units::{ArrivedShort, Body, Dead, Destination};
 

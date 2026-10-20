@@ -1,6 +1,6 @@
 use campfire_actions::{ActionBook, ActionSlots, SlotKind, SlotKindBook, UseGroup};
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Section};
 use campfire_players::{ResourceAmount, ResourceBook};
 use campfire_script::{Filter, UnknownName};
 use campfire_stats::ModifierBook;

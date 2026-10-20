@@ -21,7 +21,7 @@ const LOOKUPS: [(&str, &str); 71] = [
     ("combat/combat_books.rs", "named"),
     ("combat/mode_combat_data.rs", "named"),
     ("combat/weapon_names.rs", "named"),
-    ("declare/book_cx.rs", "named"),
+    ("declarations/book_cx.rs", "named"),
     ("interaction/interaction_books.rs", "named"),
     ("items/item_books.rs", "named"),
     ("items/items_rules.rs", "named"),

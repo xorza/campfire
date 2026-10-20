@@ -10,14 +10,14 @@ use campfire_actions::{
     Targeting, UseGroup,
 };
 use campfire_capabilities::internals::*;
-use campfire_capabilities::{Action, Match, Order};
+use campfire_capabilities::{Directive, Match, Order};
 use campfire_combat::{HealEffectData, OnDeath};
 use campfire_common::{Seat, Tick};
-use campfire_declare::MatchFacts;
+use campfire_declarations::MatchFacts;
 use campfire_items::*;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_players::{OutOfPlay, Players, PlayersWorld, ResourceAmount};
 use campfire_script::{Filter, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
@@ -123,7 +123,7 @@ impl Carrier {
     }
 
     /// Runs a tick in which player 0 orders the carrier each of `actions`.
-    fn order<A: Into<Action> + Copy>(self, game: &mut World, actions: &[A]) {
+    fn order<A: Into<Directive> + Copy>(self, game: &mut World, actions: &[A]) {
         let unit = self.id;
         let orders: Vec<Order> = actions
             .iter()
@@ -230,15 +230,15 @@ fn spawn_shop(game: &mut Match, shop_type: UnitType) -> StableId {
     Mode::spawn(game, shop_type, Vec3::ZERO, Team::new(0), ())
 }
 
-const fn buy(item: u32, shop: StableId) -> ItemsAction {
-    ItemsAction::Buy {
+const fn buy(item: u32, shop: StableId) -> ItemsDirective {
+    ItemsDirective::Buy {
         item: ItemId::nth(item),
         shop,
     }
 }
 
-const fn cast(slot: u8) -> OrdersAction {
-    OrdersAction::Slot {
+const fn cast(slot: u8) -> OrdersDirective {
+    OrdersDirective::Slot {
         slot,
         target: ActionTarget::None,
     }
@@ -322,12 +322,12 @@ fn an_active_keeps_its_cooldown_across_a_swap_and_a_carried_item_holds_its_modif
     // it in the module list, so the cast finds the flash in slot 0.
     carrier.order(
         &mut game,
-        &[Action::from(buy(FLASH, shop)), Action::from(cast(0))],
+        &[Directive::from(buy(FLASH, shop)), Directive::from(cast(0))],
     );
     let ready = game.part::<SlotTimes>(carrier.id).slot(0).unwrap().ready_at;
     assert!(ready > game.now());
     // The flash moves to slot 2 with its cooldown; slot 0 is empty and ready.
-    carrier.order(&mut game, &[ItemsAction::Swap { from: 0, to: 2 }]);
+    carrier.order(&mut game, &[ItemsDirective::Swap { from: 0, to: 2 }]);
     let slots = game.part::<ActionSlots>(carrier.id);
     let times = game.part::<SlotTimes>(carrier.id);
     let held = |at: u8| {
@@ -346,9 +346,9 @@ fn an_active_keeps_its_cooldown_across_a_swap_and_a_carried_item_holds_its_modif
         (carrier.items(&game), carrier.mights(&game)),
         (vec![Some((2, 1)), Some((2, 1)), Some((1, 1))], 1)
     );
-    carrier.order(&mut game, &[ItemsAction::Sell { slot: 0, shop }]);
+    carrier.order(&mut game, &[ItemsDirective::Sell { slot: 0, shop }]);
     assert_eq!(carrier.mights(&game), 1);
-    carrier.order(&mut game, &[ItemsAction::Sell { slot: 1, shop }]);
+    carrier.order(&mut game, &[ItemsDirective::Sell { slot: 1, shop }]);
     assert_eq!(carrier.mights(&game), 0);
 }
 
@@ -402,7 +402,7 @@ fn gold(game: &World) -> i64 {
 }
 
 /// Player 0's orders of `actions` to `id`.
-fn trades(id: StableId, actions: &[ItemsAction]) -> Vec<u8> {
+fn trades(id: StableId, actions: &[ItemsDirective]) -> Vec<u8> {
     let orders: Vec<Order> = actions
         .iter()
         .map(|&action| Order::one(id, action))
@@ -489,7 +489,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     } = shop_match();
     let owner = Owner::new(Seat::new(0));
     let hero = Mode::spawn(&mut game, shopper, (0, 0, 0), Team::new(0), owner);
-    let step = |game: &mut Match, actions: &[ItemsAction]| {
+    let step = |game: &mut Match, actions: &[ItemsDirective]| {
         game.step_with(&[(Seat::new(0), &trades(hero, actions))]);
     };
     let held = |game: &Match| (gold(game), carried(game, hero));
@@ -535,16 +535,16 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     step(
         &mut game,
         &[
-            ItemsAction::Sell { slot: 1, shop },
-            ItemsAction::Swap { from: 0, to: 2 },
+            ItemsDirective::Sell { slot: 1, shop },
+            ItemsDirective::Swap { from: 0, to: 2 },
         ],
     );
     assert_eq!(held(&game), (905, vec![Some((2, 1)), None, Some((1, 1))]));
     step(
         &mut game,
         &[
-            ItemsAction::Sell { slot: 2, shop },
-            ItemsAction::Sell { slot: 1, shop },
+            ItemsDirective::Sell { slot: 2, shop },
+            ItemsDirective::Sell { slot: 1, shop },
         ],
     );
     assert_eq!(held(&game), (1605, vec![Some((2, 1)), None, None]));
@@ -557,8 +557,8 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         &mut game,
         &[
             buy(2, shop),
-            ItemsAction::Sell { slot: 0, shop },
-            ItemsAction::Swap { from: 0, to: 1 },
+            ItemsDirective::Sell { slot: 0, shop },
+            ItemsDirective::Swap { from: 0, to: 1 },
         ],
     );
     assert_eq!(held(&game), (1605, vec![None, Some((2, 1)), None]));

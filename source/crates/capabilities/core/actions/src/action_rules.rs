@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_common::DeclaredName;
-use campfire_declare::{
-    BookCx, BookError, BookPlace, NamedMessages, NamedScripts, ScriptParams, Section, SourceKind,
+use campfire_declarations::{
+    BookCx, BookError, BookPlace, NamedScripts, NamedTexts, ScriptParams, Section, SourceKind,
     UnitTypeData,
 };
 use campfire_players::ResourceBook;
@@ -69,10 +69,7 @@ impl Actions {
         clippy::unnecessary_wraps,
         reason = "a book's builder and an extension take the build's signature"
     )]
-    pub(crate) fn named_messages(
-        cx: &BookCx<'_>,
-        messages: &mut NamedMessages,
-    ) -> Result<(), BookError> {
+    pub(crate) fn named_texts(cx: &BookCx<'_>, messages: &mut NamedTexts) -> Result<(), BookError> {
         for (package, source) in cx.packages() {
             let actions = source.content.get::<ActionsData>();
             for (id, action) in actions.into_iter().flat_map(|actions| &actions.0) {

@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
-use campfire_declare::{Report, Role};
+use campfire_declarations::{Report, Role};
 
 /// The boundary the mode last asked for a save at, by `ctx.save()`: the end of the tick it asked
 /// in, or the match's start, for a save `on_match_start` asked for. Not state: a checkpoint,

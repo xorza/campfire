@@ -310,25 +310,25 @@ impl Archive {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     use campfire_store::internals::TestDir;
 
-    use crate::texture::internals::textures;
-    use crate::zero_hour::format::big::big_archive::internals::big;
-    use crate::zero_hour::format::csf::string_table::internals::strings;
-    use crate::zero_hour::format::ini::armor_ini::internals::ARMORS;
-    use crate::zero_hour::format::ini::command_button_ini::internals::COMMAND_BUTTONS;
-    use crate::zero_hour::format::ini::command_set_ini::internals::COMMAND_SETS;
-    use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
-    use crate::zero_hour::format::ini::multiplayer_ini::internals::MULTIPLAYER;
-    use crate::zero_hour::format::ini::object_ini::internals::{
+    use crate::texture::samples::textures;
+    use crate::zero_hour::format::big::big_archive::samples::big;
+    use crate::zero_hour::format::csf::string_table::samples::strings;
+    use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
+    use crate::zero_hour::format::ini::command_button_ini::samples::COMMAND_BUTTONS;
+    use crate::zero_hour::format::ini::command_set_ini::samples::COMMAND_SETS;
+    use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
+    use crate::zero_hour::format::ini::multiplayer_ini::samples::MULTIPLAYER;
+    use crate::zero_hour::format::ini::object_ini::samples::{
         DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS,
     };
-    use crate::zero_hour::format::ini::player_template_ini::internals::PLAYER_TEMPLATES;
-    use crate::zero_hour::format::ini::weapon_ini::internals::WEAPONS;
-    use crate::zero_hour::format::map::map_file::internals::map;
-    use crate::zero_hour::format::ref_pack::internals::literal;
-    use crate::zero_hour::model_import::internals::{nothing_drawn, rock, tank};
+    use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
+    use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
+    use crate::zero_hour::format::map::map_file::samples::map;
+    use crate::zero_hour::format::ref_pack::samples::literal;
+    use crate::zero_hour::model_import::samples::{nothing_drawn, rock, tank};
 
     /// The fixture's terrain types: the fixture map's `Sand`, whose texture the install holds,
     /// and its `Grass`, whose texture it lacks.
@@ -411,9 +411,9 @@ mod tests {
     use campfire_store::internals::TestDir;
 
     use super::*;
-    use crate::zero_hour::format::big::big_archive::internals::big;
+    use crate::zero_hour::format::big::big_archive::samples::big;
     use crate::zero_hour::format::big::error::ArchiveError;
-    use crate::zero_hour::install::internals::fixture;
+    use crate::zero_hour::install::samples::fixture;
 
     #[test]
     fn an_install_reads_each_file_from_the_first_archive_that_holds_it() {

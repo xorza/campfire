@@ -10,11 +10,11 @@ kind = "glue"
 [features]
 internals = [
     "campfire-actions/internals",
-    "campfire-declare/internals",
+    "campfire-declarations/internals",
     "campfire-math/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
-    "campfire-state-types/internals",
+    "campfire-states/internals",
     "campfire-units/internals",
     "campfire-values/internals",
 ]
@@ -22,11 +22,11 @@ internals = [
 [dependencies]
 campfire-actions.workspace = true
 campfire-common.workspace = true
-campfire-declare.workspace = true
+campfire-declarations.workspace = true
 campfire-math.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
-campfire-state-types.workspace = true
+campfire-states.workspace = true
 campfire-units.workspace = true
 campfire-values = { workspace = true, features = ["ecs"] }
 campfire-visibility.workspace = true

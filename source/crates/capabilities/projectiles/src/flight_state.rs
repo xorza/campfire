@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::SimComponent;
-use campfire_state_types::{NotSent, Replication};
+use campfire_states::{NotSent, Replication};
 use campfire_units::DeliveryEntity;
 use campfire_visibility::DataKind;
 use serde::de::Error;

@@ -6,61 +6,61 @@ use bevy_ecs::world::World;
 use campfire_players::Player;
 use campfire_script::{StateSchema, StateValue};
 use campfire_sim::SimComponent;
-use campfire_state_types::{NotSent, Replication, Sending, SentOnChange};
-use campfire_units::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam};
+use campfire_states::{NotSent, Replication, Sending, SentOnChange};
+use campfire_units::{AudienceAll, AudienceNone, AudienceOwner, AudienceTeam, StateAudience};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::match_mode::MatchMode;
 
-/// The fields of a player's script state whose `sync` is `S`'s, on its entity: a value for each
+/// The fields of a player's script state whose `audience` is `S`'s, on its entity: a value for each
 /// such field the mode's `[player_state]` declares, in the order of their names. Each class is a
 /// component of its own kind (10-replication-audiences.md, One kind for each type); a player's
 /// entity is its own owner's.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct PlayerState<S: PlayerSync> {
+pub struct PlayerState<S: PlayerAudience> {
     values: Vec<StateValue>,
     #[serde(skip)]
-    sync: PhantomData<S>,
+    audience: PhantomData<S>,
 }
 
-/// A class of the players' state fields by their `sync`.
-pub trait PlayerSync: StateSync {
+/// A class of the players' state fields by their `audience`.
+pub trait PlayerAudience: StateAudience {
     const PLAYER_NAME: &'static str;
     const PLAYER_KIND: DataKind;
     type PlayerSending: Sending<PlayerState<Self>>;
 }
 
-impl PlayerSync for SyncNone {
+impl PlayerAudience for AudienceNone {
     const PLAYER_NAME: &'static str = "mode.player_state";
     const PLAYER_KIND: DataKind = DataKind::Server;
     type PlayerSending = NotSent;
 }
 
-impl PlayerSync for SyncOwner {
+impl PlayerAudience for AudienceOwner {
     const PLAYER_NAME: &'static str = "mode.player_state_owner";
     const PLAYER_KIND: DataKind = DataKind::PlayerStateOwner;
     type PlayerSending = SentOnChange;
 }
 
-impl PlayerSync for SyncTeam {
+impl PlayerAudience for AudienceTeam {
     const PLAYER_NAME: &'static str = "mode.player_state_team";
     const PLAYER_KIND: DataKind = DataKind::PlayerStateTeam;
     type PlayerSending = SentOnChange;
 }
 
-impl PlayerSync for SyncAll {
+impl PlayerAudience for AudienceAll {
     const PLAYER_NAME: &'static str = "mode.player_state_all";
     const PLAYER_KIND: DataKind = DataKind::PlayerStateAll;
     type PlayerSending = SentOnChange;
 }
 
-impl<S: PlayerSync> PlayerState<S> {
+impl<S: PlayerAudience> PlayerState<S> {
     pub const fn new(values: Vec<StateValue>) -> Self {
         Self {
             values,
-            sync: PhantomData,
+            audience: PhantomData,
         }
     }
 
@@ -76,11 +76,11 @@ impl<S: PlayerSync> PlayerState<S> {
     /// The fields of its class that `schema` declares, each at its first value, in the order of
     /// their names.
     pub(crate) fn initial(schema: &StateSchema) -> Self {
-        Self::new(schema.initial_of(S::SYNC).cloned().collect())
+        Self::new(schema.initial_of(S::AUDIENCE).cloned().collect())
     }
 }
 
-impl<S: PlayerSync> SimComponent for PlayerState<S> {
+impl<S: PlayerAudience> SimComponent for PlayerState<S> {
     const NAME: &'static str = S::PLAYER_NAME;
     type Host = Player;
 
@@ -88,11 +88,11 @@ impl<S: PlayerSync> SimComponent for PlayerState<S> {
     // a value it never wrote.
     fn check(&self, world: &World, _: Entity) -> bool {
         let book = world.resource::<MatchMode>();
-        book.schema.players.holds(S::SYNC, &self.values)
+        book.schema.players.holds(S::AUDIENCE, &self.values)
     }
 }
 
-impl<S: PlayerSync> Replication for PlayerState<S> {
+impl<S: PlayerAudience> Replication for PlayerState<S> {
     const KIND: DataKind = S::PLAYER_KIND;
     type Sending = S::PlayerSending;
 }

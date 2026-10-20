@@ -4,7 +4,7 @@ use std::{fmt, iter};
 
 use campfire_actions::{ActionData, ActionsData};
 use campfire_common::DeclaredName;
-use campfire_declare::{
+use campfire_declarations::{
     Section, SectionReaders, SectionTable, Sections, TableRead, UnitDefaults, UnitTypeData,
 };
 use campfire_items::{ItemData, ItemsData};

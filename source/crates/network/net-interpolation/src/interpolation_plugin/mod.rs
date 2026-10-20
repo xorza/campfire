@@ -2,7 +2,7 @@ use crate::interpolation_systems::InterpolationSystems;
 use crate::interpolation_timeline::InterpolationTimeline;
 use bevy_app::{App, Plugin, Update};
 use bevy_ecs::prelude::*;
-use campfire_net_despawn::DespawnReplicated;
+use campfire_net_despawns::DespawnReplicated;
 use campfire_net_replication::{DelayedDespawn, InterpolatedDespawn};
 use campfire_net_timeline::NetworkTimeline;
 

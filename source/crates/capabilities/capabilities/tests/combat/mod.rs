@@ -28,12 +28,12 @@ use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_script::{Filter, MatchNames, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    Capability, EntityIndex, Position, SimComponent, SimEdge, SimRng, SimSet, SimTick, SimWorld,
-    StableId, Unpredicted,
+    Capability, EntityIndex, Position, SimComponent, SimEdgeSystems, SimRng, SimSystems, SimTick,
+    SimWorld, StableId, Unpredicted,
 };
 use campfire_stats::{
     Application, Ends, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance, PoolBook,
-    Pools, StatBook, StatRule, Stats, StatsSet,
+    Pools, StatBook, StatRule, Stats, StatsSystems,
 };
 use campfire_units::{
     BodyForm, Dead, Deaths, Fallen, Life, MapBook, Owner, PoolCost, PoolId, SpawnPoint, StatId,
@@ -427,7 +427,7 @@ fn a_windup_its_attackers_states_stop_starts_again_and_spends_nothing() {
     // interrupts its windup and keeps its target. The late one is stunned in tick 2's Move
     // stage, after Act, so its strike in Hit is interrupted instead.
     let stunned = &[Block::Move, Block::Attack, Block::Cast, Block::Use];
-    Units::block_at(&mut game, late, 2, SimSet::Move, stunned);
+    Units::block_at(&mut game, late, 2, SimSystems::Move, stunned);
     Units::set_blocks(&mut game, late, &[]);
     game.run_until(1);
     Units::set_blocks(&mut game, early, &[Block::Attack]);
@@ -1146,8 +1146,10 @@ fn damage_after_the_pass_waits_for_the_next_and_a_life_at_zero_acts_no_more() {
         life.take(all);
     };
     let hook = hook
-        .in_set(SimEdge::After(SimSet::Mode))
-        .after(StatsSet::Refresh(SimEdge::After(SimSet::Mode)));
+        .in_set(SimEdgeSystems::After(SimSystems::Mode))
+        .after(StatsSystems::Refresh(SimEdgeSystems::After(
+            SimSystems::Mode,
+        )));
     game.add_tick_systems(hook);
     game.run_until(2);
     assert_eq!(Stats::health(&game, target), 100);
@@ -1387,8 +1389,10 @@ fn a_read_of_what_the_client_lacks_fails_the_sync_test() {
                 *world.get_mut::<Position>(own).unwrap() = Position::from((1, 0, 0));
             }
         };
-        let peek = peek.in_set(SimEdge::After(SimSet::Mode));
-        let after = peek.after(StatsSet::Refresh(SimEdge::After(SimSet::Mode)));
+        let peek = peek.in_set(SimEdgeSystems::After(SimSystems::Mode));
+        let after = peek.after(StatsSystems::Refresh(SimEdgeSystems::After(
+            SimSystems::Mode,
+        )));
         game.add_tick_systems(after);
     });
 }

@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_players::Player;
 use campfire_sim::SimComponent;
-use campfire_state_types::{NotSent, Replication};
+use campfire_states::{NotSent, Replication};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 

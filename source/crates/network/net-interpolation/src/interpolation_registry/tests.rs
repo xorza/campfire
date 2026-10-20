@@ -6,10 +6,10 @@ use crate::frame_interpolation_history::FrameInterpolationHistory;
 use crate::history_receive::InterpolatedMarkerFns;
 use crate::interpolate::sample_history_with_interpolation;
 use crate::interpolation_fns::{InterpolationFns, InterpolationPipeline};
+use crate::interpolation_phase_systems::InterpolationPhaseSystems;
 use crate::interpolation_rule::InterpolationRule;
 use crate::interpolation_rule_component::{InterpolationRuleComponent, MemberShare};
 use crate::interpolation_sample_cx::InterpolationSampleCx;
-use crate::interpolation_stage::InterpolationStage;
 use bevy::prelude::*;
 use bevy_ecs::query::ArchetypeFilter;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
@@ -206,7 +206,7 @@ fn a_diff_interpolation_applies_its_registered_sampler() {
         .id();
 
     // Apply alone: the history pass would seed and advance the history first.
-    app.configure_sets(Update, InterpolationStage::History.run_if(|| false));
+    app.configure_sets(Update, InterpolationPhaseSystems::History.run_if(|| false));
     app.world_mut().run_schedule(Update);
 
     assert_eq!(

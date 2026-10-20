@@ -14,17 +14,17 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::In;
 use bevy_ecs::world::World;
-use campfire_actions::ActionsSet;
-use campfire_declare::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
+use campfire_actions::ActionsSystems;
+use campfire_declarations::{
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSystems, ServerForm, SetPlace,
 };
 use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
 use campfire_script::{ApiVersion, Status};
-use campfire_sim::{Capability, SimEdge, SimSet, Unpredicted};
+use campfire_sim::{Capability, SimEdgeSystems, SimSystems, Unpredicted};
 use campfire_units::{
     BodyUnit, Dead, DeclaredTags, LayerNames, MoveStep, OpenCellAsk, OpenCellRun, SpawnCallbacks,
-    UnitTracker, UnitsSet, WallBook,
+    UnitTracker, UnitsSystems, WallBook,
 };
 
 use crate::navigation_column::RowReads;
@@ -114,7 +114,7 @@ pub use crate::walking::Walking;
 
 /// Navigation's steps.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum NavigationSet {
+pub enum NavigationSystems {
     /// The static index and the pathing grid take the static bodies as the tick starts.
     TrackStatics,
     /// Path walkers walk to their waypoints, before units chase their targets.
@@ -130,7 +130,7 @@ pub enum NavigationSet {
     TrackEnd,
 }
 
-impl ModuleSet for NavigationSet {
+impl ModuleSystems for NavigationSystems {
     const ALL: &'static [Self] = &[
         Self::TrackStatics,
         Self::FollowPaths,
@@ -142,12 +142,12 @@ impl ModuleSet for NavigationSet {
 
     fn place(self) -> SetPlace {
         match self {
-            Self::TrackStatics => SetPlace::at(UnitsSet::Begin),
-            Self::FollowPaths => SetPlace::at(ActionsSet::Chase),
-            Self::Move => SetPlace::stage(SimSet::Move),
-            Self::Collide => SetPlace::stage(SimSet::Collide),
-            Self::Bounds => SetPlace::gap(SimEdge::After(SimSet::Collide)),
-            Self::TrackEnd => SetPlace::gap(SimEdge::After(SimSet::Vision)),
+            Self::TrackStatics => SetPlace::at(UnitsSystems::Begin),
+            Self::FollowPaths => SetPlace::at(ActionsSystems::Chase),
+            Self::Move => SetPlace::stage(SimSystems::Move),
+            Self::Collide => SetPlace::stage(SimSystems::Collide),
+            Self::Bounds => SetPlace::gap(SimEdgeSystems::After(SimSystems::Collide)),
+            Self::TrackEnd => SetPlace::gap(SimEdgeSystems::After(SimSystems::Vision)),
         }
     }
 }
@@ -161,7 +161,7 @@ impl Module for Navigation {
     const CAPABILITY: Option<Capability> = Some(Capability::Navigation);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
-    type Set = NavigationSet;
+    type Systems = NavigationSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<ModeNavigationData>();
@@ -210,18 +210,18 @@ impl Module for Navigation {
     /// routes to their destinations, straight lines until the map gives a pathing grid, then the
     /// forced moves move theirs; in Collide, overlapping living bodies part; after Collide, each
     /// unit that walks stands within the bounds again.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.add(
-            NavigationSet::TrackStatics,
+            NavigationSystems::TrackStatics,
             StaticTracking::track_static_bodies,
         );
         cx.by_role(
-            NavigationSet::FollowPaths,
+            NavigationSystems::FollowPaths,
             PathFollowing::follow_paths::<ServerForm>,
             PathFollowing::follow_paths::<ClientForm>,
         );
         cx.add(
-            NavigationSet::Move,
+            NavigationSystems::Move,
             (
                 Walking::forget_dead,
                 Routing::route_units,
@@ -233,11 +233,14 @@ impl Module for Navigation {
                 .chain(),
         );
         cx.add(
-            NavigationSet::Collide,
+            NavigationSystems::Collide,
             (StaticTracking::track_static_bodies, Walking::collide).chain(),
         );
-        cx.add(NavigationSet::Bounds, Walking::keep_in_bounds);
-        cx.add(NavigationSet::TrackEnd, StaticTracking::track_static_bodies);
+        cx.add(NavigationSystems::Bounds, Walking::keep_in_bounds);
+        cx.add(
+            NavigationSystems::TrackEnd,
+            StaticTracking::track_static_bodies,
+        );
     }
 }
 
@@ -308,7 +311,7 @@ pub mod internals {
     use bevy_ecs::bundle::{Bundle, NoBundleEffect};
     use bevy_ecs::world::World;
 
-    use campfire_declare::internals::BookLoad;
+    use campfire_declarations::internals::BookLoad;
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::{Num, Vec3};
     use campfire_sim::{SimWorld, StableId};

@@ -9,7 +9,7 @@ use bevy_ecs::query::{Allow, Changed, Or, QueryFilter};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut, SystemChangeTick, SystemParam};
 use bevy_ecs::world::World;
-use campfire_declare::Cache;
+use campfire_declarations::Cache;
 use campfire_math::Vec3;
 use campfire_sim::{Position, StableId, Unpredicted};
 

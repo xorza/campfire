@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_players::Player;
 use campfire_sim::SimComponent;
-use campfire_state_types::{Replication, SentOnChange};
+use campfire_states::{Replication, SentOnChange};
 use campfire_values::{ModifierId, Rank};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};

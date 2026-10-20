@@ -69,7 +69,7 @@ pub(crate) mod unit_models;
 /// the sim gives it; a unit in its attack's windup leans towards its target. Each unit's drawing is
 /// a tree under a root on the ground, which glides, and which the unit's despawn takes along.
 #[derive(Debug)]
-pub(crate) struct View;
+pub(crate) struct ViewPlugin;
 
 /// The systems that place the drawings, which the HUD and the pointer read after.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -191,7 +191,7 @@ type MovedShots<'w, 's> = Query<
     (With<Projectile>, Changed<Position>, Allow<Unpredicted>),
 >;
 
-impl Plugin for View {
+impl Plugin for ViewPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(EngineText::english());
         app.add_systems(Startup, Self::set_scene);
@@ -220,7 +220,7 @@ impl Plugin for View {
     }
 }
 
-impl View {
+impl ViewPlugin {
     /// Sets the background, the map's lights or one plain sun, the view's own ground over the
     /// map's bounds unless the map has a terrain, and the palette.
     fn set_scene(

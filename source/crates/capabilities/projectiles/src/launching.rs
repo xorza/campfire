@@ -1,6 +1,6 @@
 use bevy_ecs::system::{Query, Res, ResMut};
 use campfire_actions::{ActionTarget, ProjectileFlight, Shots, Targets};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_deliveries::{DeliverySpawner, NewDelivery};
 use campfire_math::Vec3;
 use campfire_sim::{EntityIndex, StableId};

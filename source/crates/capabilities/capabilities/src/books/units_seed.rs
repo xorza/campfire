@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{SectionReaders, UnitDefaults, UnitTypeData};
+use campfire_declarations::{SectionReaders, UnitDefaults, UnitTypeData};
 use serde::Deserializer;
 use serde::de::{DeserializeSeed, MapAccess, Visitor};
 

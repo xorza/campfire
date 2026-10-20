@@ -7,7 +7,7 @@ use campfire_common::{Tick, Ticks};
 use campfire_math::{Num, Rounding, Vec3};
 use campfire_script::LivingUnit;
 use campfire_sim::{SimComponent, StableId};
-use campfire_state_types::{Replication, SentPredicted};
+use campfire_states::{Replication, SentPredicted};
 use campfire_visibility::DataKind;
 
 use campfire_units::{Body, PoolCost, PoolPayer, PoolPurse, UnitEntity};

@@ -4,8 +4,8 @@
 use crate::frame_interpolate::FrameInterpolate;
 use crate::frame_interpolation_history::FrameInterpolationHistory;
 use crate::frame_interpolation_systems::FrameInterpolationSystems;
+use crate::frame_phase_systems::FramePhaseSystems;
 use crate::frame_source::{FrameSamples, FrameSamplesFn, FrameSource};
-use crate::frame_stage::FrameStage;
 use crate::history_component::HistoryComponent;
 use crate::interpolate::set_if_neq;
 use crate::interpolation_fn::InterpolationFn;
@@ -82,7 +82,7 @@ pub(crate) fn install_frame_history<C: HistoryComponent>(
         FixedPostUpdate,
         FrameInterpolationHistory::<C>::update
             .in_set(FrameInterpolationSystems::Update)
-            .in_set(FrameStage::Run),
+            .in_set(FramePhaseSystems::Run),
     );
     let sampler = FrameSampler::<C>::new(source.as_ref());
     let restore = move |timeline: Option<Res<'_, LocalTimeline>>,
@@ -149,7 +149,7 @@ pub(crate) fn install_frame_history<C: HistoryComponent>(
         RunFixedMainLoop,
         restore
             .in_set(FrameInterpolationSystems::Restore)
-            .in_set(FrameStage::Run),
+            .in_set(FramePhaseSystems::Run),
     );
 }
 
@@ -259,7 +259,7 @@ pub(crate) fn install_component_frame_interpolation<C: HistoryComponent>(
         PostUpdate,
         system
             .in_set(FrameInterpolationSystems::Interpolate)
-            .in_set(FrameStage::Run),
+            .in_set(FramePhaseSystems::Run),
     );
 }
 

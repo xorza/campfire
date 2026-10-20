@@ -112,7 +112,7 @@ impl StringTable {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// A label of a fixture CSF file, and its strings, each with the speech file of a `STRW`.
     pub(crate) type Label<'a> = (&'a str, &'a [(&'a str, Option<&'a str>)]);
 
@@ -159,7 +159,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::csf::string_table::internals::csf;
+    use crate::zero_hour::format::csf::string_table::samples::csf;
 
     #[test]
     fn a_label_takes_its_first_string_its_spaces_stripped_by_either_case() {

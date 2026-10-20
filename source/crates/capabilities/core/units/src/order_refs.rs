@@ -8,9 +8,9 @@ use serde::de::DeserializeOwned;
 
 use crate::ground_point::GroundPoint;
 
-/// What an order's action names a unit, a slot, a place and an item type by: its ids, `Ids`, as
+/// What an order's directive names a unit, a slot, a place and an item type by: its ids, `Ids`, as
 /// a command carries them, or another form while the order is not due, as a bot's script names
-/// them (04-capabilities/control.md, An action is generic over its references).
+/// them (04-capabilities/control.md, A directive is generic over its references).
 pub trait OrderRefs: Debug + Clone + Copy + PartialEq + Eq {
     type Unit: Debug + Clone + PartialEq + Eq;
     type Slot: Debug + Clone + PartialEq + Eq;

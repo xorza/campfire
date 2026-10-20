@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
-use campfire_state_types::{Replication, SentOnChange};
+use campfire_states::{Replication, SentOnChange};
 use campfire_stats::Level;
 use campfire_units::UnitEntity;
 use campfire_values::TrackId;

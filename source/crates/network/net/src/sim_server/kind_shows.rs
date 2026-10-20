@@ -11,7 +11,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, If, Query, Res, ResMut, SystemParam};
 use campfire_capabilities::Release;
-use campfire_declare::{EntityKind, KindAudience, KindVisitor};
+use campfire_declarations::{EntityKind, KindAudience, KindVisitor};
 use campfire_net_connection::NetworkTarget;
 use campfire_net_replication::{PredictionTarget, Replicate, Rooms};
 use campfire_sim::StableId;
@@ -87,10 +87,10 @@ pub(crate) struct KindShows<'a> {
 
 /// The set of every kind's show, in `FixedUpdate`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct Shows;
+pub(crate) struct ShowSystems;
 
 impl KindShows<'_> {
-    /// Adds into `app` each kind's show, in `Shows`, and for a kind its owner predicts, the
+    /// Adds into `app` each kind's show, in `ShowSystems`, and for a kind its owner predicts, the
     /// prediction of each seated link's entities.
     pub(crate) fn register(app: &mut App) {
         Release::kinds(&mut KindShows { app });
@@ -210,7 +210,7 @@ impl KindVisitor for KindShows<'_> {
         world.init_resource::<Unshown<K>>();
         self.app.add_observer(KindShows::listed::<K>);
         self.app
-            .add_systems(FixedUpdate, KindShows::show::<K>.in_set(Shows));
+            .add_systems(FixedUpdate, KindShows::show::<K>.in_set(ShowSystems));
         if K::OWNER_PREDICTS {
             self.app.add_observer(KindShows::predict_seated::<K>);
         }

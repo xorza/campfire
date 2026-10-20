@@ -70,11 +70,11 @@ impl SkirmishStart {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
-    use crate::zero_hour::format::ini::object_ini::internals::{
+    use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
+    use crate::zero_hour::format::ini::object_ini::samples::{
         DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS,
     };
-    use crate::zero_hour::format::ini::player_template_ini::internals::PLAYER_TEMPLATES;
+    use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
 
     #[test]
     fn a_skirmish_starts_with_its_factions_objects_and_offset() {

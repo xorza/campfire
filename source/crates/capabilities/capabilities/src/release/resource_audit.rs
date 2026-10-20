@@ -9,10 +9,10 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
-use campfire_declare::{
+use campfire_declarations::{
     Book, BuildFn, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind,
-    EntityParts, ExtendFn, Fact, KindSpawn, KindVisitor, Listed, ModuleSet, OneShot, Report, Role,
-    RuleFn, Scratch, Section, SpawnParts,
+    EntityParts, ExtendFn, Fact, KindSpawn, KindVisitor, Listed, ModuleSystems, OneShot, Report,
+    Role, RuleFn, Scratch, Section, SpawnParts,
 };
 use campfire_mode::ModeWorld;
 use campfire_script::{
@@ -23,7 +23,7 @@ use campfire_sim::{
     Breach, Capability, DueIndex, HostRule, OwnResources, Removed, SimComponent, SimResource,
     TimedProcess,
 };
-use campfire_state_types::{Replication, StateTypes};
+use campfire_states::{Replication, StateTypes};
 use campfire_units::EntityKinds;
 use campfire_values::EngineTag;
 
@@ -127,7 +127,7 @@ impl Declarations for DeclaredResources {
 
     fn listed<L: Listed>(&mut self) {}
 
-    fn sets<S: ModuleSet>(&mut self) {}
+    fn sets<S: ModuleSystems>(&mut self) {}
 
     fn scratch<R: Scratch>(&mut self) {
         self.ids.push(TypeId::of::<R>());

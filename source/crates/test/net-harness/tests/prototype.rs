@@ -22,7 +22,7 @@ use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_messages::MessageSender;
 use campfire_net_prediction::{PredictionSetup, RollbackMode};
 use campfire_net_replication::{Predicted, PredictionTarget, Replicate};
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_players::{PlayerResources, PlayersWorld, ResourcesData};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputError, SessionLog, Signature};
@@ -32,15 +32,15 @@ use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredict
 use campfire_stats::{Modifiers, Stats, StatsWorld};
 use campfire_test_packages::TestMode;
 use campfire_units::{
-    DashTo, Dead, Destination, ForcedMove, GroundPoint, Life, MapBook, MoveStep, Owner, PoolId,
-    SyncAll, SyncNone, Units, UnitsWorld,
+    AudienceAll, AudienceNone, DashTo, Dead, Destination, ForcedMove, GroundPoint, Life, MapBook,
+    MoveStep, Owner, PoolId, Units, UnitsWorld,
 };
 use campfire_values::{Names, PackageIndex, Relation, Relations, ResourceId, Team};
 
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 120;
-const fn move_to(x: i64, z: i64) -> OrdersAction {
-    OrdersAction::Move {
+const fn move_to(x: i64, z: i64) -> OrdersDirective {
+    OrdersDirective::Move {
         to: GroundPoint {
             x: Num::int(x),
             z: Num::int(z),
@@ -340,7 +340,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
     let slots = |app: &App| app.world().get::<ActionProgress>(hero_entity(app)).copied();
     let attacking = |app: &App| slots(app)?.attacking();
     let start = hero(local.server());
-    local.order(0, OrdersAction::Attack { target: tower });
+    local.order(0, OrdersDirective::Attack { target: tower });
     for _ in 0..lead(&local) + 2 {
         local.step();
         assert_eq!(attacking(local.server()), None);
@@ -359,7 +359,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
         local.step();
         frames += 1;
     }
-    local.order(0, OrdersAction::Attack { target: tower });
+    local.order(0, OrdersDirective::Attack { target: tower });
     // The client starts the walker's attack as the server does: the first windup each shows has
     // the same target, start and cooldowns.
     let mut windups = [None, None];
@@ -579,19 +579,19 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
         assert_eq!(gold_of(local.client(client), own), Some(Some(200)));
         assert_eq!(gold_of(local.client(client), 1 - own), Some(None));
     }
-    // The mode's state that syncs to all reaches each client, and the rest none.
+    // The mode's state that goes to all reaches each client, and the rest none.
     for app in [local.server(), local.client(0), local.client(1)] {
         let world = app.world();
         let entity = world.match_entity().unwrap();
         let all = world
-            .get::<ModeState<SyncAll>>(entity)
+            .get::<ModeState<AudienceAll>>(entity)
             .map(ModeState::values);
         assert_eq!(all, Some(&[StateValue::Int(-1)][..]));
     }
     let none = |app: &App| {
         let world = app.world();
         world
-            .get::<ModeState<SyncNone>>(world.match_entity().unwrap())
+            .get::<ModeState<AudienceNone>>(world.match_entity().unwrap())
             .is_some()
     };
     assert!(none(local.server()) && !none(local.client(0)) && !none(local.client(1)));

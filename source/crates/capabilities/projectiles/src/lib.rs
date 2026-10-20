@@ -13,11 +13,11 @@
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionRange, ActionTarget, ActionsSet, Aim, Delivery, DeliveryShape, Flights,
+    ActionBook, ActionRange, ActionTarget, ActionsSystems, Aim, Delivery, DeliveryShape, Flights,
     ProjectileFlight,
 };
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_declarations::{ByType, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
@@ -65,7 +65,7 @@ pub struct Projectiles;
 
 /// The steps of `projectiles`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum ProjectilesSet {
+pub enum ProjectilesSystems {
     /// Projectiles fly a step, and their hits and ends run their actions' hooks.
     Fly,
     /// The ranged attacks and the actions that fire take their shots.
@@ -74,14 +74,14 @@ pub enum ProjectilesSet {
     Launch,
 }
 
-impl ModuleSet for ProjectilesSet {
+impl ModuleSystems for ProjectilesSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::at(match self {
-            Self::Fly => ActionsSet::Travel,
-            Self::TakeShots => ActionsSet::Fire,
-            Self::Launch => ActionsSet::Launch,
+            Self::Fly => ActionsSystems::Travel,
+            Self::TakeShots => ActionsSystems::Fire,
+            Self::Launch => ActionsSystems::Launch,
         })
     }
 }
@@ -90,7 +90,7 @@ impl Module for Projectiles {
     const CAPABILITY: Option<Capability> = Some(Capability::Projectiles);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
-    type Set = ProjectilesSet;
+    type Systems = ProjectilesSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<ProjectileData>();
@@ -116,10 +116,13 @@ impl Module for Projectiles {
     /// and casts resolve, the tick's launches take off, and fly from the next tick. A teleport
     /// makes each projectile that homes on its unit lose it. A predicting client predicts no
     /// delivery, so it takes no shot, launches none and flies none.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
-        cx.server(ProjectilesSet::TakeShots, Launching::take_shots);
-        cx.server(ProjectilesSet::Launch, Launching::launch);
-        cx.server(ProjectilesSet::Fly, UnitGrid::before_reading(Flying::fly));
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
+        cx.server(ProjectilesSystems::TakeShots, Launching::take_shots);
+        cx.server(ProjectilesSystems::Launch, Launching::launch);
+        cx.server(
+            ProjectilesSystems::Fly,
+            UnitGrid::before_reading(Flying::fly),
+        );
     }
 }
 
@@ -279,7 +282,7 @@ impl Projectiles {
 pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::ShotDamage;
-    use campfire_declare::ByType;
+    use campfire_declarations::ByType;
     use campfire_math::{Num, Vec3};
     use campfire_sim::{EntityIndex, MatchRate, Position, StableId};
     use campfire_units::{MapBook, UnitTypeBook, Units};

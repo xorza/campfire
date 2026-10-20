@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
-use campfire_declare::PerType;
+use campfire_declarations::PerType;
 use campfire_math::{Num, Rounding};
 use campfire_script::UnknownName;
 use campfire_values::{Article, DamageKind, NameId, NameKind, NameScope, Named, Names};

@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use campfire_values::MessageId;
 use campfire_values::PackagePath;
+use campfire_values::TextId;
 use fluent_bundle::FluentResource;
 use fluent_syntax::ast::Entry;
 
@@ -16,10 +16,10 @@ pub(crate) struct LocaleFile {
     pub(crate) path: PackagePath,
     pub(crate) resource: Arc<FluentResource>,
     /// Every message it defines.
-    messages: BTreeSet<MessageId>,
+    messages: BTreeSet<TextId>,
     /// The messages it gives a value, which data may name; a message of attributes alone has
     /// none.
-    values: BTreeSet<MessageId>,
+    values: BTreeSet<TextId>,
 }
 
 impl LocaleFile {
@@ -42,7 +42,7 @@ impl LocaleFile {
         let mut messages = BTreeSet::new();
         let mut values = BTreeSet::new();
         let mut terms = BTreeSet::new();
-        let id = |name| MessageId::new(name).expect("Fluent's identifiers are message ids");
+        let id = |name| TextId::new(name).expect("Fluent's identifiers are message ids");
         for entry in resource.entries() {
             match entry {
                 Entry::Message(message) => {
@@ -81,7 +81,7 @@ impl LocaleFile {
 
     /// A message it defines that `own` does not, if it has one: a translation of `own` names
     /// none.
-    pub(crate) fn stray(&self, own: Option<&Self>) -> Option<&MessageId> {
+    pub(crate) fn stray(&self, own: Option<&Self>) -> Option<&TextId> {
         self.messages
             .iter()
             .find(|id| own.is_none_or(|own| !own.messages.contains(*id)))

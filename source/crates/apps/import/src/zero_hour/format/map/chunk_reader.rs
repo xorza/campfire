@@ -99,7 +99,7 @@ impl RawChunk<'_> {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     use std::collections::BTreeMap;
 
     /// A map file built by hand, as the game's `DataChunkOutput` writes one: each name it uses

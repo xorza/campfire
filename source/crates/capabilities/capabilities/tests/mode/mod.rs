@@ -20,8 +20,8 @@ use campfire_combat::{
     PassEntry, RecentAttackers, Respawn,
 };
 use campfire_common::{DeclaredName, Seat, Ticks};
-use campfire_declare::internals::BookLoad;
-use campfire_declare::{ByType, Sections};
+use campfire_declarations::internals::BookLoad;
+use campfire_declarations::{ByType, Sections};
 use campfire_geometry::{Bounds, Grid, Metric};
 use campfire_items::Inventory;
 use campfire_math::{Num, Vec3};
@@ -43,9 +43,9 @@ use campfire_progression::{
 use campfire_script::FailureKind;
 use campfire_script::MatchNames;
 use campfire_script::{
-    ApiError, CallError, ListPlace, ModeScripts, ParamProblem, Pool, ScriptBudgets, ScriptFailures,
-    ScriptId, ScriptLimits, ScriptPools, ScriptRole, StateDecl, StateDefault, StateType,
-    StateValue, SyncTo, SyncedStateDecl,
+    ApiError, Audience, CallError, ListPlace, ModeScripts, ParamProblem, Pool, ScriptBudgets,
+    ScriptFailures, ScriptId, ScriptLimits, ScriptPools, ScriptRole, StateDecl, StateDefault,
+    StateFieldDecl, StateType, StateValue,
 };
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, MatchRate, SeatEvent, SeatEventKind, SimComponent,
@@ -57,14 +57,14 @@ use campfire_stats::{
     StatShare, Stats, TypePassive, UnitStats,
 };
 use campfire_units::{
-    Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, Life, MapBook, MapPoint,
-    MetricData, ModeTagsData, MoveStep, Owner, PoolId, SyncAll, SyncNone, UnitTypeCore, Units,
-    UnitsWorld,
+    AudienceAll, AudienceNone, Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer,
+    Life, MapBook, MapPoint, MetricData, ModeTagsData, MoveStep, Owner, PoolId, UnitTypeCore,
+    Units, UnitsWorld,
 };
 use campfire_values::{
-    ActionId, DamageKind, EngineEnum, FilterData, MessageId, ModifierId, Names, Number,
-    PackageIndex, ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar, Stat,
-    Team, TrackId, TypeScope, UnitTags, UnitType,
+    ActionId, DamageKind, EngineEnum, FilterData, ModifierId, Names, Number, PackageIndex,
+    ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar, Stat, Team, TextId,
+    TrackId, TypeScope, UnitTags, UnitType,
 };
 use campfire_visibility::ModeVisibility;
 use campfire_vision::{GridData, VisionBook};
@@ -271,15 +271,15 @@ fn field(kind: StateType, default: Option<StateDefault>) -> StateDecl {
 /// The grunt's core fields: its tag, and its script state, `hits` of 2, which only its owner
 /// receives, and `mark`, a text of none, which every client that sees it receives.
 fn grunt_data() -> UnitTypeCore {
-    let decl = |kind, default, sync| SyncedStateDecl {
+    let decl = |kind, default, audience| StateFieldDecl {
         decl: field(kind, default),
-        sync,
+        audience,
     };
-    let hits = decl(StateType::Int, Some(StateDefault::Int(2)), SyncTo::Owner);
+    let hits = decl(StateType::Int, Some(StateDefault::Int(2)), Audience::Owner);
     UnitTypeCore {
         state: [
             ("hits", hits),
-            ("mark", decl(StateType::String, None, SyncTo::All)),
+            ("mark", decl(StateType::String, None, Audience::All)),
         ]
         .map(|(name, decl)| (DeclaredName::new(name).unwrap(), decl))
         .into(),
@@ -497,7 +497,7 @@ fn choices() -> BTreeMap<DeclaredName, ChoiceData> {
     ]
     .map(|(name, offers, unique, count, slot)| {
         let choice = ChoiceData {
-            name: MessageId::new(name).unwrap(),
+            name: TextId::new(name).unwrap(),
             offers,
             unique,
             count: NonZeroU8::new(count).unwrap(),
@@ -517,7 +517,7 @@ fn resource(name: &str) -> Option<ResourceId> {
 }
 
 /// The mode's state fields: `kind` and `seen` kept on the server, every other sent to all.
-fn mode_state() -> BTreeMap<DeclaredName, SyncedStateDecl> {
+fn mode_state() -> BTreeMap<DeclaredName, StateFieldDecl> {
     [
         (
             "phase",
@@ -539,14 +539,14 @@ fn mode_state() -> BTreeMap<DeclaredName, SyncedStateDecl> {
         ("kind", field(StateType::String, None)),
     ]
     .map(|(name, decl)| {
-        let sync = if matches!(name, "kind" | "seen") {
-            SyncTo::None
+        let audience = if matches!(name, "kind" | "seen") {
+            Audience::None
         } else {
-            SyncTo::All
+            Audience::All
         };
         (
             DeclaredName::new(name).unwrap(),
-            SyncedStateDecl { decl, sync },
+            StateFieldDecl { decl, audience },
         )
     })
     .into()
@@ -562,7 +562,7 @@ fn mode_files() -> ModeFiles {
     ModeFiles {
         picks: OptionPicks::defaults(&options),
         data: ModeData {
-            name: MessageId::new("mode").unwrap(),
+            name: TextId::new("mode").unwrap(),
             teams: BTreeMap::new(),
             choices: choices(),
             inputs: [
@@ -585,13 +585,13 @@ fn mode_files() -> ModeFiles {
             state_version: None,
             state: mode_state(),
             player_state: [
-                ("kills = { type = \"int\", sync = \"owner\" }"),
+                ("kills = { type = \"int\", audience = \"owner\" }"),
                 ("note = { type = \"string\" }"),
-                ("title = { type = \"enum\", values = [\"rookie\", \"veteran\"], sync = \"all\" }"),
+                ("title = { type = \"enum\", values = [\"rookie\", \"veteran\"], audience = \"all\" }"),
             ]
             .into_iter()
             .flat_map(|field| {
-                Toml::parse::<BTreeMap<DeclaredName, SyncedStateDecl>>(field).unwrap()
+                Toml::parse::<BTreeMap<DeclaredName, StateFieldDecl>>(field).unwrap()
             })
             .collect(),
             params: [

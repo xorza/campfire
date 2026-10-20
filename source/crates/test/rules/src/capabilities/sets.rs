@@ -25,15 +25,15 @@ fn a_module_names_another_modules_sets_only_where_its_sets_run() {
     let sources = capability_sources();
     let mut sets = Vec::new();
     for NamedCode { path, code } in &sources {
-        for (at, _) in code.match_indices("impl ModuleSet for ") {
-            let rest = &code[at + "impl ModuleSet for ".len()..];
+        for (at, _) in code.match_indices("impl ModuleSystems for ") {
+            let rest = &code[at + "impl ModuleSystems for ".len()..];
             let end = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap();
             sets.push((module_of(path), rest[..end].to_owned()));
         }
     }
     assert!(
         sets.iter()
-            .any(|(module, set)| module == "actions" && set == "ActionsSet")
+            .any(|(module, set)| module == "actions" && set == "ActionsSystems")
     );
     let mut named = Vec::new();
     let mut placed = Vec::new();
@@ -54,10 +54,10 @@ fn a_module_names_another_modules_sets_only_where_its_sets_run() {
         let words =
             used.flat_map(|line| line.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')));
         for word in words {
-            // `NoSet`, of a module that adds no system, is no module's.
+            // `NoSystems`, of a module that adds no system, is no module's.
             let other = sets
                 .iter()
-                .find(|(home, set)| set == word && *home != module && home != "declare");
+                .find(|(home, set)| set == word && *home != module && home != "declarations");
             if let Some((home, set)) = other {
                 named.push(format!("{path} names {home}'s {set}"));
             }

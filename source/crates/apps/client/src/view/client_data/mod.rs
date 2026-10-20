@@ -61,11 +61,11 @@ pub(crate) struct PackageClient {
 /// view, the camera, the models, the terrain and the pointer read, of `ClientPackages`, and of
 /// the `InputMap`, the mode's own package's `client/keys.toml`.
 #[derive(Debug)]
-pub(crate) struct ClientFiles {
+pub(crate) struct ClientFilesPlugin {
     pub(crate) packages: Arc<ModePackages>,
 }
 
-impl Plugin for ClientFiles {
+impl Plugin for ClientFilesPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(ClientData::read(&self.packages));
         app.insert_resource(ClientPackages::of(&self.packages));

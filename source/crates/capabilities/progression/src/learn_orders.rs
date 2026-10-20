@@ -7,7 +7,7 @@ use campfire_units::Owner;
 
 use crate::learning::Learning;
 use crate::points::Points;
-use crate::progression_action::ProgressionAction;
+use crate::progression_directive::ProgressionDirective;
 
 /// The tick's orders that learn the next rank of a slot's action.
 #[derive(Debug)]
@@ -20,13 +20,13 @@ impl LearnOrders {
     /// the one the slot's kind gives that rank. It changes nothing under way. An order that fails a
     /// check is dropped: a client can send anything.
     pub(super) fn learn_ranks(
-        mut orders: TickCommands<'_, '_, ProgressionAction>,
+        mut orders: TickCommands<'_, '_, ProgressionDirective>,
         index: Res<'_, EntityIndex>,
         learning: Learning<'_>,
         mut units: Query<'_, '_, (&Owner, &mut ActionSlots, &mut Points, &Level)>,
     ) {
         orders.for_each(|order| {
-            let ProgressionAction::Learn { slot } = order.action;
+            let ProgressionDirective::Learn { slot } = order.directive;
             for &unit in order.units {
                 let Some(Ok((owner, mut slots, mut points, &level))) =
                     index.get(unit).map(|entity| units.get_mut(entity))

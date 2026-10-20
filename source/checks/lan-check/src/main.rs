@@ -66,21 +66,22 @@ mod verdict;
 /// the build that ships, which `ship` lints, has no `internals`.
 const PACKAGES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages");
 /// The test lane mode, a hero a side, 30 ticks a second, within the workspace's packages.
-const MODE: &str = "test/modes/lane";
+const MODE: &str = "test/engine/modes/lane";
 /// The packages the verifier holds, the lane mode's among them.
-const PACKAGES: &str = "test";
+const PACKAGES: &str = "test/engine";
 /// Each bot's orders: two steps near its spawn and a cast of its first ability, a third step at
 /// tick 300, after the server's restart, then it leaves after tick 330, 11 s into the match: a
-/// client notices a server that stopped by QUIC's idle timeout, 5 s, and comes back to it before
-/// its script ends. The walker's cast hits whoever stands within 2 m; the runner's names no
-/// target, which its ability needs, so the sim refuses it, but the order is an input all the same.
+/// client notices a server that stopped by its packet session's idle timeout, 5 s, and comes back
+/// to it before its script ends. The walker's cast hits whoever stands within 2 m; the runner's
+/// names no target, which its ability needs, so the sim refuses it, but the order is an input all
+/// the same.
 const SCRIPTS: [&str; 2] = [
-    "end = 330\n[[order]]\ntick = 20\naction.orders.move.to = [2, 0]\n[[order]]\ntick = 50\naction.orders.move.to = [-1, 2]\n\
-     [[order]]\ntick = 70\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
-     [[order]]\ntick = 300\naction.orders.move.to = [0, 1]\n",
-    "end = 330\n[[order]]\ntick = 20\naction.orders.move.to = [-2, 0]\n[[order]]\ntick = 50\naction.orders.move.to = [1, -2]\n\
-     [[order]]\ntick = 70\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
-     [[order]]\ntick = 300\naction.orders.move.to = [0, -1]\n",
+    "end = 330\n[[order]]\ntick = 20\ndirective.orders.move.to = [2, 0]\n[[order]]\ntick = 50\ndirective.orders.move.to = [-1, 2]\n\
+     [[order]]\ntick = 70\ndirective.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 300\ndirective.orders.move.to = [0, 1]\n",
+    "end = 330\n[[order]]\ntick = 20\ndirective.orders.move.to = [-2, 0]\n[[order]]\ntick = 50\ndirective.orders.move.to = [1, -2]\n\
+     [[order]]\ntick = 70\ndirective.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 300\ndirective.orders.move.to = [0, -1]\n",
 ];
 
 fn main() -> ExitCode {

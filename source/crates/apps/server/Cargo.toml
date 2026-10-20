@@ -10,7 +10,7 @@ kind = "app"
 [dependencies]
 campfire-bots.workspace = true
 campfire-common.workspace = true
-campfire-declare.workspace = true
+campfire-declarations.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-mode.workspace = true
 campfire-net = { workspace = true, features = ["udp"] }

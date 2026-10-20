@@ -67,10 +67,10 @@ impl W3dFile {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     use super::*;
-    use crate::zero_hour::format::w3d::w3d_chunks::internals::chunk;
-    use crate::zero_hour::format::w3d::w3d_fields::internals::name;
+    use crate::zero_hour::format::w3d::w3d_chunks::samples::chunk;
+    use crate::zero_hour::format::w3d::w3d_fields::samples::name;
 
     /// A collision box of the full name `full`, its color, center and extent zero.
     pub(crate) fn box_chunk(full: &str) -> Vec<u8> {
@@ -92,8 +92,8 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::w3d::w3d_chunks::internals::chunk;
-    use crate::zero_hour::format::w3d::w3d_file::internals::{box_chunk, emitter_chunk};
+    use crate::zero_hour::format::w3d::w3d_chunks::samples::chunk;
+    use crate::zero_hour::format::w3d::w3d_file::samples::{box_chunk, emitter_chunk};
 
     #[test]
     fn a_file_keeps_the_chunks_a_model_reads_and_refuses_one_past_its_end() {

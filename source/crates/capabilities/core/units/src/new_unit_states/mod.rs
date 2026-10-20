@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Role, Scratch};
+use campfire_declarations::{Role, Scratch};
 use campfire_sim::StableId;
 
 use crate::state_write::StateWrite;

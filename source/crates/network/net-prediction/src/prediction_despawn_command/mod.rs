@@ -4,7 +4,7 @@ use crate::prediction_gate;
 use crate::prediction_setup::PredictionSetup;
 use bevy_ecs::prelude::*;
 use campfire_net_connection::NetworkingState;
-use campfire_net_despawn::DespawnReplicated;
+use campfire_net_despawns::DespawnReplicated;
 use campfire_net_replication::PreSpawned;
 use campfire_net_replication::Predicted;
 use campfire_net_timeline::LocalTimeline;

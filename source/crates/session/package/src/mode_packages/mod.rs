@@ -3,7 +3,7 @@ use std::iter;
 use campfire_capabilities::{BookInput, Books, PackageContent, PackageScript, Release};
 use campfire_codec::TomlTable;
 use campfire_common::{MapName, PackageFingerprint};
-use campfire_declare::{ScriptAt, SourceKind, SourcePackage};
+use campfire_declarations::{ScriptAt, SourceKind, SourcePackage};
 use campfire_mode::{MapData, ModeData};
 use campfire_script::{ModeScripts, ScriptApi, ScriptHost, ScriptId, ScriptUses};
 use campfire_sim::{Capability, MatchRate};
@@ -206,7 +206,7 @@ impl ModePackages {
                     }
                 })
                 .collect(),
-            rate,
+            tick_rate: rate,
         }
     }
 

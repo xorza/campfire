@@ -5,14 +5,14 @@ use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_common::EnumAll;
-use campfire_declare::{
-    ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, SetPlace, StateFields,
+use campfire_declarations::{
+    ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSystems, SetPlace, StateFields,
 };
 use campfire_script::{
     CoreApi, Ctx, Listing, MatchNames, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures,
     ScriptHost, ScriptId, ScriptList, ScriptPrints, StatePlace, StateSchema, View, ViewApi,
 };
-use campfire_sim::{Breach, Capability, MatchRate, Position, SimEdge, SimSet};
+use campfire_sim::{Breach, Capability, MatchRate, Position, SimEdgeSystems, SimSystems};
 use campfire_values::{Relations, Team, UnitTags, UnitType};
 
 use crate::arrived_short::ArrivedShort;
@@ -43,7 +43,9 @@ use crate::unit_entity::UnitEntity;
 use crate::unit_entity::body_unit::BodyUnit;
 use crate::unit_entity::delivery_entity::DeliveryEntity;
 use crate::unit_grid::{GridUnits, UnitGrid};
-use crate::unit_state::{StateSync, SyncAll, SyncCall, SyncNone, SyncOwner, SyncTeam, UnitState};
+use crate::unit_state::{
+    AudienceAll, AudienceCall, AudienceNone, AudienceOwner, AudienceTeam, StateAudience, UnitState,
+};
 use crate::unit_state_book::UnitStateBook;
 use crate::unit_steps::UnitSteps;
 use crate::unit_ticks::UnitTicks;
@@ -59,7 +61,7 @@ use crate::view_reader::ViewReader;
 /// The core's steps, the first and the last of each tick, which every module's start and end of
 /// the tick sit at.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum UnitsSet {
+pub enum UnitsSystems {
     /// The tick begins: every pool starts full, and the last tick's failures clear.
     Begin,
     /// The tick ends: the units whose lifespan ended despawn.
@@ -69,14 +71,14 @@ pub enum UnitsSet {
     Close,
 }
 
-impl ModuleSet for UnitsSet {
+impl ModuleSystems for UnitsSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            Self::Begin => SetPlace::stage(SimSet::Inputs),
-            Self::End => SetPlace::stage(SimSet::Vision),
-            Self::Close => SetPlace::gap(SimEdge::After(SimSet::Vision)),
+            Self::Begin => SetPlace::stage(SimSystems::Inputs),
+            Self::End => SetPlace::stage(SimSystems::Vision),
+            Self::Close => SetPlace::gap(SimEdgeSystems::After(SimSystems::Vision)),
         }
     }
 }
@@ -91,7 +93,7 @@ impl Module for Units {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
-    type Set = UnitsSet;
+    type Systems = UnitsSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         // Before every book, which shares its names into it as it installs.
@@ -126,10 +128,10 @@ impl Module for Units {
         d.component::<Team>();
         d.component::<UnitEntity>();
         d.component::<UnitType>();
-        d.component::<UnitState<SyncNone>>();
-        d.component::<UnitState<SyncOwner>>();
-        d.component::<UnitState<SyncTeam>>();
-        d.component::<UnitState<SyncAll>>();
+        d.component::<UnitState<AudienceNone>>();
+        d.component::<UnitState<AudienceOwner>>();
+        d.component::<UnitState<AudienceTeam>>();
+        d.component::<UnitState<AudienceAll>>();
         d.derived::<DeliveryEntity>();
         d.derived::<UnitTags>();
         d.derived::<Avatar>();
@@ -193,11 +195,11 @@ impl Module for Units {
     /// Adds the core to a match: the grid of its body units, empty, which its readers build. With
     /// scripts, in Inputs, every pool starts full and the last tick's failures clear, and as the
     /// tick ends, its writes to units that never spawned drop.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
-        cx.scripted(UnitsSet::Begin, UnitTicks::begin_tick);
-        cx.scripted(UnitsSet::End, UnitTicks::end_lifespans);
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
+        cx.scripted(UnitsSystems::Begin, UnitTicks::begin_tick);
+        cx.scripted(UnitsSystems::End, UnitTicks::end_lifespans);
         cx.scripted(
-            UnitsSet::Close,
+            UnitsSystems::Close,
             (UnitTicks::drop_unspawned_states, UnitTicks::report_prints),
         );
     }
@@ -246,7 +248,7 @@ impl Units {
                 return false;
             };
             let states = |schema: &StateSchema| {
-                let holds = |place: &StatePlace| HoldsClass { world, entity }.on(place.sync);
+                let holds = |place: &StatePlace| HoldsClass { world, entity }.on(place.audience);
                 schema.places().iter().all(holds)
             };
             let schema = book.schema(unit_type);
@@ -309,10 +311,10 @@ struct HoldsClass<'w> {
     entity: Entity,
 }
 
-impl SyncCall for HoldsClass<'_> {
+impl AudienceCall for HoldsClass<'_> {
     type Output = bool;
 
-    fn call<S: StateSync>(self) -> bool {
+    fn call<S: StateAudience>(self) -> bool {
         self.world.entity(self.entity).contains::<UnitState<S>>()
     }
 }
@@ -324,8 +326,8 @@ pub(crate) mod internals {
     use bevy_ecs::change_detection::Mut;
     use bevy_ecs::world::World;
     use campfire_common::{DeclaredName, NamedEnum};
-    use campfire_declare::ByType;
-    use campfire_declare::internals::BookLoad;
+    use campfire_declarations::ByType;
+    use campfire_declarations::internals::BookLoad;
     use campfire_script::{
         CallError, Ctx, MatchNames, ScriptError, ScriptHost, ScriptId, ScriptValue,
     };

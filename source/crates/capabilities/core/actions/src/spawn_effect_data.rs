@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookError, Listed};
+use campfire_declarations::{BookError, Listed};
 use campfire_math::Num;
 use campfire_script::{ApiBuilder, CallError, Frame, View};
 use campfire_sim::Capability;

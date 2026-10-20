@@ -54,7 +54,7 @@ mod ring;
 /// selected and a wider one under the unit the own avatar attacks. It reads the sim's components
 /// and changes none, and keeps its own on its drawings.
 #[derive(Debug)]
-pub(crate) struct Hud;
+pub(crate) struct HudPlugin;
 
 /// Over a unit's drawing's top, the stand its gauges stand on, which turns to face the camera.
 #[derive(Component, Debug)]
@@ -314,7 +314,7 @@ const SELECTED_LIFT: f32 = 0.035;
 const TARGET_LIFT: f32 = 0.04;
 const TARGET_SCALE: f32 = 1.25;
 
-impl Plugin for Hud {
+impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::set_palette);
         app.add_systems(
@@ -336,7 +336,7 @@ impl Plugin for Hud {
     }
 }
 
-impl Hud {
+impl HudPlugin {
     fn set_palette(
         mut commands: Commands<'_, '_>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
@@ -862,7 +862,7 @@ mod tests {
 
     use super::*;
     use crate::test_app::client_app;
-    use crate::view::View;
+    use crate::view::ViewPlugin;
 
     #[test]
     fn a_ring_marks_each_drop_of_life_where_the_unit_is_drawn() {
@@ -882,7 +882,7 @@ mod tests {
         for name in ["first", "second"] {
             Actions::add(app.world_mut(), name, cast());
         }
-        app.add_plugins((View, Hud));
+        app.add_plugins((ViewPlugin, HudPlugin));
         app.update();
         assert!(app.world().contains_resource::<HudPalette>());
         // With no own avatar there is no target to mark: nothing wears the target's material.
@@ -978,7 +978,7 @@ mod tests {
     #[test]
     fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selection() {
         let mut app = client_app();
-        app.add_plugins((View, Hud));
+        app.add_plugins((ViewPlugin, HudPlugin));
         app.update();
         let mut ids = IdAllocator::default();
         let team = Team::new(0);
@@ -1050,7 +1050,7 @@ mod tests {
         // viewport, so the selection alone shows bars: the first's, then the second's.
         let mut app = client_app();
         app.init_resource::<HoverMap>();
-        app.add_systems(Update, Hud::show_selected_bars);
+        app.add_systems(Update, HudPlugin::show_selected_bars);
         let world = app.world_mut();
         world.spawn((Window::default(), PrimaryWindow));
         world.spawn(Camera3d::default());
@@ -1091,7 +1091,7 @@ mod tests {
         // the default view, 45° high, on a window 720 pixels high, 2 · 10 · tan 22.5° / 720 m. A
         // frame that changes neither turns it none, and a turn of its root turns it again.
         let mut app = App::new();
-        app.add_systems(Update, Hud::face_camera);
+        app.add_systems(Update, HudPlugin::face_camera);
         let facing = Quat::from_rotation_y(0.5) * Quat::from_rotation_x(FRAC_PI_2);
         let world = app.world_mut();
         world.spawn((

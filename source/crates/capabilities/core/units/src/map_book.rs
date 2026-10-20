@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Book, BookCx, BookError, BookPlace, Section, SectionTable, Sections};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section, SectionTable, Sections};
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_script::MatchNames;

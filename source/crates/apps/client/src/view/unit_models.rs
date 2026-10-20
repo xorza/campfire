@@ -49,7 +49,7 @@ use crate::view::unit_looks::{LookModel, LookNodes, UnitLooks};
 /// paint changes (02-engine-core.md, Material extras in a glTF extension;
 /// 02-engine-core.md, Team colors in the one material).
 #[derive(Debug)]
-pub(crate) struct UnitModels;
+pub(crate) struct UnitModelsPlugin;
 
 /// The root of a client object's drawing, which stands still where the map places it, of no unit.
 #[derive(Component, Debug)]
@@ -60,7 +60,7 @@ pub(crate) struct StillObject;
 #[derive(Debug, Default, Clone)]
 struct ExtrasHandler;
 
-impl Plugin for UnitModels {
+impl Plugin for UnitModelsPlugin {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "file_material.wgsl");
         app.add_plugins(MaterialPlugin::<FileMaterial>::default());
@@ -85,7 +85,7 @@ impl Plugin for UnitModels {
     }
 }
 
-impl UnitModels {
+impl UnitModelsPlugin {
     /// Loads every unit type's models, once the match's types are known.
     fn load_looks(
         origins: Res<'_, TypeOriginBook>,
@@ -434,7 +434,7 @@ mod tests {
         app.insert_resource(MatchColors::new(teams));
         app.add_systems(
             Update,
-            (UnitModels::follow_teams, UnitModels::repaint).chain(),
+            (UnitModelsPlugin::follow_teams, UnitModelsPlugin::repaint).chain(),
         );
         let world = app.world_mut();
         let unit = world.spawn(Team::new(0)).id();
@@ -585,7 +585,7 @@ mod tests {
             ..ClientData::of_looks([looks])
         };
         app.insert_resource(data);
-        app.add_systems(Startup, UnitModels::place_objects);
+        app.add_systems(Startup, UnitModelsPlugin::place_objects);
         app.update();
         let world = app.world_mut();
         let mut roots = world.query_filtered::<(&Transform, &Children), With<StillObject>>();

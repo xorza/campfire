@@ -16,7 +16,7 @@ use bevy::ui::{BackgroundColor, FlexDirection, JustifyContent, Node, PositionTyp
 use campfire_actions::{ActionSlots, SlotTimes, UseGroup};
 use campfire_capabilities::Order;
 use campfire_common::Tick;
-use campfire_items::{Inventory, ItemStack, ItemsAction, Shopping};
+use campfire_items::{Inventory, ItemStack, ItemsDirective, Shopping};
 use campfire_net::PendingOrders;
 use campfire_sim::{MatchRate, SimTick, Unpredicted};
 
@@ -31,7 +31,7 @@ use crate::view::ViewSystems;
 /// sells its item at the nearest shop unit, when it serves the avatar; a slot dragged onto
 /// another swaps them.
 #[derive(Debug)]
-pub(crate) struct InventoryBar;
+pub(crate) struct InventoryBarPlugin;
 
 /// A slot of the bar: the inventory slot it shows, from 0.
 #[derive(Component, Debug, Clone, Copy)]
@@ -50,14 +50,14 @@ type Carriers<'w, 's> = Query<
     Allow<Unpredicted>,
 >;
 
-impl Plugin for InventoryBar {
+impl Plugin for InventoryBarPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::spawn);
         app.add_systems(Update, Self::show.after(ViewSystems));
     }
 }
 
-impl InventoryBar {
+impl InventoryBarPlugin {
     fn spawn(input: Res<'_, InputMap>, mut commands: Commands<'_, '_>) {
         let bar = Node {
             position_type: PositionType::Absolute,
@@ -150,7 +150,7 @@ impl InventoryBar {
         let Some(shop) = shopping.nearest_for(avatar.id) else {
             return;
         };
-        orders.push(Order::one(avatar.id, ItemsAction::Sell { slot, shop }));
+        orders.push(Order::one(avatar.id, ItemsDirective::Sell { slot, shop }));
     }
 
     /// A slot dropped onto another swaps the two.
@@ -168,7 +168,7 @@ impl InventoryBar {
             return;
         };
         if from != to {
-            orders.push(Order::one(avatar.id, ItemsAction::Swap { from, to }));
+            orders.push(Order::one(avatar.id, ItemsDirective::Swap { from, to }));
         }
     }
 }
@@ -228,7 +228,7 @@ mod tests {
     fn the_bar_takes_no_conflicting_access() {
         // Bevy checks that a system's queries do not conflict as it initializes the system.
         let mut world = World::new();
-        let mut bar = IntoSystem::into_system(InventoryBar::show);
+        let mut bar = IntoSystem::into_system(InventoryBarPlugin::show);
         bar.initialize(&mut world);
     }
 

@@ -10,7 +10,7 @@ use campfire_actions::{
     SlotCommit, SlotTimes, StartFrom, Targets,
 };
 use campfire_common::Tick;
-use campfire_declare::{ByType, RoleForm};
+use campfire_declarations::{ByType, RoleForm};
 use campfire_deliveries::{AttackShot, Delivered, DeliveredPayload, DeliveryQueue};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_script::ScriptsWorld;

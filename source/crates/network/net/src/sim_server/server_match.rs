@@ -26,7 +26,7 @@ use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{ReplayWith, Replayed, RestoredSession, SessionFiles};
 use crate::sim_server::snapshot_dir::SnapshotDir;
-use crate::sim_server::{FrameStart, SimServer, replayed};
+use crate::sim_server::{FrameStart, SimServerPlugin, replayed};
 
 /// What a server's match runs with from the next fixed tick, new or restored, its session built:
 /// the offering its door offers, the journal the server watches and the snapshots' directory
@@ -171,7 +171,7 @@ impl ServerMatch {
                 run.insert(world);
                 // The stop may have come after the tick before this boundary, before the save it
                 // made due here began. The session may end there, and then logs nothing more.
-                SimServer::at_boundary(world);
+                SimServerPlugin::at_boundary(world);
                 let mut session = world.resource_mut::<Session>();
                 if session.log().result().is_none() {
                     for &seat in &players {

@@ -6,7 +6,7 @@ use campfire_actions::CostTarget;
 use campfire_common::Tick;
 use campfire_script::{Filter, MatchNames, TagNames};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{SimSet, SimTick, StableId};
+use campfire_sim::{SimSystems, SimTick, StableId};
 use campfire_stats::{CarriedMut, ModifierBook, ModifierData, Modifiers, Stats};
 use campfire_units::internals::TEST_PACKAGE;
 use campfire_units::{PoolId, StatId, StatusTags, TagBook, Units};
@@ -40,7 +40,7 @@ pub trait UnitsFixtures {
         world: &mut World,
         id: StableId,
         tick: u64,
-        stage: SimSet,
+        stage: SimSystems,
         blocks: &'static [Block],
     );
 
@@ -114,7 +114,7 @@ impl UnitsFixtures for Units {
         world: &mut World,
         id: StableId,
         tick: u64,
-        stage: SimSet,
+        stage: SimSystems,
         blocks: &'static [Block],
     ) {
         let block = move |world: &mut World| {

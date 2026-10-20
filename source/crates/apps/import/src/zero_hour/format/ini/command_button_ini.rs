@@ -63,7 +63,7 @@ impl CommandButtonIni {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// `Data\INI\CommandButton.ini` of the fixture install: the buttons of the fixture's command
     /// sets.
     pub(crate) const COMMAND_BUTTONS: &str = "CommandButton Command_ConstructAmericaDozer\r
@@ -115,7 +115,7 @@ End\r
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::ini::command_button_ini::internals::COMMAND_BUTTONS;
+    use crate::zero_hour::format::ini::command_button_ini::samples::COMMAND_BUTTONS;
 
     #[test]
     fn a_button_takes_its_command_object_and_label_a_later_file_over_the_fields_it_names() {

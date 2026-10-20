@@ -7,7 +7,7 @@ use campfire_actions::{
     ActionCheck, ActionKind, ActionProgress, ActionSlots, ByAction, Caster, Payer, ProgressIndexes,
     Purse, SlotCommit, SlotTimes, StartChecked,
 };
-use campfire_declare::{ByType, RoleForm};
+use campfire_declarations::{ByType, RoleForm};
 use campfire_math::{Num, Vec3};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_sim::{

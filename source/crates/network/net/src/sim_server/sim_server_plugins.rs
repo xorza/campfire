@@ -4,17 +4,17 @@ use bevy_app::{App, FixedUpdate, Plugin, PluginGroup, PluginGroupBuilder, TaskPo
 use bevy_ecs::schedule::{ScheduleLabel, Schedules, SingleThreadedExecutor};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
-use campfire_declare::CapabilitySet;
+use campfire_declarations::CapabilitySet;
 use campfire_schedule::StrictSchedule;
 use campfire_sim::MatchRate;
 
 use crate::hosting::Hosting;
-use crate::sim_server::SimServer;
+use crate::sim_server::SimServerPlugin;
 
 /// The plugins of every server's app, as Bevy's `MinimalPlugins` groups its own: the task pool,
-/// time and states, and `SimServer` at the session's rate `tick_hz`, whose components of the mode's
-/// `capabilities` alone replicate, hosted as `hosting` says, every schedule on one thread. Its app
-/// adds its run loop, where it runs one, its session and its transport.
+/// time and states, and `SimServerPlugin` at the session's rate `tick_hz`, whose components of the
+/// mode's `capabilities` alone replicate, hosted as `hosting` says, every schedule on one thread.
+/// Its app adds its run loop, where it runs one, its session and its transport.
 #[derive(Debug)]
 pub struct SimServerPlugins {
     pub tick_hz: NonZeroU32,
@@ -28,12 +28,12 @@ impl PluginGroup for SimServerPlugins {
             .add(TaskPoolPlugin::default())
             .add(TimePlugin)
             .add(StatesPlugin)
-            .add(SimServer {
-                rate: MatchRate::new(self.tick_hz).rate(),
+            .add(SimServerPlugin {
+                tick_rate: MatchRate::new(self.tick_hz).rate(),
                 capabilities: self.capabilities,
                 hosting: self.hosting,
             })
-            .add(OneThread)
+            .add(OneThreadPlugin)
     }
 }
 
@@ -45,9 +45,9 @@ impl PluginGroup for SimServerPlugins {
 /// sets (02-engine-core.md, Bevy). The schedules of the server's frame, `Update` and
 /// `FixedUpdate`, are strict, so the executor's own order decides nothing there.
 #[derive(Debug)]
-struct OneThread;
+struct OneThreadPlugin;
 
-impl Plugin for OneThread {
+impl Plugin for OneThreadPlugin {
     fn build(&self, _: &mut App) {}
 
     fn cleanup(&self, app: &mut App) {

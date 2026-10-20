@@ -20,8 +20,8 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 | `resources`, `supply`, `queues`, `player_modifiers` | A player's |
 | `match` | The match's public state: relations, its end, who is out of play |
 | `mode_state` | The state of the mode's own script |
-| `unit_state_owner`, `unit_state_team`, `unit_state_all` | A unit's script state of each `sync` but `none` |
-| `player_state_owner`, `player_state_team`, `player_state_all` | A player's script state of each `sync` but `none` |
+| `unit_state_owner`, `unit_state_team`, `unit_state_all` | A unit's script state of each `audience` but `none` |
+| `player_state_owner`, `player_state_team`, `player_state_all` | A player's script state of each `audience` but `none` |
 | `server` | What never leaves the server |
 
 - **One kind for each type.** A filter hides whole components, so a component of two kinds is split along them, as `Pools` into `Life` and `Pools`, and `ActionSlots` into `ActionSlots` and `SlotTimes`.
@@ -35,7 +35,7 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 | `unit`, `match` | everyone | nothing: vision decides who holds a unit |
 | `life`, `modifiers`, `player_modifiers`, `mode_state` | everyone | enemies, spectators |
 | `pools`, `cooldowns`, `progression`, `inventory`, `resources`, `supply`, `queues` | owner | allies, enemies, spectators |
-| `unit_state_*` | by `sync` | spectators |
+| `unit_state_*` | by `audience` | spectators |
 | `prediction` | owner | nothing |
 | `server` | none | nothing |
 

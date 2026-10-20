@@ -10,19 +10,19 @@ use crate::client_packages::ClientPackages;
 /// which the command panel shows: a train's or a build's, which the load requires; an action of
 /// no name shows its id.
 #[derive(Debug)]
-pub(crate) struct ActionNames;
+pub(crate) struct ActionNamesPlugin;
 
 /// Each action's name, by its id.
 #[derive(Resource, Debug)]
 pub(crate) struct ActionTexts(Vec<String>);
 
-impl Plugin for ActionNames {
+impl Plugin for ActionNamesPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::read);
     }
 }
 
-impl ActionNames {
+impl ActionNamesPlugin {
     /// Reads each action's name, as the action book numbers the actions.
     fn read(
         packages: Res<'_, ClientPackages>,

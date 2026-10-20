@@ -1,4 +1,4 @@
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::PackagePath;
 use serde::Deserialize;

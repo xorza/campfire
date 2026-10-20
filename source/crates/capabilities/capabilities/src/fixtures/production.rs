@@ -4,7 +4,7 @@ use campfire_common::Seat;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::Navigation;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_production::Production;
 use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
@@ -12,18 +12,22 @@ use campfire_units::{BodyForm, BuildTarget, GroundPoint, Owner, SeenBy};
 use campfire_values::{Team, TeamSet, UnitType};
 
 use crate::fixtures::navigation::NavigationFixtures;
-use crate::order::{Action, Order};
+use crate::order::{Directive, Order};
 
 /// The test fixtures of `Production` that need a crate above its own.
 pub trait ProductionFixtures {
     /// A unit of `unit_type` owned by `owner`, at the origin.
     fn owned(world: &mut World, unit_type: UnitType, owner: Seat) -> StableId;
 
-    /// Runs a tick in which player `seat` orders `action` to `id`.
-    fn tick_ordering(world: &mut World, seat: u32, id: StableId, action: impl Into<Action>);
+    /// Runs a tick in which player `seat` orders `directive` to `id`.
+    fn tick_ordering(world: &mut World, seat: u32, id: StableId, directive: impl Into<Directive>);
 
-    /// Runs a tick in which player `seat` gives `orders`, each an action to a unit, in order.
-    fn give_orders<A: Into<Action> + Copy>(world: &mut World, seat: u32, orders: &[(StableId, A)]);
+    /// Runs a tick in which player `seat` gives `orders`, each an directive to a unit, in order.
+    fn give_orders<A: Into<Directive> + Copy>(
+        world: &mut World,
+        seat: u32,
+        orders: &[(StableId, A)],
+    );
 
     /// Runs a tick in which player 0 orders `builder` to build its depot at (`x`, `z`).
     fn build_at(world: &mut World, builder: StableId, x: i64, z: i64);
@@ -51,14 +55,18 @@ impl ProductionFixtures for Production {
         )
     }
 
-    fn tick_ordering(world: &mut World, slot: u32, id: StableId, action: impl Into<Action>) {
-        Self::give_orders(world, slot, &[(id, action.into())]);
+    fn tick_ordering(world: &mut World, slot: u32, id: StableId, directive: impl Into<Directive>) {
+        Self::give_orders(world, slot, &[(id, directive.into())]);
     }
 
-    fn give_orders<A: Into<Action> + Copy>(world: &mut World, slot: u32, orders: &[(StableId, A)]) {
+    fn give_orders<A: Into<Directive> + Copy>(
+        world: &mut World,
+        slot: u32,
+        orders: &[(StableId, A)],
+    ) {
         let orders: Vec<Order> = orders
             .iter()
-            .map(|&(unit, action)| Order::one(unit, action))
+            .map(|&(unit, directive)| Order::one(unit, directive))
             .collect();
         let payload = Order::payload(&orders);
         world.step_with(&[(Seat::new(slot), &payload)]);
@@ -72,14 +80,19 @@ impl ProductionFixtures for Production {
             },
             angle: Num::ZERO,
         };
-        Self::tick_ordering(world, 0, builder, OrdersAction::Build { slot: 0, target });
+        Self::tick_ordering(
+            world,
+            0,
+            builder,
+            OrdersDirective::Build { slot: 0, target },
+        );
     }
 
     fn gather_at(world: &mut World, workers: &[StableId], node: StableId) {
         let target = ActionTarget::Unit(node);
-        let orders: Vec<(StableId, OrdersAction)> = workers
+        let orders: Vec<(StableId, OrdersDirective)> = workers
             .iter()
-            .map(|&unit| (unit, OrdersAction::Slot { slot: 0, target }))
+            .map(|&unit| (unit, OrdersDirective::Slot { slot: 0, target }))
             .collect();
         Self::give_orders(world, 0, &orders);
     }

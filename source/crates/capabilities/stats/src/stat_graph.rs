@@ -1,4 +1,4 @@
-use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, Fact, Section};
 use campfire_script::UnknownName;
 use campfire_units::StatId;
 use campfire_values::{NameId, Named, PackageIndex, Param, Stat};

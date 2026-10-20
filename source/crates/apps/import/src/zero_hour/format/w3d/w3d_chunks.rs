@@ -55,7 +55,7 @@ impl<'a> Iterator for W3dChunks<'a> {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// A chunk of `id` holding `body`, the top bit of its size set when `body` is chunks.
     pub(crate) fn chunk(id: u32, of_chunks: bool, body: &[u8]) -> Vec<u8> {
         let size = u32::try_from(body.len()).unwrap() | if of_chunks { 0x8000_0000 } else { 0 };
@@ -66,7 +66,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::w3d::w3d_chunks::internals::chunk;
+    use crate::zero_hour::format::w3d::w3d_chunks::samples::chunk;
 
     #[test]
     fn the_first_chunk_of_an_id_is_found_past_others_and_a_short_one_is_refused() {

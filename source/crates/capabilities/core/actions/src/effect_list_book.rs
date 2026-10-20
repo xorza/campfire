@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_declare::Book;
+use campfire_declarations::Book;
 use campfire_script::{CallError, Ctx, MatchNames};
 use campfire_values::{ActionId, NameId};
 

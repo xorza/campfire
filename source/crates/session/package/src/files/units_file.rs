@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use campfire_capabilities::Release;
 use campfire_codec::{TomlError, TomlValue};
 use campfire_common::DeclaredName;
-use campfire_declare::{UnitDefaults, UnitTypeData};
+use campfire_declarations::{UnitDefaults, UnitTypeData};
 use serde::Deserialize;
 
 /// The mode's `data/units.toml`: its unit types, by name, kept whole until the mode's defaults lie

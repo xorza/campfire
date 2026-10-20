@@ -12,9 +12,9 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_declarations::{ByType, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
 use campfire_sim::Capability;
-use campfire_units::{SeenBy, UnitEntity, UnitsSet};
+use campfire_units::{SeenBy, UnitEntity, UnitsSystems};
 
 use crate::vision_column::RowReads;
 
@@ -63,20 +63,20 @@ pub struct Vision;
 
 /// The steps of `vision`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum VisionSet {
+pub enum VisionSystems {
     /// A fog that holds no Vision stage's sight, a new or a restored match's, is filled.
     Refill,
     /// Each team marks what it may see.
     See,
 }
 
-impl ModuleSet for VisionSet {
+impl ModuleSystems for VisionSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            Self::Refill => SetPlace::at(UnitsSet::Begin),
-            Self::See => SetPlace::at(UnitsSet::End),
+            Self::Refill => SetPlace::at(UnitsSystems::Begin),
+            Self::See => SetPlace::at(UnitsSystems::End),
         }
     }
 }
@@ -85,7 +85,7 @@ impl Module for Vision {
     const CAPABILITY: Option<Capability> = Some(Capability::Vision);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
-    type Set = VisionSet;
+    type Systems = VisionSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<VisionData>();
@@ -110,15 +110,15 @@ impl Module for Vision {
     /// and each unit learns the teams that see it, with the reveals under way. A match of no grid
     /// sees nothing. What a team sees is the server's: a predicting client holds the units its
     /// team sees, as the server sends them, and reveals nothing.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         if !cx.book::<VisionBook>().is_some_and(VisionBook::has_grid) {
             return;
         }
         cx.server(
-            VisionSet::Refill,
+            VisionSystems::Refill,
             Seeing::refill.run_if(Seeing::is_unfilled),
         );
-        cx.server(VisionSet::See, Seeing::see);
+        cx.server(VisionSystems::See, Seeing::see);
     }
 }
 
@@ -126,7 +126,7 @@ impl Module for Vision {
 pub mod internals {
     use bevy_ecs::world::World;
 
-    use campfire_declare::internals::BookLoad;
+    use campfire_declarations::internals::BookLoad;
     use campfire_geometry::{Bounds, Grid, Polygon};
     use campfire_math::Num;
     use campfire_script::FailureKind;

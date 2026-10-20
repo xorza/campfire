@@ -3,7 +3,7 @@ use std::iter;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::DeferredWorld;
-use campfire_declare::Book;
+use campfire_declarations::Book;
 use campfire_script::MatchNames;
 use campfire_values::{NameId, Tag, TagProperties, TagSet, UnitTags, UnitType};
 

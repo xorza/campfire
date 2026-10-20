@@ -10,7 +10,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{ResMut, SystemParam};
 use bevy_ecs::world::World;
 
-use crate::sim_update::TickEnd;
+use crate::sim_update::TickEndSystems;
 
 /// The removals of `C` that a system has not read since its last run, of this tick and the one
 /// before, as the tick ages them (02-engine-core.md, A tick's removals are the tick's). Bevy's
@@ -43,7 +43,7 @@ impl<C: Component> Removals<'_, '_, C> {
                 });
             },
         );
-        schedule.add_systems(Self::age.in_set(TickEnd));
+        schedule.add_systems(Self::age.in_set(TickEndSystems));
     }
 
     fn age(mut removed: ResMut<'_, Messages<Removed<C>>>) {
@@ -77,7 +77,7 @@ mod tests {
 
     use super::*;
     use crate::match_rate::MatchRate;
-    use crate::sim_update::{SimSet, SimUpdate};
+    use crate::sim_update::{SimSystems, SimUpdate};
 
     #[derive(Component, Debug)]
     struct Mark;
@@ -116,7 +116,10 @@ mod tests {
         let mut schedule = SimUpdate::schedule();
         Removals::<Mark>::track(&mut world, &mut schedule);
         Removals::<Mark>::track(&mut world, &mut schedule);
-        schedule.add_systems((read.in_set(SimSet::Inputs), remove_one.in_set(SimSet::Mode)));
+        schedule.add_systems((
+            read.in_set(SimSystems::Inputs),
+            remove_one.in_set(SimSystems::Mode),
+        ));
         world.spawn_batch([Mark, Mark, Mark]);
         for _ in 0..4 {
             schedule.run(&mut world);

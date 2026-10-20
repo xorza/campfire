@@ -96,7 +96,7 @@ impl FlagSet for Surfaces {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// `Data\INI\Locomotor.ini` of the fixture install: a tank's treads, which drive on the
     /// ground and over rubble, and a jet's wings, which only fly.
     pub(crate) const LOCOMOTORS: &str = "Locomotor TankTreads\r
@@ -116,7 +116,7 @@ End\r
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
+    use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 
     #[test]
     fn a_locomotor_takes_its_surfaces_speed_and_turn_rate_a_later_file_last() {

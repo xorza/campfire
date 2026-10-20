@@ -154,10 +154,10 @@ fn a_mode_lists_scripts_in_order_and_only_its_own_ends_the_match() {
 fn a_pure_hook_in_two_scripts_of_a_mode_s_list_fails_the_second() {
     // The skirmish lists Zero Hour's script, its own, then two of the mode's that each weigh
     // damage: the second fails.
-    const MODE: &str = "test/modes/skirmish/data/mode.toml";
+    const MODE: &str = "test/engine/modes/skirmish/data/mode.toml";
     let weigh = Edit::Create("fn calc_damage(ctx, d) { d.amount }");
     let mut tree = PackageTree::of(TestMode::Skirmish);
-    tree.edit("test/modes/skirmish/scripts/a.rhai", weigh);
+    tree.edit("test/engine/modes/skirmish/scripts/a.rhai", weigh);
     let list = "scripts = [{ package = \"zero-hour\", path = \"scripts/mode.rhai\" }]";
     let one = "scripts = [{ package = \"zero-hour\", path = \"scripts/mode.rhai\", mode = true }, \
                \"scripts/a.rhai\"]";
@@ -166,7 +166,7 @@ fn a_pure_hook_in_two_scripts_of_a_mode_s_list_fails_the_second() {
     first.load().unwrap();
     let two = "scripts = [{ package = \"zero-hour\", path = \"scripts/mode.rhai\", mode = true }, \
                \"scripts/a.rhai\", \"scripts/b.rhai\"]";
-    tree.edit("test/modes/skirmish/scripts/b.rhai", weigh);
+    tree.edit("test/engine/modes/skirmish/scripts/b.rhai", weigh);
     tree.edit(MODE, Edit::Replace(list, two));
     let error = tree.load().unwrap_err();
     assert_eq!(
@@ -244,7 +244,7 @@ fn a_rules_package_s_data_lies_under_the_mode_s_and_its_needs_refuse_a_mode_that
 fn a_marker_param_the_rules_declare_loads_on_a_map_whose_markers_lack_it() {
     // Zero Hour's script reads each start marker's `name`, which its rules data declares: the
     // skirmish loads on a map whose markers hold no param, and fails with the declaration gone.
-    const MAP: &str = "test/modes/skirmish/map/field/map.toml";
+    const MAP: &str = "test/engine/modes/skirmish/map/field/map.toml";
     let params: Vec<String> = (1..=3)
         .map(|n| format!("params = {{ name = \"Player_{n}_Start\" }}\n"))
         .collect();

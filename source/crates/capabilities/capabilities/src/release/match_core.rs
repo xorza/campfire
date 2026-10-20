@@ -1,5 +1,5 @@
-use campfire_declare::{
-    Declarations, InstallCx, MatchFacts, Module, NamedMessages, NamedScripts, NoSet, StateFields,
+use campfire_declarations::{
+    Declarations, InstallCx, MatchFacts, Module, NamedScripts, NamedTexts, NoSystems, StateFields,
 };
 use campfire_sim::{Capability, SimWorldBuilder};
 
@@ -14,16 +14,16 @@ impl Module for MatchCore {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
-    type Set = NoSet;
+    type Systems = NoSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         SimWorldBuilder::own_resources(d);
         d.own::<MatchFacts>();
         d.fact::<NamedScripts>(|_| Ok(NamedScripts::default()));
-        d.fact::<NamedMessages>(|_| Ok(NamedMessages::default()));
+        d.fact::<NamedTexts>(|_| Ok(NamedTexts::default()));
         d.fact::<StateFields>(|_| Ok(StateFields::default()));
     }
 
     /// Adds no system: the sim's schedule holds its own.
-    fn install(_: &mut InstallCx<'_, Self::Set>) {}
+    fn install(_: &mut InstallCx<'_, Self::Systems>) {}
 }

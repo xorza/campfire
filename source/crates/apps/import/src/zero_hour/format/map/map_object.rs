@@ -192,8 +192,8 @@ impl MapObject {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
-    use crate::zero_hour::format::map::chunk_reader::internals::ChunkWriter;
+pub(crate) mod samples {
+    use crate::zero_hour::format::map::chunk_reader::samples::ChunkWriter;
 
     /// An object's body as the game writes it: its position, angle, flags and template, and a
     /// dictionary of its waypoint's id and name when it has one, beside an initial health.
@@ -235,8 +235,8 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::map::chunk_reader::internals::ChunkWriter;
-    use crate::zero_hour::format::map::map_object::internals::body;
+    use crate::zero_hour::format::map::chunk_reader::samples::ChunkWriter;
+    use crate::zero_hour::format::map::map_object::samples::body;
 
     #[test]
     fn an_angle_turns_to_degrees_as_the_game_normalizes_it() {

@@ -1,10 +1,10 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declare::{ByType, PerType};
+use campfire_declarations::{ByType, PerType};
 use campfire_math::Num;
 use campfire_sim::{MatchRate, SimComponent};
-use campfire_state_types::{Replication, SentOnChange};
+use campfire_states::{Replication, SentOnChange};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 

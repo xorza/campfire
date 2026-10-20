@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Book, ByType};
+use campfire_declarations::{Book, ByType};
 use campfire_script::MatchNames;
 use campfire_values::{ResourceId, UnitType};
 

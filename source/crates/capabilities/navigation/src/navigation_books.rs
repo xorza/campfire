@@ -1,4 +1,6 @@
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, NamesListError, Section, Sections};
+use campfire_declarations::{
+    BookCx, BookError, BookPlace, ByType, NamesListError, Section, Sections,
+};
 use campfire_geometry::{Grid, Polygon};
 use campfire_math::{Num, Vec3};
 use campfire_units::{

@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use bevy_ecs::world::World;
-use campfire_declare::Role;
+use campfire_declarations::Role;
 use campfire_script::Ctx;
 
 use crate::modifier_hooks::ModifierHooks;

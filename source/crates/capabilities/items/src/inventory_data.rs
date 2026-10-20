@@ -1,4 +1,4 @@
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use std::num::NonZeroU8;
 
 use campfire_common::DeclaredName;

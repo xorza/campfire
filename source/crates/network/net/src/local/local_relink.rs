@@ -14,7 +14,7 @@ use crate::local::local_server::Relinks;
 /// old server sent: the new server counts its ticks from 0 again, and a tick of the old server's
 /// left in that state would be taken for one of the new server's.
 #[derive(Debug)]
-pub struct LocalRelink {
+pub struct LocalRelinkPlugin {
     pub relinks: Relinks,
 }
 
@@ -22,14 +22,14 @@ pub struct LocalRelink {
 #[derive(Resource, Debug)]
 struct Relinked(Relinks);
 
-impl Plugin for LocalRelink {
+impl Plugin for LocalRelinkPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Relinked(self.relinks.clone()));
         app.add_systems(Update, Self::take);
     }
 }
 
-impl LocalRelink {
+impl LocalRelinkPlugin {
     fn take(
         relinked: Res<'_, Relinked>,
         client: Single<'_, '_, (Entity, Has<Connected>), With<Client>>,

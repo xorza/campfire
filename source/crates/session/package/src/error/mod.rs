@@ -131,7 +131,7 @@ impl LoadError {
 mod tests {
     use campfire_actions::ActionProblem;
     use campfire_common::DeclaredName;
-    use campfire_declare::{BookError, BookPlace, Problem};
+    use campfire_declarations::{BookError, BookPlace, Problem};
     use campfire_values::PackageIndex;
 
     use super::*;

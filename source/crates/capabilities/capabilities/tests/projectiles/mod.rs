@@ -5,7 +5,7 @@ use campfire_codec::{Binary, Toml};
 use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, OnDeath, ROLL_STREAM, RecentAttack, RecentAttackers};
 use campfire_common::{SegmentSeed, Tick};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;

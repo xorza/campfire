@@ -4,7 +4,7 @@
 use std::num::NonZeroU32;
 
 use campfire_actions::ActionSlots;
-use campfire_capabilities::{Action, Order};
+use campfire_capabilities::{Directive, Order};
 use campfire_combat::{Combat, DamageCause};
 use campfire_common::{StateHash, Tick};
 use campfire_harness::{ArchetypeWatch, FixedMatch, FixedSession, MatchRecord, MatchUnits};
@@ -45,9 +45,9 @@ impl Progress {
     }
 }
 
-/// Player 0 sends `action` for the walker, stamped for `tick`.
-fn order(fixed: &mut FixedMatch, walker: StableId, tick: u64, action: impl Into<Action>) {
-    let payload = Order::payload(&[Order::one(walker, action)]);
+/// Player 0 sends `directive` for the walker, stamped for `tick`.
+fn order(fixed: &mut FixedMatch, walker: StableId, tick: u64, directive: impl Into<Directive>) {
+    let payload = Order::payload(&[Order::one(walker, directive)]);
     fixed.send(0, Tick::new(tick), &payload);
 }
 
@@ -57,8 +57,8 @@ const MEET: u64 = 140;
 
 /// The mode's scripted match, which `source/.config/nextest.toml` exempts from the bound of 1 s.
 mod scripted_match {
-    use campfire_orders::OrdersAction;
-    use campfire_progression::ProgressionAction;
+    use campfire_orders::OrdersDirective;
+    use campfire_progression::ProgressionDirective;
 
     use super::*;
 
@@ -84,20 +84,20 @@ mod scripted_match {
                     &mut fixed,
                     walker,
                     tick,
-                    ProgressionAction::Learn { slot: 0 },
+                    ProgressionDirective::Learn { slot: 0 },
                 ),
                 MEET => order(
                     &mut fixed,
                     walker,
                     tick,
-                    OrdersAction::Attack { target: east[0] },
+                    OrdersDirective::Attack { target: east[0] },
                 ),
                 _ if next == 1 && felled[0] + 1 == tick => {
                     order(
                         &mut fixed,
                         walker,
                         tick,
-                        OrdersAction::Attack { target: east[1] },
+                        OrdersDirective::Attack { target: east[1] },
                     );
                 }
                 _ if next == 2 && felled[1] + 1 == tick => {
@@ -105,13 +105,13 @@ mod scripted_match {
                         &mut fixed,
                         walker,
                         tick,
-                        ProgressionAction::Learn { slot: 3 },
+                        ProgressionDirective::Learn { slot: 3 },
                     );
                     order(
                         &mut fixed,
                         walker,
                         tick,
-                        ProgressionAction::Learn { slot: 0 },
+                        ProgressionDirective::Learn { slot: 0 },
                     );
                 }
                 _ => {}

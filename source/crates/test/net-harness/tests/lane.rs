@@ -6,7 +6,7 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_math::Num;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_sim::EntityIndex;
 use campfire_units::{GroundPoint, Life, MoveStep, Owner};
 use campfire_values::{Team, UnitType};
@@ -18,7 +18,7 @@ fn quiet_lane() -> InProcessMatch {
     local.start_match();
     local.order(
         0,
-        OrdersAction::Move {
+        OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::ZERO,
                 z: Num::from_int(8).unwrap(),

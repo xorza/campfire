@@ -14,7 +14,7 @@ use campfire_codec::Binary;
 use campfire_codec::internals::{TomlDocument, TomlNode};
 use campfire_combat::{Armor, CombatDataError, HealEffectData};
 use campfire_common::{DeclaredName, MapName};
-use campfire_declare::{BookPlace, NamesListError, TypePlace};
+use campfire_declarations::{BookPlace, NamesListError, TypePlace};
 use campfire_geometry::Metric;
 use campfire_math::Num;
 use campfire_mode::{ChoiceId, MarkerTag, ModeDataError, ModeError, TimerId};
@@ -28,7 +28,7 @@ use campfire_package_disk::PackageDir;
 use campfire_production::ProductionDataError;
 use campfire_progression::TrackError;
 use campfire_projectiles::{ProjectileDeliveryError, ProjectileError};
-use campfire_script::{CtxMisuse, ParamProblem, Status, SyncTo};
+use campfire_script::{Audience, CtxMisuse, ParamProblem, Status};
 use campfire_script::{Filter, internals::Undefined};
 use campfire_sim::{Capability, MatchRate};
 use campfire_stats::{
@@ -38,8 +38,8 @@ use campfire_stats::{
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{HeightGrid, Layer, PoolId, StatId, TypesError, UnitTypeError};
 use campfire_values::{
-    ActionId, DamageKind, EngineEnum, MessageId, ModifierId, Named, Number, Param, ResourceId,
-    Scalar, Stat, Tag, Team, TimeTooLarge, TrackId, UnitType,
+    ActionId, DamageKind, EngineEnum, ModifierId, Named, Number, Param, ResourceId, Scalar, Stat,
+    Tag, Team, TextId, TimeTooLarge, TrackId, UnitType,
 };
 use campfire_vision::VisionDataError;
 
@@ -348,17 +348,17 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_it
 
 #[test]
 fn a_mode_state_field_is_sent_to_no_client_unless_it_says() {
-    // The 3v3's `phase` is sent to all; without `sync`, or with `sync = "none"`, to none.
+    // The 3v3's `phase` is sent to all; without `audience`, or with `audience = "none"`, to none.
     let phase = |edit: Edit<'_>| {
         let packages = load(&edited([(MODE_DATA, edit)])).unwrap();
-        packages.data().state["phase"].sync
+        packages.data().state["phase"].audience
     };
-    let pick = r#"phase = { type = "string", default = "pick", sync = "all" }"#;
-    assert_eq!(phase(Edit::Replace(pick, pick)), SyncTo::All);
+    let pick = r#"phase = { type = "string", default = "pick", audience = "all" }"#;
+    assert_eq!(phase(Edit::Replace(pick, pick)), Audience::All);
     let unsent = r#"phase = { type = "string", default = "pick" }"#;
-    assert_eq!(phase(Edit::Replace(pick, unsent)), SyncTo::None);
-    let none = r#"phase = { type = "string", default = "pick", sync = "none" }"#;
-    assert_eq!(phase(Edit::Replace(pick, none)), SyncTo::None);
+    assert_eq!(phase(Edit::Replace(pick, unsent)), Audience::None);
+    let none = r#"phase = { type = "string", default = "pick", audience = "none" }"#;
+    assert_eq!(phase(Edit::Replace(pick, none)), Audience::None);
 }
 
 #[test]
@@ -2061,19 +2061,19 @@ static ACTION_FLAWS: &[Flaw] = &[
             )
         },
     ),
-    // The match has no owner or team for a mode field to sync to.
+    // The match has no owner or team for a mode field to audience to.
     flaw(
         MODE_DATA,
         Edit::Replace(
-            "first_blood = { type = \"bool\", default = false, sync = \"all\" }",
-            "first_blood = { type = \"bool\", default = false, sync = \"team\" }",
+            "first_blood = { type = \"bool\", default = false, audience = \"all\" }",
+            "first_blood = { type = \"bool\", default = false, audience = \"team\" }",
         ),
         MODE,
         |problem| {
             rule_at(
                 problem,
                 &entry("state", "first_blood"),
-                &ModeDataError::StateSync,
+                &ModeDataError::StateAudience,
             )
         },
     ),
@@ -2687,7 +2687,7 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Replace(r#"name = "hero-name""#, r#"name = "hero-nam""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: MessageId::NAMES, at: Place::Avatar(package), name } if package == "hero-husk" && name == "hero-nam"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: TextId::NAMES, at: Place::Avatar(package), name } if package == "hero-husk" && name == "hero-nam"),
     ),
     flaw(
         HUSK,
@@ -2697,7 +2697,7 @@ static STAT_FLAWS: &[Flaw] = &[
             read_fails(
                 problem,
                 "data/avatar.toml",
-                r#""hero name" is not a message id"#,
+                r#""hero name" is not a text id"#,
             )
         },
     ),
@@ -2705,7 +2705,7 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK_TEXT,
         Edit::Replace("hero-name = Husk", "hero-name =\n    .short = Hu"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: MessageId::NAMES, name, .. } if name == "hero-name"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: TextId::NAMES, name, .. } if name == "hero-name"),
     ),
     // The names players see: the mode's, each team's, each choice's and each of an avatar's or a
     // loadout's actions, each a message of its package's own language.
@@ -2713,7 +2713,7 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_TEXT,
         Edit::Replace("mode-name = Three on Three\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: MessageId::NAMES, at: Place::Mode, name } if name == "mode-name"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: TextId::NAMES, at: Place::Mode, name } if name == "mode-name"),
     ),
     flaw(
         MODE_DATA,
@@ -2734,7 +2734,7 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_TEXT,
         Edit::Replace("choice-hero = Hero\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: MessageId::NAMES, at: Place::Choice(choice), name } if choice == "hero" && name == "choice-hero"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: TextId::NAMES, at: Place::Choice(choice), name } if choice == "hero" && name == "choice-hero"),
     ),
     flaw(
         HUSK,
@@ -2752,7 +2752,7 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK_TEXT,
         Edit::Replace("action-dread = Dread\n", ""),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: MessageId::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "dread" && name == "action-dread"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: TextId::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "dread" && name == "action-dread"),
     ),
     flaw(
         HUSK_TEXT,
@@ -3004,9 +3004,9 @@ static STAT_FLAWS: &[Flaw] = &[
     ),
     flaw(
         "heroes/kensho/data/avatar.toml",
-        Edit::Set("modifiers.flicker_strike.state.left.sync", r#""all""#),
+        Edit::Set("modifiers.flicker_strike.state.left.audience", r#""all""#),
         "hero-kensho",
-        |problem| read_fails(problem, "data/avatar.toml", "unknown field `sync`"),
+        |problem| read_fails(problem, "data/avatar.toml", "unknown field `audience`"),
     ),
     flaw(
         HUSK,

@@ -1,6 +1,8 @@
 use campfire_actions::{ActionKind, ActionsData, ByAction, LoadedAction, Targeting, TypeSlotsData};
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, SourceType, UnitTypeData};
+use campfire_declarations::{
+    BookCx, BookError, BookPlace, ByType, Section, SourceType, UnitTypeData,
+};
 use campfire_math::Num;
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, UnknownName};

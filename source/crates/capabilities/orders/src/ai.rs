@@ -1,5 +1,7 @@
 use campfire_common::Ticks;
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, NamedScripts, PerType, ScriptParams};
+use campfire_declarations::{
+    BookCx, BookError, BookPlace, ByType, NamedScripts, PerType, ScriptParams,
+};
 use campfire_script::{Ctx, Hook, HookDecl, ScriptId, ScriptRole, Unit};
 use campfire_sim::MatchRate;
 use campfire_stats::{ModifierAppliers, Way};

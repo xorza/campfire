@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
-use campfire_values::MessageId;
+use campfire_values::TextId;
 use fluent_bundle::concurrent::FluentBundle;
 use fluent_bundle::{FluentError, FluentResource};
 
@@ -79,12 +79,7 @@ impl Texts {
 
     /// The text of message `id` of package `package` in `language`, or else in the package's
     /// own language; `None` when neither gives the message a value that formats.
-    pub fn text(
-        &self,
-        package: &PackageName,
-        id: &MessageId,
-        language: &Language,
-    ) -> Option<String> {
+    pub fn text(&self, package: &PackageName, id: &TextId, language: &Language) -> Option<String> {
         let package = self.packages.get(package)?;
         [language, &package.own].into_iter().find_map(|language| {
             let bundle = package.bundles.get(language)?;

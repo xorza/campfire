@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use campfire_declare::Fact;
+use campfire_declarations::Fact;
 use campfire_values::{Names, TrackId};
 
 /// The names of the mode's tracks, by track, which the module of experience makes: what an

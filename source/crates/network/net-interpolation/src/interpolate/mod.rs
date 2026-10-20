@@ -1,9 +1,9 @@
 use crate::history_component::HistoryComponent;
 use crate::interpolation_fn::{ComponentInterpolation, InterpolationFn};
 use crate::interpolation_holders::InterpolationHolders;
+use crate::interpolation_phase_systems::InterpolationPhaseSystems;
 use crate::interpolation_rule_id::InterpolationRuleId;
 use crate::interpolation_sample_cx::InterpolationSampleCx;
-use crate::interpolation_stage::InterpolationStage;
 use crate::interpolation_timeline::InterpolationTimeline;
 use crate::update_history_cx::UpdateHistoryCx;
 use bevy_app::{App, Update};
@@ -71,7 +71,7 @@ pub(crate) fn install_component_interpolation<C: HistoryComponent>(
             let _ = set_if_neq(live, interpolated);
         }
     };
-    app.add_systems(Update, system.in_set(InterpolationStage::Apply));
+    app.add_systems(Update, system.in_set(InterpolationPhaseSystems::Apply));
 }
 
 /// [`DetectChangesMut::set_if_neq`] for a value that may be borrowed: it is compared in place,

@@ -1,4 +1,4 @@
-use campfire_declare::Fact;
+use campfire_declarations::Fact;
 use campfire_values::Names;
 
 use crate::layer::Layer;

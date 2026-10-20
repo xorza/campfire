@@ -1,6 +1,6 @@
 use campfire_actions::{ActionsData, DeliveryData, Targeting};
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, TypePlace};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Section, TypePlace};
 use campfire_script::UnknownName;
 use campfire_stats::{ModifierAppliers, ModifierBook, ModifiersData, Way};
 use campfire_units::UnitTypes;

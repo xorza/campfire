@@ -6,7 +6,7 @@ use campfire_actions::{
 };
 use campfire_combat::Combat;
 use campfire_common::DeclaredName;
-use campfire_declare::{Book, ByType};
+use campfire_declarations::{Book, ByType};
 use campfire_production::Production;
 use campfire_projectiles::ProjectileSpec;
 use campfire_script::{Filter, MatchNames, ScriptId, UnknownName};

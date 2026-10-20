@@ -3,7 +3,7 @@ use bevy_ecs::query::{Added, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_script::{Answered, CallStart, Hook, ScriptId, ScriptsWorld};
 use campfire_sim::{DueIndex, DueUnit, SimTick, StableId};
 use campfire_stats::UnitPools;

@@ -8,7 +8,7 @@ use crate::sim_tick::SimTick;
 #[derive(SystemParam, Debug)]
 pub struct TickClock<'w> {
     tick: Res<'w, SimTick>,
-    rate: Res<'w, MatchRate>,
+    tick_rate: Res<'w, MatchRate>,
 }
 
 impl TickClock<'_> {
@@ -23,7 +23,7 @@ impl TickClock<'_> {
     }
 
     pub fn rate(&self) -> MatchRate {
-        *self.rate
+        *self.tick_rate
     }
 }
 

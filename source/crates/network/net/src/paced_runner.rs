@@ -9,15 +9,15 @@ use campfire_net_endpoint::FrameWake;
 /// so an idle app runs a frame a tick, and a packet that arrives between two ticks is read then
 /// (02-engine-core.md, A headless app runs a frame at each tick and on each link's work).
 #[derive(Debug)]
-pub struct PacedRunner;
+pub struct PacedRunnerPlugin;
 
-impl Plugin for PacedRunner {
+impl Plugin for PacedRunnerPlugin {
     fn build(&self, app: &mut App) {
         app.set_runner(Self::run);
     }
 }
 
-impl PacedRunner {
+impl PacedRunnerPlugin {
     fn run(mut app: App) -> AppExit {
         let state = app.plugins_state();
         if state != PluginsState::Cleaned {
@@ -75,7 +75,7 @@ mod tests {
             if paused {
                 virtual_time.pause();
             }
-            PacedRunner::wait(&fixed, &virtual_time)
+            PacedRunnerPlugin::wait(&fixed, &virtual_time)
         };
         assert_eq!(wait(1.0, false), Duration::from_millis(20));
         assert_eq!(wait(2.0, false), Duration::from_millis(10));

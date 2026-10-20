@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
-use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_script::MatchNames;
 use campfire_units::{PoolId, PoolNames, StatId};
 use campfire_values::{Names, PackageIndex, Stat};

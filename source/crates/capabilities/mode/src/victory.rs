@@ -4,7 +4,7 @@ use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_combat::DamagePass;
 use campfire_common::Seat;
-use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_players::{HeldOut, PlayersWorld};
 use campfire_script::{MatchNames, UnknownName};
 use campfire_sim::{EntityIndex, SimTick, StableId};

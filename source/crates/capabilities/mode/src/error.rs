@@ -11,10 +11,10 @@ pub enum ModeDataError {
     /// A bot takes a leaver's place in a mode no player joins late.
     #[error("bot_takeover without late_join")]
     BotTakeoverWithoutLateJoin,
-    /// A field of the mode's state syncs to an owner or a team, which the mode's state has none
+    /// A field of the mode's state goes to an owner or a team, which the mode's state has none
     /// of.
-    #[error("a field of the mode's state syncs to an owner or a team")]
-    StateSync,
+    #[error("a field of the mode's state goes to an owner or a team")]
+    StateAudience,
     /// An option and a param of one name, which `ctx.params` reads as one (03-game-scripting.md, A
     /// mode declares its options).
     #[error("the mode declares a param of the option's name")]

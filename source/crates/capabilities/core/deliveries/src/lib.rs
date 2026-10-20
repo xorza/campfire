@@ -4,9 +4,9 @@
 
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionsSet, OnEnd, OnHit};
+use campfire_actions::{ActionBook, ActionsSystems, OnEnd, OnHit};
 use campfire_common::EnumAll;
-use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_declarations::{Declarations, InstallCx, Module, ModuleSystems, SetPlace};
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::{Breach, Capability};
 use campfire_units::{BodyUnit, ForcedMove};
@@ -40,18 +40,18 @@ pub struct Deliveries;
 
 /// The steps of `deliveries`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum DeliverySet {
+pub enum DeliverySystems {
     /// What the deliveries reached runs their actions' hooks, and the deliveries that ended
     /// run theirs.
     Deliver,
 }
 
-impl ModuleSet for DeliverySet {
+impl ModuleSystems for DeliverySystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            Self::Deliver => SetPlace::at(ActionsSet::Deliver),
+            Self::Deliver => SetPlace::at(ActionsSystems::Deliver),
         }
     }
 }
@@ -60,7 +60,7 @@ impl Module for Deliveries {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
-    type Set = DeliverySet;
+    type Systems = DeliverySystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.scratch::<DeliveryQueue>();
@@ -74,13 +74,13 @@ impl Module for Deliveries {
     }
 
     /// Adds the deliveries' hooks to a match whose modules call for them, as a module that sets a
-    /// delivery out or calls one does: in `DeliverySet::Deliver`, after the deliveries move.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+    /// delivery out or calls one does: in `DeliverySystems::Deliver`, after the deliveries move.
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         if !cx.calls_for::<Deliverers>() {
             return;
         }
-        cx.scripted(DeliverySet::Deliver, DeliveryHooks::deliver);
-        cx.unscripted(DeliverySet::Deliver, DeliveryHooks::end);
+        cx.scripted(DeliverySystems::Deliver, DeliveryHooks::deliver);
+        cx.unscripted(DeliverySystems::Deliver, DeliveryHooks::end);
     }
 }
 

@@ -2,7 +2,7 @@ use std::num::NonZeroU64;
 
 use campfire_progression::LevelUps;
 use campfire_script::{CapabilityRefusal, ModeEvents};
-use campfire_units::SyncOwner;
+use campfire_units::AudienceOwner;
 
 use super::*;
 
@@ -44,7 +44,10 @@ fn on_match_start(ctx) {
 /// The first player's kills.
 fn kills(game: &Match) -> StateValue {
     let entity = game.player_entity(Seat::new(0)).unwrap();
-    game.get::<PlayerState<SyncOwner>>(entity).unwrap().values()[0].clone()
+    game.get::<PlayerState<AudienceOwner>>(entity)
+        .unwrap()
+        .values()[0]
+        .clone()
 }
 
 #[test]

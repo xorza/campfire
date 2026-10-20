@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Book, BookCx, BookError};
+use campfire_declarations::{Book, BookCx, BookError};
 use campfire_script::MatchNames;
 
 use crate::slot_kinds::SlotKinds;

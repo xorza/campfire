@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use serde::Deserialize;
 
 /// A unit type's `slots`: its package's actions in each slot kind, in order.

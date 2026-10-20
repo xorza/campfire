@@ -13,7 +13,7 @@ use bevy_ecs::world::Mut;
 use campfire_actions::ActionBook;
 use campfire_codec::Toml;
 use campfire_common::SegmentSeed;
-use campfire_declare::{ByType, EntityParts, Module, Role};
+use campfire_declarations::{ByType, EntityParts, Module, Role};
 use campfire_math::Vec3;
 use campfire_orders::Ai;
 use campfire_players::{Player, PlayerResources};

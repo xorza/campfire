@@ -1,5 +1,5 @@
 use campfire_actions::{ActionBook, ActionsData};
-use campfire_declare::{BookCx, BookError};
+use campfire_declarations::{BookCx, BookError};
 use campfire_values::{NameId, Names};
 
 use crate::modifier_book::ModifierBook;

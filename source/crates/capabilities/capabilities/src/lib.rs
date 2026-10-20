@@ -4,14 +4,10 @@
 //! `pub use` list names only its own items: a crate above depends on the crate of each type it
 //! names.
 //!
-//! A capability crate depends only on the crates of lower layers, lowest first: `geometry` and
-//! `state-types`; `values` and `visibility`; the `core` (scripts, how a module declares what it
-//! adds, units, players); `stats` and `vision`; `actions`; `combat`, `deliveries`,
-//! `interaction`, `items` and `progression`; `abilities`, `areas`, `navigation` and
-//! `projectiles`; `production`; and `mode` and `orders`. `LAYERS`, in `release`'s tests, holds
-//! this list, each crate one layer above its highest dependency, and a test fails on a crate it
-//! lacks or places otherwise. A capability gives the script view its fields of a unit through
-//! its column, and the call frame what a call reads besides the core's through its part.
+//! A capability crate depends only on the crates of lower layers, each one layer above its
+//! highest dependency, as a test of `release` reads them from the manifests (02-engine-core.md,
+//! Layers). A capability gives the script view its fields of a unit through its column, and the
+//! call frame what a call reads besides the core's through its part.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
@@ -27,7 +23,7 @@ pub use crate::books::Books;
 pub use crate::books::book_input::BookInput;
 pub use crate::books::load_names::LoadNames;
 pub use crate::books::package_content::{ContentSeed, PackageContent};
-pub use crate::order::{Action, Order};
+pub use crate::order::{Directive, Order};
 pub use crate::release::Release;
 pub use crate::release::error::CapabilityError;
 pub use crate::release::r#match::Match;

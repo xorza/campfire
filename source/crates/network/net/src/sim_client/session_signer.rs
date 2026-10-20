@@ -2,8 +2,8 @@ use std::sync::Mutex;
 
 use campfire_protocol::Signer;
 
-/// The signer of a session's key, which `SimClient` hands to its app once, as its build runs, so
-/// no plugin keeps the key for the app's life: a plugin's build takes it by reference, and could
+/// The signer of a session's key, which `SimClientPlugin` hands to its app once, as its build runs,
+/// so no plugin keeps the key for the app's life: a plugin's build takes it by reference, and could
 /// otherwise only copy it out.
 #[derive(Debug)]
 pub struct SessionSigner(Mutex<Option<Signer>>);

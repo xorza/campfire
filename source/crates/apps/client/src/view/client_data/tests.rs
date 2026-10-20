@@ -4,7 +4,7 @@ use campfire_math::Num;
 use campfire_store::internals::TestDir;
 
 use super::*;
-use crate::view::package_source::internals::package;
+use crate::view::package_source::samples::package;
 
 #[test]
 fn a_package_gives_its_units_and_skips_a_file_that_does_not_read() {

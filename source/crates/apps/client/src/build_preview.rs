@@ -25,7 +25,7 @@ use bevy::transform::components::Transform;
 use campfire_capabilities::Order;
 use campfire_math::{Num, Vec3 as SimVec3};
 use campfire_net::PendingOrders;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_production::{BuildBook, Placement};
 use campfire_sim::{EntityIndex, Position, Unpredicted};
 use campfire_units::{BuildTarget, GroundPoint, UnitGrid};
@@ -50,7 +50,7 @@ use crate::view::unit_looks::UnitLooks;
 /// drop chord, Esc of the engine's, drops it. It takes the clicks in `InputMode::Place`, which the
 /// selection and the orders leave to it, and ends the placing as the mode leaves.
 #[derive(Debug)]
-pub(crate) struct BuildPreview;
+pub(crate) struct BuildPreviewPlugin;
 
 /// The root of the preview's drawing: the build it shows, its box's figure, the point it stands
 /// at, none while the cursor is off the ground, and whether the building may stand there.
@@ -90,7 +90,7 @@ struct Tints {
 /// The height of the preview's box, which marks the ground the building takes.
 const FOOTPRINT_HEIGHT: f32 = 0.5;
 
-impl Plugin for BuildPreview {
+impl Plugin for BuildPreviewPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::add_tints);
         app.add_systems(OnExit(InputMode::Place), Self::end_placing);
@@ -118,7 +118,7 @@ impl Plugin for BuildPreview {
     }
 }
 
-impl BuildPreview {
+impl BuildPreviewPlugin {
     fn add_tints(
         mut materials: ResMut<'_, Assets<StandardMaterial>>,
         mut commands: Commands<'_, '_>,
@@ -327,7 +327,7 @@ impl BuildPreview {
             at: GroundPoint { x: at.x, z: at.z },
             angle,
         };
-        orders.push(Order::one(builder, OrdersAction::Build { slot, target }));
+        orders.push(Order::one(builder, OrdersDirective::Build { slot, target }));
         mode.set_if_different(InputMode::Select);
     }
 
@@ -357,11 +357,11 @@ mod tests {
     fn the_previews_systems_take_no_conflicting_access() {
         // Bevy checks that a system's queries do not conflict as it initializes the system.
         let mut world = World::new();
-        IntoSystem::into_system(BuildPreview::show).initialize(&mut world);
-        IntoSystem::into_system(BuildPreview::follow).initialize(&mut world);
-        IntoSystem::into_system(BuildPreview::judge).initialize(&mut world);
-        IntoSystem::into_system(BuildPreview::tint).initialize(&mut world);
-        IntoSystem::into_system(BuildPreview::click).initialize(&mut world);
+        IntoSystem::into_system(BuildPreviewPlugin::show).initialize(&mut world);
+        IntoSystem::into_system(BuildPreviewPlugin::follow).initialize(&mut world);
+        IntoSystem::into_system(BuildPreviewPlugin::judge).initialize(&mut world);
+        IntoSystem::into_system(BuildPreviewPlugin::tint).initialize(&mut world);
+        IntoSystem::into_system(BuildPreviewPlugin::click).initialize(&mut world);
     }
 
     #[test]
@@ -369,7 +369,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(StatesPlugin);
         app.init_state::<InputMode>();
-        app.add_systems(OnExit(InputMode::Place), BuildPreview::end_placing);
+        app.add_systems(OnExit(InputMode::Place), BuildPreviewPlugin::end_placing);
         let placing = Placing {
             builder: IdAllocator::default().allocate(),
             slot: 0,
@@ -437,7 +437,7 @@ mod tests {
             };
             let ghost = game.spawn(ghost).id();
             game.run_system_once(UnitGrid::refresh).unwrap();
-            game.run_system_once(BuildPreview::judge).unwrap();
+            game.run_system_once(BuildPreviewPlugin::judge).unwrap();
             let fit = game.get::<Ghost>(ghost).unwrap().fit;
             game.despawn(ghost);
             fit

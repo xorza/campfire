@@ -8,7 +8,7 @@ use campfire_measure::{Kind, Scale};
 use campfire_protocol::SessionLog;
 use campfire_runner::SessionWorld;
 use campfire_sim::internals::StageClock;
-use campfire_sim::{SimSet, SimWorld, StateDelta};
+use campfire_sim::{SimSystems, SimWorld, StateDelta};
 use campfire_stats::Pools;
 use campfire_units::Life;
 use criterion::{Criterion, Throughput};
@@ -90,15 +90,15 @@ fn server_tick(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
 /// worst in a match of `TICKS` ticks, `worst_3v3_<stage>`, and its mean tick in such a match,
 /// `mean_3v3_<stage>`, a whole match each iteration, its throughput the ticks. The stages'
 /// means add up to `integration/server_tick/mean_3v3` less the parts of a tick that run outside
-/// them: the session log's, the tick's start and end, and `SimEdge::Start`.
+/// them: the session log's, the tick's start and end, and `SimEdgeSystems::Start`.
 fn server_stage(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
-    let id = |statistic: &str, stage: SimSet| {
+    let id = |statistic: &str, stage: SimSystems| {
         format!("{statistic}_3v3_{}", format!("{stage:?}").to_lowercase())
     };
     let mut group = Kind::Integration.group(c, "server_stage", Scale::Frame);
     let stage_match =
-        |stage: SimSet| MatchCost::of_match(&mut clocked(moba), |game| stage_tick(game, stage));
-    for stage in SimSet::ALL {
+        |stage: SimSystems| MatchCost::of_match(&mut clocked(moba), |game| stage_tick(game, stage));
+    for stage in SimSystems::ALL {
         group.bench_function(id("worst", stage), |b| {
             b.iter_custom(|matches| {
                 (0..matches)
@@ -108,7 +108,7 @@ fn server_stage(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
         });
     }
     group.throughput(Throughput::Elements(TICKS));
-    for stage in SimSet::ALL {
+    for stage in SimSystems::ALL {
         group.bench_function(id("mean", stage), |b| {
             b.iter_custom(|matches| (0..matches).map(|_| stage_match(stage).total).sum());
         });
@@ -124,7 +124,7 @@ fn server_stage(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
 fn battle(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
     let mut group = Kind::Integration.group(c, "battle", Scale::Frame);
     group.throughput(Throughput::Elements(BATTLE_TICKS));
-    for stage in SimSet::ALL {
+    for stage in SimSystems::ALL {
         let id = format!("crowded_{}", format!("{stage:?}").to_lowercase());
         group.bench_function(id, |b| {
             b.iter_custom(|battles| {
@@ -247,7 +247,7 @@ fn clocked(moba: &ScriptedMode<Moba3v3>) -> FixedMatch {
 
 /// Runs a tick of `game`, whose schedule holds `StageClock`'s probes, and gives `stage`'s time
 /// in it.
-fn stage_tick(game: &mut Match, stage: SimSet) -> Duration {
+fn stage_tick(game: &mut Match, stage: SimSystems) -> Duration {
     game.run_tick_alone();
     let spent = game.resource::<StageClock>().stage(stage);
     black_box(&game);

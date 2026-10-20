@@ -20,7 +20,7 @@ use campfire_deliveries::DashDelivering;
 use campfire_harness::Arena;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_package::{ModePackages, PackageFiles};
 use campfire_package_disk::PackageDir;
 use campfire_projectiles::Projectile;
@@ -236,12 +236,12 @@ fn pool(arena: &Arena, game: &Match, id: StableId, name: &str) -> Num {
 }
 
 fn attack(id: StableId, target: StableId) -> Order {
-    Order::one(id, OrdersAction::Attack { target })
+    Order::one(id, OrdersDirective::Attack { target })
 }
 
 /// Player 0's order that `id` casts the action in its slot 0 at `target`.
 fn cast(id: StableId, target: ActionTarget) -> Order {
-    Order::one(id, OrdersAction::Slot { slot: 0, target })
+    Order::one(id, OrdersDirective::Slot { slot: 0, target })
 }
 
 /// Player 0's unit of `kit` with `action` at `rank` in its one slot.

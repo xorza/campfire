@@ -3,7 +3,7 @@ use std::iter;
 use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declare::{EntityKind, EntityParts, SpawnCore, SpawnParts};
+use campfire_declarations::{EntityKind, EntityParts, SpawnCore, SpawnParts};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 use campfire_values::{Team, UnitType};

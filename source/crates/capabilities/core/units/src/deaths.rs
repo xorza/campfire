@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::{Seat, Tick};
-use campfire_declare::{Report, Role};
+use campfire_declarations::{Report, Role};
 use campfire_sim::StableId;
 use campfire_values::Team;
 

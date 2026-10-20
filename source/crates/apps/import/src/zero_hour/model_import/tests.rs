@@ -7,10 +7,10 @@ use crate::gltf::glb_builder::{CLAMP_TO_EDGE, REPEAT};
 use crate::gltf::gltf_document::GltfDocument;
 use crate::texture::srgb;
 use crate::zero_hour::format::w3d::hierarchy::Pivot;
-use crate::zero_hour::format::w3d::w3d_mesh::internals::GRADIENT_MODULATE;
+use crate::zero_hour::format::w3d::w3d_mesh::samples::GRADIENT_MODULATE;
 use crate::zero_hour::format::w3d::w3d_mesh::{Ids, Pass, Shader, Stage, Texture, VertexMaterial};
 use crate::zero_hour::install::Install;
-use crate::zero_hour::install::internals::fixture;
+use crate::zero_hour::install::samples::fixture;
 use crate::zero_hour::model_nodes::LookSubObject;
 
 fn convert(name: &str, assets: &mut ModelAssets<'_>) -> ModelImport {

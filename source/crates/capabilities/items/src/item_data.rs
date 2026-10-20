@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 
 use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::MessageId;
+use campfire_values::TextId;
 use serde::Deserialize;
 
 /// An item type, `[items.<id>]` of the mode package: the message of the name players see; what it
@@ -14,7 +14,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemData {
-    pub name: MessageId,
+    pub name: TextId,
     #[serde(default)]
     pub cost: BTreeMap<DeclaredName, u32>,
     #[serde(default)]

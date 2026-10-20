@@ -28,6 +28,8 @@ mod source_file;
 #[cfg(test)]
 mod source_files;
 #[cfg(test)]
+mod suffixes;
+#[cfg(test)]
 mod workspace;
 #[cfg(test)]
 mod world;

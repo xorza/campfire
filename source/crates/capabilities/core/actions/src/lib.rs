@@ -12,11 +12,11 @@
 
 use bevy_ecs::schedule::SystemSet;
 use campfire_common::EnumAll;
-use campfire_declare::{
-    ByType, Declarations, InstallCx, Module, ModuleSet, NamedMessages, NamedScripts, SetPlace,
+use campfire_declarations::{
+    ByType, Declarations, InstallCx, Module, ModuleSystems, NamedScripts, NamedTexts, SetPlace,
 };
-use campfire_sim::{Capability, SimSet, Unpredicted};
-use campfire_units::{BodyUnit, UnitsSet};
+use campfire_sim::{Capability, SimSystems, Unpredicted};
+use campfire_units::{BodyUnit, UnitsSystems};
 
 use crate::actions_api::ActionsApi;
 use crate::actions_column::RowReads;
@@ -172,7 +172,7 @@ pub struct Actions;
 /// that acts puts its own sets at: the steps' order is the order of every capability's part of
 /// an action (02-engine-core.md, Sets order against the steps of the modules they build on).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum ActionsSet {
+pub enum ActionsSystems {
     /// After the tick begins: toggled actions pay for the tick.
     Toggle,
     /// The tick's commands learn ranks.
@@ -218,32 +218,32 @@ pub enum ActionsSet {
     Resolve,
 }
 
-impl ModuleSet for ActionsSet {
+impl ModuleSystems for ActionsSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         let stage = SetPlace::stage;
         match self {
-            Self::Toggle => stage(SimSet::Inputs).after(UnitsSet::Begin),
-            Self::Learn => stage(SimSet::Inputs).after(Self::Toggle),
-            Self::Queue => stage(SimSet::Inputs).after(Self::Learn),
-            Self::Trade => stage(SimSet::Inputs).after(Self::Queue),
-            Self::Order => stage(SimSet::Inputs).after(Self::Trade),
-            Self::HoldAtInputs => stage(SimSet::Inputs).after(Self::Order),
-            Self::Chase => stage(SimSet::Act),
-            Self::WindUp => stage(SimSet::Act).after(Self::Chase),
-            Self::Start => stage(SimSet::Act).after(Self::WindUp),
-            Self::Travel => stage(SimSet::Hit),
-            Self::Hit => stage(SimSet::Hit).after(Self::Travel),
-            Self::Trigger => stage(SimSet::Hit).after(Self::Hit),
-            Self::Deliver => stage(SimSet::Hit).after(Self::Trigger),
-            Self::Pay => stage(SimSet::Hit).after(Self::Deliver),
-            Self::Strike => stage(SimSet::Hit).after(Self::Pay),
-            Self::Fire => stage(SimSet::Hit).after(Self::Strike),
-            Self::Cast => stage(SimSet::Hit).after(Self::Fire),
-            Self::Launch => stage(SimSet::Hit).after(Self::Cast),
-            Self::Land => stage(SimSet::Hit).after(Self::Launch),
-            Self::Resolve => stage(SimSet::Resolve),
+            Self::Toggle => stage(SimSystems::Inputs).after(UnitsSystems::Begin),
+            Self::Learn => stage(SimSystems::Inputs).after(Self::Toggle),
+            Self::Queue => stage(SimSystems::Inputs).after(Self::Learn),
+            Self::Trade => stage(SimSystems::Inputs).after(Self::Queue),
+            Self::Order => stage(SimSystems::Inputs).after(Self::Trade),
+            Self::HoldAtInputs => stage(SimSystems::Inputs).after(Self::Order),
+            Self::Chase => stage(SimSystems::Act),
+            Self::WindUp => stage(SimSystems::Act).after(Self::Chase),
+            Self::Start => stage(SimSystems::Act).after(Self::WindUp),
+            Self::Travel => stage(SimSystems::Hit),
+            Self::Hit => stage(SimSystems::Hit).after(Self::Travel),
+            Self::Trigger => stage(SimSystems::Hit).after(Self::Hit),
+            Self::Deliver => stage(SimSystems::Hit).after(Self::Trigger),
+            Self::Pay => stage(SimSystems::Hit).after(Self::Deliver),
+            Self::Strike => stage(SimSystems::Hit).after(Self::Pay),
+            Self::Fire => stage(SimSystems::Hit).after(Self::Strike),
+            Self::Cast => stage(SimSystems::Hit).after(Self::Fire),
+            Self::Launch => stage(SimSystems::Hit).after(Self::Cast),
+            Self::Land => stage(SimSystems::Hit).after(Self::Launch),
+            Self::Resolve => stage(SimSystems::Resolve),
         }
     }
 }
@@ -252,7 +252,7 @@ impl Module for Actions {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
-    type Set = ActionsSet;
+    type Systems = ActionsSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<ActionsData>();
@@ -283,7 +283,7 @@ impl Module for Actions {
         d.fact::<ActionRanks>(ActionRanks::build);
         d.rule(ActionRanks::rule);
         d.extend::<NamedScripts>(Self::named_scripts);
-        d.extend::<NamedMessages>(Self::named_messages);
+        d.extend::<NamedTexts>(Self::named_texts);
         d.part::<BodyUnit, ActionSlots>(|at| at.of_type::<ActionSlots>().cloned());
         d.part::<BodyUnit, SlotTimes>(|at| at.of_type::<ActionSlots>().map(SlotTimes::ready));
         d.part::<BodyUnit, ActionProgress>(|at| {
@@ -295,8 +295,8 @@ impl Module for Actions {
     /// Adds the actions to a match whose core is installed, with none loaded yet, and the holds
     /// of every action's charges as each tick starts, which a cast of any match draws. The start
     /// of an action is the abilities'.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
-        cx.add(ActionsSet::HoldAtInputs, Holds::hold_charges);
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
+        cx.add(ActionsSystems::HoldAtInputs, Holds::hold_charges);
     }
 }
 
@@ -308,7 +308,7 @@ pub mod internals {
 
     use bevy_ecs::world::World;
     use campfire_common::{DeclaredName, Ticks};
-    use campfire_declare::Book;
+    use campfire_declarations::Book;
     use campfire_math::Num;
     use campfire_players::ResourceAmount;
     use campfire_script::{HookSet, MatchNames, UnknownName};

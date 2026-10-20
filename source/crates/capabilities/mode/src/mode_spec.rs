@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use campfire_actions::ActionSlots;
 use campfire_common::{DeclaredName, Seat};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_script::Teams;
 use campfire_units::{BodyForm, ScriptBook};
 use campfire_values::{Names, Relations, Team, UnitType};

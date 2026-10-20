@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_actions::{ActionData, ActionRanks, ActionsData};
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Fact, NamedScripts, ScriptParams, Section};
+use campfire_declarations::{
+    BookCx, BookError, BookPlace, Fact, NamedScripts, ScriptParams, Section,
+};
 use campfire_math::Num;
 use campfire_script::{ParamProblem, ScriptRole, ScriptUses, UnknownName};
 use campfire_sim::MatchRate;
@@ -29,7 +31,7 @@ struct ParamRead<'a> {
     modifier: &'a ModifierData,
     param: &'a DeclaredName,
     number: bool,
-    rate: MatchRate,
+    tick_rate: MatchRate,
 }
 
 impl ModifierWays {
@@ -145,7 +147,7 @@ impl ModifierWays {
                         modifier,
                         param,
                         number,
-                        rate: cx.rate(),
+                        tick_rate: cx.rate(),
                     };
                     read.check(&held, actions).map_err(|(way, problem)| {
                         let param = param.clone();
@@ -296,7 +298,7 @@ impl ParamRead<'_> {
         if time && matches!(param, Param::Scaling(_)) {
             return Err(ParamProblem::ScalingTime);
         }
-        let counts = |&ms: &Num| ModifierData::ticks(ms, self.rate).is_some();
+        let counts = |&ms: &Num| ModifierData::ticks(ms, self.tick_rate).is_some();
         if time && !numbers.iter().all(counts) {
             return Err(ParamProblem::Time);
         }

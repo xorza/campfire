@@ -1,6 +1,6 @@
 use campfire_script::{
-    Hook, HookSet, ListPlace, ListedScript, ModeScripts, ScriptId, ScriptRole, StateSchema,
-    StateValue, SyncTo,
+    Audience, Hook, HookSet, ListPlace, ListedScript, ModeScripts, ScriptId, ScriptRole,
+    StateSchema, StateValue,
 };
 use campfire_units::ScriptBook;
 use campfire_values::NameTable;
@@ -46,12 +46,12 @@ impl ModeSchema {
             state: StateSchema::new(
                 data.state
                     .iter()
-                    .map(|(name, field)| (name.as_str(), field.sync, &field.decl)),
+                    .map(|(name, field)| (name.as_str(), field.audience, &field.decl)),
             ),
             players: StateSchema::new(
                 data.player_state
                     .iter()
-                    .map(|(name, field)| (name.as_str(), field.sync, &field.decl)),
+                    .map(|(name, field)| (name.as_str(), field.audience, &field.decl)),
             ),
             inputs: NameTable::default(),
         };
@@ -73,7 +73,11 @@ impl ModeSchema {
         into.clear();
         into.reserve_exact(self.state.len());
         for place in self.state.places() {
-            let class = if place.sync == SyncTo::All { all } else { none };
+            let class = if place.audience == Audience::All {
+                all
+            } else {
+                none
+            };
             into.push(class[place.at].clone());
         }
     }
@@ -89,7 +93,7 @@ impl ModeSchema {
         none.clear();
         all.clear();
         for (value, place) in state.iter().zip(self.state.places()) {
-            let class = if place.sync == SyncTo::All {
+            let class = if place.audience == Audience::All {
                 &mut *all
             } else {
                 &mut *none

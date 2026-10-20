@@ -5,7 +5,7 @@ use campfire_common::{EnumIdents, NamedEnum};
 use campfire_math::Vec3;
 use campfire_script::enum_script_arg;
 use campfire_sim::{SimComponent, StableId};
-use campfire_state_types::{Replication, SentPredicted};
+use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{EngineEnum, ScriptEnum};
 use campfire_visibility::DataKind;

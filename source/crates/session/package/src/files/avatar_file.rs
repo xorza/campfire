@@ -1,7 +1,7 @@
 use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
-use campfire_declare::{UnitDefaults, UnitTypeData};
-use campfire_values::MessageId;
+use campfire_declarations::{UnitDefaults, UnitTypeData};
+use campfire_values::TextId;
 use serde::de::{DeserializeSeed, Error};
 use serde::{Deserialize, Deserializer};
 
@@ -12,7 +12,7 @@ use crate::files::content_table::ContentTable;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AvatarFile {
     /// The message of the name players see.
-    pub(crate) name: MessageId,
+    pub(crate) name: TextId,
     pub(crate) unit: UnitTypeData,
     pub(crate) content: PackageContent,
 }
@@ -28,7 +28,7 @@ impl<'de> DeserializeSeed<'de> for AvatarSeed<'_> {
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<AvatarFile, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
-            name: MessageId,
+            name: TextId,
             #[serde(flatten)]
             rest: TomlTable,
         }

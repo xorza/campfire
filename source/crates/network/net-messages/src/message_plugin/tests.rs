@@ -512,7 +512,7 @@ fn only_a_client_maps_the_entities_a_message_names() {
         let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(vec![kind]));
         let (client, server) = (stepper.client_entity(0), stepper.client_of_entity(0));
         let replicated = stepper.server_app_mut().world_mut().spawn(Replicated).id();
-        let server_only = stepper.server_app_mut().world_mut().spawn_empty().id();
+        let server_only_systems = stepper.server_app_mut().world_mut().spawn_empty().id();
         let unmapped = stepper.server_app_mut().world_mut().spawn_empty().id();
         let mut spawn = || stepper.client_app_mut(0).world_mut().spawn_empty().id();
         let (copy, stale, client_only) = (spawn(), spawn(), spawn());
@@ -522,13 +522,13 @@ fn only_a_client_maps_the_entities_a_message_names() {
         let map = &mut map.get_mut::<LinkMessages>().unwrap().entity_mapper;
         map.insert(server, client);
         map.insert(replicated, copy);
-        map.insert(server_only, stale);
+        map.insert(server_only_systems, stale);
         let mut map = stepper.client_of_mut(0);
         let map = &mut map.get_mut::<LinkMessages>().unwrap().entity_mapper;
         map.insert(client, server);
         let client_sends = [client, copy, stale, client_only];
         let server_reads = vec![server, replicated, Entity::PLACEHOLDER, Entity::PLACEHOLDER];
-        let server_sends = [server, replicated, server_only, unmapped];
+        let server_sends = [server, replicated, server_only_systems, unmapped];
         let client_reads = vec![client, copy, stale, Entity::PLACEHOLDER];
 
         let mut client_mut = stepper.client_mut(0);

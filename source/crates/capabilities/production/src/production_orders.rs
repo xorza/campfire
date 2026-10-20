@@ -13,7 +13,7 @@ use crate::build_book::BuildBook;
 use crate::builder::{BuildOrder, Builder};
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::order_dues::OrderDues;
-use crate::production_action::ProductionAction;
+use crate::production_directive::ProductionDirective;
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
 use crate::site::Site;
@@ -83,7 +83,10 @@ impl ProductionOrders {
     /// despawns no site: both are the server's, whose word comes back.
     pub(super) fn apply_cancels<S: TeamSight>(
         (tick, index): (Res<'_, SimTick>, Res<'_, EntityIndex>),
-        (mut orders, builds): (TickCommands<'_, '_, ProductionAction>, Res<'_, BuildBook>),
+        (mut orders, builds): (
+            TickCommands<'_, '_, ProductionDirective>,
+            Res<'_, BuildBook>,
+        ),
         mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
         mut units: Query<'_, '_, (&Owner, Option<&mut TrainQueue>, Option<&Site>, Has<Dead>)>,
         mut commands: Commands<'_, '_>,
@@ -114,8 +117,8 @@ impl ProductionOrders {
                 if !order.controls(*owner) {
                     continue;
                 }
-                match (order.action, queue, site) {
-                    (ProductionAction::CancelTrain { place }, Some(mut queue), _) => {
+                match (order.directive, queue, site) {
+                    (ProductionDirective::CancelTrain { place }, Some(mut queue), _) => {
                         let place = usize::from(place);
                         let Some(paid) = queue.paid(place) else {
                             continue;
@@ -124,7 +127,7 @@ impl ProductionOrders {
                             queue.remove(place, now, &mut queues.of(unit, entity));
                         }
                     }
-                    (ProductionAction::CancelBuild, _, Some(site))
+                    (ProductionDirective::CancelBuild, _, Some(site))
                         if !dead && !cancelled.contains(&entity) =>
                     {
                         let spec = builds
@@ -153,12 +156,12 @@ impl ProductionOrders {
     /// rally to another unit is ignored. A rally is the server's, which no client holds.
     pub(super) fn set_rallies(
         (map, index): (Res<'_, MapBook>, Res<'_, EntityIndex>),
-        mut orders: TickCommands<'_, '_, ProductionAction>,
+        mut orders: TickCommands<'_, '_, ProductionDirective>,
         mut producers: Query<'_, '_, (&Owner, Option<&Team>, &mut Rally)>,
         visible: SeenTargets<'_, '_, ByVision>,
     ) {
         orders.for_each(|order| {
-            let ProductionAction::Rally { target } = order.action else {
+            let ProductionDirective::Rally { target } = order.directive else {
                 return;
             };
             let target = target.map(|target| match target {

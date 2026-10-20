@@ -1,4 +1,4 @@
-use campfire_declare::{CapabilitySet, ScriptAt, SourcePackage};
+use campfire_declarations::{CapabilitySet, ScriptAt, SourcePackage};
 use campfire_mode::{MapData, ModeData, TeamManifest};
 use campfire_script::ScriptUses;
 use campfire_sim::MatchRate;
@@ -28,5 +28,5 @@ pub struct BookInput<'a> {
     pub script_uses: &'a ScriptUses,
     /// The scripts the mode's list names, in its order; none in a match of no mode script.
     pub mode_scripts: Vec<ScriptAt<'a>>,
-    pub rate: MatchRate,
+    pub tick_rate: MatchRate,
 }

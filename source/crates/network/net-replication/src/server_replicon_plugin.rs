@@ -274,7 +274,7 @@ mod tests {
     use campfire_net_connection::RemoteId;
     use campfire_net_connection::Stopped;
     use campfire_net_core::PeerId;
-    use campfire_net_despawn::DespawnReplicated;
+    use campfire_net_despawns::DespawnReplicated;
     use campfire_net_link::{Link, Linked, Server};
     use campfire_net_transport::TransportPlugin;
     use core::net::SocketAddr;

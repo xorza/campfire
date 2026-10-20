@@ -10,7 +10,7 @@ kind = "glue"
 [features]
 internals = [
     "campfire-capabilities/internals",
-    "campfire-declare/internals",
+    "campfire-declarations/internals",
     "campfire-log/internals",
     "campfire-mode/internals",
     "campfire-package/internals",
@@ -24,7 +24,7 @@ internals = [
 [dependencies]
 campfire-capabilities.workspace = true
 campfire-common.workspace = true
-campfire-declare.workspace = true
+campfire-declarations.workspace = true
 campfire-log.workspace = true
 campfire-mode.workspace = true
 campfire-package.workspace = true

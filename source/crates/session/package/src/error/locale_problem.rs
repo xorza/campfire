@@ -1,7 +1,7 @@
 use fluent_syntax::parser::ParserError;
 use thiserror::Error;
 
-use campfire_values::MessageId;
+use campfire_values::TextId;
 
 /// What is wrong with a file of human text.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -15,8 +15,8 @@ pub enum LocaleProblem {
     Parse(ParserError),
     /// It defines the message twice.
     #[error("message {0} twice")]
-    Repeated(MessageId),
+    Repeated(TextId),
     /// A translation defines the message, which the file of its package's own language does not.
     #[error("message {0}, which the package's own language does not define")]
-    Stray(MessageId),
+    Stray(TextId),
 }

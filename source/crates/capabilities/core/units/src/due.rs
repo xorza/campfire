@@ -1,7 +1,7 @@
 use std::mem;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Role, Scratch};
+use campfire_declarations::{Role, Scratch};
 
 /// What a scripted pass runs this tick, which its plain system collects in the order the pass
 /// runs it, so its exclusive part only runs the scripts: `T` names the pass by its own item. Not

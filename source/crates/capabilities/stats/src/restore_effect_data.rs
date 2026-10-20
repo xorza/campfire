@@ -5,7 +5,7 @@ use campfire_actions::{
     ListedEffects, ListedSpec,
 };
 use campfire_common::DeclaredName;
-use campfire_declare::{BookError, Listed};
+use campfire_declarations::{BookError, Listed};
 use campfire_math::Num;
 use campfire_script::{
     ApiBuilder, CallError, CapabilityRefusal, Ctx, Frame, MemberDecl, Unit, View,

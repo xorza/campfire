@@ -1,4 +1,4 @@
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

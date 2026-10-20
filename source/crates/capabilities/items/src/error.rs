@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_declare::BookPlace;
+use campfire_declarations::BookPlace;
 use thiserror::Error;
 
 use campfire_values::ItemId;

@@ -10,7 +10,7 @@ use campfire_math::{Num, Vec3};
 use campfire_net::internals::TickHashes;
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup, LinkLayout};
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_protocol::{LogReplay, SessionLog};
 use campfire_runner::{Replay, Session};
 use campfire_sim::{MatchRate, Position, SimWorld, StableId};
@@ -199,18 +199,18 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
 /// The runner casts its first ability at the nearest enemy hero, the walker, in tick 140: 80 true
 /// damage for 30 of its 100 mana, every 60 ticks.
 const CAST_SCRIPTS: [&str; 2] = [
-    "[[order]]\ntick = 60\naction.progression.learn.slot = \"first\"\n\
-     [[order]]\ntick = 60\naction.orders.move.to = [0, 12]\n\
-     [[order]]\ntick = 100\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
-     [[order]]\ntick = 120\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
-     [[order]]\ntick = 190\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
-     [[order]]\ntick = 280\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
-     [[order]]\ntick = 300\naction.orders.attack.target = \"enemies:avatar\"\n\
-     [[order]]\ntick = 350\naction.orders.move.to = [0, 12]\n",
-    "[[order]]\ntick = 60\naction.progression.learn.slot = \"first\"\n\
-     [[order]]\ntick = 60\naction.orders.move.to = [\"1.5\", 12]\n\
+    "[[order]]\ntick = 60\ndirective.progression.learn.slot = \"first\"\n\
+     [[order]]\ntick = 60\ndirective.orders.move.to = [0, 12]\n\
+     [[order]]\ntick = 100\ndirective.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 120\ndirective.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 190\ndirective.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 280\ndirective.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 300\ndirective.orders.attack.target = \"enemies:avatar\"\n\
+     [[order]]\ntick = 350\ndirective.orders.move.to = [0, 12]\n",
+    "[[order]]\ntick = 60\ndirective.progression.learn.slot = \"first\"\n\
+     [[order]]\ntick = 60\ndirective.orders.move.to = [\"1.5\", 12]\n\
      [[order]]\ntick = 140\n\
-     action.orders.slot = { slot = \"first\", target.unit = \"enemies:avatar\" }\n",
+     directive.orders.slot = { slot = \"first\", target.unit = \"enemies:avatar\" }\n",
 ];
 const CAST_TICKS: u64 = 360;
 
@@ -345,8 +345,8 @@ fn route(link: &LinkModel) -> [u32; 2] {
     ));
     local.start_match();
     let scripts = [
-        "[[order]]\ntick = 60\naction.orders.move.to = [-12, -4]\n",
-        "[[order]]\ntick = 60\naction.orders.move.to = [12, 7]\n",
+        "[[order]]\ntick = 60\ndirective.orders.move.to = [-12, -4]\n",
+        "[[order]]\ntick = 60\ndirective.orders.move.to = [12, 7]\n",
     ];
     local.play_by_team(scripts);
     let client = local.client_of(Team::new(0));
@@ -395,7 +395,10 @@ fn round(link: &LinkModel) -> [u32; 2] {
         InProcessMatch::SEED_CHAIN,
     ));
     local.start_match();
-    let scripts = ["[[order]]\ntick = 1\naction.orders.move.to = [0, 5]\n", ""];
+    let scripts = [
+        "[[order]]\ntick = 1\ndirective.orders.move.to = [0, 5]\n",
+        "",
+    ];
     local.play_by_team(scripts);
     let clients = [0, 1].map(|team| local.client_of(Team::new(team)));
     let [walker, stander] = clients.map(|client| local.avatar(client));
@@ -505,7 +508,7 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
             let Vec3 { x, z, .. } = targets[team];
             local.order(
                 client,
-                OrdersAction::Move {
+                OrdersDirective::Move {
                     to: GroundPoint { x, z },
                 },
             );

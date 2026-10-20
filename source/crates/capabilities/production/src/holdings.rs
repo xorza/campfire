@@ -6,7 +6,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut, SystemChangeTick, SystemParam};
 use bevy_ecs::world::World;
 use campfire_common::Seat;
-use campfire_declare::Cache;
+use campfire_declarations::Cache;
 use campfire_sim::Unpredicted;
 use campfire_stats::PlayerModifiers;
 use campfire_units::{Dead, Owner};
@@ -305,7 +305,7 @@ impl Cache for Holdings {
 mod tests {
     use bevy_ecs::system::SystemState;
     use campfire_actions::ByAction;
-    use campfire_declare::ByType;
+    use campfire_declarations::ByType;
 
     use super::*;
     use crate::mode_supply_data::ModeSupplyData;

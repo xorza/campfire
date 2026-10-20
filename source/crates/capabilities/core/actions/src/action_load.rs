@@ -1,7 +1,7 @@
 use std::mem;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, Fact, Section};
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, UnknownName};
 use campfire_units::{ModifierNames, PoolId, PoolNames, ScriptBook, StatId, StatNames, UnitTypes};

@@ -1,7 +1,7 @@
 use std::fmt;
 
 use campfire_common::{DeclaredName, EnumAll};
-use campfire_declare::BookPlace;
+use campfire_declarations::BookPlace;
 use campfire_script::{CapabilityRefusal, ParamProblem, UnknownName};
 use campfire_sim::Capability;
 use campfire_values::Stat;

@@ -9,19 +9,19 @@ use crate::client_packages::ClientPackages;
 /// The name players see of each item type of the mode, in the mode's own language, which the
 /// shop panel and the inventory bar show.
 #[derive(Debug)]
-pub(crate) struct ItemNames;
+pub(crate) struct ItemNamesPlugin;
 
 /// Each item type's name, by its id.
 #[derive(Resource, Debug)]
 pub(crate) struct ItemTexts(Vec<String>);
 
-impl Plugin for ItemNames {
+impl Plugin for ItemNamesPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::read);
     }
 }
 
-impl ItemNames {
+impl ItemNamesPlugin {
     /// Reads each item's name, as the item book numbers the items: the load checked that the
     /// mode's own language gives each.
     fn read(

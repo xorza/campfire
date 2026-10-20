@@ -8,7 +8,7 @@ use campfire_areas::Areas;
 use campfire_codec::{TomlError, TomlValue};
 use campfire_combat::Combat;
 use campfire_common::DeclaredName;
-use campfire_declare::{
+use campfire_declarations::{
     BuiltBooks, CapabilitySet, Declarations, InstallFacts, KindVisitor, MatchFacts, ModuleVisitor,
     Role, SectionReaders, UnitDefaults, UnitTypeData,
 };
@@ -24,7 +24,7 @@ use campfire_progression::Progression;
 use campfire_projectiles::Projectiles;
 use campfire_script::{ApiBuilder, Hook, ScriptApi, ScriptHost, ScriptId};
 use campfire_sim::{Capability, SimWorldBuilder, StateRewritten, Unpredicted};
-use campfire_state_types::StateTypes;
+use campfire_states::StateTypes;
 use campfire_stats::Stats;
 use campfire_units::Units;
 use campfire_values::{EngineTag, NameId};
@@ -70,7 +70,7 @@ mod module_sets;
 #[cfg(feature = "internals")]
 mod resource_audit;
 mod section_list;
-mod stage_span;
+mod stage_span_systems;
 mod state_only;
 
 /// The engine's modules as the release runs them: the core, the mode's core, each capability in
@@ -245,7 +245,7 @@ impl Release {
         if matches!(role, Role::Client) {
             Unpredicted::register(world);
         }
-        let mut sim = SimWorldBuilder::new(world, match_setup.seed, match_setup.rate);
+        let mut sim = SimWorldBuilder::new(world, match_setup.seed, match_setup.tick_rate);
         #[cfg(feature = "internals")]
         if match_setup.without_sync_points {
             sim.without_sync_points();
@@ -362,7 +362,7 @@ pub(crate) mod internals {
     use bevy_ecs::component::{Component, Mutable};
     use bevy_ecs::schedule::InternedSystemSet;
     use bevy_ecs::world::World;
-    use campfire_declare::{
+    use campfire_declarations::{
         BuiltBooks, CapabilitySet, InstallFacts, MatchFacts, Sections, SourceKind, SourcePackage,
     };
     use campfire_geometry::Bounds;
@@ -375,9 +375,9 @@ pub(crate) mod internals {
         Capability, EntityIndex, SimResource, SimWorld, SimWorldBuilder, SnapshotError, StableId,
         StateCopy, StateRegistry,
     };
-    use campfire_state_types::{Replication, StateTypes};
+    use campfire_states::{Replication, StateTypes};
     use campfire_units::{EntityKinds, ScriptBook, UnitTypes, Units, UnitsWorld};
-    use campfire_values::{MessageId, Speed};
+    use campfire_values::{Speed, TextId};
 
     use crate::books::Books;
     use crate::books::book_input::BookInput;
@@ -425,7 +425,7 @@ pub(crate) mod internals {
         /// with no team, stat or script; but the unit types, the engine's tags alone, open as
         /// `UnitTypes::open_in` puts them.
         pub fn empty_books(rate: MatchRate) -> Books {
-            let data = ModeData::named(MessageId::new("mode").unwrap());
+            let data = ModeData::named(TextId::new("mode").unwrap());
             let (units, content) = (BTreeMap::new(), Sections::default());
             let mode = SourcePackage {
                 name: "mode",
@@ -446,7 +446,7 @@ pub(crate) mod internals {
                 scripts: &ScriptBook::new(Self::hooks()),
                 script_uses: &ScriptUses::default(),
                 mode_scripts: Vec::new(),
-                rate,
+                tick_rate: rate,
             };
             let mut books = Self::books(&input).expect("a mode of no data builds");
             UnitTypes::new(Self::engine_tags()).open_in(&mut books.built);

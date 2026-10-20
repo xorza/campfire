@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use campfire_units::MapPoint;
 use serde::{Deserialize, Serialize};
 

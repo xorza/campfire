@@ -11,13 +11,13 @@ kind = "glue"
 internals = [
     "campfire-actions/internals",
     "campfire-codec/internals",
-    "campfire-declare/internals",
+    "campfire-declarations/internals",
     "campfire-geometry/internals",
     "campfire-math/internals",
     "campfire-players/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
-    "campfire-state-types/internals",
+    "campfire-states/internals",
     "campfire-stats/internals",
     "campfire-units/internals",
     "campfire-values/internals",
@@ -28,13 +28,13 @@ internals = [
 campfire-actions.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
-campfire-declare.workspace = true
+campfire-declarations.workspace = true
 campfire-geometry.workspace = true
 campfire-math.workspace = true
 campfire-players.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
-campfire-state-types.workspace = true
+campfire-states.workspace = true
 campfire-stats.workspace = true
 campfire-units.workspace = true
 campfire-values = { workspace = true, features = ["ecs"] }

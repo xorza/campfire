@@ -6,7 +6,7 @@ use campfire_units::Owner;
 
 use crate::inventory::{CarrierSlots, Inventory};
 use crate::item_book::ItemBook;
-use crate::items_action::ItemsAction;
+use crate::items_directive::ItemsDirective;
 use crate::shopping::Shopping;
 use campfire_values::ItemId;
 
@@ -39,7 +39,7 @@ impl TradeOrders {
     /// slots come from the server.
     pub(super) fn trade_items(
         (mut orders, index, book): (
-            TickCommands<'_, '_, ItemsAction>,
+            TickCommands<'_, '_, ItemsDirective>,
             Res<'_, EntityIndex>,
             Res<'_, ItemBook>,
         ),
@@ -50,7 +50,7 @@ impl TradeOrders {
         (mut given_up, mut before): (Local<'_, Vec<u32>>, Local<'_, Vec<Option<ItemId>>>),
     ) {
         orders.for_each(|order| {
-            let action = order.action;
+            let directive = order.directive;
             for &unit in order.units {
                 let Some(entity) = index.get(unit) else {
                     continue;
@@ -65,8 +65,8 @@ impl TradeOrders {
                     continue;
                 };
                 inventory.note(&mut before);
-                match action {
-                    ItemsAction::Swap { from, to } => {
+                match directive {
+                    ItemsDirective::Swap { from, to } => {
                         let carrier = slots.map(|held| CarrierSlots {
                             unit: held,
                             dues: indexes.of(unit, entity),
@@ -75,7 +75,7 @@ impl TradeOrders {
                         inventory.swap_with(from, to, carrier);
                         continue;
                     }
-                    ItemsAction::Buy { item, shop } => {
+                    ItemsDirective::Buy { item, shop } => {
                         let Some(shop) = shopping.serving(shop, unit) else {
                             continue;
                         };
@@ -92,7 +92,7 @@ impl TradeOrders {
                             .expect("a price the player affords takes nothing below zero");
                         inventory.complete(&book, item, &given_up);
                     }
-                    ItemsAction::Sell { slot, shop } => {
+                    ItemsDirective::Sell { slot, shop } => {
                         let Some(shop) = shopping.serving(shop, unit) else {
                             continue;
                         };

@@ -529,10 +529,10 @@ impl Shader {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     use super::*;
-    use crate::zero_hour::format::w3d::w3d_chunks::internals::chunk;
-    use crate::zero_hour::format::w3d::w3d_fields::internals::name;
+    use crate::zero_hour::format::w3d::w3d_chunks::samples::chunk;
+    use crate::zero_hour::format::w3d::w3d_fields::samples::name;
 
     impl Shader {
         /// An opaque, textured shader that writes depth.
@@ -756,7 +756,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::format::w3d::w3d_chunks::internals::chunk;
+    use crate::zero_hour::format::w3d::w3d_chunks::samples::chunk;
 
     /// A textured skin of three vertices and two triangles, of every list the reader reads.
     fn skin() -> W3dMesh {

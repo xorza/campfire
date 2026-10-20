@@ -1,4 +1,4 @@
-use campfire_declare::{Section, SectionTable};
+use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
 use serde::de::Error;

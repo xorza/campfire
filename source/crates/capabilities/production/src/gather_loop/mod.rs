@@ -5,7 +5,7 @@ use bevy_ecs::system::{Commands, Local, ParamSet, Query, ResMut, SystemState};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{ActionSlots, ByAction};
 use campfire_common::Tick;
-use campfire_declare::RoleForm;
+use campfire_declarations::RoleForm;
 use campfire_players::PlayersWorld;
 use campfire_sim::{
     DueIndex, DueUnit, EntityIndex, Keyed, Ordered, Position, Removals, SimTick, StableId,

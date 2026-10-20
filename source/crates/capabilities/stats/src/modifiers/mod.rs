@@ -10,7 +10,7 @@ use campfire_script::StateValue;
 use campfire_sim::{
     DueIndex, MatchRate, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns,
 };
-use campfire_state_types::{Replication, SentPredicted};
+use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::ModifierId;
 use campfire_visibility::DataKind;

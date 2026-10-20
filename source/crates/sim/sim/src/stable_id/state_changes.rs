@@ -111,7 +111,7 @@ impl StateChanges {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use bevy_ecs::change_detection::Tick as ChangeTick;
 
     use crate::stable_id::state_changes::StateChanges;

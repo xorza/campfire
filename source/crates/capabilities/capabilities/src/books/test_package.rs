@@ -1,5 +1,5 @@
 use campfire_codec::{Toml, TomlTable};
-use campfire_declare::{SourceKind, SourcePackage, UnitDefaults};
+use campfire_declarations::{SourceKind, SourcePackage, UnitDefaults};
 use campfire_math::Num;
 use campfire_mode::{MapData, ModeData, TeamManifest};
 use campfire_script::ScriptUses;
@@ -55,7 +55,7 @@ impl TestPackage<'_> {
             scripts: &ScriptBook::new(Release::hooks()),
             script_uses: &ScriptUses::default(),
             mode_scripts: Vec::new(),
-            rate,
+            tick_rate: rate,
         };
         Release::books(&input).unwrap()
     }

@@ -7,12 +7,12 @@
 )]
 
 use bevy_ecs::schedule::SystemSet;
-use campfire_actions::{ActionsSet, TrackNames};
+use campfire_actions::{ActionsSystems, TrackNames};
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_declarations::{ByType, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
 use campfire_script::{ApiVersion, Status};
-use campfire_sim::{Capability, SimEdge, SimSet};
-use campfire_stats::StatsSet;
+use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
+use campfire_stats::StatsSystems;
 use campfire_units::{BodyUnit, UnitGrid};
 
 use crate::experience_book::Share;
@@ -27,10 +27,10 @@ mod learning;
 mod level_ups;
 mod mode_tracks_data;
 mod points;
-mod progression_action;
 mod progression_api;
 mod progression_books;
 mod progression_column;
+mod progression_directive;
 mod progression_effect;
 mod track_book;
 mod track_data;
@@ -47,9 +47,9 @@ pub use crate::learning::Learning;
 pub use crate::level_ups::{LevelUp, LevelUps, OnLevelUp};
 pub use crate::mode_tracks_data::ModeTracksData;
 pub use crate::points::Points;
-pub use crate::progression_action::ProgressionAction;
 pub use crate::progression_api::ProgressionApi;
 pub use crate::progression_column::ProgressionColumn;
+pub use crate::progression_directive::ProgressionDirective;
 pub use crate::track_book::TrackBook;
 pub use crate::track_data::{Thresholds, TrackData};
 pub use crate::track_set::TrackSet;
@@ -63,7 +63,7 @@ pub struct Progression;
 
 /// The steps of `progression`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum ProgressionSet {
+pub enum ProgressionSystems {
     /// The tick's learn orders learn their ranks.
     Commands,
     /// Once units died, after the gap's stats refresh: their deaths give experience, whose
@@ -71,14 +71,15 @@ pub enum ProgressionSet {
     Share,
 }
 
-impl ModuleSet for ProgressionSet {
+impl ModuleSystems for ProgressionSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            Self::Commands => SetPlace::at(ActionsSet::Learn),
-            Self::Share => SetPlace::gap(SimEdge::After(SimSet::Resolve))
-                .after(StatsSet::Refresh(SimEdge::After(SimSet::Resolve))),
+            Self::Commands => SetPlace::at(ActionsSystems::Learn),
+            Self::Share => SetPlace::gap(SimEdgeSystems::After(SimSystems::Resolve)).after(
+                StatsSystems::Refresh(SimEdgeSystems::After(SimSystems::Resolve)),
+            ),
         }
     }
 }
@@ -87,7 +88,7 @@ impl Module for Progression {
     const CAPABILITY: Option<Capability> = Some(Capability::Progression);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
-    type Set = ProgressionSet;
+    type Systems = ProgressionSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<TypeTracksData>();
@@ -122,14 +123,17 @@ impl Module for Progression {
 
     /// Adds progression to a match: in Inputs, the tick's learn orders learn their ranks. Its
     /// effects queue through its callback.
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
-        cx.add(ProgressionSet::Commands, LearnOrders::learn_ranks);
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
+        cx.add(ProgressionSystems::Commands, LearnOrders::learn_ranks);
         if cx
             .book::<ExperienceBook>()
             .and_then(ExperienceBook::share)
             .is_some()
         {
-            cx.server(ProgressionSet::Share, UnitGrid::before_reading(Share::give));
+            cx.server(
+                ProgressionSystems::Share,
+                UnitGrid::before_reading(Share::give),
+            );
         }
     }
 }
@@ -141,7 +145,7 @@ pub mod internals {
     use bevy_ecs::world::World;
     use campfire_common::DeclaredName;
 
-    use campfire_declare::internals::BookLoad;
+    use campfire_declarations::internals::BookLoad;
 
     use crate::Progression;
     use crate::track_book::TrackBook;

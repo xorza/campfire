@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, NamesListError, Section, SectionTable};
+use campfire_declarations::{BookCx, BookError, BookPlace, NamesListError, Section, SectionTable};
 use campfire_players::ResourcesData;
 use campfire_units::PoolNames;
 use campfire_values::{Names, NamesError, PackageIndex};

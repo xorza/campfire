@@ -18,18 +18,18 @@ use crate::view::terrain_meshes::TerrainMeshes;
 /// ground and its overlays over the map's heights, lit by the map's lights as every model is. A map
 /// with no terrain draws none.
 #[derive(Debug)]
-pub(crate) struct TerrainView;
+pub(crate) struct TerrainViewPlugin;
 
 /// The overlays' lift over the ground, so they draw over the quads they share a depth with.
 const OVERLAY_BIAS: f32 = 1.0;
 
-impl Plugin for TerrainView {
+impl Plugin for TerrainViewPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::draw);
     }
 }
 
-impl TerrainView {
+impl TerrainViewPlugin {
     /// Composes the map's terrain's texture, builds its meshes, and spawns the ground and its
     /// overlays, each of the file's surface.
     fn draw(world: &mut World) {

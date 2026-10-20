@@ -1,6 +1,6 @@
 use crate::interpolation_holders::InterpolationHolders;
+use crate::interpolation_phase_systems::InterpolationPhaseSystems;
 use crate::interpolation_registry::InterpolationRegistry;
-use crate::interpolation_stage::InterpolationStage;
 use crate::interpolation_systems::InterpolationSystems;
 use crate::pipelines::Pipelines;
 use bevy_app::{App, Plugin, Update};
@@ -21,10 +21,10 @@ impl Plugin for DelayedInterpolationPlugin {
         app.configure_sets(
             Update,
             (
-                InterpolationStage::RefreshHistory,
-                InterpolationStage::History,
-                InterpolationStage::RefreshApply,
-                InterpolationStage::Apply,
+                InterpolationPhaseSystems::RefreshHistory,
+                InterpolationPhaseSystems::History,
+                InterpolationPhaseSystems::RefreshApply,
+                InterpolationPhaseSystems::Apply,
             )
                 .chain()
                 .in_set(InterpolationSystems::Prepare),
@@ -32,8 +32,8 @@ impl Plugin for DelayedInterpolationPlugin {
         app.add_systems(
             Update,
             (
-                Self::refresh_delayed_holders.in_set(InterpolationStage::RefreshHistory),
-                Self::refresh_delayed_holders.in_set(InterpolationStage::RefreshApply),
+                Self::refresh_delayed_holders.in_set(InterpolationPhaseSystems::RefreshHistory),
+                Self::refresh_delayed_holders.in_set(InterpolationPhaseSystems::RefreshApply),
             ),
         );
     }

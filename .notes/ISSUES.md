@@ -4,10 +4,7 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Decide
 
-- **Capabilities.** **Plan: 12.** `Action` names two things: the top crate's sum of what an order tells its units to do, with each capability's own (`OrdersAction`, `ProgressionAction`, `ItemsAction`), which the bot order scripts write as `action.*`; and `actions`' action as a match runs it, the word the script API keeps for it (06-script-api.md, One vocabulary). Options: the order's becomes `Directive`, `Instruction` or `Task`, with its `*Action` types and the bot scripts' keys; or both keep `Action`, the order's then named in the design as a second meaning.
 - **Lan-check.** Each `cargo drive run lan` writes a new folder of its logs and session log under `target/drive/lan-check/`, 6 to 14 MB each, and nothing removes one: 455 MB on 2026-10-20, after two days. Options: keep the folders of the newest runs, up to a count; or keep the folders of failed runs and the newest one.
-- **Test packages.** **Plan: 12.** The test packages go two ways: `packages/test/heroes/` and `packages/test/modes/` by what a package is, and `packages/test/moba/` by its game first, with its heroes, mode, spells and locales. Options: every package by what it is, the MOBA's among them; or every package by its game first, the generic ones under a game of their own.
-- **Workspace.** **Plan: 12.** Two crate names break the noun form of the others: `declare` is a verb, and `state-types` the one name of `-types`. Options: `declare` becomes `declarations`, and `state-types` `states`; or both stay, as the names of what the crates do.
 
 ## Research
 
@@ -38,7 +35,6 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Net.** A client inserts its session's `OutView` as a resource as it answers an offer (`net/src/sim_client/mod.rs`, `answer_offer`), and no system reads that resource: the match takes the view from `MatchFacts`.
 - **Net-endpoint.** The frame's send step wakes the endpoint's IO thread at every frame, whether or not it took a payload or moved a deadline (`net-endpoint/src/endpoint/mod.rs`, `Endpoint::send`): an idle server's IO thread wakes at its tick rate.
 - **Net-stack.** No lane of `cargo drive` measures coverage, which `13-net-stack/testing.md` plans.
-- **Orders.** **Plan: 12.** `PlayerOrders`, a scratch of checked unit orders, has the `<X>Orders` name of the systems `TradeOrders` and `LearnOrders` (`orders/src/unit_orders.rs:24`).
 - **Protocol.** The session log's `Packet`, a player's signed inputs (`protocol/src/session_log/log_entries.rs`), has the name of the network stack's `Packet`, the payload of one datagram (14-workspace-alignment.md, A type name that both sides declare keeps one meaning).
 - **Rules.** `citations` reads a decision's title from its bullet's first line alone (`test/rules/src/citations.rs`, `titles`), so a title that wraps to a second line cannot be cited.
 - **Stats.** `modifier_clocks`'s `Clock` (`stats/src/modifiers/modifier_clocks.rs`) has the name of the network stack's `Clock`, the app's network clock (14-workspace-alignment.md, A type name that both sides declare keeps one meaning).

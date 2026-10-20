@@ -1,7 +1,7 @@
 use super::*;
 use bevy_app::{App, Update};
 use bevy_ecs::prelude::*;
-use campfire_net_despawn::DespawnReplicated;
+use campfire_net_despawns::DespawnReplicated;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

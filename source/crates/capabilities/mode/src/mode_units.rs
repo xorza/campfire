@@ -1,5 +1,5 @@
 use campfire_actions::{ActionBook, ActionsData};
-use campfire_declare::{BookCx, BookError, Fact, SourceKind};
+use campfire_declarations::{BookCx, BookError, Fact, SourceKind};
 use campfire_values::{Names, UnitType};
 
 use crate::loadout_setup::LoadoutSetup;

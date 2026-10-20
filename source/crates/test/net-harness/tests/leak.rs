@@ -26,7 +26,7 @@ use campfire_net_replication::Replicate;
 use campfire_package::ModePackages;
 use campfire_players::{HeldOut, Player, PlayerResources, PlayersWorld};
 use campfire_sim::{EntityIndex, SimResource, StableId, Unpredicted};
-use campfire_state_types::{Replication, StateTypes};
+use campfire_states::{Replication, StateTypes};
 use campfire_test_packages::Edit;
 use campfire_units::{Dead, Owner, SeenBy};
 use campfire_values::{Team, TeamSet};
@@ -481,7 +481,7 @@ impl LeakCheck {
         let tick = self.local.next_tick(End::Server) + STRIKE;
         for client in 0..2 {
             let script = format!(
-                "[[order]]\ntick = {tick}\naction.orders.attack.target = \"enemies:avatar:fighter\"\n"
+                "[[order]]\ntick = {tick}\ndirective.orders.attack.target = \"enemies:avatar:fighter\"\n"
             );
             self.local
                 .play(client, &OrderScript::parse(&script).unwrap());

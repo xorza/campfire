@@ -18,12 +18,12 @@ use bevy::state::state::NextState;
 use bevy::text::TextColor;
 use bevy::ui::widget::Text;
 use campfire_actions::{ActionBook, ActionKind, ActionSlots, ActionTarget};
-use campfire_capabilities::{Action, Order};
+use campfire_capabilities::{Directive, Order};
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_net::PendingOrders;
-use campfire_orders::OrdersAction;
-use campfire_production::{BuildBook, ProductionAction, Site, SiteProgress, TrainQueue};
+use campfire_orders::OrdersDirective;
+use campfire_production::{BuildBook, ProductionDirective, Site, SiteProgress, TrainQueue};
 use campfire_script::MatchNames;
 use campfire_sim::{EntityIndex, SimTick, StableId, Unpredicted};
 use campfire_units::{Dead, Owner};
@@ -45,7 +45,7 @@ use crate::view::unit_looks::UnitLooks;
 /// of a site, its progress, a click cancelling it. A train button orders the unit alone to train; a
 /// build button starts the build preview.
 #[derive(Debug)]
-pub(crate) struct CommandPanel;
+pub(crate) struct CommandPanelPlugin;
 
 /// What the panel shows of the mode: the player resources whose amounts it shows, in the order
 /// the match names them.
@@ -148,7 +148,7 @@ type PanelUnits<'w, 's> = Query<
     (Without<Dead>, Allow<Unpredicted>),
 >;
 
-impl Plugin for CommandPanel {
+impl Plugin for CommandPanelPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Shown>();
         app.add_systems(Startup, (Self::set_up, Self::spawn));
@@ -156,7 +156,7 @@ impl Plugin for CommandPanel {
     }
 }
 
-impl CommandPanel {
+impl CommandPanelPlugin {
     /// Takes the player resources the match names, whose amounts the panel shows.
     fn set_up(names: Res<'_, MatchNames>, mut commands: Commands<'_, '_>) {
         let resources = (0..names.count::<ResourceId>())
@@ -301,7 +301,7 @@ impl CommandPanel {
         match making {
             Making::Train => {
                 let target = ActionTarget::None;
-                orders.push(Order::one(unit, OrdersAction::Slot { slot, target }));
+                orders.push(Order::one(unit, OrdersDirective::Slot { slot, target }));
             }
             Making::Build(building) => {
                 let angle = looks.placement_angle(building);
@@ -326,7 +326,7 @@ impl CommandPanel {
     ) {
         if let Ok(row) = rows.get(click.entity) {
             let place = row.place;
-            shown.order(&click, orders, ProductionAction::CancelTrain { place });
+            shown.order(&click, orders, ProductionDirective::CancelTrain { place });
         }
     }
 
@@ -336,23 +336,23 @@ impl CommandPanel {
         shown: Res<'_, Shown>,
         orders: ResMut<'_, PendingOrders>,
     ) {
-        shown.order(&click, orders, ProductionAction::CancelBuild);
+        shown.order(&click, orders, ProductionDirective::CancelBuild);
     }
 }
 
 impl Shown {
-    /// Orders the shown unit to `action`, for a left click.
+    /// Orders the shown unit to `directive`, for a left click.
     fn order(
         &self,
         click: &PointerClick,
         mut orders: ResMut<'_, PendingOrders>,
-        action: ProductionAction,
+        directive: ProductionDirective,
     ) {
         if click.button != PointerButton::Primary {
             return;
         }
         if let Some(unit) = self.unit {
-            orders.push(Order::one(unit, Action::from(action)));
+            orders.push(Order::one(unit, Directive::from(directive)));
         }
     }
 
@@ -409,7 +409,7 @@ impl Shown {
                     name: lines.name,
                     cost: lines.value,
                 })
-                .observe(CommandPanel::press);
+                .observe(CommandPanelPlugin::press);
         }
         for (place, &action) in (0..=u8::MAX).zip(&self.queue) {
             let lines = PanelRow::spawn(commands, rows, names.of(action));
@@ -419,7 +419,7 @@ impl Shown {
                     place,
                     progress: lines.value,
                 })
-                .observe(CommandPanel::cancel_train);
+                .observe(CommandPanelPlugin::cancel_train);
         }
         if let Some(action) = self.site {
             let lines = PanelRow::spawn(commands, rows, names.of(action));
@@ -428,7 +428,7 @@ impl Shown {
                 .insert(SiteRow {
                     progress: lines.value,
                 })
-                .observe(CommandPanel::cancel_build);
+                .observe(CommandPanelPlugin::cancel_build);
         }
     }
 }
@@ -481,7 +481,7 @@ mod tests {
     fn the_panel_takes_no_conflicting_access() {
         // Bevy checks that a system's queries do not conflict as it initializes the system.
         let mut world = World::new();
-        let mut panel = IntoSystem::into_system(CommandPanel::show);
+        let mut panel = IntoSystem::into_system(CommandPanelPlugin::show);
         panel.initialize(&mut world);
     }
 

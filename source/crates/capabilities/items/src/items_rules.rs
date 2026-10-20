@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 
 use campfire_actions::{ActionKind, ActionsData, SlotClaim, SlotClaims};
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, NamedMessages, Section, TypePlace};
+use campfire_declarations::{BookCx, BookError, BookPlace, NamedTexts, Section, TypePlace};
 use campfire_players::ResourceBook;
 use campfire_sim::Capability;
 use campfire_stats::PassiveData;
@@ -22,10 +22,7 @@ impl Items {
         clippy::unnecessary_wraps,
         reason = "a book's builder and an extension take the build's signature"
     )]
-    pub(crate) fn named_messages(
-        cx: &BookCx<'_>,
-        messages: &mut NamedMessages,
-    ) -> Result<(), BookError> {
+    pub(crate) fn named_texts(cx: &BookCx<'_>, messages: &mut NamedTexts) -> Result<(), BookError> {
         let items = cx.package(PackageIndex::MODE).content.get::<ItemsData>();
         for (id, item) in items.into_iter().flat_map(|items| &items.0) {
             let at = BookPlace::Entry {
@@ -191,7 +188,7 @@ impl Items {
 mod tests {
     use std::num::NonZeroU32;
 
-    use campfire_values::MessageId;
+    use campfire_values::TextId;
 
     use super::*;
 
@@ -202,7 +199,7 @@ mod tests {
         // first meets the first again.
         let name = |at: usize| DeclaredName::new(&format!("i{at:06}")).unwrap();
         let item = |components: Vec<DeclaredName>| ItemData {
-            name: MessageId::new("item").unwrap(),
+            name: TextId::new("item").unwrap(),
             cost: BTreeMap::new(),
             components,
             stack: NonZeroU32::MIN,

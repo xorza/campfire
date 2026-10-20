@@ -14,7 +14,7 @@ use campfire_net::{
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{InProcessMatch, InProcessSetup};
 use campfire_net_replication::ConfirmedTickMap;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
 use campfire_units::{GroundPoint, Owner, SeenBy, SpawnPoint, Units, UnitsWorld};
 use campfire_values::{Relation, Relations, Team};
@@ -22,8 +22,8 @@ use campfire_values::{Relation, Relations, Team};
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 90;
 /// A move along the hero's line from its spawn, z = −2.
-const fn move_to(x: i64) -> OrdersAction {
-    OrdersAction::Move {
+const fn move_to(x: i64) -> OrdersDirective {
+    OrdersDirective::Move {
         to: GroundPoint {
             x: Num::int(x),
             z: Num::int(-2),

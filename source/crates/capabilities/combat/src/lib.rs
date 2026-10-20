@@ -11,16 +11,18 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionBook, ActionSlots, ActionsSet, ByAction, DamageKindBook, TogglePer};
+use campfire_actions::{
+    ActionBook, ActionSlots, ActionsSystems, ByAction, DamageKindBook, TogglePer,
+};
 use campfire_common::EnumAll;
-use campfire_declare::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
+use campfire_declarations::{
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSystems, ServerForm, SetPlace,
 };
 use campfire_math::RngStream;
 use campfire_script::{ApiVersion, Status};
-use campfire_sim::{Capability, SimSet};
-use campfire_stats::{LifePool, StatsSet, TypePools};
-use campfire_units::{BodyUnit, Dead, Deaths, Due, Life, SpawnPoint, UnitGrid, UnitsSet};
+use campfire_sim::{Capability, SimSystems};
+use campfire_stats::{LifePool, StatsSystems, TypePools};
+use campfire_units::{BodyUnit, Dead, Deaths, Due, Life, SpawnPoint, UnitGrid, UnitsSystems};
 
 use crate::combat_column::RowReads;
 use crate::combat_event::{OnAttack, OnAttackHit, OnDamageTaken, OnKill, OnTakedown};
@@ -110,7 +112,7 @@ pub struct Combat;
 
 /// Combat's steps.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub enum CombatSet {
+pub enum CombatSystems {
     /// Dead units whose respawn is due come back, before any input of the tick can reach
     /// them.
     Respawn,
@@ -131,20 +133,20 @@ pub enum CombatSet {
     Despawn,
 }
 
-impl ModuleSet for CombatSet {
+impl ModuleSystems for CombatSystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            Self::Respawn => SetPlace::at(UnitsSet::Begin),
-            Self::Attack => SetPlace::at(ActionsSet::WindUp),
-            Self::Hits => SetPlace::at(ActionsSet::Hit),
-            Self::Pay => SetPlace::at(ActionsSet::Pay),
-            Self::Strike => SetPlace::at(ActionsSet::Strike),
-            Self::Damage => SetPlace::stage(SimSet::Resolve).before(ActionsSet::Resolve),
-            Self::Die => (SetPlace::stage(SimSet::Resolve).after(StatsSet::GrantAtResolve))
-                .before(StatsSet::ClearDead),
-            Self::Despawn => SetPlace::at(UnitsSet::End),
+            Self::Respawn => SetPlace::at(UnitsSystems::Begin),
+            Self::Attack => SetPlace::at(ActionsSystems::WindUp),
+            Self::Hits => SetPlace::at(ActionsSystems::Hit),
+            Self::Pay => SetPlace::at(ActionsSystems::Pay),
+            Self::Strike => SetPlace::at(ActionsSystems::Strike),
+            Self::Damage => SetPlace::stage(SimSystems::Resolve).before(ActionsSystems::Resolve),
+            Self::Die => (SetPlace::stage(SimSystems::Resolve).after(StatsSystems::GrantAtResolve))
+                .before(StatsSystems::ClearDead),
+            Self::Despawn => SetPlace::at(UnitsSystems::End),
         }
     }
 }
@@ -153,7 +155,7 @@ impl Module for Combat {
     const CAPABILITY: Option<Capability> = Some(Capability::Combat);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
-    type Set = CombatSet;
+    type Systems = CombatSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.scratch::<Due<GoingOff>>();
@@ -220,7 +222,7 @@ impl Module for Combat {
     /// and pays no toggle; it predicts a respawn that is due. The turrets' aim, the slow weapons'
     /// hits and the pay of toggles that cost an attack install only in a match whose books have
     /// them (02-engine-core.md, Books before the install).
-    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         let turrets = cx
             .book::<ByType<Turret>>()
             .is_some_and(|turrets| !turrets.is_empty());
@@ -234,21 +236,21 @@ impl Module for Combat {
         });
         if turrets {
             cx.add(
-                CombatSet::Attack,
+                CombatSystems::Attack,
                 Aiming::aim.before(Attacks::start_attacks),
             );
         }
-        cx.add(CombatSet::Attack, Attacks::start_attacks);
-        cx.add(CombatSet::Respawn, Dying::respawn);
+        cx.add(CombatSystems::Attack, Attacks::start_attacks);
+        cx.add(CombatSystems::Respawn, Dying::respawn);
         cx.server(
-            CombatSet::Hits,
+            CombatSystems::Hits,
             UnitGrid::before_reading(Attacks::take_hits),
         );
-        cx.server(CombatSet::Damage, DamagePass::run);
-        cx.server(CombatSet::Die, Dying::die);
-        cx.add(CombatSet::Pay, Volley::collect);
+        cx.server(CombatSystems::Damage, DamagePass::run);
+        cx.server(CombatSystems::Die, Dying::die);
+        cx.add(CombatSystems::Pay, Volley::collect);
         cx.by_role(
-            CombatSet::Strike,
+            CombatSystems::Strike,
             (
                 (Attacks::collect_attacks, Attacks::attack_events)
                     .chain()
@@ -260,18 +262,18 @@ impl Module for Combat {
         );
         if toggles {
             cx.server(
-                CombatSet::Pay,
+                CombatSystems::Pay,
                 Attacks::pay_attack_toggles.after(Volley::collect),
             );
         }
         cx.server(
-            CombatSet::Respawn,
+            CombatSystems::Respawn,
             Dying::forget_attackers.before(Dying::respawn),
         );
-        cx.server(CombatSet::Despawn, Dying::despawn_dead);
+        cx.server(CombatSystems::Despawn, Dying::despawn_dead);
         if slow {
             cx.server(
-                CombatSet::Hits,
+                CombatSystems::Hits,
                 Attacks::land_held.before(Attacks::take_hits),
             );
         }
@@ -290,7 +292,7 @@ pub mod internals {
         ByAction, InProgress, LoadedAction, ProgressDues, SlotKind, SlotTimes,
     };
     use campfire_common::{DeclaredName, Tick, Ticks};
-    use campfire_declare::ServerForm;
+    use campfire_declarations::ServerForm;
     use campfire_math::{Num, Rounding};
     use campfire_players::ResourceAmount;
     use campfire_script::{Filter, MatchNames};
@@ -417,7 +419,7 @@ pub mod internals {
                     data,
                 },
                 action: book.get(action).expect("the book loaded the action"),
-                rate: *world.resource::<MatchRate>(),
+                tick_rate: *world.resource::<MatchRate>(),
                 stats: world.get_resource::<StatBook>(),
                 kinds: world.resource::<MatchNames>().table::<DamageKind>(),
                 tags: world.resource::<MatchNames>().tags(),

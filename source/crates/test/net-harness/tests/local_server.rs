@@ -12,8 +12,8 @@ use bevy_app::{App, TaskPoolPlugin};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_net::{
-    Hosting, JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup, Os, Pace,
-    PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SessionSigner, SimClient,
+    Hosting, JoinRole, JoinState, LocalRelinkPlugin, LocalServer, LocalServerSetup, Os, Pace,
+    PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SessionSigner, SimClientPlugin,
     UnixClock,
 };
 use campfire_net_connection::Connect;
@@ -50,7 +50,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let keys = TestKey::player(0);
     let mut client = App::new();
     client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
-    let setup = SimClient {
+    let setup = SimClientPlugin {
         main: Arc::new(Signer::new(keys.main, Entropy::Fixed(4))),
         session: SessionSigner::new(Signer::new(keys.session, Entropy::Fixed(4))),
         server: server.pin(),
@@ -70,7 +70,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         tick_hz: NonZeroU32::new(20).unwrap(),
         ..setup.server
     };
-    let at_20 = SimClient {
+    let at_20 = SimClientPlugin {
         server: elsewhere,
         packages: Arc::clone(&setup.packages),
         main: Arc::clone(&setup.main),
@@ -82,12 +82,12 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     };
     assert_eq!(at_20.check(), Err(TermsError::TickRate(elsewhere.tick_hz)));
     client.add_plugins(setup);
-    client.add_plugins(LocalRelink {
+    client.add_plugins(LocalRelinkPlugin {
         relinks: server.relinks(),
     });
     client.finish();
     client.cleanup();
-    let entity = SimClient::spawn(client.world_mut());
+    let entity = SimClientPlugin::spawn(client.world_mut());
     client
         .world_mut()
         .entity_mut(entity)

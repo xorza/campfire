@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookError, BookPlace, ListedSet, UnitTypeData};
+use campfire_declarations::{BookError, BookPlace, ListedSet, UnitTypeData};
 use campfire_script::DataTable;
 use campfire_sim::Capability;
 use campfire_values::{NameKind, Number, PackageIndex};

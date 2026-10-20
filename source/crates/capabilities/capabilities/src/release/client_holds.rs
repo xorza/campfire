@@ -11,9 +11,9 @@ use bevy_ecs::component::{Component, ComponentId, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::World;
-use campfire_declare::CapabilitySet;
+use campfire_declarations::CapabilitySet;
 use campfire_sim::{SimResource, StableId, Unpredicted};
-use campfire_state_types::{Replication, StateTypes};
+use campfire_states::{Replication, StateTypes};
 use campfire_visibility::{DataKind, Recipients};
 
 use crate::release::Release;

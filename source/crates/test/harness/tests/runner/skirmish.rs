@@ -158,7 +158,7 @@ fn a_kill_pays_its_killers_player_its_share_of_the_victims_cost_rounded_up() {
     // rules' start, pays nothing.
     let mut tree = PackageTree::of(TestMode::Skirmish);
     tree.edit(
-        "test/modes/skirmish/data/units.toml",
+        "test/engine/modes/skirmish/data/units.toml",
         Edit::Replace(
             "combat = { on_death = \"despawn\" }",
             "combat = { on_death = \"despawn\" }\nbounty = { resource = \"money\", cost = 1001 }",

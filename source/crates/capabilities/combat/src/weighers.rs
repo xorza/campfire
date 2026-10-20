@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::{CallbackTable, Callbacks};
+use campfire_declarations::{CallbackTable, Callbacks};
 use campfire_math::Num;
 use campfire_script::{CallError, ScriptBatch};
 use campfire_sim::Capability;

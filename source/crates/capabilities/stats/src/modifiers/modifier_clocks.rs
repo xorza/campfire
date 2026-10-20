@@ -4,9 +4,9 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::{DeferredWorld, World};
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
-use campfire_script::{StateValue, SyncTo};
+use campfire_script::{Audience, StateValue};
 use campfire_sim::{DueIndex, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
-use campfire_state_types::{Replication, SentPredicted};
+use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::ModifierId;
 use campfire_visibility::DataKind;
@@ -274,7 +274,7 @@ impl SimComponent for ModifierClocks {
                     let state = self.state(at);
                     clock.interval.is_some() == spec.interval.is_some()
                         && clock.shield.is_some() == spec.shield.is_some()
-                        && spec.state.holds(SyncTo::None, state)
+                        && spec.state.holds(Audience::None, state)
                 })
             })
     }

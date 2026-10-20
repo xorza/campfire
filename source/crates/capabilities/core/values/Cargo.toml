@@ -13,20 +13,20 @@ kind = "problem"
 ecs = [
     "dep:bevy_ecs",
     "dep:campfire-sim",
-    "dep:campfire-state-types",
+    "dep:campfire-states",
     "dep:campfire-visibility",
 ]
 internals = [
     "campfire-math/internals",
     "campfire-sim?/internals",
-    "campfire-state-types?/internals",
+    "campfire-states?/internals",
 ]
 
 [dependencies]
 campfire-common.workspace = true
 campfire-math.workspace = true
 campfire-sim = { workspace = true, optional = true }
-campfire-state-types = { workspace = true, optional = true }
+campfire-states = { workspace = true, optional = true }
 campfire-visibility = { workspace = true, optional = true }
 
 bevy_ecs = { workspace = true, features = ["std"], optional = true }

@@ -249,7 +249,7 @@ impl GameVersion {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use campfire_common::ContentHash;
 
     use crate::zero_hour::game_version::{ArchiveHash, GameVersion};

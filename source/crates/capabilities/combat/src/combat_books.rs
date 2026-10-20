@@ -6,7 +6,7 @@ use campfire_actions::{
     ActionBook, ActionKind, ActionsData, ByAction, DamageKindBook, LoadedAction, PerAction,
     SlotKind, SlotKindBook, Targeting,
 };
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, NamesListError, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, ByType, NamesListError, Section};
 use campfire_script::UnknownName;
 use campfire_stats::{LifePool, StatBook, TypePoolsData, UnitStartError};
 use campfire_units::{PoolNames, UnitTypes};
@@ -142,7 +142,7 @@ impl Weapon {
                 action: actions
                     .get(loaded.action)
                     .expect("a loaded action is in the book"),
-                rate: cx.rate(),
+                tick_rate: cx.rate(),
                 stats,
                 kinds,
                 tags,

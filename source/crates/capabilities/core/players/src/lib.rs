@@ -5,7 +5,7 @@
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
-mod capability_action;
+mod capability_directive;
 mod held_out;
 mod match_entity;
 mod on_match;
@@ -23,7 +23,7 @@ mod resources_data;
 mod seated;
 mod tick_commands;
 
-pub use crate::capability_action::CapabilityAction;
+pub use crate::capability_directive::CapabilityDirective;
 pub use crate::held_out::HeldOut;
 pub use crate::match_entity::MatchEntity;
 pub use crate::on_match::OnMatch;

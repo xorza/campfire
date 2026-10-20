@@ -4,7 +4,7 @@ use crate::interpolated::Interpolated;
 use crate::interpolated_despawn::InterpolatedDespawn;
 use bevy_ecs::prelude::*;
 use bevy_replicon::shared::replication::registry::ctx::DespawnCtx;
-use campfire_net_despawn::DespawnReplicated;
+use campfire_net_despawns::DespawnReplicated;
 use tracing::debug;
 
 /// Replicon's despawn of a received entity. An interpolated entity, when interpolation delays

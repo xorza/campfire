@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
-use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_math::Num;
 use campfire_script::{
     HookSet, MatchNames, ParamProblem, ScriptId, ScriptRole, StateValue, TagNames, UnknownName,
@@ -63,7 +63,7 @@ pub struct ModifierLoad<'a, S> {
     pub scripts: &'a ScriptBook,
     pub tags: &'a TagNames,
     pub stat: S,
-    pub rate: MatchRate,
+    pub tick_rate: MatchRate,
 }
 
 /// A modifier of a package to load: its name, its data, and its compiled script exactly when its
@@ -89,7 +89,7 @@ impl ModifierBook {
             scripts,
             tags,
             stat,
-            rate,
+            tick_rate: rate,
         } = load;
         let start = self.entries.len();
         assert!(
@@ -117,7 +117,7 @@ impl ModifierBook {
         let names = SpecNames {
             stat,
             tags,
-            rate,
+            tick_rate: rate,
             modifier: |name: &str| {
                 let at = modifiers.binary_search_by(|modifier| modifier.name.as_str().cmp(name));
                 match at {
@@ -272,7 +272,11 @@ impl ModifierBook {
             source,
             duration,
         } = adding;
-        let ApplyAt { now, rate, params } = at;
+        let ApplyAt {
+            now,
+            tick_rate: rate,
+            params,
+        } = at;
         let param = move |place: ParamPlace| {
             params.modifier_param(id, from.action, from.rank, place, source)
         };
@@ -373,7 +377,7 @@ impl ModifierBook {
                     let found = stats.named(stat);
                     found.ok_or_else(|| UnknownName::new(StatId::NAMES, stat))
                 },
-                rate: cx.rate(),
+                tick_rate: cx.rate(),
             };
             book.load(load, index, &modifiers)
                 .map_err(|ModifierError { modifier, error }| {

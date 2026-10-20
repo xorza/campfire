@@ -6,7 +6,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{ActionProgress, ProgressIndexes};
-use campfire_declare::ByType;
+use campfire_declarations::ByType;
 use campfire_deliveries::{Died, Teleported};
 use campfire_sim::{DueIndex, DueUnit, Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::UnitPools;

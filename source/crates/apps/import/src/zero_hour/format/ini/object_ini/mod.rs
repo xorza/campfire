@@ -943,7 +943,7 @@ impl Reading {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// `Data\INI\Default\Object.ini` of the fixture install: a tank of two draw modules, one of
     /// which draws no model, and a tree.
     pub(crate) const DEFAULT_OBJECTS: &str = "; Objects the game loads first.\r

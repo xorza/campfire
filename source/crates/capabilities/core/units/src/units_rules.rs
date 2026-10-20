@@ -1,4 +1,4 @@
-use campfire_declare::{BookCx, BookError, BookPlace, SectionTable, StateFields};
+use campfire_declarations::{BookCx, BookError, BookPlace, SectionTable, StateFields};
 use campfire_geometry::Metric;
 use campfire_values::EngineTag;
 

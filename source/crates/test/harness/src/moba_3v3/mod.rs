@@ -2,15 +2,15 @@ use std::iter;
 
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, UseGroup};
-use campfire_capabilities::{Action, Order};
+use campfire_capabilities::{Directive, Order};
 use campfire_common::{DeclaredName, Seat, Tick};
 use campfire_geometry::internals::{Density, KernelScene};
-use campfire_items::{Inventory, ItemsAction};
+use campfire_items::{Inventory, ItemsDirective};
 use campfire_math::Num;
 use campfire_mode::{InputValue, Mode, ModeInput};
 use campfire_navigation::PathWalker;
-use campfire_orders::OrdersAction;
-use campfire_progression::ProgressionAction;
+use campfire_orders::OrdersDirective;
+use campfire_progression::ProgressionDirective;
 use campfire_protocol::{InputRules, SeatPlan, ServerInput, ServerSeeds};
 use campfire_sim::{Position, StableId};
 use campfire_test_packages::TestMode;
@@ -366,48 +366,48 @@ impl Plan for Moba3v3 {
     fn order(self, units: MatchUnits<'_>, seat: u32) -> Order {
         let hero = units.hero(seat);
         let action = match self {
-            Self::Move { x, z } => Action::Orders(OrdersAction::Move {
+            Self::Move { x, z } => Directive::Orders(OrdersDirective::Move {
                 to: GroundPoint {
                     x: Num::from(x),
                     z: Num::from(z),
                 },
             }),
-            Self::AttackSpawnedAt { x, z } => Action::Orders(OrdersAction::Attack {
+            Self::AttackSpawnedAt { x, z } => Directive::Orders(OrdersDirective::Attack {
                 target: units.spawned_at((x, 0, z)),
             }),
-            Self::AttackHero { seat } => Action::Orders(OrdersAction::Attack {
+            Self::AttackHero { seat } => Directive::Orders(OrdersDirective::Attack {
                 target: units.hero(seat),
             }),
-            Self::Cast { slot, aim } => Action::Orders(OrdersAction::Slot {
+            Self::Cast { slot, aim } => Directive::Orders(OrdersDirective::Slot {
                 slot,
                 target: aim.target(units),
             }),
-            Self::Use { item, aim } => Action::Orders(OrdersAction::Slot {
+            Self::Use { item, aim } => Directive::Orders(OrdersDirective::Slot {
                 slot: carried_at(units, hero, item),
                 target: aim.target(units),
             }),
-            Self::Learn { slot } => Action::Progression(ProgressionAction::Learn { slot }),
-            Self::LearnBasic => Action::Progression(ProgressionAction::Learn {
+            Self::Learn { slot } => Directive::Progression(ProgressionDirective::Learn { slot }),
+            Self::LearnBasic => Directive::Progression(ProgressionDirective::Learn {
                 slot: fewest_ranks(units, hero),
             }),
-            Self::Farm { x, z } => Action::Orders(weakest_creep(units, hero).map_or_else(
-                || OrdersAction::Move {
+            Self::Farm { x, z } => Directive::Orders(weakest_creep(units, hero).map_or_else(
+                || OrdersDirective::Move {
                     to: GroundPoint {
                         x: Num::from(x),
                         z: Num::from(z),
                     },
                 },
-                |target| OrdersAction::Attack { target },
+                |target| OrdersDirective::Attack { target },
             )),
-            Self::Buy { item } => Action::Items(ItemsAction::Buy {
+            Self::Buy { item } => Directive::Items(ItemsDirective::Buy {
                 item,
                 shop: units.shop_of(hero),
             }),
-            Self::Sell { slot } => Action::Items(ItemsAction::Sell {
+            Self::Sell { slot } => Directive::Items(ItemsDirective::Sell {
                 slot,
                 shop: units.shop_of(hero),
             }),
-            Self::Swap { from, to } => Action::Items(ItemsAction::Swap { from, to }),
+            Self::Swap { from, to } => Directive::Items(ItemsDirective::Swap { from, to }),
         };
         Order::one(hero, action)
     }

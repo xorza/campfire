@@ -7,7 +7,7 @@ use bevy_ecs::component::ComponentId;
 use bevy_ecs::query::{ComponentAccessKind, FilteredAccess, FilteredAccessSet};
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::system::{System, SystemAccess};
-use campfire_declare::ServerOnly;
+use campfire_declarations::ServerOnlySystems;
 use campfire_stats::{Modifiers, UnitStats};
 
 use super::*;
@@ -49,10 +49,10 @@ fn system_names(world: &mut World) -> Vec<String> {
 
 /// The names of the systems of the sim's schedule in `world`, built, that only a server builds:
 /// those `InstallCx::server` adds.
-fn server_only(world: &World) -> Vec<String> {
+fn server_only_systems(world: &World) -> Vec<String> {
     let schedule = world.resource::<Schedules>().get(SimUpdate);
     let schedule = schedule.expect("the sim's schedule");
-    let own = schedule.graph().systems_in_set(ServerOnly.intern());
+    let own = schedule.graph().systems_in_set(ServerOnlySystems.intern());
     let own = own.expect("a server builds systems of its own");
     let systems = schedule.systems().expect("the schedule is built");
     let mut names: Vec<String> = systems
@@ -163,7 +163,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         EVERY_SYSTEM.books(rate, &[]),
         MatchKind::Rules,
     );
-    let (client, server) = (system_names(&mut world), server_only(&server));
+    let (client, server) = (system_names(&mut world), server_only_systems(&server));
     let own = [
         "campfire_abilities::toggles::Toggles::run_toggles",
         "campfire_areas::area_life::AreaLife::land",

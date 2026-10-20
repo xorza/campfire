@@ -16,7 +16,7 @@ use campfire_net::{
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_link::Unlinked;
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
@@ -27,8 +27,8 @@ use campfire_units::{Destination, GroundPoint, Owner};
 /// Steps a client and the server may take to link, offer, join and play again.
 const REJOIN_STEPS: usize = 300;
 
-const fn move_to(x: i64, z: i64) -> OrdersAction {
-    OrdersAction::Move {
+const fn move_to(x: i64, z: i64) -> OrdersDirective {
+    OrdersDirective::Move {
         to: GroundPoint {
             x: Num::int(x),
             z: Num::int(z),
@@ -414,7 +414,7 @@ fn every_client_rejoins_a_restored_server() {
     // restored server's ticks, which start from 0 again, and not the stopped server's, which run
     // ahead past the max input lead.
     let script = format!(
-        "[[order]]\ntick = {}\naction.orders.move.to = [3, -2]\n",
+        "[[order]]\ntick = {}\ndirective.orders.move.to = [3, -2]\n",
         local.next_tick(End::Server)
     );
     for client in [0, 1] {

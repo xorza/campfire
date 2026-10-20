@@ -12,7 +12,7 @@ use bevy_ecs::world::World;
 use campfire_common::Tick;
 
 use crate::prediction_started::PredictionStarted;
-use crate::sim_update::{TickEnd, end_tick};
+use crate::sim_update::{TickEndSystems, end_tick};
 use crate::stable_id::StableId;
 use crate::state_rewritten::StateRewritten;
 use crate::timed_process::{TimedKept, TimedProcess};
@@ -140,7 +140,7 @@ impl<P: TimedProcess> DueIndex<P> {
         world.add_observer(Self::rebuild);
         world.add_observer(Self::predicted);
         if cfg!(debug_assertions) && P::KEPT == TimedKept::BySetters {
-            schedule.add_systems(Self::audit.in_set(TickEnd).before(end_tick));
+            schedule.add_systems(Self::audit.in_set(TickEndSystems).before(end_tick));
         }
     }
 

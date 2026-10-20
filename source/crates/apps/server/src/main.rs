@@ -25,10 +25,10 @@ use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use campfire_common::ErrorReport;
 use campfire_common::{ExitStatus, TlsKey};
-use campfire_declare::CapabilitySet;
+use campfire_declarations::CapabilitySet;
 use campfire_log::{LogEvent, Logging};
 use campfire_net::{
-    Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, Os, PacedRunner, Publisher,
+    Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, Os, PacedRunnerPlugin, Publisher,
     RestoredSession, ServerBots, ServerDir, ServerFrameSystems, ServerSetup, SessionOpening,
     SimServerPlugins, SimServerWorld, StopRequest, UdpLinks, exit_code,
 };
@@ -196,7 +196,7 @@ fn server_app(
             capabilities: set,
             hosting: Hosting::Remote,
         },
-        PacedRunner,
+        PacedRunnerPlugin,
     ));
     app.world_mut().open_session(opening.session);
     app.insert_resource(data);

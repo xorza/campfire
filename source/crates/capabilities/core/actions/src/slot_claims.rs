@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Fact};
+use campfire_declarations::{BookCx, BookError, BookPlace, Fact};
 use campfire_sim::Capability;
 use campfire_values::UnitType;
 

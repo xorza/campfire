@@ -1,6 +1,6 @@
 use campfire_capabilities::CapabilityError;
 use campfire_common::{DeclaredName, MapName};
-use campfire_declare::Problem;
+use campfire_declarations::Problem;
 use campfire_script::ApiVersion;
 use campfire_sim::Capability;
 use campfire_values::{NameKind, PackagePath};

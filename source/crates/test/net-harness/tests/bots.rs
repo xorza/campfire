@@ -9,7 +9,7 @@ use campfire_actions::ActionTarget;
 use campfire_bots::{
     BotBuffers, BotNames, BotScript, BotSink, HeldBotView, Named, OrderScript, OrderUnsent,
 };
-use campfire_capabilities::{Action, Order};
+use campfire_capabilities::{Directive, Order};
 use campfire_common::{AfterLeave, Seat, StateHash, Tick};
 use campfire_harness::{FixedMatch, FixedSession, HashTrail, MatchUnits};
 use campfire_mode::{ModeWorld, PlayersData, SaveBy, SavesData};
@@ -17,7 +17,7 @@ use campfire_net::internals::{SimServerWorldInternals, TickHashes};
 use campfire_net::{SeatBot, SessionTimes};
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_progression::Experience;
 use campfire_protocol::{Controller, InputRules, LeaveReason, SeatPlan, ServerInput, SessionLog};
 use campfire_runner::{Replay, Session, SessionWorld};
@@ -38,7 +38,7 @@ impl BotSink for Heard {
         self.sent.push(payload.to_vec());
     }
 
-    fn unsent(&mut self, _: Seat, _: &Action<Named>, cause: OrderUnsent) {
+    fn unsent(&mut self, _: Seat, _: &Directive<Named>, cause: OrderUnsent) {
         self.unsent.push(cause);
     }
 }
@@ -56,12 +56,12 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
     let mut fixed = session.start();
     let units = MatchUnits::of(fixed.game());
     let [walker, runner] = [0, 1].map(|slot| units.hero(slot));
-    let cast = "action.orders.slot = { slot = \"first\", target.unit = \"enemies:avatar\" }";
+    let cast = "directive.orders.slot = { slot = \"first\", target.unit = \"enemies:avatar\" }";
     let text = format!(
         "[[order]]\ntick = 0\n{cast}\n[[order]]\ntick = 1\n{cast}\n\
-         [[order]]\ntick = 1\naction.orders.slot = {{ slot = \"creep_attack\", target = \"none\" }}\n\
-         [[order]]\ntick = 1\naction.orders.attack.target = \"enemies:avatar:stunned\"\n\
-         [[order]]\ntick = 1\nunits = \"tower_bolt\"\naction.orders.move.to = [1, 1]\n"
+         [[order]]\ntick = 1\ndirective.orders.slot = {{ slot = \"creep_attack\", target = \"none\" }}\n\
+         [[order]]\ntick = 1\ndirective.orders.attack.target = \"enemies:avatar:stunned\"\n\
+         [[order]]\ntick = 1\nunits = \"tower_bolt\"\ndirective.orders.move.to = [1, 1]\n"
     );
     let books = session.packages().name_books();
     let names = BotNames::new(&books);
@@ -87,7 +87,7 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
     let second = step(&fixed, 1);
     let cast = Order::one(
         walker,
-        OrdersAction::Slot {
+        OrdersDirective::Slot {
             slot: 0,
             target: ActionTarget::Unit(runner),
         },
@@ -127,7 +127,7 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
     // (3, 2) in tick 10.
     let mut setup = InProcessSetup::SOLO;
     setup.bots = &["[[input]]\ntick = 5\nname = \"pick\"\nvalue = \"runner\"\n\
-         [[order]]\ntick = 10\naction.orders.move.to = [3, 2]\n"];
+         [[order]]\ntick = 10\ndirective.orders.move.to = [3, 2]\n"];
     let mut local = InProcessMatch::new(setup);
     local.start_match();
     let bot = Seat::new(1);
@@ -191,7 +191,7 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
         grace: Duration::from_secs(1),
         restore_window: Duration::from_secs(1),
     };
-    setup.takeover = Some("[[order]]\ntick = 2\naction.orders.move.to = [-3, 2]\n");
+    setup.takeover = Some("[[order]]\ntick = 2\ndirective.orders.move.to = [-3, 2]\n");
     let mut local = InProcessMatch::new(setup);
     local.start_match();
     let world = local.server().world();
@@ -230,10 +230,10 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
 
 /// The bot's seven moves of tick 10, to x = 1 to 7 m: the session takes four inputs of a slot a
 /// tick, so the last three spill into tick 11.
-const BURST: &str = "[[order]]\ntick = 10\naction.orders.move.to = [1, 0]\n[[order]]\ntick = 10\naction.orders.move.to = [2, 0]\n\
-     [[order]]\ntick = 10\naction.orders.move.to = [3, 0]\n[[order]]\ntick = 10\naction.orders.move.to = [4, 0]\n\
-     [[order]]\ntick = 10\naction.orders.move.to = [5, 0]\n[[order]]\ntick = 10\naction.orders.move.to = [6, 0]\n\
-     [[order]]\ntick = 10\naction.orders.move.to = [7, 0]\n";
+const BURST: &str = "[[order]]\ntick = 10\ndirective.orders.move.to = [1, 0]\n[[order]]\ntick = 10\ndirective.orders.move.to = [2, 0]\n\
+     [[order]]\ntick = 10\ndirective.orders.move.to = [3, 0]\n[[order]]\ntick = 10\ndirective.orders.move.to = [4, 0]\n\
+     [[order]]\ntick = 10\ndirective.orders.move.to = [5, 0]\n[[order]]\ntick = 10\ndirective.orders.move.to = [6, 0]\n\
+     [[order]]\ntick = 10\ndirective.orders.move.to = [7, 0]\n";
 
 /// What a match of the bot of `BURST` ran: the bot's inputs the log holds, the state hash after
 /// each tick, and where the bot's hero walks after ticks 10 and 11.
@@ -312,7 +312,7 @@ fn a_plan_bot_plays_its_script_until_its_slot_changes_hands() {
     };
     let packages = InProcessMatch::lane_mode(rules, saves);
     let script =
-        OrderScript::parse("[[order]]\ntick = 2\naction.orders.move.to = [1, 0]\n").unwrap();
+        OrderScript::parse("[[order]]\ntick = 2\ndirective.orders.move.to = [1, 0]\n").unwrap();
     let script = BotScript::new(&script, &BotNames::new(&packages.name_books())).unwrap();
     let tick_hz = packages.manifest().tick_hz.default();
     let plan = [SeatPlan::Player, SeatPlan::Bot];

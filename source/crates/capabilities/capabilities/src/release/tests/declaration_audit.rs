@@ -16,9 +16,9 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, CastSpends, DeliveryShape};
 use campfire_combat::ClipShots;
 use campfire_common::EnumAll;
-use campfire_declare::{
+use campfire_declarations::{
     Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
-    KindSpawn, KindVisitor, Listed, ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section,
+    KindSpawn, KindVisitor, Listed, ModuleSystems, OneShot, Report, Role, RuleFn, Scratch, Section,
     SetPlace,
 };
 use campfire_deliveries::Deliverers;
@@ -30,10 +30,10 @@ use campfire_script::{
     Status, ViewColumn,
 };
 use campfire_sim::{
-    Breach, Capability, DueIndex, HostRule, OnAny, OwnResources, SimComponent, SimResource, SimSet,
-    TimedProcess, Unpredicted,
+    Breach, Capability, DueIndex, HostRule, OnAny, OwnResources, SimComponent, SimResource,
+    SimSystems, TimedProcess, Unpredicted,
 };
-use campfire_state_types::{NotSent, Replication, StateTypes};
+use campfire_states::{NotSent, Replication, StateTypes};
 use campfire_stats::Modifiers;
 use campfire_units::{BodyUnit, Dead, DeliveryEntity, OpenCellRun, Owner, SeenBy, UnitEntity};
 use campfire_values::{EngineTag, NameId, TagProperties};
@@ -379,7 +379,7 @@ impl Declarations for DeclarationAudit {
 
     fn listed<L: Listed>(&mut self) {}
 
-    fn sets<S: ModuleSet>(&mut self) {
+    fn sets<S: ModuleSystems>(&mut self) {
         for &set in S::ALL {
             self.sets.push(DeclaredSet { set: set.intern() });
         }
@@ -614,18 +614,18 @@ impl Book for StrayBook {
 
 /// Sets of no module, which the test declares twice.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-enum StraySet {
+enum StraySystems {
     Early,
     Late,
 }
 
-impl ModuleSet for StraySet {
+impl ModuleSystems for StraySystems {
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::stage(match self {
-            Self::Early => SimSet::Inputs,
-            Self::Late => SimSet::Hit,
+            Self::Early => SimSystems::Inputs,
+            Self::Late => SimSystems::Hit,
         })
     }
 }
@@ -659,8 +659,8 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.callback::<Deliverers>(Capability::Areas, |_, _, _, _| {});
     audit.callback::<Deliverers>(Capability::Areas, |_, _, _, _| {});
     // Sets declared twice.
-    audit.sets::<StraySet>();
-    audit.sets::<StraySet>();
+    audit.sets::<StraySystems>();
+    audit.sets::<StraySystems>();
     let queues = type_name::<Deliverers>();
     let stray = type_name::<Stray>();
     let player = type_name::<Player>();

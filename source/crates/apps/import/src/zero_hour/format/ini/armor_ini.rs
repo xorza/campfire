@@ -82,7 +82,7 @@ impl IniArmor {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// `Data\INI\Armor.ini` of the fixture install: a soldier's armor, which small arms hit whole
     /// and crushing twice; and a building's, every type at half by `DEFAULT`, small arms at a
     /// quarter after it, and none of `UNRESISTABLE`, which still passes whole.
@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn an_armor_shares_each_type_by_its_lines_in_order_and_passes_the_unresisted_whole() {
         let mut ini = ArmorIni::default();
-        ini.read(internals::ARMORS.as_bytes()).unwrap();
+        ini.read(samples::ARMORS.as_bytes()).unwrap();
         let get = |name| ini.get(name).unwrap();
         let human = get("HumanArmor");
         assert_eq!(human.share(DamageType::Crush), 2.0);

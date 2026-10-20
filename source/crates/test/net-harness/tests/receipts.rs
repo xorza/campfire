@@ -13,7 +13,7 @@ use campfire_net::{
 };
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{InProcessMatch, InProcessSetup};
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Controller, ServerInput, SignedReceipt, Verifier};
 use campfire_runner::Session;
@@ -162,7 +162,7 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
     };
     local.order(
         0,
-        OrdersAction::Move {
+        OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::int(3),
                 z: Num::int(-2),

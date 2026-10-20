@@ -17,37 +17,37 @@ use campfire_actions::{
 };
 use campfire_areas::{Area, AreaData, AreaInsideData, Areas, LandEffectData};
 use campfire_capabilities::internals::*;
-use campfire_capabilities::{Action, Match, Order, Release};
+use campfire_capabilities::{Directive, Match, Order, Release};
 use campfire_combat::internals::Armed;
 use campfire_combat::{
     AttackData, Combat, CombatBook, CombatRefusal, Damage, DamageCause, DamageEffectData,
     DamagePass, OnDeath, PassEntry, RecentAttackers, WeaponValue,
 };
 use campfire_common::{DeclaredName, Seat, StateHash, Tick, Ticks};
-use campfire_declare::internals::BookLoad;
+use campfire_declarations::internals::BookLoad;
 use campfire_deliveries::DashDelivering;
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::{MoveEffectData, Navigation, NavigationRefusal};
-use campfire_orders::{AiData, Orders, OrdersAction};
+use campfire_orders::{AiData, Orders, OrdersDirective};
 use campfire_players::{Players, PlayersWorld};
 use campfire_production::TrainData;
 use campfire_progression::{
-    Experience, Points, Progression, ProgressionAction, ProgressionRefusal, Thresholds, TrackData,
-    TrackSet, XpEffectData,
+    Experience, Points, Progression, ProgressionDirective, ProgressionRefusal, Thresholds,
+    TrackData, TrackSet, XpEffectData,
 };
 use campfire_projectiles::{Projectile, ProjectileData, Projectiles, ProjectilesRefusal};
 use campfire_script::FailureKind;
 use campfire_script::internals::FailedCall;
 use campfire_script::{
-    ApiError, CapabilityRefusal, NumError, Pool, ScriptBudgets, ScriptLimits, ScriptPools,
-    StateDecl, StateDefault, StateType, StateValue, SyncTo, SyncedStateDecl,
+    ApiError, Audience, CapabilityRefusal, NumError, Pool, ScriptBudgets, ScriptLimits,
+    ScriptPools, StateDecl, StateDefault, StateFieldDecl, StateType, StateValue,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    Capability, EntityIndex, Position, SimComponent, SimRng, SimSet, SimTick, SimWorld, StableId,
-    StateCopy,
+    Capability, EntityIndex, Position, SimComponent, SimRng, SimSystems, SimTick, SimWorld,
+    StableId, StateCopy,
 };
 use campfire_stats::{
     Hold, IntervalRevival, Level, LiveCarriers, ModifierBook, ModifierClocks, ModifierData,
@@ -55,8 +55,8 @@ use campfire_stats::{
     StatGraph, StatOp, StatRule, StatValue, Stats, StatsData, UnitStats,
 };
 use campfire_units::{
-    Body, Dead, Destination, ForcedMove, GroundPoint, Life, MoveStep, NeededLevel, Owner, PoolId,
-    SyncNone, TagData, UnitState, UnitTypeCore, Units,
+    AudienceNone, Body, Dead, Destination, ForcedMove, GroundPoint, Life, MoveStep, NeededLevel,
+    Owner, PoolId, TagData, UnitState, UnitTypeCore, Units,
 };
 use campfire_values::{
     ActionId, ActionStart, Block, DamageKind, FilterData, NameId, Named, Number, PackageIndex,
@@ -805,7 +805,7 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     };
     // A stun in tick 7's Move stage, after the casts start in Act and before they resolve in Hit.
     let stunned = &[Block::Move, Block::Attack, Block::Cast, Block::Use];
-    Units::block_at(&mut game, caster, 7, SimSet::Move, stunned);
+    Units::block_at(&mut game, caster, 7, SimSystems::Move, stunned);
 
     // Silenced in tick 0 and 1: the order is kept, and not started.
     Units::set_blocks(&mut game, caster, &[Block::Cast]);
@@ -1090,7 +1090,7 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
         let payload = Order::payload(&[Order::one(mover, action)]);
         game.step_with(&[(Seat::new(0), &payload)]);
     };
-    let jab = OrdersAction::Slot {
+    let jab = OrdersDirective::Slot {
         slot: 0,
         target: ActionTarget::Unit(far),
     };
@@ -1101,7 +1101,7 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
     let back = Vec3::from((0, 0, -5));
     send(
         &mut game,
-        OrdersAction::Move {
+        OrdersDirective::Move {
             to: GroundPoint {
                 x: back.x,
                 z: back.z,
@@ -2718,7 +2718,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     game.insert_parts(caster, (points, Navigation::walker(step)));
     let entity = game.unit_entity(caster);
     let id = Stats::modifier(&game, PackageIndex::MODE, "guard").unwrap();
-    let send = |game: &mut Match, slot: u32, actions: &[Action]| {
+    let send = |game: &mut Match, slot: u32, actions: &[Directive]| {
         let orders: Vec<_> = actions
             .iter()
             .map(|&action| Order::one(caster, action))
@@ -2740,13 +2740,13 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
             shield,
         )
     };
-    let learn = Action::from(ProgressionAction::Learn { slot: 0 });
+    let learn = Directive::from(ProgressionDirective::Learn { slot: 0 });
 
     // Player 1 does not control the caster: nothing. Player 0 orders a walk, which a learn in the
     // next tick does not stop: rank 1 for a point, its shield in the same tick.
     send(&mut game, 1, &[learn]);
     assert_eq!(progress(&game), (0, 2, None));
-    let walk = Action::from(OrdersAction::Move {
+    let walk = Directive::from(OrdersDirective::Move {
         to: GroundPoint {
             x: Num::int(9),
             z: Num::ZERO,
@@ -2760,7 +2760,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     // In tick 3, a cast ordered before two learns: the first learns rank 2 with the last point,
     // the second finds none, and the cast starts at rank 2, after the learns of its tick, with
     // rank 2's cooldown of 9000 ms, 270 ticks.
-    let cast = Action::from(OrdersAction::Slot {
+    let cast = Directive::from(OrdersDirective::Slot {
         slot: 0,
         target: ActionTarget::None,
     });
@@ -3596,9 +3596,9 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
                 delivery,
             ];
             let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
-            let field = |default| SyncedStateDecl {
+            let field = |default| StateFieldDecl {
                 decl: StateDecl::new(StateType::Int, Some(StateDefault::Int(default))).unwrap(),
-                sync: SyncTo::None,
+                audience: Audience::None,
             };
             let data = UnitTypeCore {
                 state: [("charge", field(0)), ("mark", field(7))]
@@ -3657,7 +3657,7 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
             assert_eq!([caster, target].map(StableId::get), [0, 1]);
             Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
             game.run_until(1);
-            let mut query = game.query::<(&StableId, &UnitType, &UnitState<SyncNone>)>();
+            let mut query = game.query::<(&StableId, &UnitType, &UnitState<AudienceNone>)>();
             let mut spawned: Vec<_> = query
                 .iter(&game)
                 .filter(|&(_, &unit_type, _)| unit_type == bolt)

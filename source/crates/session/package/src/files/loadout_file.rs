@@ -1,5 +1,5 @@
 use campfire_capabilities::{PackageContent, Release};
-use campfire_declare::UnitDefaults;
+use campfire_declarations::UnitDefaults;
 use serde::Deserializer;
 use serde::de::DeserializeSeed;
 

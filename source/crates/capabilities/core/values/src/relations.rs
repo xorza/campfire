@@ -164,7 +164,7 @@ mod ecs {
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
     use campfire_sim::{OnAny, SimComponent};
-    use campfire_state_types::{Replication, SentOnChange};
+    use campfire_states::{Replication, SentOnChange};
     use campfire_visibility::DataKind;
 
     use crate::relations::Relations;

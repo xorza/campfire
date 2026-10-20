@@ -70,7 +70,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
     let names = SpecNames {
         stat,
         tags: types.tags(),
-        rate,
+        tick_rate: rate,
         modifier: |modifier: &str| {
             assert_eq!(modifier, "chill");
             Ok(ModifierId::new(7))
@@ -140,7 +140,7 @@ fn a_spec_fails_on_a_name_the_match_does_not_have() {
             found.ok_or_else(|| UnknownName::new(StatId::NAMES, stat))
         },
         tags: types.tags(),
-        rate: Match::TEST_RATE,
+        tick_rate: Match::TEST_RATE,
         modifier: |modifier: &str| {
             let found = (modifier == "chill").then(|| ModifierId::new(0));
             found.ok_or_else(|| UnknownName::new(ModifierId::NAMES, modifier))

@@ -42,11 +42,11 @@ default-members = [
     "crates/capabilities/capabilities",
     "crates/capabilities/combat",
     "crates/capabilities/core/actions",
-    "crates/capabilities/core/declare",
+    "crates/capabilities/core/declarations",
     "crates/capabilities/core/deliveries",
     "crates/capabilities/core/players",
     "crates/capabilities/core/script",
-    "crates/capabilities/core/state-types",
+    "crates/capabilities/core/states",
     "crates/capabilities/core/units",
     "crates/capabilities/core/values",
     "crates/capabilities/core/visibility",
@@ -65,7 +65,7 @@ default-members = [
     "crates/network/net-channels",
     "crates/network/net-connection",
     "crates/network/net-core",
-    "crates/network/net-despawn",
+    "crates/network/net-despawns",
     "crates/network/net-emulator",
     "crates/network/net-endpoint",
     "crates/network/net-interpolation",
@@ -154,7 +154,7 @@ campfire-actions = { path = "crates/capabilities/core/actions" }
 campfire-areas = { path = "crates/capabilities/areas" }
 campfire-bots = { path = "crates/session/bots" }
 campfire-combat = { path = "crates/capabilities/combat" }
-campfire-declare = { path = "crates/capabilities/core/declare" }
+campfire-declarations = { path = "crates/capabilities/core/declarations" }
 campfire-deliveries = { path = "crates/capabilities/core/deliveries" }
 campfire-geometry = { path = "crates/sim/geometry" }
 campfire-harness = { path = "crates/test/harness" }
@@ -168,7 +168,7 @@ campfire-orders = { path = "crates/capabilities/orders" }
 campfire-production = { path = "crates/capabilities/production" }
 campfire-progression = { path = "crates/capabilities/progression" }
 campfire-projectiles = { path = "crates/capabilities/projectiles" }
-campfire-state-types = { path = "crates/capabilities/core/state-types" }
+campfire-states = { path = "crates/capabilities/core/states" }
 campfire-stats = { path = "crates/capabilities/stats" }
 campfire-values = { path = "crates/capabilities/core/values" }
 campfire-units = { path = "crates/capabilities/core/units" }
@@ -185,7 +185,7 @@ campfire-net-bytes = { path = "crates/network/net-bytes" }
 campfire-net-channels = { path = "crates/network/net-channels" }
 campfire-net-connection = { path = "crates/network/net-connection" }
 campfire-net-core = { path = "crates/network/net-core" }
-campfire-net-despawn = { path = "crates/network/net-despawn" }
+campfire-net-despawns = { path = "crates/network/net-despawns" }
 campfire-net-emulator = { path = "crates/network/net-emulator" }
 campfire-net-endpoint = { path = "crates/network/net-endpoint" }
 campfire-net-interpolation = { path = "crates/network/net-interpolation" }

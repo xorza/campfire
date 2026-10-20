@@ -1,7 +1,7 @@
 use campfire_actions::{
     ActionData, ActionKind, ActionsData, SlotClaim, SlotClaims, Targeting, TypeSlotsData,
 };
-use campfire_declare::{BookCx, BookError, BookPlace, Section, SourceKind};
+use campfire_declarations::{BookCx, BookError, BookPlace, Section, SourceKind};
 use campfire_sim::Capability;
 
 use crate::Interaction;

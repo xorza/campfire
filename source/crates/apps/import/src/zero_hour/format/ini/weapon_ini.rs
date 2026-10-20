@@ -273,17 +273,17 @@ impl FlagSet for CollideMask {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod samples {
     /// `Data\INI\Weapon.ini` of the fixture install: a rifle that fires a clip of 3 at once, a
-    /// cannon that fires a shell of a radius, a scatter at infantry and a bound pitch, a launcher of
-    /// a rocket, a phantom of a projectile no file defines, a lobber whose radius spares its own
-    /// kind, a popper whose shell detonates on shrubbery, a flamer of a radius, a knife that waits before it strikes, a
-    /// mortar of a minimum range, a pistol of a random delay, a marker of no delay, a shotgun of a
-    /// second radius, a gatling that scatters at infantry, a bolt of a set speed, which may delay its
-    /// damage, a stinger that hits no ground, a blast that kills its own unit, a pulse dealt at
-    /// its own place, a minigun that fires faster as it keeps firing, a disabler of subdual
-    /// damage, a mender of healing damage, and a beam of the bolt's speed, a laser, which does not
-    /// delay its damage.
+    /// cannon that fires a shell of a radius, a scatter at infantry and a bound pitch, a launcher
+    /// of a rocket, a phantom of a projectile no file defines, a lobber whose radius spares its own
+    /// kind, a popper whose shell detonates on shrubbery, a flamer of a radius, a knife that waits
+    /// before it strikes, a mortar of a minimum range, a pistol of a random delay, a marker of no
+    /// delay, a shotgun of a second radius, a gatling that scatters at infantry, a bolt of a set
+    /// speed, which may delay its damage, a stinger that hits no ground, a blast that kills its own
+    /// unit, a pulse dealt at its own place, a minigun that fires faster as it keeps firing, a
+    /// disabler of subdual damage, a mender of healing damage, and a beam of the bolt's speed, a
+    /// laser, which does not delay its damage.
     pub(crate) const WEAPONS: &str = "Weapon RangerRifle\r
   PrimaryDamage = 5.0\r
   PrimaryDamageRadius = 0.0\r
@@ -438,7 +438,7 @@ mod tests {
     #[test]
     fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
         let mut ini = WeaponIni::default();
-        ini.read(internals::WEAPONS.as_bytes()).unwrap();
+        ini.read(samples::WEAPONS.as_bytes()).unwrap();
         let rifle = ini.get("RangerRifle").unwrap();
         assert_eq!(
             *rifle,

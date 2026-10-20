@@ -1,5 +1,5 @@
 use campfire_common::SegmentSeed;
-use campfire_declare::{CapabilitySet, Role};
+use campfire_declarations::{CapabilitySet, Role};
 use campfire_sim::MatchRate;
 use campfire_visibility::OutView;
 
@@ -9,7 +9,7 @@ use campfire_visibility::OutView;
 #[must_use = "a spec builds nothing until a match is built of it"]
 pub struct MatchSetup {
     pub(crate) seed: SegmentSeed,
-    pub(crate) rate: MatchRate,
+    pub(crate) tick_rate: MatchRate,
     pub(crate) set: CapabilitySet,
     pub(crate) role: Role,
     pub(crate) out: OutView,
@@ -30,7 +30,7 @@ impl MatchSetup {
     pub const fn new(seed: SegmentSeed, rate: MatchRate, role: Role) -> Self {
         Self {
             seed,
-            rate,
+            tick_rate: rate,
             set: CapabilitySet::CORE,
             role,
             out: OutView::Team,
@@ -43,7 +43,7 @@ impl MatchSetup {
 
     /// The rate the match ticks at.
     pub const fn rate(&self) -> MatchRate {
-        self.rate
+        self.tick_rate
     }
 
     /// The match's capabilities.

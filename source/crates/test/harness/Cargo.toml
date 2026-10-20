@@ -18,7 +18,7 @@ campfire-actions = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-combat = { workspace = true, features = ["internals"] }
 campfire-common.workspace = true
-campfire-declare = { workspace = true, features = ["internals"] }
+campfire-declarations = { workspace = true, features = ["internals"] }
 campfire-geometry = { workspace = true, features = ["internals"] }
 campfire-items = { workspace = true, features = ["internals"] }
 campfire-log = { workspace = true, features = ["internals"] }

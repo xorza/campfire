@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Section, SectionTable, StateFields};
+use campfire_declarations::{BookCx, BookError, BookPlace, Section, SectionTable, StateFields};
 use campfire_script::UnknownName;
 use campfire_units::DeclaredTags;
 use campfire_values::{EngineTag, ModifierId, Named};

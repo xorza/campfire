@@ -18,25 +18,25 @@ use crate::pace::{Pace, PaceSpeed};
 /// and scales the most time a frame advances by as much, so a frame runs as many ticks at most at
 /// every speed (12-lightyear-in-tree.md, The pace sets the tick rate).
 #[derive(Debug)]
-pub struct LocalPace {
+pub struct LocalPacePlugin {
     pub pace: Arc<Pace>,
-    pub rate: TickRate,
+    pub tick_rate: TickRate,
 }
 
 /// The pace an app follows, and the one it applied last.
 #[derive(Resource, Debug)]
 struct Paced {
     pace: Arc<Pace>,
-    rate: TickRate,
+    tick_rate: TickRate,
     paused: bool,
     speed: PaceSpeed,
 }
 
-impl Plugin for LocalPace {
+impl Plugin for LocalPacePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Paced {
             pace: Arc::clone(&self.pace),
-            rate: self.rate,
+            tick_rate: self.tick_rate,
             paused: false,
             speed: PaceSpeed::Normal,
         });
@@ -48,7 +48,7 @@ impl Paced {
     fn apply(world: &mut World) {
         let paced = world.resource::<Self>();
         let (paused, speed) = (paced.pace.is_paused(), paced.pace.speed());
-        let (was_paused, was_speed, rate) = (paced.paused, paced.speed, paced.rate);
+        let (was_paused, was_speed, rate) = (paced.paused, paced.speed, paced.tick_rate);
         if paused != was_paused {
             let mut time = world.resource_mut::<Time<Virtual>>();
             if paused {

@@ -1,7 +1,7 @@
 use campfire_actions::ActionTarget;
 use campfire_capabilities::Order;
 use campfire_math::{Num, Vec3};
-use campfire_orders::OrdersAction;
+use campfire_orders::OrdersDirective;
 use campfire_production::TrainQueue;
 use campfire_protocol::{InputRules, SeatPlan};
 use campfire_sim::StableId;
@@ -125,7 +125,7 @@ impl Plan for ProvingMatch {
         let (unit, action) = match self {
             Self::Move { x, z } => (
                 hero,
-                OrdersAction::Move {
+                OrdersDirective::Move {
                     to: GroundPoint {
                         x: Num::int(x),
                         z: Num::int(z),
@@ -134,33 +134,33 @@ impl Plan for ProvingMatch {
             ),
             Self::AttackBoulder => (
                 hero,
-                OrdersAction::Attack {
+                OrdersDirective::Attack {
                     target: boulder(units),
                 },
             ),
             Self::AttackHero { seat } => (
                 hero,
-                OrdersAction::Attack {
+                OrdersDirective::Attack {
                     target: units.hero(seat),
                 },
             ),
             Self::Train { barracks: at } => (
                 barracks(units, seat)[at],
-                OrdersAction::Slot {
+                OrdersDirective::Slot {
                     slot: 0,
                     target: ActionTarget::None,
                 },
             ),
             Self::Ward { barracks: at, x, z } => (
                 barracks(units, seat)[at],
-                OrdersAction::Slot {
+                OrdersDirective::Slot {
                     slot: 1,
                     target: ActionTarget::Point(Vec3::from((Num::int(x), 0, Num::int(z)))),
                 },
             ),
             Self::Cast { slot, at } => (
                 hero,
-                OrdersAction::Slot {
+                OrdersDirective::Slot {
                     slot,
                     target: at.target(units),
                 },

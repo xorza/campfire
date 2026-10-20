@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Role, Scratch};
+use campfire_declarations::{Role, Scratch};
 use campfire_deliveries::Delivering;
 use campfire_math::Vec3;
 use campfire_sim::StableId;
