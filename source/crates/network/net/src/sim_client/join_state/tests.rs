@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use campfire_common::{PackageFingerprint, Version};
-use campfire_mode::OptionPicks;
+use campfire_mode::HostPicks;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
     ConnectChallenge, Entropy, InputHash, MainKey, Receipt, SeatPlan, SeedChain,
@@ -53,7 +53,7 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> SessionOffer {
             inputs: InputRules::LAN,
             seats: vec![SeatPlan::Player; 2],
             visibility: rules.visibility().settings(),
-            picks: &OptionPicks::defaults(rules.options()),
+            picks: &HostPicks::defaults(packages.data(), 2),
         })
         .unwrap();
     change(&mut terms);

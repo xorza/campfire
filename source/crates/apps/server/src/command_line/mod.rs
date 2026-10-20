@@ -4,15 +4,15 @@ use std::time::Duration;
 
 use campfire_bots::{OrderScript, OrderScriptReadError};
 use campfire_common::MapName;
-use campfire_mode::OptionValue;
+use campfire_mode::{OptionValue, SeatPick};
 use campfire_net::{SeatBotFile, SeatScript, SessionTimes};
 use campfire_visibility::{HostVisibility, SettingValue};
 use clap::Parser;
 
 /// What the command line names: the data directory, how long after its journal's last write a
 /// session a stop ended restores, the server's bots, the mode to open and its map, what the host
-/// sets of a new session's visibility and picks of its mode's options, the address to listen on,
-/// and whether the server asks its router to forward the port.
+/// sets of a new session's visibility and picks of its mode's options and of its seats' choices,
+/// the address to listen on, and whether the server asks its router to forward the port.
 #[derive(Debug)]
 pub(crate) struct Args {
     pub(crate) data: PathBuf,
@@ -23,6 +23,7 @@ pub(crate) struct Args {
     pub(crate) map: Option<MapName>,
     pub(crate) host: HostVisibility,
     pub(crate) options: Vec<OptionValue>,
+    pub(crate) seat_picks: Vec<SeatPick>,
     pub(crate) address: SocketAddr,
     pub(crate) port_map: bool,
 }
@@ -59,6 +60,10 @@ pub(crate) struct CommandLine {
     /// named takes its default
     #[arg(long = "option", value_name = "NAME=VALUE")]
     options: Vec<OptionValue>,
+    /// A value of one of the mode's choices of values for a seat of a new session, as
+    /// seat:choice=value; a seat's choice not named starts unpicked
+    #[arg(long = "pick", value_name = "SEAT:CHOICE=VALUE")]
+    seat_picks: Vec<SeatPick>,
     /// The most links with no seat a new session admits
     #[arg(long, value_name = "COUNT", default_value_t = 0)]
     spectators: u32,
@@ -90,6 +95,7 @@ impl From<CommandLine> for Args {
                 max_spectators: line.spectators,
             },
             options: line.options,
+            seat_picks: line.seat_picks,
             address: line.address,
             port_map: !line.no_port_map,
         }

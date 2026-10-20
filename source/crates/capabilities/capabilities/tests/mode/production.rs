@@ -48,12 +48,14 @@ fn on_unit_trained(ctx, unit, producer) {
     SupplyCostBook::new(ByType::default(), trains).load_into(&mut game);
     // Hero X's type produces, with a queue of 2.
     let hero_type = Units::type_named(&game, "hero-x").unwrap();
-    let production = ProductionData {
+    let production = ProducerSpec {
         queue: NonZeroU8::new(2).unwrap(),
         exit: None,
         rally: None,
+        gathers: false,
+        free: Box::new([]),
     };
-    ByType::<ProductionData>::amend(&mut game, |_, producers| {
+    ByType::<ProducerSpec>::amend(&mut game, |_, producers| {
         producers.set(hero_type, production);
     });
     Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);

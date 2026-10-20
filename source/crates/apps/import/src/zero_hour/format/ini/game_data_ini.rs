@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{BlockKinds, IniText};
 
@@ -22,6 +24,8 @@ pub(crate) struct GameDataIni {
     /// `NumberGlobalLights`: the lights the terrain and the objects are drawn in, of the three
     /// each map gives.
     global_lights: usize,
+    /// `ValuePerSupplyBox`: the money a supply box pays.
+    pub(crate) box_value: NonZeroU32,
 }
 
 impl Default for GameDataIni {
@@ -39,6 +43,7 @@ impl Default for GameDataIni {
             default_scroll: 0.5,
             rotate_speed: 0.1,
             global_lights: 3,
+            box_value: NonZeroU32::new(100).expect("100 is no zero"),
         }
     }
 }
@@ -61,6 +66,12 @@ impl GameDataIni {
                             .ok()
                             .filter(|&lights| lights <= Self::MOST_LIGHTS)
                             .ok_or(IniError::Range { line: line.number })?;
+                    }
+                    // A box of no money, or of less, is a dock that pays nothing, which no known
+                    // install ships.
+                    "valuepersupplybox" => {
+                        let value = u32::try_from(line.int()?).ok().and_then(NonZeroU32::new);
+                        self.box_value = value.ok_or(IniError::Range { line: line.number })?;
                     }
                     word => {
                         let field = match word {
@@ -106,6 +117,11 @@ mod tests {
         ini.read(b"GameData\n  adjustclifftextures = NO\n  Use3WayTerrainBlends = 2\nEnd\n")
             .unwrap();
         assert_eq!(fields(&ini), (false, 2));
+        // A box pays 100 by default, the shipped file's 75 once it reads; none of no money.
+        assert_eq!(ini.box_value.get(), 100);
+        ini.read(b"GameData\n  ValuePerSupplyBox = 75\nEnd\n")
+            .unwrap();
+        assert_eq!(ini.box_value.get(), 75);
 
         // The shipped camera's fields, which the camera's conversion reads.
         let mut shipped = GameDataIni::default();
@@ -142,6 +158,10 @@ mod tests {
             fails(b"GameData\n NumberGlobalLights = -1\nEnd\n"),
             IniError::Range { line: 2 }
         );
+        for value in ["0", "-75"] {
+            let text = format!("GameData\n ValuePerSupplyBox = {value}\nEnd\n");
+            assert_eq!(fails(text.as_bytes()), IniError::Range { line: 2 });
+        }
         assert_eq!(fails(b"MapName = A.map\n"), IniError::NotBlock { line: 1 });
         assert_eq!(fails(b"End\n"), IniError::StrayEnd { line: 1 });
         assert_eq!(

@@ -1,5 +1,5 @@
 use campfire_common::MapName;
-use campfire_mode::PickError;
+use campfire_mode::{PickError, SeatPickError};
 use campfire_net::{AbortError, LobbyOpenError, WaitingError};
 use campfire_runner::TermsError;
 use campfire_visibility::VisibilityError;
@@ -16,8 +16,12 @@ pub(crate) enum OpeningError {
     /// The options' picks asked are none of the mode's.
     #[error("the options asked")]
     Options(#[source] PickError),
-    /// A session waits to restore, and other picks of its options than its own were asked.
-    #[error("a session waits to restore, and other picks of its options were asked")]
+    /// The seat picks asked are none of the mode's choices.
+    #[error("the seat picks")]
+    SeatPicks(#[source] SeatPickError),
+    /// A session waits to restore, and other picks of its options or seats than its own were
+    /// asked.
+    #[error("a session waits to restore, and other picks of its options or seats were asked")]
     OtherPicks,
     /// The visibility settings asked are none the mode leaves the host.
     #[error("the visibility asked")]

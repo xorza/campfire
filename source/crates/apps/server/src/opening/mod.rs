@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use campfire_common::MapName;
-use campfire_mode::{OptionPicks, OptionValue};
+use campfire_mode::{OptionPicks, OptionValue, SeatPick, SeatPicks};
 use campfire_net::{
     Lobby, LobbyOpening, PendingRestore, Publisher, RestoredSession, ServerBots, ServerDir,
     ServerSetup, SessionDir, SessionOpening, UncheckedRestore,
@@ -37,6 +37,9 @@ pub(crate) struct OpeningSetup<'a> {
     pub(crate) host: HostVisibility,
     /// The values the host picks of a new session's options; a restored session keeps its own.
     pub(crate) options: Vec<OptionValue>,
+    /// The values the host picks of a new session's seats' choices; a restored session keeps its
+    /// own.
+    pub(crate) seat_picks: Vec<SeatPick>,
 }
 
 /// How long a session waits to restore, and the time of the start that asks: a session whose
@@ -66,7 +69,9 @@ impl Opening {
             .map_err(OpeningError::Terms)?;
             let visibility = restore.checked().visibility;
             let rules = SessionRules::of(&restore.packages);
-            Self::picks(rules, &restore.session.terms().options, &setup.options)?;
+            let terms = restore.session.terms();
+            Self::picks(rules, &terms.options, &setup.options)?;
+            Self::seat_picks(rules, terms, &setup.seat_picks)?;
             Self::visibility(rules, &visibility, &setup.host)?;
             (SessionOpening::Restored(Box::new(restore)), visibility)
         } else {
@@ -144,6 +149,25 @@ impl Opening {
         Ok(())
     }
 
+    /// An error when the host `asked` picks of the seats' choices of `rules`, and they are not
+    /// those `journal`, a waiting session's terms, hold, which it restores with, as its option
+    /// picks are checked.
+    fn seat_picks(
+        rules: SessionRules<'_>,
+        journal: &SessionTerms,
+        asked: &[SeatPick],
+    ) -> Result<(), OpeningError> {
+        if asked.is_empty() {
+            return Ok(());
+        }
+        let asked = SeatPicks::named(rules.choices(), journal.seats.len(), asked)
+            .map_err(OpeningError::SeatPicks)?;
+        if asked.places() != journal.seat_picks {
+            return Err(OpeningError::OtherPicks);
+        }
+        Ok(())
+    }
+
     /// An error when the host `asked` settings of the visibility the mode leaves it, or a most of
     /// spectators, and they do not give `journal`, the visibility a waiting session's terms hold,
     /// which it restores with, as its picks are checked.
@@ -191,6 +215,7 @@ impl Opening {
             open: Vec::new(),
             host: setup.host,
             options: setup.options,
+            seat_picks: setup.seat_picks,
             server: setup.server,
         };
         Lobby::open(opening, setup.data).map_err(OpeningError::Open)

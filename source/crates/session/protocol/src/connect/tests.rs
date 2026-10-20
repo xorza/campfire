@@ -34,6 +34,7 @@ fn terms() -> SessionTerms {
         seats: vec![SeatPlan::Player],
         visibility: Vec::new(),
         options: Vec::new(),
+        seat_picks: Vec::new(),
     }
 }
 

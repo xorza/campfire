@@ -5,7 +5,7 @@ use super::{NamedCode, Naming, capability, named_code};
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 72] = [
+const LOOKUPS: [(&str, &str); 71] = [
     // The load, each module's books by their builders.
     ("actions/action_load.rs", "named"),
     ("actions/action_rules.rs", "named"),
@@ -71,7 +71,6 @@ const LOOKUPS: [(&str, &str); 72] = [
     ("mode/mode_schema.rs", "named"),
     ("mode/mode_script.rs", "named"),
     ("mode/roster.rs", "named"),
-    ("mode/roster.rs", "offer_named"),
     ("mode/timer_id.rs", "named"),
     ("mode/victory.rs", "named"),
     ("script/scripts/id_args.rs", "named"),

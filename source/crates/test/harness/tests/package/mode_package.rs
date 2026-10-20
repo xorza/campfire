@@ -208,6 +208,35 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 #[test]
+fn a_choice_of_values_lists_fewer_than_a_seat_picks_none() {
+    // A seat pick's byte holds a value's place, 255 its none: 254 values load, 255 do not.
+    let side = |count: usize| {
+        let values: Vec<String> = (0..count).map(|at| format!("\"v{at}\"")).collect();
+        format!(
+            "[choices.side]\nname = \"choice-hero\"\noffers = \"values\"\nvalues = [{}]\n\n\
+             [choices.spells]",
+            values.join(", ")
+        )
+    };
+    let edit = |text: &str| {
+        load(&edited([(
+            MODE_DATA,
+            Edit::Replace("[choices.spells]", text),
+        )]))
+    };
+    assert!(edit(&side(254)).is_ok());
+    let refused = edit(&side(255)).unwrap_err();
+    assert!(
+        rule_at(
+            &refused.problem,
+            &entry("choices", "side"),
+            &ModeDataError::ChoiceValues
+        ),
+        "{refused:?}"
+    );
+}
+
+#[test]
 fn a_weapon_or_an_action_at_a_unit_or_a_point_may_fly_a_curve_and_one_along_a_direction_not() {
     // The tower's weapon flies a curve, 5 m/s, slower than the cap: a curve chases no one, and
     // its end follows its target.
@@ -3214,6 +3243,67 @@ static MAP_FLAWS: &[Flaw] = &[
             )
         },
     ),
+    // A choice of values lists them, each once, and takes one; a choice of avatars lists none.
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "unique = true\n\n[choices.spells]",
+            "unique = true\nvalues = [\"north\"]\n\n[choices.spells]",
+        ),
+        MODE,
+        |problem| {
+            rule_at(
+                problem,
+                &entry("choices", "hero"),
+                &ModeDataError::ChoiceValues,
+            )
+        },
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "[choices.spells]",
+            "[choices.side]\nname = \"choice-hero\"\noffers = \"values\"\n\n[choices.spells]",
+        ),
+        MODE,
+        |problem| {
+            rule_at(
+                problem,
+                &entry("choices", "side"),
+                &ModeDataError::ChoiceValues,
+            )
+        },
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "[choices.spells]",
+            "[choices.side]\nname = \"choice-hero\"\noffers = \"values\"\nvalues = [\"north\", \"north\"]\n\n[choices.spells]",
+        ),
+        MODE,
+        |problem| {
+            rule_at(
+                problem,
+                &entry("choices", "side"),
+                &ModeDataError::ChoiceValues,
+            )
+        },
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "[choices.spells]",
+            "[choices.side]\nname = \"choice-hero\"\noffers = \"values\"\nvalues = [\"north\", \"south\"]\ncount = 2\n\n[choices.spells]",
+        ),
+        MODE,
+        |problem| {
+            rule_at(
+                problem,
+                &entry("choices", "side"),
+                &ModeDataError::ChoiceValues,
+            )
+        },
+    ),
     flaw(
         MODE_DATA,
         Edit::Replace("slot = \"spell\"", "slot = \"spells\""),
@@ -3650,6 +3740,76 @@ static MAP_FLAWS: &[Flaw] = &[
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
         refused: |problem| read_fails(problem, "data/mode.toml", "missing field `take`"),
+    },
+    // A gather's unit takes at most its trip's take, and its time at a drop-off counts in ticks.
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.mine]\nkind = \"gather\"\nrange = \"1\"\nwindup_ms = 1000\ntargeting = \"neutrals\"\nresource = \"gold\"\ntake = 5\nunit = 6\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
+        package: MODE,
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "mine"),
+                &ProductionDataError::UnitPastTake,
+            )
+        },
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.mine]\nkind = \"gather\"\nrange = \"1\"\nwindup_ms = 1000\ntargeting = \"neutrals\"\nresource = \"gold\"\ntake = 5\ndeliver_ms = 9000000000000000000\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
+        package: MODE,
+        refused: |problem| rule_at(problem, &entry("actions", "mine"), &TimeTooLarge),
+    },
+    // A producer frees unit types of its package that walk and that no action delivers.
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            "[units.tower]\n",
+            "[units.yard]\nproduction = { queue = 1, free = [\"golem\"] }\n\n[units.tower]\n",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, at: Place::UnitType(unit), name } if unit == "yard" && name == "golem"),
+    },
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            "[units.tower]\n",
+            "[units.yard]\nproduction = { queue = 1, free = [\"tower\"] }\n\n[units.tower]\n",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| {
+            rule_at(
+                problem,
+                &unit_type("yard"),
+                &ProductionDataError::FreeStands,
+            )
+        },
+    },
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            "[units.tower]\n",
+            "[units.yard]\nproduction = { queue = 1, free = [\"caster_creep_bolt\"] }\n\n[units.tower]\n",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| {
+            rule_at(
+                problem,
+                &unit_type("yard"),
+                &ProductionDataError::FreeDelivered,
+            )
+        },
     },
     Flaw {
         file: UNITS,

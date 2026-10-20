@@ -457,6 +457,7 @@ mod tests {
             seats: vec![SeatPlan::Open],
             visibility: Visibility::DEFAULT.encode(),
             options: Vec::new(),
+            seat_picks: Vec::new(),
         };
         let private = SessionPrivate { seed_chain };
         let id = terms.session_id();

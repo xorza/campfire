@@ -4,12 +4,12 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Changed, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_actions::{ActionBook, ActionKind, ActionSlots, Aim, ByAction};
-use campfire_common::{Seat, Ticks};
+use campfire_common::{Seat, Tick, Ticks};
 use campfire_geometry::Placed;
 use campfire_math::Vec3;
 use campfire_players::{OnMatch, PlayerResources, PlayerRows, ResourceAmount};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
-use campfire_units::{Body, Dead, MapBook, Owner};
+use campfire_units::{ArrivedShort, Body, Dead, Destination, MapBook, Owner};
 use campfire_values::{Relations, ResourceId, Team, UnitTags, UnitType};
 
 use crate::gather_loop::WorkerParts;
@@ -85,6 +85,21 @@ struct Seeker<'a> {
     gather: Gather,
     team: Team,
     relations: &'a Relations,
+}
+
+/// A worker as it takes its load to a drop-off: where it stands, its owner, its loop, its load,
+/// its node while it stands, how it looks at nodes, its destination, and its report of a short
+/// arrival.
+#[derive(Debug, Clone, Copy)]
+struct Hauler<'a> {
+    worker: LoopTarget,
+    owner: Option<Owner>,
+    order: GatherOrder,
+    load: Option<Load>,
+    node: Option<FoundNode>,
+    seeker: Seeker<'a>,
+    destination: Option<&'a Destination>,
+    arrived: Option<&'a ArrivedShort>,
 }
 
 /// A load a worker of `owner` brings: its resource, which a drop-off of the player takes or not.
@@ -263,6 +278,16 @@ impl GatherView<'_, '_> {
             Some(next) => Step::Retarget(next),
             None => Step::Stop,
         };
+        let hauler = Hauler {
+            worker,
+            owner: owner.copied(),
+            order,
+            load: gatherer.load(),
+            node,
+            seeker,
+            destination,
+            arrived,
+        };
         match order.step {
             GatherStep::Ordered => Step::Hold,
             GatherStep::ToNode => {
@@ -301,38 +326,90 @@ impl GatherView<'_, '_> {
                     Step::Hold
                 }
             }
-            GatherStep::ToDropOff { drop_off } => {
-                let Some(load) = gatherer.load() else {
-                    return Step::Deliver(node.map(|_| order.node));
-                };
-                // A worker no player owns has no drop-off.
-                let Some(owner) = owner.copied().map(Owner::seat) else {
-                    return Step::Stand;
-                };
-                let delivery = Haul {
-                    owner,
-                    resource: load.resource,
-                };
-                let chosen = drop_off.and_then(|id| self.drop_off_location(id, delivery));
-                let Some(location) = chosen else {
-                    return match self.drop_off(from.get(), delivery) {
-                        Some(next) => Step::Choose(next),
-                        None => Step::Stand,
-                    };
-                };
-                if !self.reaches(worker, gather, location) {
-                    return location.walk_from(from.get(), destination, arrived);
-                }
-                if !self.joins(owner, load) {
-                    return Step::Stand;
-                }
-                let back = match node {
-                    Some(_) => Some(order.node),
-                    None => self.free_node_near(from.get(), seeker, gone),
-                };
-                Step::Deliver(back)
+            GatherStep::ToDropOff { drop_off } => self.haul(&hauler, drop_off, None),
+            GatherStep::Delivering { drop_off, since } => {
+                self.haul(&hauler, Some(drop_off), Some(since))
             }
         }
+    }
+
+    /// What a worker `at` its drop-off does with its load, its loop at `drop_off`, and, as it
+    /// stands there, from the tick `since`: it walks to the drop-off, else stands there for its
+    /// gather's time, then its load joins its player's, and it goes back to its node, or the free
+    /// node nearest it within its bounce of the node's place once it is gone.
+    fn haul(&self, at: &Hauler<'_>, drop_off: Option<StableId>, since: Option<Tick>) -> Step {
+        let order = at.order;
+        let Some(load) = at.load else {
+            return Step::Deliver(at.node.map(|_| order.node));
+        };
+        // A worker no player owns has no drop-off.
+        let Some(owner) = at.owner.map(Owner::seat) else {
+            return Step::Stand;
+        };
+        let delivery = Haul {
+            owner,
+            resource: load.resource,
+        };
+        let from = at.worker.position;
+        let chosen = drop_off.and_then(|id| Some((id, self.drop_off_location(id, delivery)?)));
+        let Some((drop_off, location)) = chosen else {
+            return match self.drop_off(from, delivery) {
+                Some(next) => Step::Choose(next),
+                None => Step::Stand,
+            };
+        };
+        let gather = at.seeker.gather;
+        if !self.reaches(at.worker, gather, location) {
+            // One pushed off as it stood there walks back, and stands its whole time again.
+            return match since {
+                Some(_) => Step::Choose(drop_off),
+                None => location.walk_from(from, at.destination, at.arrived),
+            };
+        }
+        let deliver = gather.spec.deliver;
+        match since {
+            None if deliver != Ticks::ZERO => return Step::Unload(drop_off),
+            Some(since) if self.tick.start() < since.after(deliver) => return Step::Hold,
+            _ => {}
+        }
+        if !self.joins(owner, load) {
+            return Step::Stand;
+        }
+        let gone = LoopTarget {
+            position: order.node.position,
+            body: None,
+        };
+        let back = match at.node {
+            Some(_) => Some(order.node),
+            None => self.free_node_near(from, at.seeker, gone),
+        };
+        Step::Deliver(back)
+    }
+
+    /// The gather loop of the worker of `entity` as it leaves a producer that starts its
+    /// gatherers, with the match's `relations`: by the first gather in its slots, to the nearest
+    /// free node it gathers whose body comes within the gather's bounce of the worker's, to be
+    /// checked as the next tick's orders are; none with no such node.
+    pub(crate) fn seek(&self, entity: Entity, relations: &Relations) -> Option<GatherOrder> {
+        let (_, _, &from, body, &team, _, slots, ..) = self.workers.get(entity).ok()?;
+        let (slot, gather) = slots
+            .indexed()
+            .find_map(|(slot, _)| Some((slot, self.gather(slots, slot)?)))?;
+        let seeker = Seeker {
+            gather,
+            team,
+            relations,
+        };
+        let here = LoopTarget {
+            position: from.get(),
+            body: body.copied(),
+        };
+        let node = self.free_node_near(from.get(), seeker, here)?;
+        Some(GatherOrder {
+            slot,
+            node,
+            step: GatherStep::Ordered,
+        })
     }
 
     /// The check of the gather order of the worker of `entity`, when it applied this tick, with

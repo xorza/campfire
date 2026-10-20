@@ -11,7 +11,7 @@ use crate::seed_commitment::SeedCommitment;
 use crate::session_id::SessionId;
 
 /// Starts the session id, so no other BLAKE3 use can produce one.
-const SESSION_ID_DOMAIN: HashDomain<SessionId> = HashDomain::new("campfire/session-id/v4");
+const SESSION_ID_DOMAIN: HashDomain<SessionId> = HashDomain::new("campfire/session-id/v5");
 
 /// The most bytes postcard writes for a `u64`, and for a `u32` or a length.
 const VARINT_64: u64 = 10;
@@ -53,6 +53,11 @@ pub struct SessionTerms {
     /// values, in the order of their names: bytes the protocol carries and does not read
     /// (08-sessions.md, The host picks, and the terms record the pick).
     pub options: Vec<u8>,
+    /// The place of the value the host picked of each of the mode's choices of values for each
+    /// seat, among the choice's values, 255 for none, seat by seat, each seat's choices in the
+    /// order of their names: bytes the protocol carries and does not read (08-sessions.md,
+    /// The terms hold each seat's picks).
+    pub seat_picks: Vec<u8>,
 }
 
 impl SessionTerms {
@@ -60,7 +65,8 @@ impl SessionTerms {
     /// payload length ‖ u32 max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release
     /// ‖ mode fingerprint ‖ u64 map name length ‖ map name ‖ u64 dependency count ‖ dependency
     /// fingerprints ‖ u64 seat count ‖ u8 per seat, its plan's code ‖ u64 visibility length ‖
-    /// visibility ‖ u64 option count ‖ u8 per option, its pick's place)`, integers little-endian.
+    /// visibility ‖ u64 option count ‖ u8 per option, its pick's place ‖ u64 seat pick count ‖ u8
+    /// per seat pick, its place)`, integers little-endian.
     pub fn session_id(&self) -> SessionId {
         let release = self.release.as_str();
         let mut hasher = DomainHasher::new(SESSION_ID_DOMAIN);
@@ -89,7 +95,9 @@ impl SessionTerms {
             .update(&len(self.visibility.len()).to_le_bytes())
             .update(&self.visibility)
             .update(&len(self.options.len()).to_le_bytes())
-            .update(&self.options);
+            .update(&self.options)
+            .update(&len(self.seat_picks.len()).to_le_bytes())
+            .update(&self.seat_picks);
         hasher.finish()
     }
 
@@ -124,7 +132,8 @@ impl SessionTerms {
             .checked_mul(HASH)?
             .checked_add(len(self.release.as_str().len()) + len(self.map.as_str().len()) + SLACK)?
             .checked_add(len(self.visibility.len()))?
-            .checked_add(len(self.options.len()))?;
+            .checked_add(len(self.options.len()))?
+            .checked_add(len(self.seat_picks.len()))?;
         let header = seats.checked_mul(delegation + SLACK)?.checked_add(terms)?;
         Some(packet.max(server).max(checkpoint).max(header))
     }

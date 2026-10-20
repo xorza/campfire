@@ -7,7 +7,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::Seat;
-use campfire_mode::{OptionPicks, OptionValue};
+use campfire_mode::{HostPicks, OptionPicks, OptionValue, SeatPick, SeatPicks};
 use campfire_net_connection::Connected;
 use campfire_package::ModePackages;
 use campfire_protocol::{
@@ -69,6 +69,8 @@ pub struct LobbyOpening {
     pub host: HostVisibility,
     /// The values the host picks of the mode's options, the others their defaults.
     pub options: Vec<OptionValue>,
+    /// The values the host picks of each seat's choices of values, the others none.
+    pub seat_picks: Vec<SeatPick>,
     pub server: ServerSetup,
 }
 
@@ -117,8 +119,9 @@ impl Lobby {
     /// A session of the mode `packages` holds, by the setup's rules; an error when the mode does
     /// not run at the setup's tick rate or has not as many seats, when a bot or an open seat
     /// names a seat the session does not have or one already named, when no seat is left to a
-    /// player, when the host sets a visibility the mode does not leave it, and when it picks a
-    /// value of no option of the mode's.
+    /// player, when the host sets a visibility the mode does not leave it, when it picks a value
+    /// of no option of the mode's, and when it picks a seat's value no choice of the mode's
+    /// lists.
     pub fn new(setup: LobbySetup) -> Result<Self, LobbyError> {
         let LobbySetup {
             opening:
@@ -128,6 +131,7 @@ impl Lobby {
                     open,
                     host,
                     options,
+                    seat_picks,
                     server,
                 },
             seed_chain,
@@ -159,8 +163,15 @@ impl Lobby {
             .visibility()
             .session(&host)
             .map_err(LobbyError::Visibility)?;
-        let picks =
+        let options =
             OptionPicks::named(session_rules.options(), &options).map_err(LobbyError::Options)?;
+        let choices = &packages.data().choices;
+        let seat_picks =
+            SeatPicks::named(choices, seats, &seat_picks).map_err(LobbyError::SeatPicks)?;
+        let picks = HostPicks {
+            options,
+            seats: seat_picks,
+        };
         let terms = session_rules
             .terms(HostChoices {
                 server_key: server.signer.public_key(),

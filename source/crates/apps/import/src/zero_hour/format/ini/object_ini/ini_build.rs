@@ -32,11 +32,13 @@ pub(crate) enum Prerequisite {
 /// a unit it makes comes out (`UnitCreatePoint`), and where it goes with no rally point set
 /// (`NaturalRallyPoint`). `DefaultProductionExitUpdate`, `QueueProductionExitUpdate` and
 /// `SupplyCenterProductionExitUpdate` name both; `SpawnPointProductionExitUpdate` names bones,
-/// which the import does not read.
+/// which the import does not read. A `SupplyCenterProductionExitUpdate` also starts each
+/// gatherer that leaves it gathering (`setForceWantingState`).
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct ProductionExit {
     pub(crate) create: [f32; 2],
     pub(crate) rally: [f32; 2],
+    pub(crate) starts_gatherers: bool,
 }
 
 /// A behavior module whose fields production reads.
@@ -80,7 +82,10 @@ impl IniBuild {
             "defaultproductionexitupdate"
             | "queueproductionexitupdate"
             | "supplycenterproductionexitupdate" => {
-                self.exit = Some(ProductionExit::default());
+                self.exit = Some(ProductionExit {
+                    starts_gatherers: module == "supplycenterproductionexitupdate",
+                    ..ProductionExit::default()
+                });
                 Some(ProductionModule::Exit)
             }
             _ => None,

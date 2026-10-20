@@ -101,10 +101,11 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             "tankshell"
         ]
     );
-    // Its players start with America's command center and dozer, the dozer half the center's
-    // sphere of 25 m, 12.5 m, along +z where a map has no rally, at the markers tagged
-    // `start`, which the load checks a walker can stand on, and with the money its host picks of
-    // the fixture's three choices, 10,000 by default.
+    // Its players pick America, the fixture's one faction, of the choice `faction`, and start
+    // with its command center and dozer, the dozer half the center's sphere of 25 m, 12.5 m,
+    // along +z where a map has no rally, at the markers tagged `start`, which the load checks a
+    // walker can stand on, and with the money its host picks of the fixture's three choices,
+    // 10,000 by default.
     // Its mode data lies over the rules package's, as the load lays them.
     let mut data: TomlTable = Toml::parse(&test_dir.read_text("one/game/data/mode.toml")).unwrap();
     let rules: TomlTable =
@@ -115,10 +116,24 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     assert_eq!(
         data.params,
         ParamsView {
-            start_building: "americacommandcenter".to_owned(),
-            start_units: vec!["americavehicledozer".to_owned()],
-            start_offset: Num::int(25) / Num::int(2),
+            start_building_america: "americacommandcenter".to_owned(),
+            start_units_america: vec!["americavehicledozer".to_owned()],
+            start_offset_america: Num::int(25) / Num::int(2),
         }
+    );
+    assert_eq!(
+        data.choices,
+        [(
+            "faction".to_owned(),
+            ChoiceView {
+                name: "choice-faction".to_owned(),
+                offers: "values".to_owned(),
+                unique: false,
+                count: 1,
+                values: vec!["america".to_owned()],
+            }
+        )]
+        .into()
     );
     assert_eq!(
         data.options,
@@ -410,7 +425,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // object's name.
     assert_eq!(
         test_dir.read_text("one/game/locale/en.ftl"),
-        "mode-name = Zero Hour\nteam-player-1 = Player 1\nteam-player-2 = Player 2\n\
+        "mode-name = Zero Hour\nchoice-faction = Faction\nteam-player-1 = Player 1\nteam-player-2 = Player 2\n\
          team-player-3 = Player 3\nteam-player-4 = Player 4\nteam-player-5 = Player 5\n\
          team-player-6 = Player 6\nteam-player-7 = Player 7\nteam-player-8 = Player 8\n\
          team-neutral = Neutral\n\
@@ -551,6 +566,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         weapon: &combat.weapons,
         command: &production.commands,
         production: &production.sections,
+        nodes: &production.supply.nodes,
+        drop_offs: &production.supply.drop_offs,
     });
     assert_eq!(test_dir.read_text("one/game/data/units.toml"), units.text);
     let camera = Toml::parse::<CameraFile>(&test_dir.read_text("one/game/client/camera.toml"));
@@ -828,6 +845,7 @@ struct ModeView {
     slots: Vec<SlotView>,
     params: ParamsView,
     options: BTreeMap<String, OptionView>,
+    choices: BTreeMap<String, ChoiceView>,
     combat: CombatView,
     actions: BTreeMap<String, ActionOf>,
 }
@@ -902,10 +920,21 @@ struct SlotView {
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ParamsView {
-    start_building: String,
-    start_units: Vec<String>,
-    start_offset: Num,
+    start_building_america: String,
+    start_units_america: Vec<String>,
+    start_offset_america: Num,
+}
+
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChoiceView {
+    name: String,
+    offers: String,
+    unique: bool,
+    count: u8,
+    values: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]

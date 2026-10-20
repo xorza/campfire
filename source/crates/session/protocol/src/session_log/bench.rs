@@ -65,6 +65,7 @@ impl TickPackets {
             seats: vec![SeatPlan::Player; usize::try_from(players).expect("seats fit usize")],
             visibility: Vec::new(),
             options: Vec::new(),
+            seat_picks: Vec::new(),
         };
         let session_id = terms.session_id();
         // Each player's main key and session key take a byte of their own, past the server's.

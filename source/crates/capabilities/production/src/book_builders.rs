@@ -8,9 +8,12 @@ use campfire_declarations::{
 use campfire_math::Num;
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, UnknownName};
+use campfire_sim::Capability;
 use campfire_stats::{LifePool, ModifierBook, StatsData, TypePoolsData};
 use campfire_units::{BodyForm, PoolNames, UnitTypes};
-use campfire_values::{Distance, ModifierId, Named, ResourceId, Share, TypeScope, UnitType};
+use campfire_values::{
+    Distance, ModifierId, Named, ResourceId, Share, TimeTooLarge, TypeScope, UnitType,
+};
 
 use crate::Production;
 use crate::build_book::{BuildBook, NewBuild, PlacementCheck, Style};
@@ -24,9 +27,10 @@ use crate::gather_spec::GatherSpec;
 use crate::gatherer::Gatherer;
 use crate::mode_supply_data::ModeSupplyData;
 use crate::node::Node;
-use crate::node_book::NodeBook;
+use crate::node_book::{NodeBook, NodeSpec};
 use crate::node_data::NodeData;
 use crate::placement_data::{PlacementData, PlacementRule};
+use crate::producer_spec::ProducerSpec;
 use crate::production_data::ProductionData;
 use crate::requirement_book::RequirementBook;
 use crate::resource_set::ResourceSet;
@@ -253,8 +257,9 @@ impl TrainSpec {
 }
 
 impl GatherSpec {
-    /// What each gather gathers, carries and looks for another node within; an error for a
-    /// resource the mode does not declare.
+    /// What each gather gathers, carries, takes at each windup, looks for another node within and
+    /// stands at a drop-off for; an error for a resource the mode does not declare, a unit past
+    /// the take, or a time too large to count in ticks.
     pub fn book(cx: &BookCx<'_>) -> Result<ByAction<Self>, BookError> {
         let resources = cx.book_if::<ResourceBook>()?;
         let mut book = ByActionBuilder::default();
@@ -263,12 +268,19 @@ impl GatherSpec {
                 continue;
             };
             let resource = Production::resource(resources, &data.resource);
+            let unit = data.unit.unwrap_or(data.take);
+            if unit > data.take {
+                return Err(action.broken(ProductionDataError::UnitPastTake));
+            }
+            let deliver = cx.rate().ticks(data.deliver_ms.unwrap_or(0));
             book.set(
                 action.action,
                 Self {
                     resource: resource.map_err(|name| action.unknown(name))?,
                     take: data.take,
+                    unit,
                     bounce: data.bounce.map_or(Num::ZERO, Distance::get),
+                    deliver: deliver.ok_or_else(|| action.broken(TimeTooLarge))?,
                 },
             );
         }
@@ -314,8 +326,9 @@ impl RequirementBook {
 }
 
 impl NodeBook {
-    /// The resource each node type that stands holds, and the resources each drop-off type takes;
-    /// an error for a resource the mode does not declare.
+    /// The resource each node type that stands holds and what becomes of its node once it runs
+    /// out, and the resources each drop-off type takes; an error for a resource the mode does not
+    /// declare.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let resources = cx.book_if::<ResourceBook>()?;
         let mut nodes = ByTypeBuilder::default();
@@ -325,7 +338,8 @@ impl NodeBook {
                 |name| BookError::unknown(unit.package, BookPlace::UnitType(unit.place()), name);
             if let Some(node) = unit.data.section::<NodeData>() {
                 let resource = Production::resource(resources, &node.resource).map_err(unknown)?;
-                nodes.set(unit.unit_type, resource);
+                let empty = node.empty;
+                nodes.set(unit.unit_type, NodeSpec { resource, empty });
             }
             if let Some(drop_off) = unit.data.section::<DropOffData>() {
                 let taken = drop_off
@@ -366,14 +380,45 @@ impl SupplyBook {
     }
 }
 
-impl ProductionData {
-    /// The queue of each unit type that stands and produces.
+impl ProducerSpec {
+    /// The production of each unit type that stands and produces; an error for a producer that
+    /// starts its gatherers in a match without navigation, which walks them, and for a free unit
+    /// type its package does not have, or one that does not walk out of its exit.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
-            if let Some(&production) = unit.data.section::<Self>() {
-                book.set(unit.unit_type, production);
+            let Some(data) = unit.data.section::<ProductionData>() else {
+                continue;
+            };
+            let at = || BookPlace::UnitType(unit.place());
+            if data.gathers {
+                cx.require(Capability::Navigation, unit.package, at)?;
             }
+            let free = data.free.iter().map(|name| {
+                let unknown = || {
+                    let name = UnknownName::new(UnitType::NAMES, name);
+                    BookError::unknown(unit.package, at(), name)
+                };
+                let broken = |problem| BookError::rule(unit.package, at(), problem);
+                let scope = TypeScope::of_package(unit.package);
+                let freed = cx.unit_type(scope, name.as_str()).ok_or_else(unknown)?;
+                let data = cx.type_of(freed).data;
+                if data.delivers() {
+                    return Err(broken(ProductionDataError::FreeDelivered));
+                }
+                if !data.section::<StatsData>().is_some_and(StatsData::walks) {
+                    return Err(broken(ProductionDataError::FreeStands));
+                }
+                Ok(freed)
+            });
+            let spec = Self {
+                queue: data.queue,
+                exit: data.exit,
+                rally: data.rally,
+                gathers: data.gathers,
+                free: free.collect::<Result<_, BookError>>()?,
+            };
+            book.set(unit.unit_type, spec);
         }
         Ok(book.build())
     }

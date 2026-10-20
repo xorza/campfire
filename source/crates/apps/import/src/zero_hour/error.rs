@@ -103,10 +103,12 @@ pub enum ZeroHourError {
     Languages(Vec<String>),
     #[error(transparent)]
     NameClash(#[from] NameClash),
-    /// The player template a skirmish starts with, by its name, is none the install defines, or
-    /// names no starting building.
+    /// A player template a player plays, by its name, names no starting building.
     #[error("player template {0} names no starting building")]
     NoStart(String),
+    /// No player template is one a player plays.
+    #[error("no player template is one a player plays")]
+    NoFaction,
     /// No language directory holds art, so the import cannot tell which string table the game
     /// reads.
     #[error("no language directory holds art, so no string table is the game's")]

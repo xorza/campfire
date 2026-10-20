@@ -21,12 +21,13 @@ use campfire_units::{
 use campfire_values::{Motion, Relation, Team, UnitTags, UnitType};
 
 use crate::frame_point::FramePoint;
+use crate::gather_loop::GatherLoop;
 use crate::gather_spec::GatherSpec;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::holdings::{Holdings, OwnedUnits};
 use crate::node_book::NodeBook;
+use crate::producer_spec::ProducerSpec;
 use crate::production_books::ProductionBooks;
-use crate::production_data::ProductionData;
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
 use crate::train_queue::{QueueDues, QueueIndex, Queued, TrainQueue};
@@ -192,10 +193,9 @@ impl Trains {
     }
 
     /// Spawns each train whose time ended this tick, of the units the index of the queues holds
-    /// due, of its unit's team and player, by its unit's stable id, then its queue's order,
-    /// through the mode's spawner, at its spawn point; the next in a queue starts in the same
-    /// tick, and a unit trained toward a rally point is ordered there. Each unit trained joins
-    /// the trained units, whose `on_unit_trained` the mode runs. A dead unit's queue waits.
+    /// due, by its unit's stable id, then its queue's order, out of its unit's exit as `leave`
+    /// sends it; the next in a queue starts in the same tick. Each unit trained joins the trained
+    /// units, whose `on_unit_trained` the mode runs. A dead unit's queue waits.
     pub(super) fn finish_trains(
         world: &mut World,
         producers: &mut QueryState<&TrainQueue, Without<Dead>>,
@@ -237,38 +237,11 @@ impl Trains {
                     .get(head.action)
                     .expect("a train queues only trains")
                     .unit_type;
-                let producer = world.entity(entity);
-                let team = *producer.get::<Team>().expect("a producer has a team");
-                let owner = producer.get::<Owner>().map(|owner| owner.seat());
-                let points = TrainPoints::of(world, entity);
-                let position = points.spawn_point(world, entity, unit_type);
-                let id = world.resource_mut::<IdAllocator>().allocate();
-                let at = SpawnAt {
-                    id,
-                    unit_type,
-                    team,
-                    position,
-                    owner,
-                    angle: Num::ZERO,
-                };
-                let trained = Spawner::spawn(world, at, ());
+                let unit = Self::leave(world, entity, unit_type);
                 world.resource_mut::<TrainedUnits>().0.extend([Trained {
-                    unit: id,
+                    unit,
                     producer: trainer,
                 }]);
-                let gathers = Self::gather_at_rally(world, entity, trained);
-                if gathers.is_none()
-                    && let Some(to) = points.rally
-                    && let Some(mut destination) = world.get_mut::<Destination>(trained)
-                {
-                    let to = Vec3::new(to.x, position.y, to.z);
-                    destination.set_if_neq(Destination::to(Some(to)));
-                }
-                if let Some(order) = gathers
-                    && world.entity(trained).contains::<Gatherer>()
-                {
-                    Gatherer::set_in(world, trained, Some(order));
-                }
                 world.resource_scope(|world, mut index: Mut<'_, DueIndex<TrainQueue>>| {
                     let mut queue = world.get_mut::<TrainQueue>(entity).expect("a producer");
                     let dues = &mut QueueDues::new(Some(&mut index), trainer, entity);
@@ -276,6 +249,65 @@ impl Trains {
                 });
             }
         }
+    }
+
+    /// Spawns each unit type the producer of `entity` frees, in its list's order, out of its exit
+    /// as `leave` sends it: the server's, as its site completes (04-capabilities/production.md, A
+    /// building may come with its units).
+    pub(crate) fn free_units(world: &mut World, entity: Entity) {
+        let unit_type = *world
+            .get::<UnitType>(entity)
+            .expect("a producer has a type");
+        let producers = world.resource::<ByType<ProducerSpec>>().clone();
+        let free = producers.get(unit_type).map(|spec| &*spec.free);
+        for &freed in free.into_iter().flatten() {
+            Self::leave(world, entity, freed);
+        }
+    }
+
+    /// Spawns a unit of `unit_type` out of the exit of the producer of `entity`, of its team and
+    /// player, through the mode's spawner, at its spawn point, and sends it on: a gatherer to the
+    /// node the producer rallies to, by its first gather of the node's resource, else, of a
+    /// producer that starts its gatherers, to the free node its first gather finds, either to be
+    /// checked as the next tick's orders are; any other to the producer's rally point. Its id.
+    fn leave(world: &mut World, entity: Entity, unit_type: UnitType) -> StableId {
+        let producer = world.entity(entity);
+        let team = *producer.get::<Team>().expect("a producer has a team");
+        let owner = producer.get::<Owner>().map(|owner| owner.seat());
+        let gathers = producer.get::<UnitType>().is_some_and(|&producer_type| {
+            let producers = world.resource::<ByType<ProducerSpec>>();
+            producers
+                .get(producer_type)
+                .is_some_and(|spec| spec.gathers)
+        });
+        let points = TrainPoints::of(world, entity);
+        let position = points.spawn_point(world, entity, unit_type);
+        let id = world.resource_mut::<IdAllocator>().allocate();
+        let at = SpawnAt {
+            id,
+            unit_type,
+            team,
+            position,
+            owner,
+            angle: Num::ZERO,
+        };
+        let unit = Spawner::spawn(world, at, ());
+        let gatherer = world.entity(unit).contains::<Gatherer>();
+        let mut order = Self::gather_at_rally(world, entity, unit).filter(|_| gatherer);
+        if order.is_none() && gatherer && gathers {
+            order = world
+                .run_system_cached_with(GatherLoop::seek, unit)
+                .expect("the gather loop's search runs on a match that gathers");
+        }
+        if let Some(order) = order {
+            Gatherer::set_in(world, unit, Some(order));
+        } else if let Some(to) = points.rally
+            && let Some(mut destination) = world.get_mut::<Destination>(unit)
+        {
+            let to = Vec3::new(to.x, position.y, to.z);
+            destination.set_if_neq(Destination::to(Some(to)));
+        }
+        id
     }
 
     /// The gather loop of `trained`, a unit the producer of `entity` trained, when the producer
@@ -338,7 +370,7 @@ impl TrainPoints {
             .get::<Facing>()
             .map_or(Num::ZERO, |facing| facing.degrees());
         let unit_type = *producer.get::<UnitType>().expect("a producer has a type");
-        let data = world.resource::<ByType<ProductionData>>().get(unit_type);
+        let data = world.resource::<ByType<ProducerSpec>>().get(unit_type);
         let bounds = &world.resource::<MapBook>().bounds;
         let point_of = |point: Option<FramePoint>| {
             let at = point?.placed(position, angle);

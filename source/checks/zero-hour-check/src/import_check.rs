@@ -7,12 +7,14 @@ use campfire_codec::Binary;
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
 use campfire_import::{
-    ButtonDropCause, DroppedButton, DroppedWeapon, ImportLoss, Imported, WeaponDrop,
+    ButtonDropCause, DroppedButton, DroppedSupply, DroppedWeapon, ImportLoss, Imported,
+    SupplyDropCause, WeaponDrop,
 };
 use campfire_math::Num;
 use campfire_navigation::MapNavigationData;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
+use campfire_production::{DropOffData, NodeData};
 use tracing::info;
 
 use crate::error::CheckError;
@@ -20,10 +22,12 @@ use crate::failure::{CheckFailure, Differs};
 use crate::golden::{Golden, Measured};
 use crate::pins::{
     FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
-    ProducedCounts, ProductionSteps, SkirmishTicks, TerrainCounts, TerrainDrawn,
+    ProducedCounts, ProductionSteps, SkirmishTicks, SuppliedCounts, SupplySteps, TerrainCounts,
+    TerrainDrawn,
 };
 use crate::skirmish_play::{SkirmishPlay, SkirmishSteps};
 use crate::start_drive::StartDrive;
+use crate::supply_play::SupplyPlay;
 
 /// The checks of an import, a group at a time, each failure it finds kept: the import's report,
 /// its game package, the mode of `MAP` loaded from it, the values the golden file pins, none in
@@ -215,6 +219,56 @@ impl ImportCheck<'_> {
         );
     }
 
+    /// The docks' nodes, the supply centers' drop-offs, the gatherers' gathers, and the supply
+    /// dropped, by cause.
+    pub(crate) fn supply(&mut self) {
+        let dropped: Vec<&DroppedSupply> = self
+            .imported
+            .losses
+            .iter()
+            .filter_map(|loss| match loss {
+                ImportLoss::Supply(supply) => Some(supply),
+                _ => None,
+            })
+            .collect();
+        let units = self.packages.content().units.values();
+        let (nodes, drop_offs) = units.fold((0, 0), |(nodes, drop_offs), unit| {
+            (
+                nodes + usize::from(unit.section::<NodeData>().is_some()),
+                drop_offs + usize::from(unit.section::<DropOffData>().is_some()),
+            )
+        });
+        let supplied = SuppliedCounts {
+            nodes,
+            drop_offs,
+            gathers: self.kind_count(ActionKind::Gather),
+            dropped: SupplyDropCause::ALL.map(|cause| {
+                dropped
+                    .iter()
+                    .filter(|supply| supply.cause == cause)
+                    .count()
+            }),
+        };
+        let expected = self.pinned(|golden| golden.supplied, supplied);
+        self.failures
+            .extend(Differs::of(supplied, expected).map(CheckFailure::Supplied));
+        self.measured.supplied = Some(supplied);
+        for dropped in &dropped {
+            info!(
+                object = dropped.object,
+                cause = ?dropped.cause,
+                "an object's supply is not imported"
+            );
+        }
+        info!(
+            nodes = supplied.nodes,
+            drop_offs = supplied.drop_offs,
+            gathers = supplied.gathers,
+            dropped = ?supplied.dropped,
+            "the docks, supply centers and gatherers"
+        );
+    }
+
     /// The weapons, the armors, the damage kinds and the bodies of no life or a wounded start.
     pub(crate) fn combat(&mut self) {
         let combat = self.packages.data().section_or_default::<ModeCombatData>();
@@ -318,6 +372,23 @@ impl ImportCheck<'_> {
                 built = ?bot.built,
                 farthest = bot.farthest_m,
                 "the builder bot built its base and trained its units"
+            );
+        }
+        let played = self
+            .game
+            .mode_packages(Some(self.map))
+            .map_err(CheckError::Load)?;
+        if let Some(supply) = SupplyPlay::run(played, rate, &mut self.failures) {
+            let ticks = supply.ticks();
+            let expected = SupplySteps::expected(self.pinned(|golden| golden.supply, ticks));
+            self.failures
+                .extend(Differs::of(supply, expected).map(CheckFailure::Supply));
+            self.measured.supply = Some(ticks);
+            info!(
+                built = ?supply.built,
+                money = supply.built_money,
+                deliveries = ?supply.deliveries,
+                "player 1 built a supply center as China, and its free truck delivered its loads"
             );
         }
         if let Some(drive) = StartDrive::run(self.packages, rate, &mut self.failures) {

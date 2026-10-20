@@ -16,11 +16,22 @@ name = "team-player-3"
 [teams.neutral]
 name = "team-neutral"
 
-# What each player starts with, as Zero Hour's skirmish gives it.
+# What each player starts with, by its faction, as Zero Hour's skirmish gives it: a base its
+# center and dozer, an outpost its center alone.
 [params]
-start_building = "center"
-start_units = ["dozer"]
-start_offset = "2"
+start_building_base = "center"
+start_units_base = ["dozer"]
+start_offset_base = "2"
+start_building_outpost = "center"
+start_units_outpost = []
+start_offset_outpost = "2"
+
+# The faction each player plays, which the session's host picks for a seat, and a seat with no
+# pick draws.
+[choices.faction]
+name = "choice-faction"
+offers = "values"
+values = ["base", "outpost"]
 
 # The money each player starts with, which the session's host picks.
 [options.start_money]

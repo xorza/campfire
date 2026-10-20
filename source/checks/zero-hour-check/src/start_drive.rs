@@ -12,7 +12,7 @@ use campfire_sim::Position;
 use campfire_units::{Body, Destination, GroundPoint, WallBook};
 
 use crate::failure::CheckFailure;
-use crate::match_play::{CENTER, DOZER, MatchPlay};
+use crate::match_play::{CENTER, DOZER, MatchPlay, america};
 use crate::pins::HZ;
 
 /// The most ticks the check waits for the dozer's walk to end, past which it never arrives.
@@ -39,7 +39,8 @@ impl StartDrive {
         rate: NonZeroU32,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<Self> {
-        let mut play = MatchPlay::new(FixedSession::new(packages, rate, 1).start());
+        let session = FixedSession::new(packages, rate, 1).seat_picked(&america(1));
+        let mut play = MatchPlay::new(session.start());
         let start = |name| {
             let of = MarkerOf {
                 tag: "start",

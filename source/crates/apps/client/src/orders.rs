@@ -25,6 +25,7 @@ use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_units::{GroundPoint, MoveStep};
 use campfire_values::Team;
 
+use crate::dock_click::Docks;
 use crate::input_map::{Act, ChordRow, InputMap};
 use crate::input_mode::InputMode;
 use crate::own_player::OwnPlayer;
@@ -32,7 +33,9 @@ use crate::pointer::{Pointed, Pointer};
 use crate::selection::{Selection, SelectionSystems};
 use crate::view::float_num;
 
-/// Turns the player's clicks and keys into orders: a right click on a unit the own avatar may use,
+/// Turns the player's clicks and keys into orders: a right click on a node or a drop-off orders
+/// each selected unit that gathers or returns there by its own gather (02-engine-core.md, A
+/// right-click on a node gathers); else a right click on a unit the own avatar may use,
 /// with the avatar selected, orders the avatar alone to use it; else, with producers selected and
 /// no walker, it sets their rally point at the unit under the cursor or the ground point
 /// (02-engine-core.md, A command panel from the actions); else it orders the selection, as one
@@ -80,7 +83,7 @@ impl OrdersPlugin {
         pointer: Pointer<'_, '_>,
         own: OwnPlayer<'_, '_>,
         (selection, using): (Res<'_, Selection>, Using<'_, '_>),
-        (index, movers): (Res<'_, EntityIndex>, Movers<'_, '_>),
+        (index, movers, docks): (Res<'_, EntityIndex>, Movers<'_, '_>, Docks<'_, '_>),
         mut orders: ResMut<'_, PendingOrders>,
     ) {
         if pointer.is_over_ui() {
@@ -90,6 +93,13 @@ impl OrdersPlugin {
             return;
         };
         let under = pointer.unit_under(selection.get());
+        let gathers = under.map(|unit| docks.orders(selection.get(), unit.id));
+        if let Some(gathers) = gathers.filter(|gathers| !gathers.is_empty()) {
+            for order in gathers {
+                orders.push(order);
+            }
+            return;
+        }
         let avatar = own
             .avatar()
             .filter(|avatar| selection.get().contains(&avatar.id));

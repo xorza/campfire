@@ -32,6 +32,15 @@ pub enum ProductionDataError {
     /// A gather that aims at something but a unit its filter selects.
     #[error("a gather aims at a unit its filter selects")]
     GatherAims,
+    /// A gather whose `unit` takes more than its whole trip's `take`.
+    #[error("a gather's unit passes its take")]
+    UnitPastTake,
+    /// A producer's free unit of a projectile or an area type, whose units only actions deliver.
+    #[error("a free unit is of a projectile or an area type")]
+    FreeDelivered,
+    /// A producer's free unit of a type that does not walk out of its exit.
+    #[error("a free unit's type does not walk")]
+    FreeStands,
     /// A build whose unit type has no box body.
     #[error("its building has no box body")]
     NoBox,

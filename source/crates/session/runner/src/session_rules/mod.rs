@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use campfire_common::{DeclaredName, Version};
-use campfire_mode::{OptionData, OptionPicks};
+use campfire_mode::{ChoiceData, HostPickError, HostPicks, OptionData, OptionPicks, SeatPicks};
 use campfire_package::ModePackages;
 use campfire_protocol::{InputRules, SeatPlan, SeedCommitment, SessionTerms};
 use campfire_visibility::{ModeVisibility, Visibility};
@@ -14,7 +14,8 @@ pub(crate) mod error;
 
 /// What a session's host chooses of its terms beside what its mode's rules fix: the server's
 /// key, the commitment to its seed chain, its tick rate, its input rules, how it opens each seat,
-/// its visibility, and the value it picked of each of the mode's options.
+/// its visibility, and the value it picked of each of the mode's options and of each seat's
+/// choices of values.
 #[derive(Debug, Clone)]
 pub struct HostChoices<'a> {
     pub server_key: XOnlyPublicKey,
@@ -23,14 +24,14 @@ pub struct HostChoices<'a> {
     pub inputs: InputRules,
     pub seats: Vec<SeatPlan>,
     pub visibility: &'a Visibility,
-    pub picks: &'a OptionPicks,
+    pub picks: &'a HostPicks,
 }
 
 /// What a check of terms gives: their visibility and their picks, each of what the mode admits.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckedTerms {
     pub visibility: Visibility,
-    pub picks: OptionPicks,
+    pub picks: HostPicks,
 }
 
 /// What a mode's packages fix of every session that plays them on this engine release: the mode
@@ -52,6 +53,11 @@ impl<'p> SessionRules<'p> {
     /// The mode's options, of which a host picks values.
     pub const fn options(&self) -> &'p BTreeMap<DeclaredName, OptionData> {
         &self.packages.data().options
+    }
+
+    /// The mode's choices, of whose listed values a host picks a seat's.
+    pub const fn choices(&self) -> &'p BTreeMap<DeclaredName, ChoiceData> {
+        &self.packages.data().choices
     }
 
     /// The mode's visibility, which a session's host may set again where the mode leaves it.
@@ -83,7 +89,8 @@ impl<'p> SessionRules<'p> {
             dependencies: self.packages.dependency_fingerprints().collect(),
             seats,
             visibility: visibility.encode(),
-            options: picks.places().to_vec(),
+            options: picks.options.places().to_vec(),
+            seat_picks: picks.seats.places().to_vec(),
         };
         self.check(&terms)?;
         Ok(terms)
@@ -121,7 +128,11 @@ impl<'p> SessionRules<'p> {
         if !self.visibility().admits(&visibility) {
             return Err(TermsError::OtherVisibility);
         }
-        let picks = OptionPicks::checked(self.options(), &terms.options)?;
+        let options =
+            OptionPicks::checked(self.options(), &terms.options).map_err(HostPickError::from)?;
+        let seats = SeatPicks::checked(self.choices(), terms.seats.len(), &terms.seat_picks)
+            .map_err(HostPickError::from)?;
+        let picks = HostPicks { options, seats };
         Ok(CheckedTerms { visibility, picks })
     }
 

@@ -2,7 +2,7 @@
 //! it measures, which `golden.toml` pins.
 
 use campfire_common::PackageFingerprint;
-use campfire_import::{ButtonDropCause, WeaponDrop};
+use campfire_import::{ButtonDropCause, SupplyDropCause, WeaponDrop};
 use campfire_mode::MatchResult;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
@@ -119,6 +119,43 @@ pub(crate) struct FightSteps {
     pub(crate) result: Option<MatchResult>,
 }
 
+/// How many deliveries of its free truck the supply play pins.
+pub(crate) const DELIVERIES: usize = 3;
+
+/// The money the supply play's player starts with, the 50,000 its host picks, less China's power
+/// plant's 1,000 and supply center's 1,500.
+const SUPPLY_MONEY: i64 = 50_000 - 1000 - 1500;
+
+/// What a delivery of the free truck pays: its 4 boxes of `ValuePerSupplyBox`, 75 in the shipped
+/// `GameData.ini` (09-zero-hour.md, A box is money).
+const TRUCK_LOAD: i64 = 4 * 75;
+
+/// The supply play's steps: the ticks of the power plant and the supply center, each from its
+/// order to its whole building, and the money left; and each of the free truck's first
+/// `DELIVERIES` deliveries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SupplySteps {
+    pub(crate) built: [u64; 2],
+    pub(crate) built_money: i64,
+    pub(crate) deliveries: [SupplyDelivery; DELIVERIES],
+}
+
+/// A delivery: its tick, counted from the supply center's completion, and the money after it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SupplyDelivery {
+    pub(crate) ticks: u64,
+    pub(crate) money: i64,
+}
+
+/// The ticks of the supply play's steps no closed form gives: each building's, and each
+/// delivery's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SupplyTicks {
+    pub(crate) built: [u64; 2],
+    pub(crate) deliveries: [u64; DELIVERIES],
+}
+
 /// The ticks of the skirmish's steps no closed form gives: the barracks', from its order to its
 /// whole building, its dozer's drive round the command center's box to the site among them; each
 /// of the factory's chain's; and the fight's, from the attack's order to the first shell's launch,
@@ -154,6 +191,22 @@ pub(crate) struct FoughtCounts {
     pub(crate) kinds: usize,
     pub(crate) unliving: usize,
     pub(crate) wounded: usize,
+}
+
+/// How many docks become nodes, supply centers drop-offs and gatherers gathers, and how many
+/// supply modules the import drops for each cause, in the order of `SupplyDropCause::ALL`
+/// (09-zero-hour.md, A box is money).
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    "{nodes} nodes, {drop_offs} drop-offs, {gathers} gathers, dropped {:?}",
+    dropped
+)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SuppliedCounts {
+    pub(crate) nodes: usize,
+    pub(crate) drop_offs: usize,
+    pub(crate) gathers: usize,
+    pub(crate) dropped: [usize; SupplyDropCause::ALL.len()],
 }
 
 /// How many trains and builds the import converts from every command set, and how many buttons it
@@ -195,6 +248,30 @@ impl ProductionSteps {
             barracks_ticks,
             ranger_ticks: 5 * HZ,
             money: PRODUCTION_MONEY,
+        }
+    }
+}
+
+impl SupplySteps {
+    /// The steps of `ticks`: the money after the buildings, and each delivery paying a truck's
+    /// load.
+    pub(crate) fn expected(ticks: SupplyTicks) -> Self {
+        let mut paid = SUPPLY_MONEY;
+        Self {
+            built: ticks.built,
+            built_money: SUPPLY_MONEY,
+            deliveries: ticks.deliveries.map(|ticks| {
+                paid += TRUCK_LOAD;
+                SupplyDelivery { ticks, money: paid }
+            }),
+        }
+    }
+
+    /// Its ticks no closed form gives.
+    pub(crate) fn ticks(&self) -> SupplyTicks {
+        SupplyTicks {
+            built: self.built,
+            deliveries: self.deliveries.map(|delivery| delivery.ticks),
         }
     }
 }

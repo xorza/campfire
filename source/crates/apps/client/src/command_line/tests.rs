@@ -61,17 +61,21 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         "lane",
         "--option",
         "start_money=50000",
+        "--pick",
+        "0:faction=china",
     ]);
     assert_eq!(local.map, MapName::parse("lane"));
     let PlayedServer::Local {
         bots,
         options,
+        seat_picks,
         data,
     } = local.server
     else {
         panic!("a local server");
     };
     assert_eq!(options, ["start_money=50000".parse().unwrap()]);
+    assert_eq!(seat_picks, ["0:faction=china".parse().unwrap()]);
     assert_eq!(data, PathBuf::from("d"));
     let bots: Vec<(u32, PathBuf)> = bots
         .into_iter()

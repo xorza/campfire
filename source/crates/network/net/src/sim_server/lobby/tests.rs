@@ -4,7 +4,7 @@ use std::time::Duration;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_bots::OrderScript;
 use campfire_common::{ChannelBinding, DeclaredName};
-use campfire_mode::PickError;
+use campfire_mode::{PickError, SeatPickError};
 use campfire_net_connection::RemoteId;
 use campfire_net_core::{NetTick, PeerId};
 use campfire_protocol::internals::TestKey;
@@ -50,6 +50,7 @@ fn opening(bots: &[u32], open: &[u32]) -> LobbyOpening {
         open: open.iter().copied().map(Seat::new).collect(),
         host: HostVisibility::default(),
         options: Vec::new(),
+        seat_picks: Vec::new(),
         server: ServerSetup {
             signer: Arc::new(Signer::new(TestKey::server(), Entropy::Fixed(5))),
             times: SessionTimes::DEFAULT,
@@ -137,6 +138,18 @@ fn the_lobby_records_the_hosts_picks_of_the_modes_options() {
             DeclaredName::new("start_money").unwrap()
         )))
     );
+    // The lane declares no choice of values: a seat's pick of one is refused, and none makes no
+    // seat pick in the terms.
+    let mut setup = setup(&[], &[]);
+    setup.opening.seat_picks = vec!["0:faction=china".parse().unwrap()];
+    assert_eq!(
+        Lobby::new(setup).err(),
+        Some(LobbyError::SeatPicks(SeatPickError::Unknown(
+            DeclaredName::new("faction").unwrap()
+        )))
+    );
+    let lobby = Lobby::new(self::setup(&[], &[])).unwrap();
+    assert!(lobby.terms().seat_picks.is_empty());
 }
 
 /// What a lobby's players join with: the terms their delegations grant, and the challenge it

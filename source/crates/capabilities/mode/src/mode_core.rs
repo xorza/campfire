@@ -1,3 +1,5 @@
+use std::num::NonZeroU8;
+
 use campfire_actions::{LoadoutRanks, SlotClaims, SlotError, SlotKind, SlotKinds};
 use campfire_common::DeclaredName;
 use campfire_declarations::{
@@ -18,6 +20,7 @@ use crate::mode_data::ModeData;
 use crate::mode_map::ModeMap;
 use crate::mode_units::ModeUnits;
 use crate::player_control::PlayerControl;
+use crate::seat_picks::SeatPicks;
 use crate::victory::VictoryBook;
 use crate::victory_data::VictoryData;
 
@@ -94,8 +97,10 @@ impl ModeCore {
     }
 
     /// The rule of the mode's choices: a choice of loadout entries fills a slot kind the mode
-    /// declares, which no capability claims, and a choice of avatars none; every choice of
-    /// loadout entries fills a kind of the same ranks, which the entries have.
+    /// declares, which no capability claims, and a choice of avatars or values none; every choice
+    /// of loadout entries fills a kind of the same ranks, which the entries have; a choice of
+    /// values lists them, each once and fewer than 255, and takes one, and no other choice lists
+    /// values.
     fn choices_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         let data = cx
             .given::<ModeData>()
@@ -108,6 +113,24 @@ impl ModeCore {
                 table: ModeData::CHOICES,
                 name: name.clone(),
             };
+            let listed = match choice.offers {
+                Offers::Values => {
+                    let mut names: Vec<&DeclaredName> = choice.values.iter().collect();
+                    names.sort_unstable();
+                    names.dedup();
+                    // Each value's place is a seat pick's byte, short of its none.
+                    let fits = choice.values.len() < usize::from(SeatPicks::NONE);
+                    !choice.values.is_empty()
+                        && fits
+                        && names.len() == choice.values.len()
+                        && choice.count == NonZeroU8::MIN
+                }
+                Offers::Avatars | Offers::Loadout => choice.values.is_empty(),
+            };
+            if !listed {
+                let problem = ModeDataError::ChoiceValues;
+                return Err(BookError::rule(PackageIndex::MODE, at(), problem));
+            }
             match (choice.offers, &choice.slot) {
                 (Offers::Loadout, Some(kind)) => {
                     let found =
@@ -128,7 +151,7 @@ impl ModeCore {
                         return Err(BookError::rule(PackageIndex::MODE, at, problem));
                     }
                 }
-                (Offers::Avatars, None) => {}
+                (Offers::Avatars | Offers::Values, None) => {}
                 _ => {
                     let problem = ModeDataError::ChoiceSlot;
                     return Err(BookError::rule(PackageIndex::MODE, at(), problem));

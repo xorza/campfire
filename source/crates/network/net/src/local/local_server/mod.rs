@@ -9,7 +9,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
 use campfire_common::{ErrorReport, Seat};
-use campfire_mode::OptionValue;
+use campfire_mode::{OptionValue, SeatPick};
 use campfire_net_connection::Start;
 use campfire_net_endpoint::Endpoint;
 use campfire_net_link::Server;
@@ -94,6 +94,8 @@ pub struct LocalServerSetup {
     pub bots: Vec<SeatScript>,
     /// The values the player picks of the mode's options, the others their defaults.
     pub options: Vec<OptionValue>,
+    /// The values the player picks of each seat's choices of values, the others none.
+    pub seat_picks: Vec<SeatPick>,
     pub pace: Arc<Pace>,
     pub os: Os,
 }
@@ -112,6 +114,7 @@ impl LocalServer {
             data,
             bots,
             options,
+            seat_picks,
             pace,
             os,
         } = setup;
@@ -146,6 +149,7 @@ impl LocalServer {
             open,
             host: HostVisibility::default(),
             options,
+            seat_picks,
             server: server.clone(),
         };
         let lobby = Lobby::open(opening, &dir).map_err(LocalServerError::Open)?;

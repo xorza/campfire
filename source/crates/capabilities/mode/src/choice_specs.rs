@@ -8,6 +8,7 @@ use campfire_values::{NameId, Names};
 
 use crate::choice_data::{ChoiceData, Offers};
 use crate::choice_id::ChoiceId;
+use crate::offer::Offer;
 
 /// The mode's choices, by name, and where each player's values of each sit in `Choices`.
 /// Package data, not state.
@@ -20,11 +21,12 @@ pub(crate) struct ChoiceSpecs {
     width: usize,
 }
 
-/// A choice: what it offers, whether its values are each one player's, and its run of values in
-/// a player's row.
+/// A choice: what it offers, the values it lists when it offers its own, whether its values are
+/// each one player's, and its run of values in a player's row.
 #[derive(Debug, Clone)]
 pub(crate) struct ChoiceSpec {
     pub(crate) offers: Offers,
+    pub(crate) values: Names<Offer>,
     pub(crate) unique: bool,
     run: Range<usize>,
 }
@@ -40,6 +42,7 @@ impl ChoiceSpecs {
                 width += NonZeroUsize::from(data.count).get();
                 ChoiceSpec {
                     offers: data.offers,
+                    values: data.values.iter().map(DeclaredName::as_str).collect(),
                     unique: data.unique,
                     run: start..width,
                 }
@@ -65,6 +68,13 @@ impl ChoiceSpecs {
     /// Each choice, in the order of their names.
     pub(crate) fn iter(&self) -> std::slice::Iter<'_, ChoiceSpec> {
         self.choices.iter()
+    }
+
+    /// The choices of listed values, in the order of their names.
+    pub(crate) fn listed(&self) -> impl Iterator<Item = &ChoiceSpec> {
+        self.choices
+            .iter()
+            .filter(|choice| choice.offers == Offers::Values)
     }
 
     /// The values of all choices of one player.

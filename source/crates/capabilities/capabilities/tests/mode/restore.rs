@@ -72,28 +72,31 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(point(x).check(&game, grunt));
     assert!(!point(x + Num::ONE).check(&game, grunt));
 
-    // Choices: a row of 1 + 1 + 2 values for each of 3 players, each an offer of its choice.
+    // Choices: a row of 1 + 1 + 1 + 2 values for each of 3 players, each an offer of its choice.
     let mut choices = game.resource::<Choices>().clone();
     assert!(choices.check(&game));
     assert!(!Choices::of(vec![None; 3]).check(&game));
     choices.offers_mut()[0] = Some(Offer::new(99));
     assert!(!choices.check(&game));
-    // Each row is `duo`'s two values, then `hero`'s, then `spells`'s, by their names. A choice is
-    // all chosen or none: half of `duo` is refused. Its two values differ. A unique `hero` is one
-    // player's: the same hero in two rows is refused, while a `duo` two players share restores.
+    // Each row is `duo`'s two values, then `faction`'s, `hero`'s and `spells`'s, by their names.
+    // A choice is all chosen or none: half of `duo` is refused. Its two values differ. A unique
+    // `hero` is one player's: the same hero in two rows is refused, while a `duo` two players
+    // share restores. A faction is one of its two listed values.
     let chose = |values: &[(usize, usize)]| {
-        let mut choices = Choices::of(vec![None; 12]);
+        let mut choices = Choices::of(vec![None; 15]);
         for &(at, offer) in values {
             choices.offers_mut()[at] = Some(Offer::new(offer));
         }
         choices.check(&game)
     };
-    assert!(chose(&[(0, 0), (1, 1), (2, 0)]));
+    assert!(chose(&[(0, 0), (1, 1), (3, 0)]));
     assert!(!chose(&[(0, 0)]));
     assert!(!chose(&[(0, 1), (1, 1)]));
-    assert!(chose(&[(0, 0), (1, 1), (4, 0), (5, 1)]));
-    assert!(chose(&[(2, 0), (6, 1)]));
-    assert!(!chose(&[(2, 0), (6, 0)]));
+    assert!(chose(&[(0, 0), (1, 1), (5, 0), (6, 1)]));
+    assert!(chose(&[(3, 0), (8, 1)]));
+    assert!(!chose(&[(3, 0), (8, 0)]));
+    assert!(chose(&[(2, 1), (7, 1)]));
+    assert!(!chose(&[(2, 2)]));
     // A grunt's state: `hits`, an integer, its owner's, and `mark`, a text, of all; neither class
     // a field short, nor a value of another type, and no class it declares no field of.
     let owner_state = game.get::<UnitState<AudienceOwner>>(grunt).unwrap();

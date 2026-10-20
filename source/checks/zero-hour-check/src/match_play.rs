@@ -1,20 +1,33 @@
+use campfire_actions::TypeSlotsData;
 use campfire_bots::{BotBuffers, BotScript, BotSink, HeldBotView, NamedRefs, OrderUnsent};
 use campfire_capabilities::{Directive, Match, Order};
-use campfire_common::{Seat, Tick};
+use campfire_common::{DeclaredName, Seat, Tick};
 use campfire_harness::{FixedMatch, MatchUnits};
 use campfire_math::{Num, Vec3};
+use campfire_mode::SeatPick;
+use campfire_orders::OrdersDirective;
+use campfire_package::ModePackages;
+use campfire_players::PlayersWorld;
 use campfire_protocol::ServerInput;
 use campfire_runner::SessionWorld;
 use campfire_sim::{Position, StableId};
 use campfire_units::{Life, Units};
-use campfire_values::UnitType;
+use campfire_values::{ResourceId, UnitType};
 
 use crate::failure::CheckFailure;
+use crate::pins::HZ;
 
 /// America's command center, the building a skirmish starts a player with.
 pub(crate) const CENTER: &str = "americacommandcenter";
 /// America's dozer, the unit a skirmish starts a player with.
 pub(crate) const DOZER: &str = "americavehicledozer";
+
+/// The most ticks a play waits for a step, past which it never ends.
+pub(crate) const STEP_LIMIT: u64 = HZ * 60 * 5;
+
+/// The faction every seat of a play picks, America, whose start the plays read, in place of a
+/// faction drawn (09-zero-hour.md, No pick is Random).
+const AMERICA: &str = "faction=america";
 
 /// A match a play of the check drives a tick at a time, as player 1, the tick it runs next, and
 /// the bot it drives, if one. A part of the imported mode a play reads and does not find is a
@@ -52,6 +65,16 @@ impl BotSink for DuePayloads {
     }
 
     fn unsent(&mut self, _: Seat, _: &Directive<NamedRefs>, _: OrderUnsent) {}
+}
+
+/// America for each of `seats` seats, as a host picks it.
+pub(crate) fn america(seats: u32) -> Vec<SeatPick> {
+    (0..seats)
+        .map(|seat| {
+            let pick = format!("{seat}:{AMERICA}");
+            pick.parse().expect("a seat's pick of America reads")
+        })
+        .collect()
 }
 
 impl MatchPlay {
@@ -174,9 +197,53 @@ impl MatchPlay {
         Ok(owned)
     }
 
+    /// Orders `unit` to `directive` in the tick it runs next, then runs ticks until `done`; the
+    /// ticks it took, the order's own among them, or a failure past `STEP_LIMIT`.
+    pub(crate) fn until(
+        &mut self,
+        unit: StableId,
+        directive: OrdersDirective,
+        done: impl Fn(&Self) -> Result<bool, CheckFailure>,
+    ) -> Result<u64, CheckFailure> {
+        self.order(&[Order::one(unit, directive)]);
+        for ticks in 1..=STEP_LIMIT {
+            self.step();
+            if done(self)? {
+                return Ok(ticks);
+            }
+        }
+        Err(CheckFailure::ProductionStep(directive))
+    }
+
+    /// Player 1's amount of `money`.
+    pub(crate) fn money(&self, money: ResourceId) -> i64 {
+        self.game()
+            .player_resources(Seat::new(0))
+            .expect("player 1 holds resources")
+            .amount(money)
+    }
+
     /// Ends the match: it takes the log's events while it lives, as its harness checks them, so
     /// it ends before the check logs again.
     pub(crate) fn end(mut self) {
         self.fixed.end();
     }
+}
+
+/// The slot of `action` among the actions of the type `unit` of `packages` in its slot kind
+/// `command`; a failure when the mode lacks the type or the action.
+pub(crate) fn slot(
+    packages: &ModePackages,
+    unit: &'static str,
+    action: &'static str,
+) -> Result<u8, CheckFailure> {
+    let command = DeclaredName::new("command").expect("a declared name");
+    let at = packages
+        .content()
+        .units
+        .get(unit)
+        .and_then(|held| held.section::<TypeSlotsData>()?.0.get(&command))
+        .and_then(|slots| slots.iter().position(|held| held.as_str() == action))
+        .ok_or(CheckFailure::NoAction { unit, action })?;
+    Ok(u8::try_from(at).expect("a unit's slots fit a u8"))
 }

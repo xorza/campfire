@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::mem;
 use std::num::NonZeroU8;
 
 use bevy_ecs::world::World;
@@ -76,14 +77,16 @@ impl Shop {
         let depot = Units::load_type(game, TypeScope::Mode, "depot", &data);
         let forge = Units::load_type(game, TypeScope::Mode, "forge", &data);
         let gate = Units::load_type(game, TypeScope::Mode, "gate", &data);
-        let production = ProductionData {
+        let production = ProducerSpec {
             queue: NonZeroU8::new(3).unwrap(),
             exit: None,
             rally: None,
+            gathers: false,
+            free: Box::new([]),
         };
-        Self::give(game, barracks, production);
+        Self::give(game, barracks, production.clone());
         let frame = |x: i64| FramePoint::new([Num::int(x), Num::ZERO]);
-        let gated = ProductionData {
+        let gated = ProducerSpec {
             exit: frame(3),
             rally: frame(-3),
             ..production
@@ -110,6 +113,16 @@ impl Shop {
     /// Gives `unit_type` `value` in its book, as the books of a mode's type do.
     fn give<T: PerType>(game: &mut World, unit_type: UnitType, value: T) {
         ByType::<T>::amend(game, |_, book| book.set(unit_type, value));
+    }
+
+    /// Gives `unit_type` `value` in its book in place of the one it has.
+    fn regive<T: PerType>(game: &mut World, unit_type: UnitType, value: T) {
+        ByType::<T>::amend(game, |_, book| {
+            let mut built = mem::take(book).reopen();
+            built.take(unit_type);
+            built.set(unit_type, value);
+            *book = built.build();
+        });
     }
 
     /// Each unit of `unit_type` so far, by stable id: in the order production spawned them.

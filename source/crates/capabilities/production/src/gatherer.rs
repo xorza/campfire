@@ -55,6 +55,9 @@ pub enum GatherStep {
     Gathering { since: Tick },
     /// It takes its load to the drop-off it chose, none until it chooses one.
     ToDropOff { drop_off: Option<StableId> },
+    /// It stands at the drop-off it reached, from the tick `since`, until its load joins its
+    /// player's.
+    Delivering { drop_off: StableId, since: Tick },
 }
 
 /// What a worker carries: an amount of one player resource.

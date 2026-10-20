@@ -1,5 +1,5 @@
 use campfire_common::{MapName, PackageFingerprint, Ticks};
-use campfire_mode::PickError;
+use campfire_mode::{PickError, SeatPickError};
 use campfire_protocol::SeedChain;
 use campfire_test_packages::TestMode;
 use campfire_visibility::VisibilityDecodeError;
@@ -32,7 +32,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             inputs,
             seats: plan.to_vec(),
             visibility,
-            picks: &OptionPicks::defaults(rules.options()),
+            picks: &HostPicks::defaults(packages.data(), plan.len()),
         })
     };
     for hz in [19, 61] {
@@ -58,15 +58,16 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             seats: plan.to_vec(),
             // The 3v3 sets no visibility: the defaults, which admit no spectator.
             visibility: Visibility::DEFAULT.encode(),
-            // The 3v3 declares no option.
+            // The 3v3 declares no option, and no choice of values.
             options: Vec::new(),
+            seat_picks: Vec::new(),
         }
     );
     assert!(fixed.dependencies.len() > 1, "the swap below reorders them");
 
     // The 3v3's teams have 6 seats: a session plays 1 to 6 of them.
     let seats = |seats: u64| TermsError::Seats { seats, most: 6 };
-    let changes: [(Change, TermsError); 10] = [
+    let changes: [(Change, TermsError); 11] = [
         (|terms| terms.seats.clear(), seats(0)),
         (|terms| terms.seats = vec![SeatPlan::Open; 7], seats(7)),
         (
@@ -100,10 +101,18 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         // A pick of an option the mode does not declare.
         (
             |terms| terms.options.push(0),
-            TermsError::Picks(PickError::Count {
+            TermsError::Picks(HostPickError::Option(PickError::Count {
                 given: 1,
                 options: 0,
-            }),
+            })),
+        ),
+        // A seat's pick of a choice of values the mode does not declare.
+        (
+            |terms| terms.seat_picks.push(0),
+            TermsError::Picks(HostPickError::Seat(SeatPickError::Count {
+                given: 1,
+                expected: 0,
+            })),
         ),
     ];
     for (change, error) in changes {
@@ -117,5 +126,6 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     fixed.visibility[17..].copy_from_slice(&[1, 1, 3, 0, 0, 0]);
     let checked = rules.check(&fixed).unwrap();
     assert_eq!(checked.visibility.max_spectators(), 3);
-    assert!(checked.picks.places().is_empty());
+    assert!(checked.picks.options.places().is_empty());
+    assert!(checked.picks.seats.places().is_empty());
 }

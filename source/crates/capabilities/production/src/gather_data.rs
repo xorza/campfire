@@ -7,17 +7,24 @@ use campfire_declarations::Listed;
 use campfire_script::ApiBuilder;
 use campfire_sim::Capability;
 use campfire_values::{Distance, Number, Ranked};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The section of an action of kind `gather`: the mode's player resource it gathers, the most a
-/// trip carries, and how far from its node it looks for another, none when absent
-/// (04-capabilities/actions.md, Each kind owns its section).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+/// trip carries, what each windup takes of it, the whole trip's when absent, how far from its
+/// node it looks for another, none when absent, and how long its worker stands at a drop-off
+/// before its load joins its player's, no time when absent (04-capabilities/actions.md, Each kind
+/// owns its section).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GatherData {
     pub resource: DeclaredName,
     pub take: NonZeroU32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit: Option<NonZeroU32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bounce: Option<Distance>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deliver_ms: Option<u64>,
 }
 
 impl KindSection for GatherData {

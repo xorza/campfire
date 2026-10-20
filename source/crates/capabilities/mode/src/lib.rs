@@ -58,6 +58,7 @@ mod choice_specs;
 mod choices;
 mod error;
 mod game_map;
+mod host_picks;
 mod loadout;
 mod loadout_setup;
 mod map_data;
@@ -102,6 +103,8 @@ mod result_handle;
 mod roster;
 mod save_asked;
 mod saves_data;
+mod seat_pick;
+mod seat_picks;
 mod spawn_group;
 mod team_data;
 mod team_manifest;
@@ -120,9 +123,10 @@ pub use crate::choice_data::{ChoiceData, Offers};
 pub use crate::choice_id::ChoiceId;
 pub use crate::choices::Choices;
 pub use crate::error::{
-    BountyError, ModeDataError, ModeError, ModeRefusal, OptionDataError, OptionValueError,
-    PickError,
+    BountyError, HostPickError, ModeDataError, ModeError, ModeRefusal, OptionDataError,
+    OptionValueError, PickError, SeatPickError, SeatPickTextError,
 };
+pub use crate::host_picks::HostPicks;
 pub use crate::loadout_setup::LoadoutSetup;
 pub use crate::map_data::{MapData, MapPatch, MapSeed, MarkerData, PlacedUnitData};
 pub use crate::marker::{Marker, MarkerInfo};
@@ -153,6 +157,8 @@ pub use crate::players_data::PlayersData;
 pub use crate::region_data::RegionData;
 pub use crate::relation_data::RelationData;
 pub use crate::saves_data::{SaveBy, SavesData};
+pub use crate::seat_pick::SeatPick;
+pub use crate::seat_picks::SeatPicks;
 pub use crate::team_data::TeamData;
 pub use crate::team_manifest::TeamManifest;
 pub use crate::timer_id::TimerId;
@@ -374,7 +380,8 @@ impl Mode {
     /// Loads the mode of `setup` into a match whose capabilities, mode and books are installed
     /// and whose unit types, abilities and AI are loaded, with what `inputs` takes from the
     /// books: the map's pathing grid, for the kinds of its walkers, its teams, and the units the
-    /// mode spawns.
+    /// mode spawns. Each seat's choices start as its host picked them, so the start reads them
+    /// (08-sessions.md, The terms hold each seat's picks).
     pub fn load(world: &mut World, setup: ModeSetup<'_>, inputs: ModeInputs) {
         let ModeInputs { units, load } = inputs;
         let ModeLoad {
@@ -401,7 +408,8 @@ impl Mode {
         world
             .resource_mut::<MatchNames>()
             .set_table(Arc::clone(map.tags()));
-        let script = ModeScript::new(setup.data, setup.picks, map);
+        let script = ModeScript::new(setup.data, &setup.picks.options, map);
+        let (data, seat_picks) = (setup.data, &setup.picks.seats);
         let start = MapStart {
             teams,
             placed,
@@ -422,7 +430,14 @@ impl Mode {
         names.set_table(Arc::clone(book.choices.names()));
         names.set_table(Arc::clone(&book.timers));
         let players = usize::try_from(book.teams.players()).expect("a player count fits usize");
-        world.insert_resource(Choices::empty(&book.choices, players));
+        let mut choices = Choices::empty(&book.choices, players);
+        for picked in seat_picks.picked(&data.choices) {
+            let choice = book.choices.listed().nth(picked.listed);
+            let choice = choice.expect("a seat pick is of one of the mode's choices of values");
+            let offer = Offer::new(usize::from(picked.place));
+            choices.choose(&book.choices, picked.seat, choice, &[offer]);
+        }
+        world.insert_resource(choices);
         let ctx = world.non_send::<Ctx>().clone();
         let book = Arc::new(book);
         ctx.frame()

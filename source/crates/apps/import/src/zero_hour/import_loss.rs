@@ -3,6 +3,7 @@ use campfire_common::MapName;
 use crate::zero_hour::SkippedModel;
 use crate::zero_hour::combat_import::DroppedWeapon;
 use crate::zero_hour::production_import::DroppedButton;
+use crate::zero_hour::supply_import::DroppedSupply;
 
 /// What the import does not hold of the install as the original holds it, each with what it is
 /// and why (09-zero-hour.md, Losses).
@@ -20,6 +21,8 @@ pub enum ImportLoss {
     /// A command button the import does not convert (09-zero-hour.md, Every command set's
     /// trains and builds are imported).
     Button(DroppedButton),
+    /// A supply module the import does not convert (09-zero-hour.md, A box is money).
+    Supply(DroppedSupply),
     /// A weapon the import does not convert (09-zero-hour.md, A weapon converts when it hits one
     /// target at once).
     Weapon(DroppedWeapon),

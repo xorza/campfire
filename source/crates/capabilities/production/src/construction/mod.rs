@@ -16,7 +16,7 @@ use campfire_units::{
     Body, BuildTarget, Dead, Destination, GridBuild, Life, MapBook, Owner, SpawnAt, Spawner,
     StatusTags,
 };
-use campfire_values::{Team, UnitTags};
+use campfire_values::{Team, UnitTags, UnitType};
 use campfire_vision::TeamSight;
 
 use crate::Production;
@@ -27,7 +27,9 @@ use crate::construction::build_view::{BuildFootprint, BuildView};
 use crate::construction::building_at::BuildingAt;
 use crate::construction::step::{StartingBuild, Step};
 use crate::order_dues::{self, OrderDues};
+use crate::producer_spec::ProducerSpec;
 use crate::site::{Site, SiteProgress, SiteStart};
+use crate::trains::Trains;
 
 pub(crate) mod build_view;
 pub(crate) mod building_at;
@@ -266,15 +268,16 @@ impl Construction {
     /// progress, within its maximum. A builder builds a site while it lives, its order is to
     /// build it, its body is within its build's range of the site's, and no tag blocks its `use`
     /// group. A site that reaches its time completes: it loses its site and its `constructing`
-    /// tag, its builders' orders end, and, on the server, its building joins the completed sites,
-    /// whose `on_site_complete` the mode runs. A predicting client's form `F` completes sites
-    /// alike, and leaves the hook to the server.
+    /// tag, its builders' orders end, and, on the server, its building frees its free units and
+    /// joins the completed sites, whose `on_site_complete` the mode runs. A predicting client's
+    /// form `F` completes sites alike, and leaves the free units and the hook to the server.
     pub(crate) fn progress_sites<F: RoleForm>(
-        (index, book, builds, map): (
+        (index, book, builds, map, producers): (
             Res<'_, EntityIndex>,
             Res<'_, ActionBook>,
             Res<'_, BuildBook>,
             Res<'_, MapBook>,
+            Res<'_, ByType<ProducerSpec>>,
         ),
         mut sites: Query<
             '_,
@@ -287,6 +290,7 @@ impl Construction {
                 (&Site, &mut SiteProgress),
                 Option<&mut Life>,
                 &mut StatusTags,
+                &UnitType,
             ),
             Without<Dead>,
         >,
@@ -353,7 +357,7 @@ impl Construction {
         done.clear();
         let ordered = sites.iter().map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { entity, id } in order.sort(ordered) {
-            let (.., (site, mut progress), life, mut status) =
+            let (.., (site, mut progress), life, mut status, &unit_type) =
                 sites.get_mut(entity).expect("a site in the order");
             let spec = builds
                 .of(site.action())
@@ -376,6 +380,12 @@ impl Construction {
                 commands.entity(entity).remove::<(Site, SiteProgress)>();
                 *status = status.turned(Production::CONSTRUCTING, false);
                 done.push(id);
+                let frees = producers
+                    .get(unit_type)
+                    .is_some_and(|spec| !spec.free.is_empty());
+                if frees && !F::PREDICTS {
+                    commands.queue(move |world: &mut World| Trains::free_units(world, entity));
+                }
             }
         }
         if done.is_empty() {

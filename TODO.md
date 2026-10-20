@@ -8,3 +8,5 @@ seats->slots
 extransion traits audit
 coverage
 migrate to stable rustc
+anti-dos
+fsm for network protocol

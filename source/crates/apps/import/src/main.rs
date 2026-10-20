@@ -54,6 +54,11 @@ fn warn_of(loss: &ImportLoss) {
             cause = ?dropped.cause,
             "a command button is not imported"
         ),
+        ImportLoss::Supply(dropped) => warn!(
+            object = dropped.object,
+            cause = ?dropped.cause,
+            "an object's supply is not imported"
+        ),
         ImportLoss::Weapon(dropped) => warn!(
             weapon = dropped.weapon,
             cause = ?dropped.cause,

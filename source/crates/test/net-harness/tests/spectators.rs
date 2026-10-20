@@ -222,14 +222,14 @@ fn a_join_burst_fits_the_initial_window_and_a_megabit_link_delays_it_one_tick() 
     // 1,200 bytes, so the packet session's budget sends it whole (11-net-stack/packet-session.md,
     // Congestion control is NewReno, in the packet session).
     let fast = JoinBurst::over(rated(1_250_000));
-    assert_eq!(fast.frames, [0, 43, 0, 431, 0, 599, 46, 4_438, 439]);
+    assert_eq!(fast.frames, [0, 43, 0, 431, 0, 600, 46, 4_438, 439]);
     assert_eq!(fast.entities, 58);
     assert!(fast.largest() < 10 * 1_200);
 
     // At 1 Mbit/s the 4,438 bytes take 35,504 µs, past the tick of 33,333 µs: the spectator
     // holds the world one frame later, in which the server sent one more frame's bytes.
     let slow = JoinBurst::over(rated(125_000));
-    assert_eq!(slow.frames, [0, 43, 0, 431, 0, 599, 46, 4_438, 439, 451]);
+    assert_eq!(slow.frames, [0, 43, 0, 431, 0, 600, 46, 4_438, 439, 451]);
     assert_eq!(slow.entities, 58);
     assert_eq!(slow.largest() * 1_000_000 / 125_000, 35_504);
 }

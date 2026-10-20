@@ -7,7 +7,7 @@ use bevy_ecs::world::World;
 use campfire_combat::{Combat, DamageCause};
 use campfire_common::Seat;
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
-use campfire_mode::MatchEnd;
+use campfire_mode::{Choices, MatchEnd, Offer, SeatPick};
 use campfire_players::{HeldOut, PlayersWorld};
 use campfire_production::Production;
 use campfire_protocol::{InputRules, Outcome, SeatPlan, SessionLog};
@@ -30,8 +30,20 @@ fn owned(world: &World, name: &str, seat: u32) -> Vec<StableId> {
         .collect()
 }
 
-/// The session of a skirmish whose slots `plan` opens.
+/// The pick of the faction `base`, its center and its dozer, for each of the skirmish's 3 slots.
+fn bases() -> Vec<SeatPick> {
+    (0..3)
+        .map(|seat| format!("{seat}:faction=base").parse().unwrap())
+        .collect()
+}
+
+/// The session of a skirmish whose slots `plan` opens, each of the faction `base`.
 fn session(plan: [SeatPlan; 3]) -> FixedSession {
+    unpicked(plan).seat_picked(&bases())
+}
+
+/// The session of a skirmish whose slots `plan` opens, of no faction picked.
+fn unpicked(plan: [SeatPlan; 3]) -> FixedSession {
     let rate = NonZeroU32::new(30).unwrap();
     let packages = TestMode::Skirmish.packages();
     FixedSession::planned(packages, rate, InputRules::ROOMY, plan)
@@ -132,6 +144,34 @@ fn a_skirmish_starts_each_held_slot_and_ends_as_the_last_team_with_a_building_st
 }
 
 #[test]
+fn a_slot_starts_as_its_hosts_pick_and_one_of_no_pick_draws_its_faction_and_keeps_it() {
+    // Player 1 picked the outpost, its center alone; the bots of slots 2 and 3 picked nothing,
+    // each draws a faction, which counts as its pick, and starts as it.
+    let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Bot];
+    let outpost: SeatPick = "0:faction=outpost".parse().unwrap();
+    let fixed = unpicked(plan).seat_picked(&[outpost]).start();
+    let world = fixed.game();
+    let chosen = world.resource::<Choices>().offers();
+    assert_eq!(chosen[0], Some(Offer::new(1)));
+    assert_eq!(owned(world, "center", 0).len(), 1);
+    assert!(owned(world, "dozer", 0).is_empty());
+    for seat in [1, 2] {
+        let base = match chosen[seat] {
+            Some(offer) if offer == Offer::new(0) => true,
+            Some(offer) if offer == Offer::new(1) => false,
+            other => panic!("slot {seat} drew {other:?}"),
+        };
+        let seat = u32::try_from(seat).unwrap();
+        assert_eq!(owned(world, "center", seat).len(), 1);
+        assert_eq!(
+            owned(world, "dozer", seat).len(),
+            usize::from(base),
+            "slot {seat}"
+        );
+    }
+}
+
+#[test]
 fn every_player_starts_with_the_money_the_host_picked_and_a_replay_plays_with_it() {
     // Of no pick, each held slot starts with the option's default, 100; of the pick of its
     // second value, with 5,000, as the terms record it; an open seat starts with it too, as
@@ -175,8 +215,9 @@ fn a_kill_pays_its_killers_player_its_share_of_the_victims_cost_rounded_up() {
     );
     let rate = NonZeroU32::new(30).unwrap();
     let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Bot];
-    let mut fixed =
-        FixedSession::planned(tree.load().unwrap(), rate, InputRules::ROOMY, plan).start();
+    let mut fixed = FixedSession::planned(tree.load().unwrap(), rate, InputRules::ROOMY, plan)
+        .seat_picked(&bases())
+        .start();
     let dozer = one(&fixed, "dozer", 0);
     let center = one(&fixed, "center", 1);
     Combat::damage(
@@ -229,8 +270,9 @@ fn a_kill_of_a_site_under_construction_pays_no_bounty_by_the_victim_filter() {
         }
         let rate = NonZeroU32::new(30).unwrap();
         let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Bot];
-        let mut fixed =
-            FixedSession::planned(tree.load().unwrap(), rate, InputRules::ROOMY, plan).start();
+        let mut fixed = FixedSession::planned(tree.load().unwrap(), rate, InputRules::ROOMY, plan)
+            .seat_picked(&bases())
+            .start();
         let dozer = one(&fixed, "dozer", 0);
         let center = one(&fixed, "center", 1);
         let site = StatusTags::from([Production::CONSTRUCTING]);

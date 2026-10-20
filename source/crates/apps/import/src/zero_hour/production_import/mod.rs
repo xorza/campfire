@@ -18,14 +18,15 @@ use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, Prerequisit
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ProductionNames;
 use crate::zero_hour::imported_type::{ImportedType, MONEY};
+use crate::zero_hour::supply_import::{DOCK_RANGE, SupplyImport};
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's trains and builds (09-zero-hour.md, Every command set's trains and builds are
 /// imported): each `UNIT_BUILD` and `DOZER_CONSTRUCT` button of the command set of each unit type,
 /// and of each type a converted button makes, once for the whole import; the names of their
 /// actions, as the string table gives their labels; the buttons dropped, each once for each cause,
-/// in the order the sets are read; and what it gives each producer, its actions of the slot kind
-/// `command` and its `production` section.
+/// in the order the sets are read; what it gives each producer, its actions of the slot kind
+/// `command` and its `production` section; and the supply of each type it visits.
 #[derive(Debug, Default)]
 pub(crate) struct ProductionImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedAction>,
@@ -36,6 +37,8 @@ pub(crate) struct ProductionImport {
     pub(crate) commands: BTreeMap<ImportName, Vec<DeclaredName>>,
     /// Each producer's `production` section, by its type's name.
     pub(crate) sections: BTreeMap<ImportName, ProductionData>,
+    /// The docks, supply centers, gatherers and free units of the types it visits.
+    pub(crate) supply: SupplyImport,
 }
 
 /// A train or a build as the mode's data writes it, `[actions.<id>]`: the pipeline's keys it
@@ -98,18 +101,13 @@ enum Making {
     Build,
 }
 
-/// How near a builder comes to its building's box, 10 m, the pathfinder's cell: the dozer docks in
-/// the free cell beside the building nearest it (09-zero-hour.md, Every command set's trains and
-/// builds are imported).
-const BUILD_RANGE: Num = Num::int(10);
-
 /// The logic frames a second of the game, `LOGICFRAMES_PER_SECOND`.
 const FRAMES: f32 = 30.0;
 
 impl ProductionImport {
-    /// The trains and builds of `rules`, from the unit types `names` holds, each type a
-    /// converted button makes, or its object's prerequisites name, named there, and its own
-    /// command set's buttons converted in turn.
+    /// The trains, builds and supply of `rules`, from the unit types `names` holds, each type a
+    /// converted button makes, a building frees, or its object's prerequisites name, named there,
+    /// and its own command set's buttons and supply converted in turn.
     pub(crate) fn of(rules: &ZeroHourRules, names: &mut ProductionNames) -> Self {
         let mut import = Self::default();
         let mut queued: VecDeque<String> = names.typed_objects().into();
@@ -118,22 +116,44 @@ impl ProductionImport {
             let Some(producer) = rules.objects.object(name.as_bytes()) else {
                 continue;
             };
-            let Some(set) = producer.build().command_set.as_deref() else {
-                continue;
-            };
-            let Some(buttons) = rules.sets.buttons(set) else {
-                continue;
-            };
-            for button_name in buttons {
-                let made = import.button(rules, producer, button_name, names);
-                if let Some(object) = made
-                    && seen.insert(object.clone())
-                {
+            let set = producer.build().command_set.as_deref();
+            let buttons = set.and_then(|set| rules.sets.buttons(set));
+            let mut made: Vec<String> = buttons
+                .into_iter()
+                .flatten()
+                .filter_map(|button_name| import.button(rules, producer, button_name, names))
+                .collect();
+            made.extend(import.supply_of(rules, producer, names));
+            for object in made {
+                if seen.insert(object.clone()) {
                     queued.push_back(object);
                 }
             }
         }
         import
+    }
+
+    /// Converts the supply of `producer`, a unit type of `names`, its buttons converted: its
+    /// node, its drop-off, its gather, the last of its command slots, and the units it frees as
+    /// its production's; the names of the objects it frees.
+    fn supply_of(
+        &mut self,
+        rules: &ZeroHourRules,
+        producer: &IniObject,
+        names: &mut ProductionNames,
+    ) -> Vec<String> {
+        self.supply.dock(rules, producer);
+        let name = ImportName::object(producer);
+        if let Some(gather) = self.supply.gather(rules, producer, names) {
+            self.commands.entry(name.clone()).or_default().push(gather);
+        }
+        let Some(section) = self.sections.get_mut(&name) else {
+            self.supply.strand(rules, producer);
+            return Vec::new();
+        };
+        let freed = self.supply.free(rules, producer, names);
+        section.free = freed.iter().map(|unit| unit.unit_type.clone()).collect();
+        freed.into_iter().map(|unit| unit.object).collect()
     }
 
     /// Converts the button `button_name` of the set of `producer`: its action, made once, and
@@ -247,7 +267,7 @@ impl ProductionImport {
                 cost: cost.into_iter().collect(),
                 windup_ms: Some(Self::number(windup_ms)),
                 range: (making == Making::Build)
-                    .then(|| Ranked::One(RangeField::Range(ActionRange::meters(BUILD_RANGE)))),
+                    .then(|| Ranked::One(RangeField::Range(ActionRange::meters(DOCK_RANGE)))),
                 ..ActionKeys::new(kind, targeting)
             };
             ImportedAction {
@@ -290,10 +310,11 @@ impl ProductionImport {
             .collect()
     }
 
-    /// The `production` section of a producer of `build`: its queue, and its exit's points in
-    /// the engine's frame, the game's `y` its `−z`, as a map's places turn, each none for a number
-    /// the engine does not hold or a point past its bound; none for no `ProductionUpdate`, or a
-    /// queue past 1 to 255.
+    /// The `production` section of a producer of `build`: its queue, its exit's points in the
+    /// engine's frame, the game's `y` its `−z`, as a map's places turn, each none for a number the
+    /// engine does not hold or a point past its bound, and whether its exit starts its gatherers;
+    /// none for no `ProductionUpdate`, or a queue past 1 to 255. The supply's conversion gives it
+    /// its free units.
     fn section(build: &IniBuild) -> Option<ProductionData> {
         let queue = u8::try_from(build.queue?).ok().and_then(NonZeroU8::new)?;
         let frame = |[x, y]: [f32; 2]| {
@@ -306,6 +327,8 @@ impl ProductionImport {
             queue,
             exit: exit.and_then(|exit| frame(exit.create)),
             rally: exit.and_then(|exit| frame(exit.rally)),
+            gathers: exit.is_some_and(|exit| exit.starts_gatherers),
+            free: Vec::new(),
         })
     }
 
@@ -371,40 +394,4 @@ impl ProductionImport {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_sites_start_is_the_least_share_of_billionths_that_gives_one_life() {
-        // 1 of 5,000 is 0.0002 exactly; of 1,200, 0.000833333… up to 833,334 billionths, which
-        // gives 1.0000008; of 180, 5,555,555.5… up to 5,555,556; a life of 1 or less starts
-        // whole.
-        let share = |most: Num| ProductionImport::one_life(most);
-        let billionths = |parts| Share::billionths(parts).unwrap();
-        assert_eq!(share(Num::int(5000)), billionths(200_000));
-        assert_eq!(share(Num::int(1200)), billionths(833_334));
-        assert_eq!(share(Num::int(180)), billionths(5_555_556));
-        assert_eq!(share(Num::ONE), Share::ALL);
-        assert_eq!(share(Num::HALF), Share::ALL);
-    }
-
-    #[test]
-    #[expect(
-        clippy::lossy_float_literal,
-        reason = "71,582,784 and 71,582,792 are multiples of 8, which an f32 of 2²⁶ to 2²⁷ holds exactly"
-    )]
-    fn a_build_time_is_its_frames_in_milliseconds_within_the_games_int() {
-        // 5 s is 150 frames, ⌊150 × 100 / 3⌋ = 5,000 ms; 0.1 s is 3 frames, 100 ms. 71,582,784 s
-        // is 2,147,483,520 frames, the most an `f32` holds below 2³¹, ⌊2,147,483,520 × 100 / 3⌋
-        // = 71,582,784,000 ms; 71,582,792 s, the next time an `f32` holds, is 2³¹ frames, past
-        // the game's `Int`, and gives none, as what is not a time at all does.
-        let windup = ProductionImport::windup_ms;
-        assert_eq!(windup(5.0), Some(5000));
-        assert_eq!(windup(0.1), Some(100));
-        assert_eq!(windup(0.0), Some(0));
-        assert_eq!(windup(71_582_784.0), Some(71_582_784_000));
-        for refused in [71_582_792.0, f32::MAX, -1.0, f32::NAN, f32::INFINITY] {
-            assert_eq!(windup(refused), None, "{refused}");
-        }
-    }
-}
+mod tests;

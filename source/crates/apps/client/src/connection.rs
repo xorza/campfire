@@ -7,7 +7,7 @@ use bevy::app::App;
 use bevy::ecs::entity::Entity;
 use campfire_common::{ErrorReport, ExitStatus};
 use campfire_math::TickRate;
-use campfire_mode::OptionValue;
+use campfire_mode::{OptionValue, SeatPick};
 use campfire_net::{
     ClientDir, LocalPacePlugin, LocalRelinkPlugin, LocalServer, LocalServerSetup, Os, Pace,
     SeatBotFile, ServerPin, UdpLinks,
@@ -36,13 +36,14 @@ pub(crate) enum Connection {
 }
 
 /// What a local server starts with: the client's data directory, the mode, the bots, the values
-/// the player picks of the mode's options, and the pace it follows.
+/// the player picks of the mode's options and of its seats' choices, and the pace it follows.
 #[derive(Debug, Clone, Copy)]
 struct LocalStart<'a> {
     data: &'a ClientDir,
     packages: &'a Arc<ModePackages>,
     bots: &'a [SeatBotFile],
     options: &'a [OptionValue],
+    seat_picks: &'a [SeatPick],
     pace: &'a Arc<Pace>,
 }
 
@@ -74,6 +75,7 @@ impl Connection {
             PlayedServer::Local {
                 bots,
                 options,
+                seat_picks,
                 data,
             } => {
                 let data = Self::open_dir(data)?;
@@ -82,6 +84,7 @@ impl Connection {
                     packages,
                     bots,
                     options,
+                    seat_picks,
                     pace,
                 })?;
                 Ok(Self::Local { server, data })
@@ -162,6 +165,7 @@ impl Connection {
             packages,
             bots,
             options,
+            seat_picks,
             pace,
         } = start;
         let slots = bots
@@ -178,6 +182,7 @@ impl Connection {
             data,
             bots: slots,
             options: options.to_vec(),
+            seat_picks: seat_picks.to_vec(),
             pace: Arc::clone(pace),
             os: Os::SYSTEM,
         })

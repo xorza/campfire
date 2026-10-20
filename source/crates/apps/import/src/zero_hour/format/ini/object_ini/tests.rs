@@ -3,6 +3,7 @@ use campfire_math::Num;
 use super::*;
 use crate::zero_hour::format::ini::object_ini::fight_data::{IniShell, IniTurret};
 use crate::zero_hour::format::ini::object_ini::ini_build::{Prerequisite, ProductionExit};
+use crate::zero_hour::format::ini::object_ini::ini_supply::{SupplyDock, SupplyGatherer};
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
 
 /// Objects of each kind a placed object can be, their reskins, and lists of each form.
@@ -396,6 +397,72 @@ End
 }
 
 #[test]
+fn an_object_gives_supply_its_dock_center_gatherer_and_one_shot_spawns() {
+    let text = "Object Center\n\
+                 Behavior = SupplyCenterDockUpdate M1\n  NumberApproachPositions = -1\n End\n\
+                 Behavior = SupplyCenterProductionExitUpdate M2\n  UnitCreatePoint = X:1 Y:2 Z:0\n\
+                   NaturalRallyPoint = X:3 Y:4 Z:0\n End\n\
+                 Behavior = SpawnBehavior M3\n  SpawnNumber = 4\n  SpawnTemplateName = Truck\n\
+                   SpawnTemplateName = Worker Other\n  OneShot = Yes\n End\n\
+                 Behavior = SpawnBehavior M4\n  SpawnNumber = 2\n  SpawnTemplateName = Guard\n End\n\
+                End\n\
+                Object Dock\n Behavior = SupplyWarehouseDockUpdate M1\n  StartingBoxes = 400\n\
+                  DeleteWhenEmpty = Yes\n End\nEnd\n\
+                Object Pile\n Behavior = SupplyWarehouseDockUpdate M1\n End\nEnd\n\
+                Object Truck\n Behavior = SupplyTruckAIUpdate M1\n  MaxBoxes = 4\n\
+                  SupplyCenterActionDelay = 400\n  SupplyWarehouseActionDelay = 1000\n\
+                  SupplyWarehouseScanDistance = 700\n  Turret\n   TurretTurnRate = 60\n  End\n\
+                 End\nEnd\n\
+                Object Worker\n Behavior = WorkerAIUpdate M1\n  MaxBoxes = 1\n End\nEnd\n";
+    let mut ini = ObjectIni::default();
+    ini.read(text.as_bytes()).unwrap();
+    let supply = |name: &str| ini.objects[name].supply().clone();
+    // The center takes boxes, and its exit starts its gatherers. Its one-shot spawn makes 4,
+    // stepping through its three names and back to the first; its other spawn, not one-shot,
+    // none as it is made.
+    let center = supply("Center");
+    assert_eq!(
+        (center.center, center.dock, center.gatherer),
+        (true, None, None)
+    );
+    let spawned: Vec<&str> = center.one_shots().collect();
+    assert_eq!(spawned, ["Truck", "Worker", "Other", "Truck"]);
+    assert_eq!(
+        ini.objects["Center"].build().exit,
+        Some(ProductionExit {
+            create: [1.0, 2.0],
+            rally: [3.0, 4.0],
+            starts_gatherers: true,
+        })
+    );
+    // A dock of its boxes, which goes when empty; one of no field holds 1 box and stays.
+    let dock = |boxes, delete_when_empty| {
+        Some(SupplyDock {
+            boxes,
+            delete_when_empty,
+        })
+    };
+    assert_eq!(supply("Dock").dock, dock(400, true));
+    assert_eq!(supply("Pile").dock, dock(1, false));
+    assert!(!supply("Dock").center);
+    // A truck's numbers; a worker's past its boxes the game's defaults: no delay, 100 of scan.
+    let gatherer = |max_boxes, center_delay_ms, warehouse_delay_ms, scan_distance| {
+        Some(SupplyGatherer {
+            max_boxes,
+            center_delay_ms,
+            warehouse_delay_ms,
+            scan_distance,
+        })
+    };
+    assert_eq!(supply("Truck").gatherer, gatherer(4, 400, 1000, 700.0));
+    assert_eq!(supply("Worker").gatherer, gatherer(1, 0, 0, 100.0));
+    assert_eq!(supply("Truck").one_shots().count(), 0);
+    // A gatherer's module is an AI module, whose turret combat reads too.
+    let turret = ini.objects["Truck"].fight().turret;
+    assert_eq!(turret.map(|turret| turret.turn_rate), Some(60.0));
+}
+
+#[test]
 fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
     fn build(ini: &ObjectIni, name: &str) -> IniBuild {
         ini.objects[name].build().clone()
@@ -416,6 +483,7 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
             exit: Some(ProductionExit {
                 create: [-18.0, 35.0],
                 rally: [60.0, 35.0],
+                starts_gatherers: false,
             }),
             placement_angle: Some(Num::int(-135)),
         }
@@ -430,6 +498,7 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
         Some(ProductionExit {
             create: [0.0, 0.0],
             rally: [55.0, 0.0],
+            starts_gatherers: false,
         })
     );
     let line =

@@ -44,7 +44,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `learn` | `(avatar: Unit, slot: int)` | mode | abilities | since 1.0 | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | since 1.0 | the map: its paths and its markers |
 | `nearest_visible` | `(of: Unit, radius: Num, filter: text)`, `filter` a filter | every role | vision | since 1.0 | the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none |
-| `offers` | `(choice: text)`, `choice` a choice | mode | core | since 1.0 | the values `choice` offers, in order: the avatars in the order of the mode's dependencies, or the loadout entries by id |
+| `offers` | `(choice: text)`, `choice` a choice | mode | core | since 1.0 | the values `choice` offers, in order: the avatars in the order of the mode's dependencies, the loadout entries by id, or the values it lists |
 | `order_action` | `(slot, target)` | AI | orders | planned | the unit that thinks casts the action in its slot `slot` at `target`, as a player's action order does |
 | `order_attack` | `(target: Unit)` | AI | orders | since 1.0 | the unit that thinks attacks `target`, a living enemy that one of its weapons selects |
 | `order_follow_path` | `()` | AI | orders | since 1.0 | the unit that thinks drops its target and walks its path again |
@@ -425,7 +425,9 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `placement` | production | since 1.0 |
 | `resource` | production | since 1.0 |
 | `take` | production | since 1.0 |
+| `unit` | production | since 1.0 |
 | `bounce` | production | since 1.0 |
+| `deliver_ms` | production | since 1.0 |
 
 ### A modifier, `[modifiers.<id>]`
 
@@ -566,6 +568,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `queue` | production | since 1.0 |
 | `exit` | production | since 1.0 |
 | `rally` | production | since 1.0 |
+| `gathers` | production | since 1.0 |
+| `free` | production | since 1.0 |
 
 ### A unit type's `supply`
 
@@ -593,6 +597,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | --- | --- | --- |
 | `resource` | production | since 1.0 |
 | `amount` | production | since 1.0 |
+| `empty` | production | since 1.0 |
 
 ### A unit type's `drop_off`
 
@@ -658,6 +663,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `unique` | core | since 1.0 |
 | `count` | core | since 1.0 |
 | `slot` | core | since 1.0 |
+| `values` | core | since 1.0 |
 
 ### A slot kind, `[[slots]]`
 

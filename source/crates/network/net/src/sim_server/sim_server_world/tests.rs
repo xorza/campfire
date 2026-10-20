@@ -2,7 +2,7 @@ use std::num::{NonZeroU8, NonZeroU32};
 
 use bevy_state::state::{NextState, State};
 use campfire_common::ExitStatus;
-use campfire_mode::OptionPicks;
+use campfire_mode::HostPicks;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
     InputRules, Journal, SeatPlan, SeatStart, SeedChain, SessionHeader, SessionLog,
@@ -31,7 +31,7 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
             inputs: InputRules::LAN,
             seats: vec![SeatPlan::Open],
             visibility: rules.visibility().settings(),
-            picks: &OptionPicks::defaults(rules.options()),
+            picks: &HostPicks::defaults(packages.data(), 1),
         })
         .unwrap();
     let header = SessionHeader {

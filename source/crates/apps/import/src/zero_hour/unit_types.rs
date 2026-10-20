@@ -6,7 +6,7 @@ use campfire_common::DeclaredName;
 use campfire_declarations::SectionWriter;
 use campfire_math::Num;
 use campfire_package::UnitsFile;
-use campfire_production::ProductionData;
+use campfire_production::{DropOffData, NodeData, ProductionData};
 
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::imported_type::ImportedType;
@@ -20,14 +20,18 @@ pub(crate) struct ImportedTypes {
 }
 
 /// What the stages give each unit type, by its name: the actions of its slot kinds `weapon`, in its
-/// starting weapon set's order, and `command`, in its command set's order, and its `production`
-/// section when it trains (09-zero-hour.md, Every command set's trains and builds are imported;
-/// 09-zero-hour.md, A weapon converts when it hits one target at once).
+/// starting weapon set's order, and `command`, in its command set's order, its gather last; its
+/// `production` section when it trains; and its `node` when it is a dock and its `drop_off` when
+/// it is a supply center (09-zero-hour.md, Every command set's trains and builds are imported;
+/// 09-zero-hour.md, A weapon converts when it hits one target at once; 09-zero-hour.md, A
+/// box is money).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TypeAdditions<'a> {
     pub(crate) weapon: &'a BTreeMap<ImportName, Vec<DeclaredName>>,
     pub(crate) command: &'a BTreeMap<ImportName, Vec<DeclaredName>>,
     pub(crate) production: &'a BTreeMap<ImportName, ProductionData>,
+    pub(crate) nodes: &'a BTreeMap<ImportName, NodeData>,
+    pub(crate) drop_offs: &'a BTreeMap<ImportName, DropOffData>,
 }
 
 /// The slot kinds of a type's weapons and of its trains and builds, which the rules data declares.
@@ -47,7 +51,7 @@ impl ImportedTypes {
     }
 
     /// The package's `data/units.toml`: each unit type in the order of their names, of the
-    /// fields its object gives, the slots and the production `additions` give it.
+    /// fields its object gives, the slots, the production and the supply `additions` give it.
     pub(crate) fn units_file(&self, additions: TypeAdditions<'_>) -> WrittenUnits {
         let kind = |name| DeclaredName::new(name).expect("a slot kind is a declared name");
         let units: BTreeMap<DeclaredName, TomlTable> = self
@@ -69,6 +73,12 @@ impl ImportedTypes {
                 }
                 if let Some(production) = additions.production.get(name) {
                     writer.section(production);
+                }
+                if let Some(node) = additions.nodes.get(name) {
+                    writer.section(node);
+                }
+                if let Some(drop_off) = additions.drop_offs.get(name) {
+                    writer.section(drop_off);
                 }
                 (name.declared(), writer.into_table())
             })
@@ -98,6 +108,8 @@ pub(crate) mod reach_in {
                 weapon: &BTreeMap::new(),
                 command: &BTreeMap::new(),
                 production: &BTreeMap::new(),
+                nodes: &BTreeMap::new(),
+                drop_offs: &BTreeMap::new(),
             })
         }
     }

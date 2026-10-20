@@ -15,7 +15,7 @@ pub(crate) enum Step {
     Stand,
     /// Its loop ends.
     Stop,
-    /// Its gather ends with no load, as a tag blocks its `use` group, and its node frees.
+    /// Its windup ends with nothing taken, as a tag blocks its `use` group, and its node frees.
     Interrupt(Entity),
     /// It goes on to this node.
     Retarget(NodeAt),
@@ -23,10 +23,13 @@ pub(crate) enum Step {
     Wait,
     /// It holds the node of this entity, and gathers.
     Take(Entity),
-    /// Its gather of the node of this entity ends: it takes the most a trip carries.
+    /// Its windup at the node of this entity ends: it takes its gather's unit, up to what its
+    /// trip carries.
     Collect(Entity),
     /// It takes its load to this drop-off.
     Choose(StableId),
+    /// It stands at this drop-off, which it reached, until its load joins its player's.
+    Unload(StableId),
     /// Its load joins its player's resources: then on to the node, or none to stop.
     Deliver(Option<NodeAt>),
 }

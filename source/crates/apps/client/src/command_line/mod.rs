@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 
 use campfire_common::{DeclaredName, MapName, Seat, TlsKey};
-use campfire_mode::OptionValue;
+use campfire_mode::{OptionValue, SeatPick};
 use campfire_net::{JoinRole, SeatBotFile};
 use clap::Parser;
 use secp256k1::XOnlyPublicKey;
@@ -38,11 +38,12 @@ pub(crate) enum PlayedServer {
         data: Option<PathBuf>,
     },
     /// A local server, on a thread of the client's process, with the bots of `bots`, the values
-    /// `options` picks of the mode's options, its data in the data directory `data`, which it
-    /// needs.
+    /// `options` picks of the mode's options and `seat_picks` of its seats' choices, its data in
+    /// the data directory `data`, which it needs.
     Local {
         bots: Vec<SeatBotFile>,
         options: Vec<OptionValue>,
+        seat_picks: Vec<SeatPick>,
         data: PathBuf,
     },
 }
@@ -86,6 +87,10 @@ pub(crate) struct CommandLine {
     /// option not named takes its default
     #[arg(long = "option", value_name = "NAME=VALUE", requires = "local")]
     options: Vec<OptionValue>,
+    /// A value of one of the mode's choices of values for a seat of the local server's session,
+    /// the player's 0 among them, as seat:choice=value; a seat's choice not named starts unpicked
+    #[arg(long = "pick", value_name = "SEAT:CHOICE=VALUE", requires = "local")]
+    seat_picks: Vec<SeatPick>,
     /// The mode's map the session plays, as the listing names it; the mode's only map when it has
     /// one
     #[arg(long, value_name = "NAME")]
@@ -126,6 +131,7 @@ impl From<CommandLine> for Args {
             None => PlayedServer::Local {
                 bots: line.server_bots,
                 options: line.options,
+                seat_picks: line.seat_picks,
                 data: line.data.expect("clap takes --local only with --data"),
             },
         };

@@ -3,8 +3,8 @@
 drive_ticks = 1717
 
 [fingerprints]
-game = "551b1a1e4771d62300155e4e77828ca2c69930945fdd8acfcd1b6555eef703b7"
-rules = "2a6b2a01c9dc982e03f691ab93d31ce77df8c3dc53a711dbd303f75b501c9112"
+game = "65d38933aa5e9e8de3bfbd54849f7451ad7d3bedf94cab9b4efd9aa08a1edc20"
+rules = "8edffc6b8097e4d8f26d377445e214875c60d03c5a0c05a47cdccb504fe03ac1"
 
 [map]
 heights = [270, 340]
@@ -31,6 +31,12 @@ trains = 187
 builds = 138
 dropped = [0, 22, 4, 36, 24, 0, 0, 0]
 
+[supplied]
+nodes = 4
+drop_offs = 15
+gathers = 12
+dropped = [0, 0, 5, 6, 0]
+
 [fought]
 weapons = 29
 dropped = [0, 52, 9, 0, 2, 0, 7, 1, 0, 4, 6, 2, 0, 3, 4, 0, 2]
@@ -45,6 +51,10 @@ factory = [483, 688, 1091]
 shot = 816
 hit = 827
 fight = 2567
+
+[supply]
+built = [483, 437]
+deliveries = [447, 901, 1355]
 
 [bot]
 built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]

@@ -31,7 +31,7 @@
 
 ## Choices
 
-- **Choices before the spawn.** A mode declares what players choose, a hero, a class, a faction or a loadout, each from avatars or loadout entries, unique or not; the choices are state, and a unit a player owns plays on the player's team, so it names the player's vision group.
+- **Choices before the spawn.** A mode declares what players choose, a hero, a class, a faction or a loadout, each from avatars, loadout entries or values its data lists, unique or not; a choice of listed values takes one, which a session's host may pick for a seat before the start, as Zero Hour's and OpenRA's lobbies give each player a faction ([Sessions](../08-sessions.md#decisions)); the choices are state, and a unit a player owns plays on the player's team, so it names the player's vision group.
 
 ## Network
 

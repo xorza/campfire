@@ -53,6 +53,7 @@ mod client_packages;
 mod command_line;
 mod command_panel;
 mod connection;
+mod dock_click;
 mod engine_text;
 mod hud;
 mod input_map;

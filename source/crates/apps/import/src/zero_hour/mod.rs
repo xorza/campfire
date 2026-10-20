@@ -66,6 +66,7 @@ mod press_import;
 pub(crate) mod production_import;
 pub(crate) mod rules_package;
 pub(crate) mod skirmish_start;
+pub(crate) mod supply_import;
 pub(crate) mod terrain_atlas;
 pub(crate) mod terrain_cells;
 pub(crate) mod unit_types;
@@ -263,6 +264,8 @@ impl ZeroHour {
             weapon: &combat.weapons,
             command: &production.commands,
             production: &production.sections,
+            nodes: &production.supply.nodes,
+            drop_offs: &production.supply.drop_offs,
         });
         writer.write(fixed("data/units.toml"), units.text.as_bytes())?;
         // A mode whose types drive none caps no speed it moves at; 1 m a second is as good as any.
@@ -284,6 +287,8 @@ impl ZeroHour {
                 })?;
         }
         losses.extend(production.dropped.into_iter().map(ImportLoss::Button));
+        let supply = production.supply.dropped.into_iter();
+        losses.extend(supply.map(ImportLoss::Supply));
         losses.extend(combat.dropped.into_iter().map(ImportLoss::Weapon));
         losses.extend(combat.unliving.into_iter().map(ImportLoss::Unliving));
         losses.extend(combat.wounded.into_iter().map(ImportLoss::Wounded));

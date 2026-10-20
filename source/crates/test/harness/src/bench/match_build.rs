@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use campfire_capabilities::Release;
 use campfire_measure::{Kind, Scale};
-use campfire_mode::OptionPicks;
+use campfire_mode::HostPicks;
 use campfire_package_disk::PackageDir;
 use campfire_runner::MatchBuild;
 use campfire_script::ScriptHost;
@@ -40,7 +40,8 @@ pub(crate) fn build(c: &mut Criterion) {
     group.bench_function("3v3", |b| {
         let packages = moba.packages();
         let rate = MatchRate::new(packages.manifest().tick_hz.default());
-        let picks = OptionPicks::defaults(&packages.data().options);
+        let seats = usize::try_from(Moba3v3::PLAYERS).expect("a player count fits usize");
+        let picks = HostPicks::defaults(packages.data(), seats);
         b.iter_custom(|builds| {
             let mut spent = Duration::ZERO;
             for _ in 0..builds {

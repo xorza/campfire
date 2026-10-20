@@ -6,10 +6,12 @@ use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{FlagList, FlagSet, IniLine, IniText};
 use crate::zero_hour::format::ini::object_ini::fight_data::{FightBlock, FightData};
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, ProductionModule};
+use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSupply, SupplyModule};
 use crate::zero_hour::format::look_conditions::LookConditions;
 
 pub(crate) mod fight_data;
 pub(crate) mod ini_build;
+pub(crate) mod ini_supply;
 
 /// The objects of Zero Hour's object INI files, as `ThingFactory` reads them, each with what its
 /// draw modules show by default.
@@ -36,6 +38,7 @@ pub(crate) struct IniObject {
     /// The locomotors of its `SET_NORMAL`, in the order its line names them.
     locomotors: Vec<String>,
     build: IniBuild,
+    supply: IniSupply,
     fight: FightData,
 }
 
@@ -252,6 +255,8 @@ enum Block {
     Fight(FightBlock),
     /// A behavior module whose fields production reads.
     Production(ProductionModule),
+    /// A behavior module whose fields supply reads.
+    Supply(SupplyModule),
     Other,
 }
 
@@ -334,6 +339,7 @@ impl ObjectIni {
                 geometry: Geometry::DEFAULT,
                 locomotors: Vec::new(),
                 build: IniBuild::default(),
+                supply: IniSupply::default(),
                 fight: FightData::default(),
             },
             Some(base) => IniObject {
@@ -663,6 +669,11 @@ impl IniObject {
         &self.build
     }
 
+    /// What it gives supply: its dock, its center, its gatherer and its spawns.
+    pub(crate) const fn supply(&self) -> &IniSupply {
+        &self.supply
+    }
+
     /// What it gives combat: its body, its weapon sets, its armor sets, its shell and its turret.
     pub(crate) const fn fight(&self) -> &FightData {
         &self.fight
@@ -730,6 +741,7 @@ impl Reading {
             | Block::Prerequisites
             | Block::Fight(_)
             | Block::Production(_)
+            | Block::Supply(_)
             | Block::Other => Ok(None),
         }
     }
@@ -856,6 +868,21 @@ impl Reading {
                     self.stack.push(Block::Other);
                 }
             }
+            Block::Supply(module) => {
+                let module = *module;
+                let open = self.object.as_mut().expect("a module is an object's");
+                open.object.supply.module_field(module, word, at)?;
+                // A gatherer's module is an AI module, whose turret combat reads.
+                let inner = match module {
+                    SupplyModule::Gatherer => open.object.fight.field(FightBlock::Ai, word, at)?,
+                    SupplyModule::Dock | SupplyModule::Spawn => None,
+                };
+                match inner {
+                    Some(inner) => self.stack.push(Block::Fight(inner)),
+                    None if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
+                    None => {}
+                }
+            }
             Block::Object if !self.object.as_ref().is_some_and(|open| open.reskin) => {
                 let open = self
                     .object
@@ -864,6 +891,15 @@ impl Reading {
                 let build = &mut open.object.build;
                 // A reskin's table sets none of these, so it keeps its base's.
                 if build.field(word, at)? {
+                    return Ok(());
+                }
+                let module = tokens.get(1).map(|module| module.to_ascii_lowercase());
+                if word == "behavior"
+                    && let Some(module) = module
+                        .as_deref()
+                        .and_then(|module| open.object.supply.module(module))
+                {
+                    self.stack.push(Block::Supply(module));
                     return Ok(());
                 }
                 if let Some(block) = open.object.fight.open(word, tokens) {
@@ -876,7 +912,6 @@ impl Reading {
                     self.stack.push(Block::Prerequisites);
                     return Ok(());
                 }
-                let module = tokens.get(1).map(|module| module.to_ascii_lowercase());
                 if word == "behavior"
                     && let Some(module) = module.and_then(|module| build.module(&module))
                 {

@@ -584,6 +584,7 @@ impl InProcessMatch {
             bots: self.server_bots(),
             open: Vec::new(),
             options: Vec::new(),
+            seat_picks: Vec::new(),
             host: HostVisibility {
                 settings: self
                     .setup

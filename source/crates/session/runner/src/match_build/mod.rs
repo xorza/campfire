@@ -2,7 +2,7 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{Match, MatchKind, MatchSetup, ModeStart, Release};
 use campfire_common::SegmentSeed;
 use campfire_declarations::Role;
-use campfire_mode::{ModeSetup, OptionPicks};
+use campfire_mode::{HostPicks, ModeSetup};
 use campfire_package::ModePackages;
 use campfire_script::ScriptPools;
 use campfire_sim::MatchRate;
@@ -31,13 +31,13 @@ impl MatchBuild {
 
     /// Builds the match of `spec` in `world`, a new world, of `packages`, for `players` players,
     /// with every package's scripts, the books at the match's rate, and the mode itself, of the
-    /// values `picks` gives its options.
+    /// values `picks` gives its options and its seats' choices.
     pub(crate) fn build(
         world: &mut World,
         match_setup: MatchSetup,
         packages: &ModePackages,
         players: u32,
-        picks: &OptionPicks,
+        picks: &HostPicks,
     ) {
         let books = packages.books(match_setup.rate());
         let scripts = packages.scripts();
@@ -64,7 +64,7 @@ impl MatchBuild {
         packages: &ModePackages,
         rate: MatchRate,
         players: u32,
-        picks: &OptionPicks,
+        picks: &HostPicks,
     ) -> Match {
         let spec = Self::spec(packages, SegmentSeed::ZERO, rate, players);
         Self::restore_target_of(spec, packages, players, picks)
@@ -75,7 +75,7 @@ impl MatchBuild {
         setup: MatchSetup,
         packages: &ModePackages,
         players: u32,
-        picks: &OptionPicks,
+        picks: &HostPicks,
     ) -> Match {
         let mut world = World::new();
         Self::build(&mut world, setup, packages, players, picks);
@@ -88,7 +88,7 @@ pub(crate) mod internals {
     use campfire_capabilities::{Match, MatchKind, Release};
     use campfire_common::SegmentSeed;
     use campfire_log::internals::LogCheck;
-    use campfire_mode::OptionPicks;
+    use campfire_mode::HostPicks;
     use campfire_package::ModePackages;
     use campfire_players::Players;
     use campfire_sim::MatchRate;
@@ -132,7 +132,8 @@ pub(crate) mod internals {
         /// defaults, which fails its test on any warning it logs.
         pub fn test_target(packages: &ModePackages, players: u32) -> Match {
             let log = LogCheck::start();
-            let picks = OptionPicks::defaults(&packages.data().options);
+            let seats = usize::try_from(players).expect("a player count fits usize");
+            let picks = HostPicks::defaults(packages.data(), seats);
             Self::restore_target(packages, Self::rate(packages), players, &picks).with_log(log)
         }
 
@@ -143,7 +144,8 @@ pub(crate) mod internals {
             let log = LogCheck::start();
             let rate = Self::rate(packages);
             let spec = Self::spec(packages, SegmentSeed::ZERO, rate, players);
-            let picks = OptionPicks::defaults(&packages.data().options);
+            let seats = usize::try_from(players).expect("a player count fits usize");
+            let picks = HostPicks::defaults(packages.data(), seats);
             let spec = spec.without_sync_points();
             let target = Self::restore_target_of(spec, packages, players, &picks);
             target.with_log(log)

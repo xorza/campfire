@@ -37,7 +37,7 @@ impl Choices {
                     .all(|at| values[at].is_none() || !values[..at].contains(&values[at]));
                 let slot = Seat::new(u32::try_from(row).expect("a player's row fits u32"));
                 let offered = values.iter().flatten().all(|&offer| {
-                    roster.holds(choice.offers, offer)
+                    roster.holds(choice, offer)
                         && !(choice.unique && self.is_taken(specs, slot, choice, offer))
                 });
                 whole && distinct && offered

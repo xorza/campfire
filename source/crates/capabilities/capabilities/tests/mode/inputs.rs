@@ -61,18 +61,30 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
             FailureKind::Api(ApiError::WrongStateType)
         ]
     );
-    // Each player's row: duo's two values, hero's, spells', the choices by name. Player 0 chose
-    // hero X, offer 0, and blink, the one spell; player 2 hero Y, offer 1.
+    // Each player's row: duo's two values, faction's, hero's, spells', the choices by name.
+    // Player 0 chose hero X, offer 0, and blink, the one spell; player 2 hero Y, offer 1; no
+    // host picked a faction.
     let offer = |index| Some(Offer::new(index));
     let chosen = game.resource::<Choices>().offers();
-    let rows: Vec<_> = chosen.chunks(4).collect();
+    let rows: Vec<_> = chosen.chunks(5).collect();
     assert_eq!(
         rows,
         [
-            [None, None, offer(0), offer(0)],
-            [None; 4],
-            [None, None, offer(1), None],
+            [None, None, None, offer(0), offer(0)],
+            [None; 5],
+            [None, None, None, offer(1), None],
         ]
+    );
+    // A host's pick of a seat's choice of values is the seat's choice as the match starts, before
+    // any input: player 1's faction China, offer 1.
+    let mut files = mode_files();
+    let china = "1:faction=china".parse().unwrap();
+    files.picks.seats = SeatPicks::named(&files.data.choices, 3, &[china]).unwrap();
+    let picked = start_match(SCRIPT, ScriptLimits::ROOMY, &files).unwrap();
+    let rows: Vec<_> = picked.resource::<Choices>().offers().chunks(5).collect();
+    assert_eq!(
+        rows,
+        [[None; 5], [None, None, offer(1), None, None], [None; 5]]
     );
     let next = game.resource_mut::<IdAllocator>().allocate();
     assert_eq!(next.get(), 7);
@@ -149,7 +161,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     assert_eq!(resource("gems").map(ResourceId::index), Some(1));
     // A host's pick of the option's other value is the param in place of its default: 8 + 3.
     let mut files = mode_files();
-    files.picks = OptionPicks::checked(&files.data.options, &[0]).unwrap();
+    files.picks.options = OptionPicks::checked(&files.data.options, &[0]).unwrap();
     let mut picked = start_match(SCRIPT, ScriptLimits::ROOMY, &files).unwrap();
     Mode::tick_inputs(&mut picked, &[(1, input("gold", "gold"))]);
     let resources = picked.player_resources(Seat::new(1)).unwrap();

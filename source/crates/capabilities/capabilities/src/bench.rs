@@ -12,7 +12,8 @@ use campfire_math::{Num, Vec3};
 use campfire_measure::{Kind, Scale};
 use campfire_players::{Players, PlayersWorld};
 use campfire_production::{
-    GatherOrder, GatherSpec, GatherStep, Gatherer, Node, NodeAt, NodeBook, Production, ResourceSet,
+    EmptyNode, GatherOrder, GatherSpec, GatherStep, Gatherer, Node, NodeAt, NodeBook, NodeSpec,
+    Production, ResourceSet,
 };
 use campfire_script::Filter;
 use campfire_sim::{Capability, IdAllocator, SimWorld, StableId};
@@ -72,13 +73,20 @@ fn two_fields() -> Match {
     world.insert_resource(books.states);
     books.types.load_into(&mut world);
     let mut book = NodeBook::default();
-    book.nodes.set(node_type, gold);
+    let goes = NodeSpec {
+        resource: gold,
+        empty: EmptyNode::Goes,
+    };
+    book.nodes.set(node_type, goes);
     book.drop_offs.set(drop_off_type, ResourceSet::from([gold]));
     world.insert_resource(book);
+    let take = NonZeroU32::new(5).unwrap();
     let spec = GatherSpec {
         resource: gold,
-        take: NonZeroU32::new(5).unwrap(),
+        take,
+        unit: take,
         bounce: Num::int(4),
+        deliver: Ticks::ZERO,
     };
     let all = Filter::of_match_relations(&world, RelationSet::All);
     let action = Production::add_gather(&mut world, spec, all, Num::int(16), Ticks::new(3));

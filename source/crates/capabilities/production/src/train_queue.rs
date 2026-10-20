@@ -19,7 +19,7 @@ use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::production_data::ProductionData;
+use crate::producer_spec::ProducerSpec;
 
 /// A unit's train queue: the trains it was ordered, in order, at most as many as its type's
 /// `production` section holds, and the player resources each paid, one run after another in the
@@ -211,7 +211,7 @@ impl SimComponent for TrainQueue {
                 action.kind == ActionKind::Train && action.has_rank(queued.rank)
             })
         });
-        let producers = world.resource::<ByType<ProductionData>>();
+        let producers = world.resource::<ByType<ProducerSpec>>();
         let capacity = world
             .get::<UnitType>(entity)
             .and_then(|&unit_type| producers.get(unit_type))

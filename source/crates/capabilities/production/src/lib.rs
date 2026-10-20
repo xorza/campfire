@@ -52,6 +52,7 @@ mod order_dues;
 mod placement;
 mod placement_data;
 mod player_supply;
+mod producer_spec;
 mod production_api;
 mod production_books;
 mod production_column;
@@ -91,11 +92,12 @@ pub use crate::gather_spec::GatherSpec;
 pub use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 pub use crate::mode_supply_data::ModeSupplyData;
 pub use crate::node::Node;
-pub use crate::node_book::NodeBook;
-pub use crate::node_data::NodeData;
+pub use crate::node_book::{NodeBook, NodeSpec};
+pub use crate::node_data::{EmptyNode, NodeData};
 pub use crate::placement::Placement;
 pub use crate::placement_data::{PlacementData, PlacementRule};
 pub use crate::player_supply::PlayerSupply;
+pub use crate::producer_spec::ProducerSpec;
 pub use crate::production_api::ProductionApi;
 pub use crate::production_column::ProductionColumn;
 pub use crate::production_data::ProductionData;
@@ -197,7 +199,7 @@ impl Module for Production {
         d.component::<Gatherer>();
         d.timed::<Gatherer>();
         d.extend::<UnitTypes>(Self::tag_types);
-        d.book::<ByType<ProductionData>>(ProductionData::book);
+        d.book::<ByType<ProducerSpec>>(ProducerSpec::book);
         d.listed::<TrainData>();
         d.listed::<BuildData>();
         d.listed::<GatherData>();
@@ -216,10 +218,9 @@ impl Module for Production {
         d.book::<ByType<Node>>(Node::book);
         d.book::<ByType<Gatherer>>(Gatherer::book);
         d.part::<BodyUnit, TrainQueue>(|at| {
-            at.of_type::<ProductionData>()
-                .map(|_| TrainQueue::default())
+            at.of_type::<ProducerSpec>().map(|_| TrainQueue::default())
         });
-        d.part::<BodyUnit, Rally>(|at| at.of_type::<ProductionData>().map(|_| Rally::default()));
+        d.part::<BodyUnit, Rally>(|at| at.of_type::<ProducerSpec>().map(|_| Rally::default()));
         d.part::<BodyUnit, Builder>(|at| at.of_type::<Builder>().copied());
         d.part::<BodyUnit, Node>(|at| at.of_type::<Node>().copied());
         d.part::<BodyUnit, Gatherer>(|at| at.of_type::<Gatherer>().copied());

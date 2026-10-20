@@ -1,4 +1,4 @@
-use campfire_common::{DeclaredName, EnumAll};
+use campfire_common::{DeclaredName, EnumAll, Seat};
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 use campfire_values::Scalar;
@@ -25,6 +25,13 @@ pub enum ModeDataError {
     /// A choice of loadout entries names no slot kind, or a choice of avatars names one.
     #[error("a choice of loadout entries fills a slot kind, one of avatars none")]
     ChoiceSlot,
+    /// A choice of values lists none, 255 or more, or one twice, or takes more than one; or another
+    /// choice lists values.
+    #[error(
+        "a choice of values lists its values, each once and fewer than 255, and takes one; another \
+         lists none"
+    )]
+    ChoiceValues,
     /// Two choices of loadout entries fill slot kinds of other ranks.
     #[error("choices of loadout entries fill slot kinds of other ranks")]
     LoadoutRanks,
@@ -50,6 +57,64 @@ pub enum PickError {
     /// A host's two picks of one option.
     #[error("the option {0} is picked twice")]
     Twice(DeclaredName),
+}
+
+/// Why a host's picks are none of the mode's: of an option, or of a seat's choice.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum HostPickError {
+    #[error(transparent)]
+    Option(#[from] PickError),
+    #[error(transparent)]
+    Seat(#[from] SeatPickError),
+}
+
+/// Why seat picks are none of the mode's: the terms carry another count of them, or a place past
+/// a choice's values, or a host names a seat, a choice or a value the mode lacks, picks one seat's
+/// choice twice, or gives two seats one value of a unique choice.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum SeatPickError {
+    /// Picks of another count than the seats times the mode's choices of values.
+    #[error("{given} seat picks, where the seats and the mode's choices of values take {expected}")]
+    Count { given: usize, expected: usize },
+    /// A pick past its choice's values.
+    #[error("the pick {place} of the choice {choice} of seat {}, which has no value there", seat.get())]
+    Place {
+        seat: Seat,
+        choice: DeclaredName,
+        place: u8,
+    },
+    /// A pick of a seat past the session's.
+    #[error("seat {} is none of the session's", _0.get())]
+    Seat(Seat),
+    /// A pick of a choice the mode does not declare, or one of avatars or loadout entries.
+    #[error("the mode has no choice of values {0}")]
+    Unknown(DeclaredName),
+    /// A pick of a value its choice does not list.
+    #[error("the choice {choice} lists no value {value}")]
+    NoValue {
+        choice: DeclaredName,
+        value: DeclaredName,
+    },
+    /// Two picks of one seat's choice.
+    #[error("the choice {choice} of seat {} is picked twice", seat.get())]
+    Twice { seat: Seat, choice: DeclaredName },
+    /// Two seats' picks of one value of a unique choice.
+    #[error("two seats pick the value {place} of the unique choice {choice}")]
+    Taken { choice: DeclaredName, place: u8 },
+}
+
+/// Why a host's `--pick` is no seat pick: it is not `seat:choice=value`, or its seat, its choice
+/// or its value does not read.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum SeatPickTextError {
+    #[error("a seat's choice is picked as seat:choice=value")]
+    Form,
+    #[error("{0:?} is no seat")]
+    Seat(String),
+    #[error("{0:?} is no choice's name")]
+    Choice(String),
+    #[error("{0:?} is no value's name")]
+    Value(String),
 }
 
 /// Why a host's `--option` is no pick: it names no value, after `=`, or its name or its value

@@ -1,7 +1,9 @@
+use std::num::NonZeroU32;
+
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Changed, Or, QueryState, Without};
-use bevy_ecs::system::{Commands, Local, ParamSet, Query, ResMut, SystemState};
+use bevy_ecs::system::{Commands, In, Local, ParamSet, Query, Res, ResMut, SystemState};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{ActionSlots, ByAction};
 use campfire_common::Tick;
@@ -12,7 +14,7 @@ use campfire_sim::{
     Unpredicted,
 };
 use campfire_units::{ArrivedShort, Body, Dead, Destination, Owner, StatusTags};
-use campfire_values::{Team, UnitTags};
+use campfire_values::{Team, UnitTags, UnitType};
 
 use crate::Production;
 use crate::gather_loop::checked_gather::CheckedGather;
@@ -21,6 +23,7 @@ use crate::gather_loop::step::Step;
 use crate::gather_spec::GatherSpec;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 use crate::node::Node;
+use crate::node_book::NodeBook;
 use crate::order_dues::{self, OrderDues};
 
 pub(crate) mod checked_gather;
@@ -349,13 +352,26 @@ impl GatherLoop {
                     drop_off: Some(drop_off),
                 }),
             ),
+            Step::Unload(drop_off) => {
+                Destination::go_to(world, entity, None);
+                set(
+                    world,
+                    with(GatherStep::Delivering {
+                        drop_off,
+                        since: now,
+                    }),
+                );
+            }
             Step::Deliver(back) => Self::deliver::<F>(world, entity, order, back),
         }
     }
 
-    /// Ends the gather of the worker of `entity`, in its loop `order`, at the node of `node`: it
-    /// carries what it takes, sets out for a drop-off, and frees the node. A client takes nothing
-    /// from a node it holds as the server sent it: its worker carries what the take would take.
+    /// Ends the windup of the worker of `entity`, in its loop `order`, at the node of `node`: it
+    /// adds its gather's unit to its load, up to what a trip carries, or what the node has left.
+    /// With room left and a node with something left, it holds the node and its next windup runs
+    /// from this tick; else it sets out for a drop-off, and frees the node. A client takes nothing
+    /// from a node it holds as the server sent it: its worker carries what the take would take,
+    /// and reads what the node would have left.
     fn collect(
         world: &mut World,
         workers: &mut Gatherers,
@@ -363,24 +379,44 @@ impl GatherLoop {
         order: GatherOrder,
         node: Entity,
     ) {
+        let now = world.resource::<SimTick>().start();
         let slots = world.get::<ActionSlots>(entity).expect("a worker's slots");
         let action = slots.slot(order.slot).and_then(|slot| slot.action);
         let gathers = world.resource::<ByAction<GatherSpec>>();
         let spec = *action
             .and_then(|action| gathers.get(action))
             .expect("a worker's loop is of its gather");
-        let taken = match Self::node_mut(world, node) {
-            Some(mut held) => held.take(spec.take),
-            None => world
-                .get::<Node>(node)
-                .expect("a node gathered")
-                .taken(spec.take),
-        };
+        let carried = world
+            .get::<Gatherer>(entity)
+            .and_then(|gatherer| gatherer.load())
+            .map_or(0, |load| {
+                debug_assert_eq!(
+                    load.resource, spec.resource,
+                    "a worker gathers what it carries"
+                );
+                load.amount
+            });
+        let room = NonZeroU32::new(spec.take.get().saturating_sub(carried));
+        let held = *world.get::<Node>(node).expect("a node gathered");
+        let unit = room.map(|room| room.min(spec.unit));
+        let taken = unit.map_or(0, |unit| held.taken(unit));
+        if let (Some(unit), Some(mut node)) = (unit, Self::node_mut(world, node)) {
+            node.take(unit);
+        }
+        let amount = carried + taken;
         let mut gatherer = world.get_mut::<Gatherer>(entity).expect("a worker");
         gatherer.carry(Some(Load {
             resource: spec.resource,
-            amount: taken,
+            amount,
         }));
+        if amount < spec.take.get() && held.amount() > taken {
+            let gathering = GatherOrder {
+                step: GatherStep::Gathering { since: now },
+                ..order
+            };
+            Gatherer::set_in(world, entity, Some(gathering));
+            return;
+        }
         let to_drop_off = GatherOrder {
             step: GatherStep::ToDropOff { drop_off: None },
             ..order
@@ -432,16 +468,25 @@ impl GatherLoop {
     }
 
     /// Despawns each node that ran out, as the tick ends, of those that changed since the last
-    /// run; its waiting workers look for another as the loop next runs.
+    /// run, but one whose type stays empty; its waiting workers look for another as the loop next
+    /// runs.
     pub(crate) fn despawn_empty_nodes(
-        nodes: Query<'_, '_, (Entity, &Node), (Changed<Node>, Without<Dead>)>,
+        book: Res<'_, NodeBook>,
+        nodes: Query<'_, '_, (Entity, &Node, &UnitType), (Changed<Node>, Without<Dead>)>,
         mut commands: Commands<'_, '_>,
     ) {
-        for (entity, node) in &nodes {
-            if node.amount() == 0 {
+        for (entity, node, &unit_type) in &nodes {
+            if node.amount() == 0 && !book.stays(unit_type) {
                 commands.entity(entity).despawn();
             }
         }
+    }
+
+    /// The gather loop of the worker `entity`, a gatherer that left a producer that starts its
+    /// gatherers, as `GatherView::seek` gives it: a one-shot system, which the producer's exit
+    /// runs.
+    pub(crate) fn seek(In(entity): In<Entity>, view: GatherView<'_, '_>) -> Option<GatherOrder> {
+        view.seek(entity, &view.relations.get())
     }
 
     /// Gives each worker in its loop the engine tag `gathering`, and takes it from one whose loop

@@ -10,14 +10,15 @@ use serde::{Deserialize, Serialize};
 use crate::error::CheckError;
 use crate::pins::{
     BotBase, Fingerprints, FoughtCounts, LookCounts, MapCounts, ProducedCounts, SkirmishTicks,
-    TerrainCounts,
+    SuppliedCounts, SupplyTicks, TerrainCounts,
 };
 
 /// What the check measured of the known version and this importer, each a value no closed form
 /// gives: the fingerprints, a run on Linux and a run on macOS alike; Tournament Desert's counts;
-/// the import's looks, trains, builds and weapons; the plays' ticks; and the bot's base. A run
-/// pins them, and a run that blesses writes them again (09-zero-hour.md, The check's measures
-/// are a golden file).
+/// the import's looks, trains, builds, supply and weapons; the plays' ticks, the supply play's
+/// deliveries among them; and the bot's base.
+/// A run pins them, and a run that blesses writes them again (09-zero-hour.md, The check's
+/// measures are a golden file).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Golden {
@@ -28,8 +29,10 @@ pub(crate) struct Golden {
     pub(crate) terrain: TerrainCounts,
     pub(crate) looks: LookCounts,
     pub(crate) produced: ProducedCounts,
+    pub(crate) supplied: SuppliedCounts,
     pub(crate) fought: FoughtCounts,
     pub(crate) skirmish: SkirmishTicks,
+    pub(crate) supply: SupplyTicks,
     pub(crate) bot: BotBase,
 }
 
@@ -43,8 +46,10 @@ pub(crate) struct Measured {
     pub(crate) terrain: Option<TerrainCounts>,
     pub(crate) looks: Option<LookCounts>,
     pub(crate) produced: Option<ProducedCounts>,
+    pub(crate) supplied: Option<SuppliedCounts>,
     pub(crate) fought: Option<FoughtCounts>,
     pub(crate) skirmish: Option<SkirmishTicks>,
+    pub(crate) supply: Option<SupplyTicks>,
     pub(crate) bot: Option<BotBase>,
 }
 
@@ -96,8 +101,10 @@ impl Measured {
             terrain: self.terrain?,
             looks: self.looks?,
             produced: self.produced?,
+            supplied: self.supplied?,
             fought: self.fought?,
             skirmish: self.skirmish?,
+            supply: self.supply?,
             bot: self.bot?,
         })
     }

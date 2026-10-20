@@ -1,15 +1,14 @@
 use std::num::NonZeroU32;
 
-use campfire_actions::{ActionTarget, TypeSlotsData};
+use campfire_actions::ActionTarget;
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::Order;
-use campfire_common::{DeclaredName, Seat};
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::Num;
 use campfire_mode::{MatchEnd, OptionPicks, OptionValue};
 use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
-use campfire_players::{OrderUnits, PlayersWorld};
+use campfire_players::OrderUnits;
 use campfire_production::{Site, TrainQueue};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputRules, SeatPlan};
@@ -19,17 +18,14 @@ use campfire_units::{BuildTarget, GroundPoint, Life, UnitsWorld};
 use campfire_values::ResourceId;
 
 use crate::failure::CheckFailure;
-use crate::match_play::{CENTER, DOZER, MatchPlay};
-use crate::pins::{BOT_TYPES, BotBase, CRUSADERS, FactorySteps, FightSteps, HZ, ProductionSteps};
+use crate::match_play::{self, CENTER, DOZER, MatchPlay, STEP_LIMIT, america};
+use crate::pins::{BOT_TYPES, BotBase, CRUSADERS, FactorySteps, FightSteps, ProductionSteps};
 
 /// The unit types the play makes beside the start's.
 const BARRACKS: &str = "americabarracks";
 const RANGER: &str = "americainfantryranger";
 const FACTORY: &str = "americawarfactory";
 const CRUSADER: &str = "americatankcrusader";
-
-/// The most ticks the play waits for a step, past which it never ends.
-const STEP_LIMIT: u64 = HZ * 60 * 5;
 
 /// The most trains a factory queues, its `MaxQueueEntries`, which the play keeps it below.
 const QUEUE: usize = 9;
@@ -136,8 +132,9 @@ impl SkirmishPlay {
             }
         };
         let plan = [SeatPlan::Player, SeatPlan::Bot];
-        let session =
-            FixedSession::planned(packages, rate, InputRules::ROOMY, plan).picked(picks.places());
+        let session = FixedSession::planned(packages, rate, InputRules::ROOMY, plan)
+            .picked(picks.places())
+            .seat_picked(&america(2));
         let mut playing = MatchPlay::new(session.start());
         let names = playing.game().resource::<MatchNames>();
         let Some(money) = names.named::<ResourceId>("money") else {
@@ -175,44 +172,42 @@ impl Play<'_> {
         };
         // The center trains a dozer: its second, once its time ends.
         let train = OrdersDirective::Slot {
-            slot: self.slot(CENTER, "train_americavehicledozer")?,
+            slot: match_play::slot(self.packages, CENTER, "train_americavehicledozer")?,
             target: ActionTarget::None,
         };
-        let dozer_ticks = self.until(play, center, train, |play| {
-            Ok(play.owned(DOZER, 0)?.len() == 2)
-        })?;
-        let after_dozer = self.money(play);
+        let dozer_ticks = play.until(center, train, |play| Ok(play.owned(DOZER, 0)?.len() == 2))?;
+        let after_dozer = play.money(self.money);
         // The start dozer places the barracks as the order applies, and builds it whole.
         let [x, z, angle] = BARRACKS_AT.map(Num::int);
         let build = OrdersDirective::Build {
-            slot: self.slot(DOZER, "build_americabarracks")?,
+            slot: match_play::slot(self.packages, DOZER, "build_americabarracks")?,
             target: BuildTarget::Point {
                 at: GroundPoint { x, z },
                 angle,
             },
         };
-        let barracks_ticks = self.until(play, dozer, build, |play| {
+        let barracks_ticks = play.until(dozer, build, |play| {
             let built = play.owned(BARRACKS, 0)?;
             let units = MatchUnits::of(play.game());
             Ok(built.len() == 1 && !units.unit(built[0]).contains::<Site>())
         })?;
-        let after_barracks = self.money(play);
+        let after_barracks = play.money(self.money);
         let [barracks] = play.owned(BARRACKS, 0)?[..] else {
             return Err(CheckFailure::ProductionStart);
         };
         // The barracks trains a ranger, which needs the barracks whole.
         let ranger = OrdersDirective::Slot {
-            slot: self.slot(BARRACKS, "train_americainfantryranger")?,
+            slot: match_play::slot(self.packages, BARRACKS, "train_americainfantryranger")?,
             target: ActionTarget::None,
         };
-        let ranger_ticks = self.until(play, barracks, ranger, |play| {
+        let ranger_ticks = play.until(barracks, ranger, |play| {
             Ok(play.owned(RANGER, 0)?.len() == 1)
         })?;
         let production = ProductionSteps {
             dozer_ticks,
             barracks_ticks,
             ranger_ticks,
-            money: [after_dozer, after_barracks, self.money(play)],
+            money: [after_dozer, after_barracks, play.money(self.money)],
         };
         let factory = self.factory(play, dozer)?;
         let train_ticks = self.train_crusaders(play)?;
@@ -238,13 +233,13 @@ impl Play<'_> {
         for (building, ticks) in FACTORY_CHAIN.iter().zip(&mut ticks) {
             let [x, z, angle] = building.at.map(Num::int);
             let build = OrdersDirective::Build {
-                slot: self.slot(DOZER, building.action)?,
+                slot: match_play::slot(self.packages, DOZER, building.action)?,
                 target: BuildTarget::Point {
                     at: GroundPoint { x, z },
                     angle,
                 },
             };
-            *ticks = self.until(play, dozer, build, |play| {
+            *ticks = play.until(dozer, build, |play| {
                 let built = play.owned(building.unit, 0)?;
                 let units = MatchUnits::of(play.game());
                 Ok(built.len() == 1 && !units.unit(built[0]).contains::<Site>())
@@ -252,7 +247,7 @@ impl Play<'_> {
         }
         Ok(FactorySteps {
             ticks,
-            money: self.money(play),
+            money: play.money(self.money),
         })
     }
 
@@ -263,7 +258,7 @@ impl Play<'_> {
             return Err(CheckFailure::ProductionStart);
         };
         let train = OrdersDirective::Slot {
-            slot: self.slot(FACTORY, "train_americatankcrusader")?,
+            slot: match_play::slot(self.packages, FACTORY, "train_americatankcrusader")?,
             target: ActionTarget::None,
         };
         let crusaders = usize::from(CRUSADERS);
@@ -308,7 +303,7 @@ impl Play<'_> {
         let [target] = play.owned(CENTER, 1)?[..] else {
             return Err(CheckFailure::FightStart);
         };
-        let money = self.money(play);
+        let money = play.money(self.money);
         let crusaders = play.owned(CRUSADER, 0)?;
         let units = OrderUnits::new(&crusaders).expect("the play's crusaders");
         play.order(&[Order {
@@ -350,47 +345,5 @@ impl Play<'_> {
         let units = MatchUnits::of(play.game());
         let unit = units.all().find(|(id, _)| *id == unit)?.1;
         unit.get::<Life>().map(|life| life.current())
-    }
-
-    /// Orders `unit` to `directive` in the tick `play` runs next, then runs ticks until `done`; the
-    /// ticks it took, the order's own among them, or a failure past `STEP_LIMIT`.
-    fn until(
-        &self,
-        play: &mut MatchPlay,
-        unit: StableId,
-        directive: OrdersDirective,
-        done: impl Fn(&MatchPlay) -> Result<bool, CheckFailure>,
-    ) -> Result<u64, CheckFailure> {
-        play.order(&[Order::one(unit, directive)]);
-        for ticks in 1..=STEP_LIMIT {
-            play.step();
-            if done(play)? {
-                return Ok(ticks);
-            }
-        }
-        Err(CheckFailure::ProductionStep(directive))
-    }
-
-    /// The slot of `action` among the actions of the type `unit` in its slot kind `command`; a
-    /// failure when the mode lacks the type or the action.
-    fn slot(&self, unit: &'static str, action: &'static str) -> Result<u8, CheckFailure> {
-        let command = DeclaredName::new("command").expect("a declared name");
-        let at = self
-            .packages
-            .content()
-            .units
-            .get(unit)
-            .and_then(|held| held.section::<TypeSlotsData>()?.0.get(&command))
-            .and_then(|slots| slots.iter().position(|held| held.as_str() == action))
-            .ok_or(CheckFailure::NoAction { unit, action })?;
-        Ok(u8::try_from(at).expect("a unit's slots fit a u8"))
-    }
-
-    /// Player 1's money.
-    fn money(&self, play: &MatchPlay) -> i64 {
-        play.game()
-            .player_resources(Seat::new(0))
-            .expect("player 1 holds resources")
-            .amount(self.money)
     }
 }

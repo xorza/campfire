@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use campfire_common::Seat;
 use campfire_log::internals::LogCheck;
-use campfire_mode::OptionPicks;
+use campfire_mode::{HostPicks, OptionPicks, SeatPick, SeatPicks};
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
@@ -66,14 +66,15 @@ impl FixedSession {
     ) -> Self {
         let session_rules = SessionRules::of(&packages);
         let visibility = session_rules.visibility().settings();
-        let picks = OptionPicks::defaults(session_rules.options());
+        let seats: Vec<SeatPlan> = plan.into_iter().collect();
+        let picks = HostPicks::defaults(packages.data(), seats.len());
         let terms = session_rules
             .terms(HostChoices {
                 server_key: server_key(),
                 seed_commitment: SEED_CHAIN.commitment(),
                 tick_hz,
                 inputs: rules,
-                seats: plan.into_iter().collect(),
+                seats,
                 visibility,
                 picks: &picks,
             })
@@ -102,6 +103,17 @@ impl FixedSession {
         let rules = SessionRules::of(&self.packages);
         let picks = OptionPicks::checked(rules.options(), places).expect("picks of the options");
         self.terms.options = picks.places().to_vec();
+        self
+    }
+
+    /// The session, of `picks` of its seats' choices of values, as its host picks them
+    /// (08-sessions.md, The terms hold each seat's picks).
+    #[must_use]
+    pub fn seat_picked(mut self, picks: &[SeatPick]) -> Self {
+        let choices = &self.packages.data().choices;
+        let seats = self.terms.seats.len();
+        let picks = SeatPicks::named(choices, seats, picks).expect("picks of the seats' choices");
+        self.terms.seat_picks = picks.places().to_vec();
         self
     }
 

@@ -36,7 +36,7 @@ use campfire_navigation::{
 use campfire_players::{
     MatchEntity, OutOfPlay, Player, PlayerResources, PlayersWorld, ResourcesData,
 };
-use campfire_production::{ProductionData, Queued, TrainQueue};
+use campfire_production::{ProducerSpec, Queued, TrainQueue};
 use campfire_progression::{
     Experience, ModeTracksData, Points, Progression, Thresholds, TrackData, TrackSet,
 };
@@ -434,8 +434,8 @@ fn raised(map: MapData, y: i64) -> MapData {
 #[derive(Debug)]
 struct ModeFiles {
     data: ModeData,
-    /// The value the session's host picked of each of the mode's options.
-    picks: OptionPicks,
+    /// What the session's host picked of the mode's options and seats' choices.
+    picks: HostPicks,
     /// The mode's modifiers, which its package's content holds.
     modifiers: BTreeMap<String, ModifierData>,
     map: MapData,
@@ -487,23 +487,34 @@ fn slot_kinds() -> SlotKinds {
     SlotKinds::new([kind("basic", 2), kind("spell", 0)]).unwrap()
 }
 
-/// The test mode's choices: a unique hero, one spell, and `duo`, two avatars any player may
-/// share.
+/// The test mode's choices: a unique hero, one spell, `duo`, two avatars any player may share,
+/// and a faction of its own two values, which a host picks for a seat.
 fn choices() -> BTreeMap<DeclaredName, ChoiceData> {
+    let none: &[&str] = &[];
     [
-        ("hero", Offers::Avatars, true, 1, None),
-        ("spells", Offers::Loadout, false, 1, Some("spell")),
-        ("duo", Offers::Avatars, false, 2, None),
+        ("hero", Offers::Avatars, true, 1, None, none),
+        ("spells", Offers::Loadout, false, 1, Some("spell"), none),
+        ("duo", Offers::Avatars, false, 2, None, none),
+        (
+            "faction",
+            Offers::Values,
+            false,
+            1,
+            None,
+            &["america", "china"],
+        ),
     ]
-    .map(|(name, offers, unique, count, slot)| {
+    .map(|(name, offers, unique, count, slot, values)| {
+        let declared = |name: &str| DeclaredName::new(name).unwrap();
         let choice = ChoiceData {
             name: TextId::new(name).unwrap(),
             offers,
             unique,
             count: NonZeroU8::new(count).unwrap(),
-            slot: slot.map(|kind| DeclaredName::new(kind).unwrap()),
+            slot: slot.map(declared),
+            values: values.iter().copied().map(declared).collect(),
         };
-        (DeclaredName::new(name).unwrap(), choice)
+        (declared(name), choice)
     })
     .into()
 }
@@ -560,7 +571,10 @@ fn mode_files() -> ModeFiles {
     )]
     .into();
     ModeFiles {
-        picks: OptionPicks::defaults(&options),
+        picks: HostPicks {
+            options: OptionPicks::defaults(&options),
+            seats: SeatPicks::none(&choices(), 3),
+        },
         data: ModeData {
             name: TextId::new("mode").unwrap(),
             teams: BTreeMap::new(),

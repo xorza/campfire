@@ -6,7 +6,7 @@ use derive_more::Display;
 
 use crate::pins::{
     BotBase, FactorySteps, FightSteps, Fingerprints, FoughtCounts, LookCounts, MapCounts,
-    ProducedCounts, ProductionSteps, TerrainDrawn,
+    ProducedCounts, ProductionSteps, SuppliedCounts, SupplySteps, TerrainDrawn,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -33,6 +33,9 @@ pub(crate) enum CheckFailure {
     /// The import's trains, builds and dropped buttons by cause differ from the pinned.
     #[display("it converted {_0}")]
     Produced(Box<Differs<ProducedCounts>>),
+    /// The import's nodes, drop-offs, gathers and dropped supply by cause differ from the pinned.
+    #[display("it supplied {_0}")]
+    Supplied(Box<Differs<SuppliedCounts>>),
     /// The imported mode has no unit type a play reads.
     #[display("the imported mode has no unit type {_0}")]
     NoType(&'static str),
@@ -75,6 +78,15 @@ pub(crate) enum CheckFailure {
     /// The fight does not end the match within its limit.
     #[display("the fight does not end the match")]
     NoEnd,
+    /// The supply play's ticks or money differ from the expected.
+    #[display("it played supply as {_0}")]
+    Supply(Box<Differs<SupplySteps>>),
+    /// The supply center freed no truck as it completed.
+    #[display("the supply center freed no truck")]
+    NoTruck,
+    /// The free truck delivered fewer loads than the supply play pins within its limit.
+    #[display("the free truck delivered {_0} loads within the limit")]
+    NoDelivery(usize),
     /// The fight's ticks, money or end differ from the expected.
     #[display("it fought as {_0}")]
     Fight(Box<Differs<FightSteps>>),

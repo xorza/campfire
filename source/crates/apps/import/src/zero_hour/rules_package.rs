@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
-use std::num::{NonZeroU32, NonZeroU64};
+use std::num::{NonZeroU8, NonZeroU32, NonZeroU64};
 
 use campfire_actions::ActionsData;
 use campfire_codec::{Toml, TomlTable, TomlValue};
@@ -8,7 +8,8 @@ use campfire_combat::{ModeCombatData, ModeCombatPatch};
 use campfire_common::{DeclaredName, Version};
 use campfire_declarations::SectionWriter;
 use campfire_mode::{
-    ListEntry, ModeData, ModeParam, ModePatch, OptionData, TeamData, TeamManifest,
+    ChoiceData, ListEntry, ModeData, ModeParam, ModePatch, Offers, OptionData, TeamData,
+    TeamManifest,
 };
 use campfire_package::{
     Dependency, DependencyPath, Language, ModeManifest, PackageHeader, PackageName, ScriptOrder,
@@ -23,7 +24,7 @@ use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
 use crate::zero_hour::map_import::SLOTS;
 use crate::zero_hour::production_import::ProductionImport;
-use crate::zero_hour::skirmish_start::SkirmishStart;
+use crate::zero_hour::skirmish_start::{FactionStart, SkirmishStart};
 
 /// Zero Hour's rules package as the importer ships it, `source/packages/zero-hour/`: each file but
 /// its index, by its path, which the import writes beside the imported package.
@@ -103,8 +104,9 @@ pub(crate) struct ModeImport<'a> {
 
 /// The imported package's mode data: what the install gives, over the rules package's fixed
 /// data (03-game-scripting.md, Overrides by load order): its name and its teams' names, as its
-/// manifest names the teams, the rules package's mode script, its params of what each starts
-/// with, `start` (09-zero-hour.md, A skirmish starts with the faction's start objects), and the
+/// manifest names the teams, the rules package's mode script, its params of what each faction
+/// starts with and its choice of a faction, `start` (09-zero-hour.md, A skirmish starts with the
+/// faction's start objects; 09-zero-hour.md, Each player picks a faction), and the
 /// option of the money it starts with, of `start_money`'s values (09-zero-hour.md, The import
 /// writes Zero Hour's money as an option); the armors and weapons of `combat` (09-zero-hour.md)
 /// and the trains and builds of `production` (04-capabilities/production.md).
@@ -116,11 +118,10 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         start_money,
     } = mode;
     debug_assert!(
-        combat
-            .actions
-            .keys()
-            .all(|name| !production.actions.contains_key(name)),
-        "a weapon and a train or build share no name, as one table holds both"
+        combat.actions.keys().all(|name| {
+            !production.actions.contains_key(name) && !production.supply.gathers.contains_key(name)
+        }),
+        "a weapon, a train or build and a gather share no name, as one table holds them"
     );
     let declared = |name: &str| DeclaredName::new(name).expect("a name the import gives");
     let text = |id: &str| TextId::new(id).expect("a message id the import gives");
@@ -129,21 +130,41 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .chain([(String::from("neutral"), String::from("team-neutral"))])
         .map(|(team, name)| (declared(&team), TeamData { name: text(&name) }))
         .collect();
-    let units = start
-        .units
-        .iter()
-        .map(|unit| ListEntry::Text(unit.to_string()));
-    let params = BTreeMap::from([
-        (
-            declared("start_building"),
-            ModeParam::Text(start.building.to_string()),
-        ),
-        (declared("start_units"), ModeParam::List(units.collect())),
-        (
-            declared("start_offset"),
-            ModeParam::Value(Scalar::Decimal(start.offset)),
-        ),
-    ]);
+    let param =
+        |name: &str, faction: &FactionStart| declared(&format!("{name}_{}", faction.name.as_str()));
+    let params = start.factions.iter().flat_map(|faction| {
+        let units = faction
+            .units
+            .iter()
+            .map(|unit| ListEntry::Text(unit.to_string()));
+        [
+            (
+                param("start_building", faction),
+                ModeParam::Text(faction.building.to_string()),
+            ),
+            (
+                param("start_units", faction),
+                ModeParam::List(units.collect()),
+            ),
+            (
+                param("start_offset", faction),
+                ModeParam::Value(Scalar::Decimal(faction.offset)),
+            ),
+        ]
+    });
+    let params = params.collect();
+    let faction = ChoiceData {
+        name: text("choice-faction"),
+        offers: Offers::Values,
+        unique: false,
+        count: NonZeroU8::MIN,
+        slot: None,
+        values: start
+            .factions
+            .iter()
+            .map(|faction| faction.name.clone())
+            .collect(),
+    };
     let money = start_money
         .values
         .iter()
@@ -161,6 +182,7 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         teams: Some(teams),
         params: Some(params),
         options: Some(BTreeMap::from([(declared("start_money"), money)])),
+        choices: Some(BTreeMap::from([(declared("faction"), faction)])),
         ..ModePatch::default()
     });
     if !combat.armors.is_empty() {
@@ -177,7 +199,13 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .actions
         .iter()
         .map(|(id, train)| (id, train.table()));
-    let actions: BTreeMap<&DeclaredName, TomlTable> = weapons.chain(trains).collect();
+    let gathers = production
+        .supply
+        .gathers
+        .iter()
+        .map(|(id, gather)| (id, gather.table()));
+    let actions: BTreeMap<&DeclaredName, TomlTable> =
+        weapons.chain(trains).chain(gathers).collect();
     if !actions.is_empty() {
         writer.value::<ActionsData>(TomlValue::of(&actions));
     }
@@ -187,7 +215,7 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
 /// The imported package's text in its own language: the names its mode data gives, and each of
 /// `texts`, an action's name by its message.
 pub(crate) fn mode_text(texts: &BTreeMap<String, String>) -> String {
-    let mut text = String::from("mode-name = Zero Hour\n");
+    let mut text = String::from("mode-name = Zero Hour\nchoice-faction = Faction\n");
     for player in 1..=SLOTS {
         writeln!(text, "team-player-{player} = Player {player}")
             .expect("text writes into a string");
@@ -256,9 +284,12 @@ mod tests {
     fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         let name = |name| DeclaredName::new(name).unwrap();
         let start = SkirmishStart {
-            building: name("center"),
-            units: vec![name("dozer")],
-            offset: Num::int(2),
+            factions: vec![FactionStart {
+                name: name("america"),
+                building: name("center"),
+                units: vec![name("dozer")],
+                offset: Num::int(2),
+            }],
         };
         let data = mode_data(ModeImport {
             start: &start,
@@ -405,7 +436,7 @@ mod tests {
         assert_eq!(
             mode_text(&texts),
             format!(
-                "mode-name = Zero Hour\n{teams}team-neutral = Neutral\n\
+                "mode-name = Zero Hour\nchoice-faction = Faction\n{teams}team-neutral = Neutral\n\
                  action-train-a = A & {{\"{{\"}}B{{\"}}\"}}\n"
             )
         );

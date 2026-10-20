@@ -275,7 +275,7 @@ impl ModeApi {
                 "offers",
                 &[&["choice"]],
                 "the values `choice` offers, in order: the avatars in the order of the mode's \
-                 dependencies, or the loadout entries by id",
+                 dependencies, the loadout entries by id, or the values it lists",
             ),
             |ctx: &mut Ctx, choice: ChoiceId| Self::offers(ctx, choice),
         );
@@ -574,7 +574,7 @@ impl ModeApi {
             let offer = value
                 .clone()
                 .into_text()
-                .and_then(|id| book.roster.offer_named(choice.offers, id.as_str()))
+                .and_then(|id| book.roster.offer_named(choice, id.as_str()))
                 .ok_or_else(|| ModeRefusal::UnknownChoiceValue.fail())?;
             if offers.contains(&offer) {
                 return Err(ModeRefusal::RepeatedChoiceValue.fail().into());
@@ -606,7 +606,7 @@ impl ModeApi {
             return Ok(ScriptList::default());
         };
         Ok(values
-            .map(|offer| ScriptValue::of(ScriptText::from(book.roster.id(choice.offers, offer))))
+            .map(|offer| ScriptValue::of(ScriptText::from(book.roster.id(choice, offer))))
             .collect())
     }
 
@@ -616,7 +616,7 @@ impl ModeApi {
         let choice = book.choices.get(choice);
         Ok(book
             .roster
-            .ids(choice.offers)
+            .ids(choice)
             .map(|id| ScriptValue::of(ScriptText::from(id)))
             .collect())
     }
@@ -628,7 +628,7 @@ impl ModeApi {
         let choice = book.choices.get(choice);
         let offer = book
             .roster
-            .offer_named(choice.offers, value)
+            .offer_named(choice, value)
             .ok_or_else(|| ModeRefusal::UnknownChoiceValue.fail())?;
         let taken = ModeCall::of(&ctx.frame())
             .choices

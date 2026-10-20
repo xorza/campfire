@@ -217,6 +217,59 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
 }
 
 #[test]
+fn a_completed_site_frees_its_units_out_of_its_exit_in_their_order() {
+    // As in the first test, the depot's site completes in tick 10. A depot that frees a grunt and
+    // a builder spawns both in that tick, the grunt first, of its team and player, in the cell of
+    // its exit at (3.5, 0.5), as a trained unit comes out; one that frees nothing spawns none.
+    for frees in [false, true] {
+        let mut game = ordering_match();
+        let shop = Shop::place(&mut game);
+        let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+        let free: Box<[UnitType]> = if frees {
+            Box::new([shop.grunt, yard.builder])
+        } else {
+            Box::new([])
+        };
+        let exit = FramePoint::new([Num::int(7) / Num::int(2), Num::HALF]);
+        let spec = ProducerSpec {
+            queue: NonZeroU8::new(1).unwrap(),
+            exit,
+            rally: None,
+            gathers: false,
+            free,
+        };
+        Shop::give(&mut game, shop.depot, spec);
+        let builder = yard.builder(&mut game, halves(-20, 0), Team::new(0), 0);
+        Production::build_at(&mut game, builder, 0, 0);
+        for _ in 1..10 {
+            game.step();
+        }
+        assert_eq!(Shop::spawned(&mut game, shop.grunt), [], "frees {frees}");
+        game.step();
+        let grunts = Shop::spawned(&mut game, shop.grunt);
+        let builders = Shop::spawned(&mut game, yard.builder);
+        let freed = Spawned {
+            id: StableId::MATCH,
+            team: Team::new(0),
+            position: halves(7, 1),
+            owner: Some(Seat::new(0)),
+        };
+        let place = |spawned: &Spawned| Spawned {
+            id: StableId::MATCH,
+            ..*spawned
+        };
+        if frees {
+            assert_eq!(grunts.iter().map(place).collect::<Vec<_>>(), [freed]);
+            assert_eq!(builders.len(), 2);
+            assert_eq!(place(&builders[1]), freed);
+            assert!(grunts[0].id < builders[1].id);
+        } else {
+            assert_eq!((grunts.len(), builders.len()), (0, 1));
+        }
+    }
+}
+
+#[test]
 fn an_order_build_pays_and_places_its_site_as_it_applies_and_its_builder_walks_to_build_it() {
     // A builder at (−10, 0) builds at the origin as the order applies, in tick 0: it pays 15 gold
     // and the site spawns at 10 of its 100 life, 6.5 m from its range, and its order turns to the

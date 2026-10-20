@@ -1,5 +1,5 @@
 use campfire_common::Seat;
-use campfire_mode::PickError;
+use campfire_mode::{PickError, SeatPickError};
 use campfire_runner::TermsError;
 use campfire_store::{AppendOpenError, PathError};
 use campfire_visibility::VisibilityError;
@@ -27,6 +27,9 @@ pub enum LobbyError {
     /// The host picks a value of no option of the mode's, or one its option lacks.
     #[error("the host's options")]
     Options(#[source] PickError),
+    /// The host picks a seat's value of no choice of the mode's.
+    #[error("the host's seat picks")]
+    SeatPicks(#[source] SeatPickError),
 }
 
 /// Why a server's new session does not open.

@@ -40,6 +40,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         data: test_dir.path("data"),
         bots: Vec::new(),
         options: Vec::new(),
+        seat_picks: Vec::new(),
         pace,
         os: Os {
             clock: UnixClock::manual(TestKey::NOW),
