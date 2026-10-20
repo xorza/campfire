@@ -1,8 +1,5 @@
+#[cfg(feature = "ecs")]
 use bevy_ecs::component::Component;
-use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
-use campfire_sim::{OnAny, SimComponent};
-use campfire_state_types::{DataKind, Replication, SentOnInsert};
 use serde::{Deserialize, Serialize};
 
 use crate::bits256::Bits256;
@@ -11,10 +8,9 @@ use crate::names::NameId;
 
 /// A unit's team: its index in the mode's list of teams. How two teams regard each other is
 /// their relation, which the match's relations hold.
-#[derive(
-    Component, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[component(immutable)]
+#[cfg_attr(feature = "ecs", derive(Component))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ecs", component(immutable))]
 #[serde(transparent)]
 pub struct Team(u8);
 
@@ -43,23 +39,34 @@ impl NameId for Team {
     }
 }
 
-impl SimComponent for Team {
-    const NAME: &'static str = "units.team";
-    type Host = OnAny;
-
-    // `units` declares its host, a unit or a player, and checks it against the mode's teams.
-    fn check(&self, _: &World, _: Entity) -> bool {
-        true
-    }
-}
-
-// Sent on each insert, as a change of owner moves its unit to the new owner's team
-// (10-replication-audiences.md, A unit's owner is a player of its team).
-impl Replication for Team {
-    const KIND: DataKind = DataKind::Unit;
-    type Sending = SentOnInsert;
-}
-
 impl Named for Team {
     const NAMES: NameKind = NameKind::new("team", Article::A, NameScope::Match);
+}
+
+#[cfg(feature = "ecs")]
+mod ecs {
+    use bevy_ecs::entity::Entity;
+    use bevy_ecs::world::World;
+    use campfire_sim::{OnAny, SimComponent};
+    use campfire_state_types::{Replication, SentOnInsert};
+    use campfire_visibility::DataKind;
+
+    use crate::team::Team;
+
+    impl SimComponent for Team {
+        const NAME: &'static str = "units.team";
+        type Host = OnAny;
+
+        // `units` declares its host, a unit or a player, and checks it against the mode's teams.
+        fn check(&self, _: &World, _: Entity) -> bool {
+            true
+        }
+    }
+
+    // Sent on each insert, as a change of owner moves its unit to the new owner's team
+    // (10-replication-audiences.md, A unit's owner is a player of its team).
+    impl Replication for Team {
+        const KIND: DataKind = DataKind::Unit;
+        type Sending = SentOnInsert;
+    }
 }

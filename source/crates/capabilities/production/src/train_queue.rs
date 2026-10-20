@@ -12,9 +12,10 @@ use campfire_common::{Tick, Ticks};
 use campfire_declare::ByType;
 use campfire_players::{PlayersWorld, ResourceAmount};
 use campfire_sim::{DueIndex, SimComponent, SimTick, StableId, TimedKept, TimedProcess, TimedRuns};
-use campfire_state_types::{DataKind, Replication, SentOnChange};
+use campfire_state_types::{Replication, SentOnChange};
 use campfire_units::{Dead, UnitEntity};
 use campfire_values::{ActionId, NameId, Rank, UnitType};
+use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

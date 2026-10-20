@@ -1,5 +1,5 @@
 use campfire_script::{ApiBuilder, ApiHolder, MemberDecl, PlannedCapability, ScriptValue};
-use campfire_sim::Capability;
+use campfire_sim::{Capability, StableId};
 use campfire_units::HitHandle;
 
 /// The script API of the deliveries that projectiles and areas make, where they run: the hit
@@ -24,11 +24,11 @@ impl DeliveriesApi {
                     "delivery",
                     "the projectile or area unit that delivered it, `()` when at once or gone",
                 ),
-                |hit: &mut HitHandle| hit.unit(hit.hit().delivery),
+                |hit: &mut HitHandle| hit.unit(hit.hit().delivery.map(StableId::from)),
             )
             .bind(
                 field("aimed", "the unit the action aimed at, `()` with none"),
-                |hit: &mut HitHandle| hit.unit(hit.hit().target),
+                |hit: &mut HitHandle| hit.unit(hit.hit().target.map(StableId::from)),
             )
             .bind(
                 field("position", "where it hit, or where its delivery ended"),

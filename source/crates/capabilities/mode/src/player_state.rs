@@ -6,8 +6,9 @@ use bevy_ecs::world::World;
 use campfire_players::Player;
 use campfire_script::{StateSchema, StateValue};
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, NotSent, Replication, Sending, SentOnChange};
+use campfire_state_types::{NotSent, Replication, Sending, SentOnChange};
 use campfire_units::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam};
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::match_mode::MatchMode;

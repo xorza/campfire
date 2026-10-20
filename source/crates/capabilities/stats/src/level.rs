@@ -8,9 +8,10 @@ use bevy_ecs::query::Allow;
 use bevy_ecs::system::Query;
 use bevy_ecs::world::{DeferredWorld, World};
 use campfire_sim::{Restoring, SimComponent, Unpredicted};
-use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_state_types::{Replication, SentPredicted};
 use campfire_units::{LevelRaised, UnitEntity};
 use campfire_values::UnitType;
+use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

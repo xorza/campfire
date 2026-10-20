@@ -2,6 +2,7 @@ use std::ops::ControlFlow;
 
 use bevy_ecs::entity::Entity;
 use campfire_actions::{Reached, Targets};
+use campfire_common::StableNumber;
 use campfire_deliveries::{AttackShot, Delivered, DeliveredPayload, Delivering, DeliveryQueue};
 use campfire_geometry::{BodyGrid, Placed, Shape, Volume};
 use campfire_math::{Num, Vec3};
@@ -144,8 +145,8 @@ impl Flights<'_> {
         let from = *position;
         let Some(unit) = targets.living(target).filter(|_| !lost) else {
             let hit = Hit {
-                delivery: Some(id),
-                target: Some(target),
+                delivery: Some(id.into()),
+                target: Some(target.into()),
                 position: from.get(),
                 distance: flown,
                 direction: None,
@@ -167,8 +168,8 @@ impl Flights<'_> {
             return false;
         }
         let hit = Hit {
-            delivery: Some(id),
-            target: Some(target),
+            delivery: Some(id.into()),
+            target: Some(target.into()),
             position: moved,
             distance: flown,
             direction: offset.normalized(),
@@ -206,8 +207,8 @@ impl Flights<'_> {
         let from = *position;
         let step = spec.speed.min(range - flown);
         let line = |position, distance| Hit {
-            delivery: Some(id),
-            target: aimed,
+            delivery: Some(id.into()),
+            target: aimed.map(StableNumber::from),
             position,
             distance,
             direction: Some(direction),
@@ -312,8 +313,8 @@ impl Flights<'_> {
         let shape = spec.curve.expect("a curve's type has a curve");
         let map = targets.map();
         let hit = |position, distance, direction| Hit {
-            delivery: Some(id),
-            target: aimed,
+            delivery: Some(id.into()),
+            target: aimed.map(StableNumber::from),
             position,
             distance,
             direction,

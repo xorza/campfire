@@ -6,9 +6,10 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, ProgressDues, SlotsMutItem, UseGroup};
 use campfire_declare::PerType;
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, Replication, SentOnChange};
+use campfire_state_types::{Replication, SentOnChange};
 use campfire_units::UnitEntity;
 use campfire_values::{ItemId, ResourceId};
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::item_book::ItemBook;

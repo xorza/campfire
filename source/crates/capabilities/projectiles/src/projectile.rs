@@ -6,9 +6,10 @@ use campfire_declare::ByType;
 use campfire_math::{Num, Vec3};
 use campfire_script::MatchNames;
 use campfire_sim::{SimComponent, StableId};
-use campfire_state_types::{DataKind, Replication, SentOnce};
+use campfire_state_types::{Replication, SentOnce};
 use campfire_units::{DeliveryEntity, MapBook};
 use campfire_values::{ActionId, ActionStart, Rank, UnitType};
+use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

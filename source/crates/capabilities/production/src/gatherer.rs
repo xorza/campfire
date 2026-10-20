@@ -6,9 +6,10 @@ use campfire_declare::PerType;
 use campfire_math::Vec3;
 use campfire_players::PlayersWorld;
 use campfire_sim::{SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
-use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_state_types::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{NameId, ResourceId};
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::order_dues::{self, OrderDues, StandingOrder};

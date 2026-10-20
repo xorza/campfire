@@ -6,9 +6,10 @@ use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_script::{StateValue, SyncTo};
 use campfire_sim::{DueIndex, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
-use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_state_types::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::ModifierId;
+use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

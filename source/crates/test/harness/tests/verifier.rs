@@ -687,7 +687,7 @@ fn encoded(log: &SessionLog) -> Vec<u8> {
 /// test reaches only its own package's binary.
 const VERIFIER_FIXTURES: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../session/verifier/tests/fixtures"
+    "/../../apps/verifier/tests/fixtures"
 );
 
 #[test]

@@ -5,8 +5,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_sim::{SimComponent, StableId};
-use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_state_types::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 /// A node workers gather from: what it holds, and the worker that gathers it now, one at a time.

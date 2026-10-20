@@ -6,9 +6,10 @@ use campfire_declare::{BookCx, BookError, BookPlace, ByType, PerType};
 use campfire_math::Num;
 use campfire_script::UnknownName;
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_state_types::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{ActionId, Named, Rank, Relation, TagSet};
+use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -56,7 +57,7 @@ impl ActionSlot {
 
     /// Its action's rule of charges at its rank, as `book` gives it; none for a slot with no
     /// action, one not learned, or an action without charges at its rank.
-    pub(crate) fn charge_rule(self, book: &ActionBook) -> Option<ChargeRule> {
+    pub fn charge_rule(self, book: &ActionBook) -> Option<ChargeRule> {
         let action = book
             .get(self.action?)
             .expect("a slot's action is in the book");

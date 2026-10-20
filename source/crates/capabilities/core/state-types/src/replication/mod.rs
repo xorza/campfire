@@ -1,6 +1,6 @@
 use campfire_sim::{Position, SimComponent};
+use campfire_visibility::DataKind;
 
-use crate::data_kind::DataKind;
 use crate::replication::sending::{Sending, SentPredicted};
 
 pub(crate) mod sending;

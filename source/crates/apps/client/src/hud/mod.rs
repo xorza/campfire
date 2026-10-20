@@ -22,7 +22,7 @@ use bevy::shape::{Annulus, Plane3d};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
 use bevy::window::{PrimaryWindow, Window};
-use campfire_actions::{ActionProgress, ActionSlots, SlotCharges, SlotTimes};
+use campfire_actions::{ActionBook, ActionProgress, ActionSlots, SlotCharges, SlotTimes};
 use campfire_client_files::ShownBars;
 use campfire_progression::{Learning, Points};
 use campfire_sim::{EntityIndex, SimTick, StableId, Unpredicted};
@@ -100,12 +100,13 @@ struct GaugeScratch {
 }
 
 impl GaugeScratch {
-    /// Reads the rows of each of `slots`, in order, as `learning` gives them.
-    fn read_slots(&mut self, slots: &ActionSlots, learning: &Learning<'_>) {
+    /// Reads the rows of each of `slots`, in order: its ranks as `learning` gives them, and its
+    /// charges as `book` holds them.
+    fn read_slots(&mut self, slots: &ActionSlots, learning: &Learning<'_>, book: &ActionBook) {
         self.slots.clear();
         self.slots.extend(slots.iter().map(|held| SlotRows {
             ranks: learning.ranks(held),
-            charges: learning.charges(held).map(|rule| rule.max.get()),
+            charges: held.charge_rule(book).map(|rule| rule.max.get()),
         }));
     }
 
@@ -372,7 +373,7 @@ impl Hud {
     /// its root.
     fn add_gauges(
         palette: Res<'_, HudPalette>,
-        learning: Learning<'_>,
+        (learning, book): (Learning<'_>, Res<'_, ActionBook>),
         own: OwnPlayer<'_, '_>,
         (roots, units): (Ungauged<'_, '_>, Gaugeable<'_, '_>),
         mut scratch: Local<'_, GaugeScratch>,
@@ -406,7 +407,7 @@ impl Hud {
                 }
             }
             let rows = if mine && let Some(slots) = slots {
-                scratch.read_slots(slots, &learning);
+                scratch.read_slots(slots, &learning, &book);
                 scratch.ability_rows(row);
                 Some(scratch.slots.clone())
             } else {
@@ -461,7 +462,7 @@ impl Hud {
     /// ability or an item joins or leaves them, or a rank gives charges, so `add_gauges` makes
     /// them again.
     fn regauge(
-        learning: Learning<'_>,
+        (learning, book): (Learning<'_>, Res<'_, ActionBook>),
         avatars: Reslotted<'_, '_>,
         roots: Roots<'_, '_>,
         mut scratch: Local<'_, GaugeScratch>,
@@ -474,7 +475,7 @@ impl Hud {
             let Some(rows) = &gauged.slots else {
                 continue;
             };
-            scratch.read_slots(slots, &learning);
+            scratch.read_slots(slots, &learning, &book);
             if scratch.slots == *rows {
                 continue;
             }
@@ -617,7 +618,7 @@ impl Hud {
     fn fill_gauges(
         tick: Res<'_, SimTick>,
         own: OwnPlayer<'_, '_>,
-        learning: Learning<'_>,
+        (learning, book): (Learning<'_>, Res<'_, ActionBook>),
         (restated, newly, gauged): (Restated<'_, '_>, NewlyGauged<'_, '_>, Roots<'_, '_>),
         mut revived: RemovedComponents<'_, '_, Dead>,
         units: Shown<'_, '_>,
@@ -701,7 +702,7 @@ impl Hud {
                             ..
                         } => {
                             let held = slots.and_then(|slots| slots.slot(*slot));
-                            let rule = held.and_then(|held| learning.charges(held));
+                            let rule = held.and_then(|held| held.charge_rule(&book));
                             let time = times.and_then(|times| times.slot(*slot));
                             time.zip(rule).map(|(time, rule)| {
                                 // A slot that spent none yet holds every charge.

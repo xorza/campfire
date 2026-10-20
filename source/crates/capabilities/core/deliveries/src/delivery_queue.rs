@@ -1,6 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use campfire_actions::Reached;
+use campfire_common::StableNumber;
 use campfire_declare::{Role, Scratch};
 use campfire_math::Vec3;
 use campfire_sim::StableId;
@@ -56,7 +57,7 @@ impl DeliveryQueue {
         let payload = DeliveredPayload::Action(dash.by);
         let hit = Hit {
             delivery: None,
-            target,
+            target: target.map(StableNumber::from),
             position,
             distance: dash.dashed,
             direction,

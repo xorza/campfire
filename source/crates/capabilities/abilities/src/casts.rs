@@ -526,7 +526,7 @@ impl Casts {
         let call = CallStart {
             start: Some(start),
             dash_delivers: checked.action.delivery.is_none().then_some(DashDelivery {
-                source: caster.id,
+                source: caster.id.into(),
                 action: checked.id,
                 rank: checked.rank,
                 start: Some(start),

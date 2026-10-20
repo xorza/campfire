@@ -4,7 +4,8 @@ use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_state_types::{Replication, SentPredicted};
+use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

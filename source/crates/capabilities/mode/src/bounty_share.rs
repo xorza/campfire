@@ -4,7 +4,8 @@ use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_players::Player;
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, NotSent, Replication};
+use campfire_state_types::{NotSent, Replication};
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 /// A player's share of the cost of each unit its units kill that a death pays, 0 or more, which

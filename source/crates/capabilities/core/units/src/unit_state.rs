@@ -6,8 +6,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_script::{StateValue, SyncTo};
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, NotSent, Replication, Sending, SentOnChange};
+use campfire_state_types::{NotSent, Replication, Sending, SentOnChange};
 use campfire_values::UnitType;
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::unit_entity::UnitEntity;

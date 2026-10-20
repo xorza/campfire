@@ -33,10 +33,11 @@ use campfire_sim::{
     Breach, Capability, DueIndex, HostRule, OnAny, OwnResources, SimComponent, SimResource, SimSet,
     TimedProcess, Unpredicted,
 };
-use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
+use campfire_state_types::{NotSent, Replication, StateTypes};
 use campfire_stats::Modifiers;
 use campfire_units::{BodyUnit, Dead, DeliveryEntity, OpenCellRun, Owner, SeenBy, UnitEntity};
 use campfire_values::{EngineTag, NameId, TagProperties};
+use campfire_visibility::DataKind;
 use campfire_vision::VisionColumn;
 use serde::{Deserialize, Serialize};
 

@@ -1,3 +1,4 @@
+#[cfg(feature = "ecs")]
 use bevy_ecs::component::Component;
 
 use crate::block::Block;
@@ -6,7 +7,8 @@ use crate::tag_set::TagSet;
 
 /// A unit's tags, their properties, and the tags it is immune to: derived from its type and its
 /// modifiers whenever they change, never state.
-#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "ecs", derive(Component))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct UnitTags {
     pub tags: TagSet,
     pub properties: TagProperties,

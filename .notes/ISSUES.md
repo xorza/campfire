@@ -33,9 +33,9 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 - **Benches.** Each of the 16 crates with a `[[bench]]` sets `[lib] bench = false`, which no command reads: the driver selects the bench targets alone, by `--bench '*'`.
 - **Client.** A press drags past 4 pixels along either axis, a constant of the client's code (`client/src/press.rs`, `DRAG_PIXELS`), and the Zero Hour import does not read the game's `Mouse.ini` `DragTolerance`, the pixels within which a press of the game is still a click.
-- **Client.** **Plan: 11.** A slot's charges come from progression's `Learning`, so a mode without progression shows none (`progression/src/learning.rs:44`, `client/src/hud/mod.rs:103`).
 - **Import.** `MapFile` and `UnitsFile` name Zero Hour's files in `import` and Campfire's files in `package`: two types of one name (14-workspace-alignment.md, A type name that both sides declare keeps one meaning).
 - **Mode.** A spatial map's height grid and `[ground]` load into its `MapBook`, and the sim reads neither: `MapBook::point` takes a spatial map's position as its point in space.
+- **Net.** A client inserts its session's `OutView` as a resource as it answers an offer (`net/src/sim_client/mod.rs`, `answer_offer`), and no system reads that resource: the match takes the view from `MatchFacts`.
 - **Net-endpoint.** The frame's send step wakes the endpoint's IO thread at every frame, whether or not it took a payload or moved a deadline (`net-endpoint/src/endpoint/mod.rs`, `Endpoint::send`): an idle server's IO thread wakes at its tick rate.
 - **Net-stack.** No lane of `cargo drive` measures coverage, which `13-net-stack/testing.md` plans.
 - **Orders.** **Plan: 12.** `PlayerOrders`, a scratch of checked unit orders, has the `<X>Orders` name of the systems `TradeOrders` and `LearnOrders` (`orders/src/unit_orders.rs:24`).

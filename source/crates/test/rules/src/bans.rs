@@ -207,7 +207,7 @@ pub(crate) const PROXIES: [Proxy; 4] = [
         crates: &[],
     },
     Proxy {
-        dir: "base/schedule",
+        dir: "sim/schedule",
         lints: &[LINTS[0]],
         methods: &SCHEDULE_METHODS,
         types: &[],
@@ -528,8 +528,8 @@ fn the_ban_checks_fail_on_what_breaks_them() {
             vec![],
         ),
         ("crates/base/codec/src/lib.rs", inner(types), vec![]),
-        ("crates/base/schedule/src/lib.rs", inner(types), vec![1]),
-        ("crates/base/schedule/src/lib.rs", inner(methods), vec![]),
+        ("crates/sim/schedule/src/lib.rs", inner(types), vec![1]),
+        ("crates/sim/schedule/src/lib.rs", inner(methods), vec![]),
         ("crates/base/codec/src/binary.rs", inner(methods), vec![1]),
         (
             "crates/sim/sim/src/sim_update/mod.rs",

@@ -5,8 +5,9 @@ use campfire_common::Seat;
 use campfire_declare::{EntityKind, KindAudience};
 use campfire_script::MatchNames;
 use campfire_sim::{KindMarker, SimComponent, StableId};
-use campfire_state_types::{DataKind, Replication, SentOnce};
+use campfire_state_types::{Replication, SentOnce};
 use campfire_units::EntityKinds;
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 /// The entity of a player seat, of the seat's named id, which holds the player's state that

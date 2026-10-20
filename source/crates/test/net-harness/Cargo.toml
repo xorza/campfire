@@ -40,8 +40,8 @@ campfire-sim = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-test-packages.workspace = true
 campfire-units = { workspace = true, features = ["internals"] }
-campfire-values = { workspace = true, features = ["internals"] }
-campfire-visibility = { workspace = true, features = ["internals"] }
+campfire-values = { workspace = true, features = ["ecs", "internals"] }
+campfire-visibility.workspace = true
 
 bevy_app.workspace = true
 bevy_ecs = { workspace = true, features = ["std"] }

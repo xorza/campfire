@@ -1,4 +1,4 @@
-use campfire_sim::StableId;
+use campfire_common::StableNumber;
 use serde::{Deserialize, Serialize};
 
 use crate::action_id::ActionId;
@@ -9,7 +9,7 @@ use crate::rank::Rank;
 /// says, as that action's `on_resolve` started it: its `on_end` runs as the dash ends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DashDelivery {
-    pub source: StableId,
+    pub source: StableNumber,
     pub action: ActionId,
     pub rank: Rank,
     pub start: Option<ActionStart>,

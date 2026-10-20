@@ -2026,6 +2026,7 @@ dependencies = [
  "campfire-state-types",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -2049,6 +2050,7 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -2222,6 +2224,7 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -2282,6 +2285,7 @@ dependencies = [
  "campfire-state-types",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "serde",
 ]
 
@@ -2412,6 +2416,7 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -2521,6 +2526,7 @@ dependencies = [
  "campfire-state-types",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "criterion",
  "serde",
  "thiserror 2.0.21",
@@ -3096,6 +3102,7 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "campfire-vision",
  "serde",
  "thiserror 2.0.21",
@@ -3175,6 +3182,7 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "campfire-vision",
  "serde",
  "thiserror 2.0.21",
@@ -3199,6 +3207,7 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -3221,6 +3230,7 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -3366,9 +3376,9 @@ name = "campfire-state-types"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
- "campfire-common",
  "campfire-sim",
  "campfire-state-types",
+ "campfire-visibility",
 ]
 
 [[package]]
@@ -3389,6 +3399,7 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -3433,6 +3444,7 @@ dependencies = [
  "campfire-state-types",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -3448,6 +3460,7 @@ dependencies = [
  "campfire-sim",
  "campfire-state-types",
  "campfire-values",
+ "campfire-visibility",
  "derive_more",
  "serde",
  "thiserror 2.0.21",
@@ -3479,8 +3492,6 @@ dependencies = [
  "bevy_ecs",
  "campfire-codec",
  "campfire-common",
- "campfire-state-types",
- "campfire-visibility",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -3501,6 +3512,7 @@ dependencies = [
  "campfire-state-types",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "campfire-vision",
  "criterion",
  "serde",

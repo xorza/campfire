@@ -7,8 +7,9 @@ use campfire_common::Tick;
 use campfire_players::MatchEntity;
 use campfire_script::MatchNames;
 use campfire_sim::{SimComponent, Unpredicted};
-use campfire_state_types::{DataKind, Replication, SentOnce};
+use campfire_state_types::{Replication, SentOnce};
 use campfire_values::Team;
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 /// The end of a match: the tick whose stage ended it, and its result, on the match's entity. It

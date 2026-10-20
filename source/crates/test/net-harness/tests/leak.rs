@@ -26,10 +26,11 @@ use campfire_net_replication::Replicate;
 use campfire_package::ModePackages;
 use campfire_players::{HeldOut, Player, PlayerResources, PlayersWorld};
 use campfire_sim::{EntityIndex, SimResource, StableId, Unpredicted};
-use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};
+use campfire_state_types::{Replication, StateTypes};
 use campfire_test_packages::Edit;
 use campfire_units::{Dead, Owner, SeenBy};
 use campfire_values::{Team, TeamSet};
+use campfire_visibility::{DataKind, Recipients};
 use campfire_visibility::{HostVisibility, OutView, SpectatorFog, Visibility};
 
 use crate::short_3v3::{PICKS, short_3v3};

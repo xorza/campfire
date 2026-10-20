@@ -31,11 +31,11 @@ default-members = [
     "crates/apps/client",
     "crates/apps/import",
     "crates/apps/server",
+    "crates/apps/verifier",
     "crates/base/codec",
     "crates/base/common",
     "crates/base/common-derive",
     "crates/base/log",
-    "crates/base/schedule",
     "crates/base/store",
     "crates/capabilities/abilities",
     "crates/capabilities/areas",
@@ -44,7 +44,6 @@ default-members = [
     "crates/capabilities/core/actions",
     "crates/capabilities/core/declare",
     "crates/capabilities/core/deliveries",
-    "crates/capabilities/core/geometry",
     "crates/capabilities/core/players",
     "crates/capabilities/core/script",
     "crates/capabilities/core/state-types",
@@ -90,8 +89,9 @@ default-members = [
     "crates/session/package-disk",
     "crates/session/protocol",
     "crates/session/runner",
-    "crates/session/verifier",
+    "crates/sim/geometry",
     "crates/sim/math",
+    "crates/sim/schedule",
     "crates/sim/sim",
     "crates/test/measure",
     "crates/test/rules",
@@ -156,7 +156,7 @@ campfire-bots = { path = "crates/session/bots" }
 campfire-combat = { path = "crates/capabilities/combat" }
 campfire-declare = { path = "crates/capabilities/core/declare" }
 campfire-deliveries = { path = "crates/capabilities/core/deliveries" }
-campfire-geometry = { path = "crates/capabilities/core/geometry" }
+campfire-geometry = { path = "crates/sim/geometry" }
 campfire-harness = { path = "crates/test/harness" }
 campfire-measure = { path = "crates/test/measure" }
 campfire-players = { path = "crates/capabilities/core/players" }
@@ -208,12 +208,12 @@ campfire-package = { path = "crates/session/package" }
 campfire-package-disk = { path = "crates/session/package-disk" }
 campfire-protocol = { path = "crates/session/protocol" }
 campfire-runner = { path = "crates/session/runner" }
-campfire-schedule = { path = "crates/base/schedule" }
+campfire-schedule = { path = "crates/sim/schedule" }
 campfire-script = { path = "crates/capabilities/core/script" }
 campfire-sim = { path = "crates/sim/sim" }
 campfire-store = { path = "crates/base/store" }
 campfire-test-packages = { path = "crates/test/test-packages" }
-campfire-verifier = { path = "crates/session/verifier" }
+campfire-verifier = { path = "crates/apps/verifier" }
 
 arrayvec = { version = "=0.7.8", default-features = false }
 async-lock = { version = "=3.4.2", default-features = false }

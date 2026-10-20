@@ -13,8 +13,8 @@ internals = [
 ]
 
 [dependencies]
-campfire-common.workspace = true
 campfire-sim.workspace = true
+campfire-visibility.workspace = true
 
 bevy_ecs = { workspace = true, features = ["std"] }
 

@@ -2,7 +2,8 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, NotSent, Replication};
+use campfire_state_types::{NotSent, Replication};
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::player::Player;

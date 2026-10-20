@@ -1,5 +1,5 @@
+use campfire_common::StableNumber;
 use campfire_math::{Num, Vec3};
-use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
 /// How a delivery reached a unit, or where it ended: the projectile or area that delivered it,
@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 /// direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hit {
-    pub delivery: Option<StableId>,
-    pub target: Option<StableId>,
+    pub delivery: Option<StableNumber>,
+    pub target: Option<StableNumber>,
     pub position: Vec3,
     pub distance: Num,
     pub direction: Option<Vec3>,

@@ -15,10 +15,10 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `sim` | built | glue | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | built | glue | The Rhai host, the script API's registry, and the script view ([Scripting](#scripting)) |
 | `capabilities` | built | glue | The top of the capabilities' crates: the release, the books, `Match` |
-| `values` | built | glue | Data value types, names and ids |
+| `values` | built | problem | Data value types, names and ids |
 | `geometry` | built | problem | Exact geometry: metric, bounds, bodies, polygons, grids |
 | `state-types` | built | glue | The state types modules declare, and how each is sent |
-| `visibility` | built | glue | Who receives each kind of state ([Replication audiences](10-replication-audiences.md)) |
+| `visibility` | built | problem | Who receives each kind of state ([Replication audiences](10-replication-audiences.md)) |
 | `declare` | built | glue | How a module declares what it adds to a match |
 | `units` | built | glue | The unit model, the map's book and its ground |
 | `players` | built | glue | The match's and players' entities, resources and commands |
@@ -38,7 +38,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `orders` | built | glue | The `orders` capability |
 | `mode` | built | glue | The mode: its script, state, choices and spawns |
 | `package` | built | glue | A mode's packages, checked against their index; no IO |
-| `client-files` | built | glue | The client's files of a package, which the sim never reads |
+| `client-files` | built | problem | The client's files of a package, which the sim never reads |
 | `package-disk` | built | glue | A package directory and the package store on disk |
 | `runner` | built | glue | Builds and feeds a match; replays a published log |
 | `bots` | built | glue | The bots' order scripts |

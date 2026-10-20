@@ -588,7 +588,7 @@ fn a_place_past_the_world_bound_fails_its_types_check() {
         };
         assert_eq!(dash.check(&game, grunt), holds);
         let started = DashDelivering::new(DashDelivery {
-            source: id,
+            source: id.into(),
             action: ActionId::new(0),
             rank: Rank::FIRST,
             start: Some(start(point)),

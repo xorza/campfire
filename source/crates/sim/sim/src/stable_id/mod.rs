@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::DeferredWorld;
-use campfire_common::Seat;
+use campfire_common::{Seat, StableNumber};
 use serde::{Deserialize, Serialize};
 
 use crate::stable_id::entity_index::EntityIndex;
@@ -26,6 +26,20 @@ pub struct StableId(u64);
 impl From<StableId> for u64 {
     fn from(id: StableId) -> Self {
         id.0
+    }
+}
+
+/// Its number, as a plain value holds it.
+impl From<StableId> for StableNumber {
+    fn from(id: StableId) -> Self {
+        Self::new(id.0)
+    }
+}
+
+/// The id a plain value holds by its number.
+impl From<StableNumber> for StableId {
+    fn from(number: StableNumber) -> Self {
+        Self(number.get())
     }
 }
 
@@ -78,6 +92,7 @@ fn unindex_on_discard(mut world: DeferredWorld<'_>, context: HookContext) {
 #[cfg(test)]
 mod tests {
     use bevy_ecs::world::World;
+    use campfire_codec::Binary;
 
     use super::*;
     use crate::id_allocator::IdAllocator;
@@ -117,5 +132,11 @@ mod tests {
             world.resource::<EntityIndex>().last_allocated(),
             Some(third)
         );
+        // An id's number, as a plain value holds it, is the same number on the wire, and gives
+        // the id back.
+        let number = StableNumber::from(player);
+        assert_eq!(number.get(), player.get());
+        assert_eq!(StableId::from(number), player);
+        assert_eq!(Binary::encode(&number), Binary::encode(&player));
     }
 }

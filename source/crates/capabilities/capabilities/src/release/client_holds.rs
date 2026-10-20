@@ -13,7 +13,8 @@ use bevy_ecs::query::With;
 use bevy_ecs::world::World;
 use campfire_declare::CapabilitySet;
 use campfire_sim::{SimResource, StableId, Unpredicted};
-use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};
+use campfire_state_types::{Replication, StateTypes};
+use campfire_visibility::{DataKind, Recipients};
 
 use crate::release::Release;
 

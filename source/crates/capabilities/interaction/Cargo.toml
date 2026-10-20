@@ -26,7 +26,7 @@ campfire-players.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-units.workspace = true
-campfire-values.workspace = true
+campfire-values = { workspace = true, features = ["ecs"] }
 
 bevy_ecs = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive", "rc", "std"] }

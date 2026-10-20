@@ -1,7 +1,7 @@
 //! The vocabulary that crates which do not depend on each other share: the player seat, ticks,
-//! segment seeds, secret bytes, every 32-byte value by its meaning and the two hashers that make
-//! them, a package's fingerprint, a map's name, the TLS key a server presents, and a TLS
-//! session's channel binding.
+//! an entity's stable number, segment seeds, secret bytes, every 32-byte value by its meaning and
+//! the two hashers that make them, a package's fingerprint, a map's name, the TLS key a server
+//! presents, and a TLS session's channel binding.
 //!
 //! A type enters only when two crates that do not depend on each other both name it, and only as a
 //! plain value: construction, parsing, display and serde, no other logic. The exceptions are
@@ -32,6 +32,7 @@ mod package_fingerprint;
 mod seat;
 mod secret;
 mod segment_seed;
+mod stable_number;
 mod state_hash;
 mod tick;
 mod tls_key;
@@ -54,6 +55,7 @@ pub use crate::package_fingerprint::{PackageFingerprint, PackageFingerprintMeani
 pub use crate::seat::Seat;
 pub use crate::secret::Secret;
 pub use crate::segment_seed::SegmentSeed;
+pub use crate::stable_number::StableNumber;
 pub use crate::state_hash::{StateHash, StateHashMeaning};
 pub use crate::tick::{Tick, Ticks};
 pub use crate::tls_key::{TlsKey, TlsKeyMeaning};

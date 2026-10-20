@@ -1,8 +1,9 @@
 use std::fmt;
 use std::str::FromStr;
 
+use crate::data_kind::DataKind;
+use crate::recipients::Recipients;
 use campfire_common::NamedEnum;
-use campfire_state_types::{DataKind, Recipients};
 
 use crate::out_view::OutView;
 use crate::setting::error::VisibilityError;

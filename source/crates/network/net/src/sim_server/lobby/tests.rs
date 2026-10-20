@@ -12,10 +12,10 @@ use campfire_protocol::{
     ConnectAnswer, ConnectChallenge, ConnectError, DelegationError, DelegationTerms, Entropy,
     SeedContribution, Signer,
 };
-use campfire_state_types::DataKind;
 use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
 use campfire_values::Scalar;
+use campfire_visibility::DataKind;
 use campfire_visibility::{OutView, Setting, SpectatorFog, Visibility, VisibilityError};
 
 use super::*;

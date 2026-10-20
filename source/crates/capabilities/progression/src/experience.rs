@@ -3,10 +3,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, Replication, SentOnChange};
+use campfire_state_types::{Replication, SentOnChange};
 use campfire_stats::Level;
 use campfire_units::UnitEntity;
 use campfire_values::TrackId;
+use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

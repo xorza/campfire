@@ -1,3 +1,4 @@
+#[cfg(feature = "ecs")]
 use bevy_ecs::resource::Resource;
 use campfire_common::NamedEnum;
 
@@ -6,7 +7,8 @@ use campfire_common::NamedEnum;
 /// resource: a player that sees what a spectator sees gives no order. Each member's name is as
 /// a host's setting writes it, and its place is its byte in a visibility's encoding, so a new
 /// member goes last.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Hash, NamedEnum)]
+#[cfg_attr(feature = "ecs", derive(Resource))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, NamedEnum)]
 pub enum OutView {
     /// What its team sees.
     Team,

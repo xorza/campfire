@@ -368,7 +368,7 @@ fn the_layers_follow_the_capability_crates_manifests() {
     // the mode builds on stats, whose layer is below its own.
     let crates = CapabilityCrates::read();
     assert!(crates.0.len() > 20, "{crates:?}");
-    assert_eq!(crates.layer("geometry"), Some(0));
+    assert_eq!(crates.layer("visibility"), Some(0));
     assert!(
         crates
             .named("mode")

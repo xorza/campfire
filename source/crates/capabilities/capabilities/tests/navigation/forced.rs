@@ -136,9 +136,9 @@ fn a_restore_refuses_a_forced_move_whose_unit_cannot_take_it_or_whose_numbers_ov
     assert_eq!(refused, Some(lacks));
     // A dash that delivers an action the book lacks, as this match's empty book lacks the first,
     // has no hooks for its end to run.
-    let delivery = |source| {
+    let delivery = |source: StableId| {
         DashDelivering::new(DashDelivery {
-            source,
+            source: source.into(),
             action: ActionId::new(0),
             rank: Rank::FIRST,
             start: None,
@@ -226,7 +226,7 @@ fn a_knock_back_moves_its_unit_away_by_equal_shares_and_a_new_move_replaces_it()
     // A dash that delivers an action holds its delivery beside it; a knock back in its place
     // drops it, and a dash that delivers nothing holds none.
     let delivered = DashDelivery {
-        source: thirds,
+        source: thirds.into(),
         action: ActionId::new(0),
         rank: Rank::FIRST,
         start: None,
@@ -420,7 +420,7 @@ fn a_knock_back_stops_before_a_wall_and_a_dash_crosses_one_to_a_cell_it_may_stan
     // went, 2 m and 1.5 m, along x.
     let short = unit(&mut game, 5, 3);
     let delivery = DashDelivery {
-        source: short,
+        source: short.into(),
         action: ActionId::new(0),
         rank: Rank::FIRST,
         start: None,

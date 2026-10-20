@@ -3,9 +3,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_state_types::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{ActionStart, DashDelivery};
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::delivering::Delivering;
@@ -22,7 +23,7 @@ pub struct DashDelivering {
 
 impl DashDelivering {
     /// The delivery `delivery`, before the dash went anywhere.
-    pub const fn new(delivery: DashDelivery) -> Self {
+    pub fn new(delivery: DashDelivery) -> Self {
         let DashDelivery {
             source,
             action,
@@ -31,7 +32,7 @@ impl DashDelivering {
         } = delivery;
         Self {
             by: Delivering {
-                source,
+                source: source.into(),
                 action,
                 rank,
                 start,

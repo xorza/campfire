@@ -18,7 +18,6 @@ internals = [
     "campfire-protocol/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
-    "campfire-visibility/internals",
     "campfire-vision/internals",
 ]
 

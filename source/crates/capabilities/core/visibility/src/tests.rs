@@ -1,5 +1,4 @@
 use campfire_codec::Toml;
-use campfire_state_types::{DataKind, Recipients};
 use serde::Deserialize;
 
 use super::*;

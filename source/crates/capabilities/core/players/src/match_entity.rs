@@ -3,8 +3,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::{EntityKind, KindAudience};
 use campfire_sim::{KindMarker, SimComponent, StableId};
-use campfire_state_types::{DataKind, Replication, SentOnce};
+use campfire_state_types::{Replication, SentOnce};
 use campfire_units::EntityKinds;
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 /// The entity of the match, of the named id `StableId::MATCH`, which holds the match's state that

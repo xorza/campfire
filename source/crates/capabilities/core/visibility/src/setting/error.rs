@@ -1,4 +1,5 @@
-use campfire_state_types::{DataKind, Recipients};
+use crate::data_kind::DataKind;
+use crate::recipients::Recipients;
 use thiserror::Error;
 
 use crate::setting::Setting;

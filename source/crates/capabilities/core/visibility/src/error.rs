@@ -1,4 +1,4 @@
-use campfire_state_types::DataKind;
+use crate::data_kind::DataKind;
 use thiserror::Error;
 
 /// Why the visibility a session's terms hold does not read: terms come from a server or a

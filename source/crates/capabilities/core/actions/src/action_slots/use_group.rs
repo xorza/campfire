@@ -3,9 +3,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, Replication, SentOnce};
+use campfire_state_types::{Replication, SentOnce};
 use campfire_units::UnitEntity;
 use campfire_values::Block;
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::action_book::ActionBook;

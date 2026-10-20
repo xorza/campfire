@@ -6,16 +6,20 @@
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
+mod data_kind;
 mod error;
 mod mode_visibility;
 mod out_view;
+mod recipients;
 mod setting;
 mod spectator_fog;
 mod visibility;
 
+pub use crate::data_kind::DataKind;
 pub use crate::error::VisibilityDecodeError;
 pub use crate::mode_visibility::{HostVisibility, ModeVisibility};
 pub use crate::out_view::OutView;
+pub use crate::recipients::Recipients;
 pub use crate::setting::error::VisibilityError;
 pub use crate::setting::{Setting, SettingValue};
 pub use crate::spectator_fog::SpectatorFog;

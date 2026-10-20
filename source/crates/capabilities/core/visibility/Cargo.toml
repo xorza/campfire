@@ -5,24 +5,21 @@ edition.workspace = true
 license.workspace = true
 
 [package.metadata.campfire]
-kind = "glue"
+kind = "problem"
 
 [features]
-internals = [
-    "campfire-state-types/internals",
-]
+# `Resource` on the view of a player out of play, for the ECS crates that hold it as one
+ecs = ["dep:bevy_ecs"]
 
 [dependencies]
 campfire-common.workspace = true
-campfire-state-types.workspace = true
 
-bevy_ecs = { workspace = true, features = ["std"] }
+bevy_ecs = { workspace = true, features = ["std"], optional = true }
 serde = { workspace = true, features = ["derive", "rc", "std"] }
 thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }
-campfire-visibility = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

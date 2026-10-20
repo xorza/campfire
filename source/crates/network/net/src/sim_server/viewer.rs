@@ -10,8 +10,8 @@ use bevy_ecs::world::{DeferredWorld, World};
 use campfire_common::Seat;
 use campfire_net_replication::Rooms;
 use campfire_players::{OutOfPlay, Player, PlayersWorld};
-use campfire_state_types::Recipients;
 use campfire_values::{Team, TeamSet};
+use campfire_visibility::Recipients;
 use campfire_visibility::{OutView, Visibility};
 
 use crate::sim_server::match_visibility::MatchVisibility;

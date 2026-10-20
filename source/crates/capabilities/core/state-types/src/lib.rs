@@ -12,12 +12,8 @@ use std::fmt::Debug;
 use bevy_ecs::component::{Component, Immutable, Mutable};
 use campfire_sim::{SimResource, StateRegistryBuilder};
 
-mod data_kind;
-mod recipients;
 mod replication;
 
-pub use crate::data_kind::DataKind;
-pub use crate::recipients::Recipients;
 pub use crate::replication::Replication;
 pub use crate::replication::sending::{
     NotSent, Sending, SentOnChange, SentOnInsert, SentOnce, SentPredicted,

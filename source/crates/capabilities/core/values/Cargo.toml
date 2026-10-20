@@ -5,22 +5,31 @@ edition.workspace = true
 license.workspace = true
 
 [package.metadata.campfire]
-kind = "glue"
+kind = "problem"
 
 [features]
+# The ECS derives and impls of a unit's team, type and tags and of the teams' relations, for the
+# glue crates that hold them as components
+ecs = [
+    "dep:bevy_ecs",
+    "dep:campfire-sim",
+    "dep:campfire-state-types",
+    "dep:campfire-visibility",
+]
 internals = [
     "campfire-math/internals",
-    "campfire-sim/internals",
-    "campfire-state-types/internals",
+    "campfire-sim?/internals",
+    "campfire-state-types?/internals",
 ]
 
 [dependencies]
 campfire-common.workspace = true
 campfire-math.workspace = true
-campfire-sim.workspace = true
-campfire-state-types.workspace = true
+campfire-sim = { workspace = true, optional = true }
+campfire-state-types = { workspace = true, optional = true }
+campfire-visibility = { workspace = true, optional = true }
 
-bevy_ecs = { workspace = true, features = ["std"] }
+bevy_ecs = { workspace = true, features = ["std"], optional = true }
 derive_more = { workspace = true, features = ["display"] }
 serde = { workspace = true, features = ["derive", "rc", "std"] }
 thiserror = { workspace = true, features = ["std"] }

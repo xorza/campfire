@@ -39,7 +39,7 @@ campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-store.workspace = true
 campfire-units.workspace = true
-campfire-values.workspace = true
+campfire-values = { workspace = true, features = ["ecs"] }
 campfire-vision.workspace = true
 
 bevy_ecs = { workspace = true, features = ["std"] }

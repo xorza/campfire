@@ -18,11 +18,10 @@ use campfire_common::Seat;
 use campfire_declare::CapabilitySet;
 use campfire_players::Player;
 use campfire_sim::SimResource;
-use campfire_state_types::{
-    DataKind, Declared, Recipients, Replication, Sending, SendingWays, StateTypes,
-};
+use campfire_state_types::{Declared, Replication, Sending, SendingWays, StateTypes};
 use campfire_units::Owner;
 use campfire_values::Team;
+use campfire_visibility::{DataKind, Recipients};
 
 use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::viewer::Viewer;

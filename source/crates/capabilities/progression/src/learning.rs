@@ -1,13 +1,12 @@
 use bevy_ecs::system::{Res, SystemParam};
-use campfire_actions::{Action, ActionBook, ActionSlot, ChargeRule, SlotKindBook};
+use campfire_actions::{Action, ActionBook, ActionSlot, SlotKindBook};
 use campfire_stats::Level;
 use campfire_values::Rank;
 
 use crate::points::Points;
 
 /// The rule of the `learn` order, as `progression` checks it and a client's HUD shows it: how many
-/// ranks a slot's action has, and whether a unit may learn its next one; and, for the HUD, the
-/// charges its action holds.
+/// ranks a slot's action has, and whether a unit may learn its next one.
 #[derive(SystemParam, Debug)]
 pub struct Learning<'w> {
     book: Res<'w, ActionBook>,
@@ -40,11 +39,6 @@ impl Learning<'_> {
                     .level_of(held.kind, next)
                     .is_none_or(|needed| needed.get() <= level.get())
             })
-    }
-    /// The charges of the action in `held` at its rank: how many it holds at most, and the ticks
-    /// one takes to come back; none for an action without charges, or one not learned.
-    pub fn charges(&self, held: ActionSlot) -> Option<ChargeRule> {
-        self.action(held)?.values_at(held.rank?)?.charges
     }
 
     /// The action in `held`; none in an inventory slot that holds no action.

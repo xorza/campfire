@@ -8,9 +8,10 @@ use bevy_ecs::world::{DeferredWorld, World};
 use campfire_common::{Tick, Ticks};
 use campfire_declare::ByType;
 use campfire_sim::{DueIndex, SimComponent, SimTick, StableId, TimedKept, TimedProcess, TimedRuns};
-use campfire_state_types::{DataKind, NotSent, Replication};
+use campfire_state_types::{NotSent, Replication};
 use campfire_units::{Dead, UnitEntity};
 use campfire_values::UnitType;
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::ai::Ai;

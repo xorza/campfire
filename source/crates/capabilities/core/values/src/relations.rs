@@ -1,10 +1,7 @@
 use std::array;
 
+#[cfg(feature = "ecs")]
 use bevy_ecs::component::Component;
-use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
-use campfire_sim::{OnAny, SimComponent};
-use campfire_state_types::{DataKind, Replication, SentOnChange};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -16,7 +13,8 @@ use crate::team_set::TeamSet;
 /// How the match's teams regard each other, and which friendly pairs share vision: state on the
 /// match's entity, which `ctx.set_relation` changes. A pair it does not hold is hostile, and
 /// would share vision were it friendly; a team is friendly to itself.
-#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ecs", derive(Component))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct Relations {
     /// The pairs that differ from the default, the lower team first, sorted by their teams.
@@ -140,21 +138,6 @@ impl Relations {
     }
 }
 
-impl SimComponent for Relations {
-    const NAME: &'static str = "units.relations";
-    type Host = OnAny;
-
-    // `units` declares its host, the match's entity, and checks its teams against the mode's.
-    fn check(&self, _: &World, _: Entity) -> bool {
-        true
-    }
-}
-
-impl Replication for Relations {
-    const KIND: DataKind = DataKind::Match;
-    type Sending = SentOnChange;
-}
-
 /// A snapshot is untrusted, so pairs out of order, of a team with itself, or that are the
 /// default fail to decode.
 impl<'de> Deserialize<'de> for Relations {
@@ -173,6 +156,32 @@ impl<'de> Deserialize<'de> for Relations {
             ));
         }
         Ok(Self { pairs })
+    }
+}
+
+#[cfg(feature = "ecs")]
+mod ecs {
+    use bevy_ecs::entity::Entity;
+    use bevy_ecs::world::World;
+    use campfire_sim::{OnAny, SimComponent};
+    use campfire_state_types::{Replication, SentOnChange};
+    use campfire_visibility::DataKind;
+
+    use crate::relations::Relations;
+
+    impl SimComponent for Relations {
+        const NAME: &'static str = "units.relations";
+        type Host = OnAny;
+
+        // `units` declares its host, the match's entity, and checks its teams against the mode's.
+        fn check(&self, _: &World, _: Entity) -> bool {
+            true
+        }
+    }
+
+    impl Replication for Relations {
+        const KIND: DataKind = DataKind::Match;
+        type Sending = SentOnChange;
     }
 }
 

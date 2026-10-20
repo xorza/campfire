@@ -3,8 +3,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_state_types::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 /// How a walker has been getting on: where it stood as the tick before steered, and for how many

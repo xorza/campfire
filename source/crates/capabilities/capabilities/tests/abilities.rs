@@ -9,11 +9,11 @@ use campfire_abilities::*;
 use campfire_actions::internals::LooseDues;
 use campfire_actions::{
     ActionBook, ActionData, ActionError, ActionField, ActionProblem, ActionProgress, ActionRange,
-    ActionSlots, ActionTarget, Actions, ChannelData, ChargeUpData, ChargesData, CostTarget,
-    DeliveryData, EffectData, EffectTo, InProgress, KindSection, LaunchLists, ListedEffect,
-    OrderPhase, PipelineField, ProgressDues, RangeField, SlotAim, SlotKind, SlotKindBook,
-    SlotKindData, SlotKinds, SlotRanks, SlotTimes, SlotsMut, Started, Targeting, TimedSlots,
-    Toggle,
+    ActionSlots, ActionTarget, Actions, ChannelData, ChargeRule, ChargeUpData, ChargesData,
+    CostTarget, DeliveryData, EffectData, EffectTo, InProgress, KindSection, LaunchLists,
+    ListedEffect, OrderPhase, PipelineField, ProgressDues, RangeField, SlotAim, SlotKind,
+    SlotKindBook, SlotKindData, SlotKinds, SlotRanks, SlotTimes, SlotsMut, Started, Targeting,
+    TimedSlots, Toggle,
 };
 use campfire_areas::{Area, AreaData, AreaInsideData, Areas, LandEffectData};
 use campfire_capabilities::internals::*;
@@ -1259,6 +1259,17 @@ fn charges_come_back(declared: &[Capability]) {
     let time = game.part::<SlotTimes>(learner).slot(0).unwrap();
     assert_eq!((unlearned.rank, time.charges), (None, None));
     assert_eq!(Abilities::failed_calls(&game), []);
+    // A slot gives its charges from the book, in a match with no progression: Step's 3 a rank,
+    // back in 30 ticks; none for Refill, which has none, nor for Step unlearned.
+    let book = game.resource::<ActionBook>();
+    let slots = game.part::<ActionSlots>(caster);
+    let rule = ChargeRule {
+        max: NonZeroU8::new(3).unwrap(),
+        recharge: Ticks::new(30),
+    };
+    let [step, refill] = [0, 1].map(|slot| slots.slot(slot).unwrap().charge_rule(book));
+    assert_eq!((step, refill), (Some(rule), None));
+    assert_eq!(unlearned.charge_rule(book), None);
 }
 
 #[test]

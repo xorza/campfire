@@ -7,10 +7,11 @@ use campfire_common::Tick;
 use campfire_declare::ByType;
 use campfire_deliveries::Delivering;
 use campfire_sim::{DueIndex, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
-use campfire_state_types::{DataKind, NotSent, Replication, SentOnce};
+use campfire_state_types::{NotSent, Replication, SentOnce};
 use campfire_stats::Stats;
 use campfire_units::DeliveryEntity;
 use campfire_values::{ActionStart, UnitType};
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::area_spec::AreaSpec;

@@ -1,8 +1,5 @@
+#[cfg(feature = "ecs")]
 use bevy_ecs::component::Component;
-use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
-use campfire_sim::{OnAny, SimComponent};
-use campfire_state_types::{DataKind, Replication, SentOnce};
 use serde::{Deserialize, Serialize};
 
 use crate::name_kind::{Article, NameKind, NameScope, Named};
@@ -13,9 +10,10 @@ use crate::unit_tags::UnitTags;
 /// A unit's type, by its place in the match's unit types. Its tags, which it requires, come with
 /// it on every path, a spawn, a restore and a client's replication, as the hook `units` gives it
 /// on insert writes them.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[component(immutable)]
-#[require(UnitTags)]
+#[cfg_attr(feature = "ecs", derive(Component))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ecs", component(immutable))]
+#[cfg_attr(feature = "ecs", require(UnitTags))]
 #[serde(transparent)]
 pub struct UnitType(u16);
 
@@ -38,21 +36,32 @@ impl NameId for UnitType {
     }
 }
 
-impl SimComponent for UnitType {
-    const NAME: &'static str = "units.unit_type";
-    type Host = OnAny;
-
-    // `units` declares its host, a unit, and checks it against the match's types and states.
-    fn check(&self, _: &World, _: Entity) -> bool {
-        true
-    }
-}
-
-impl Replication for UnitType {
-    const KIND: DataKind = DataKind::Unit;
-    type Sending = SentOnce;
-}
-
 impl Named for UnitType {
     const NAMES: NameKind = NameKind::new("unit type", Article::A, NameScope::Match);
+}
+
+#[cfg(feature = "ecs")]
+mod ecs {
+    use bevy_ecs::entity::Entity;
+    use bevy_ecs::world::World;
+    use campfire_sim::{OnAny, SimComponent};
+    use campfire_state_types::{Replication, SentOnce};
+    use campfire_visibility::DataKind;
+
+    use crate::unit_type::UnitType;
+
+    impl SimComponent for UnitType {
+        const NAME: &'static str = "units.unit_type";
+        type Host = OnAny;
+
+        // `units` declares its host, a unit, and checks it against the match's types and states.
+        fn check(&self, _: &World, _: Entity) -> bool {
+            true
+        }
+    }
+
+    impl Replication for UnitType {
+        const KIND: DataKind = DataKind::Unit;
+        type Sending = SentOnce;
+    }
 }

@@ -3,7 +3,7 @@ use std::ops::ControlFlow;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{Reached, Targets};
-use campfire_common::Ticks;
+use campfire_common::{StableNumber, Ticks};
 use campfire_declare::ByType;
 use campfire_deliveries::{
     Delivered, DeliveredPayload, DeliveryQueue, DeliverySpawner, NewDelivery,
@@ -72,8 +72,8 @@ impl AreaLife {
                 areas.get(entity).expect("an area in the order");
             let triggers_at = trigger.map(|trigger| trigger.get());
             let hit = Hit {
-                delivery: Some(id),
-                target: area.aimed(),
+                delivery: Some(id.into()),
+                target: area.aimed().map(StableNumber::from),
                 position: position.get(),
                 distance: Num::ZERO,
                 direction: None,

@@ -24,7 +24,7 @@ campfire-common.workspace = true
 campfire-geometry.workspace = true
 campfire-math.workspace = true
 campfire-sim.workspace = true
-campfire-values.workspace = true
+campfire-values = { workspace = true, features = ["ecs"] }
 
 bevy_ecs = { workspace = true, features = ["std"] }
 campfire-measure = { workspace = true, optional = true }

@@ -4,8 +4,9 @@ use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_declare::PerType;
 use campfire_sim::{SimComponent, TimedKept, TimedProcess, TimedRuns};
-use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_state_types::{Replication, SentPredicted};
 use campfire_units::{BuildTarget, UnitEntity};
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::order_dues::{self, OrderDues, StandingOrder};

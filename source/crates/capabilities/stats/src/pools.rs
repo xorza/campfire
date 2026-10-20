@@ -4,9 +4,10 @@ use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_sim::{MatchRate, SimComponent};
-use campfire_state_types::{DataKind, Replication, SentOnChange};
+use campfire_state_types::{Replication, SentOnChange};
 use campfire_units::{Meter, PoolId, UnitEntity};
 use campfire_values::NameId;
+use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::pool_book::PoolBook;

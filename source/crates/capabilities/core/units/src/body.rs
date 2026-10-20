@@ -4,7 +4,8 @@ use bevy_ecs::world::World;
 use campfire_geometry::{BodyBox, MAX_BOUND, Metric, Placed, Radius, Shape, Volume};
 use campfire_math::{Num, Vec3};
 use campfire_sim::SimComponent;
-use campfire_state_types::{DataKind, Replication, SentOnce};
+use campfire_state_types::{Replication, SentOnce};
+use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
