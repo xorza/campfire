@@ -29,8 +29,9 @@ pub struct ProjectileSpec {
 
 /// A steer as a match runs it (12-missiles.md, A steered flight): its launch speed a tick, the
 /// speed it gains each tick, its turn a tick as the sine and the cosine of its angle, none for a
-/// turn of half a turn or more, which turns it any way, its straight run, its lock and its cruise
-/// in meters, its fuel in ticks, rounded up, and whether it tracks its target.
+/// turn of half a turn or more, which turns it any way, its straight run, its lock at a unit and
+/// at a point and its cruise in meters, its fuel in ticks, rounded up, and whether it tracks its
+/// target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SteerSpec {
     pub(crate) launch: Num,
@@ -38,6 +39,7 @@ pub(crate) struct SteerSpec {
     pub(crate) turn: Option<SinCos>,
     pub(crate) straight: Num,
     pub(crate) lock: Num,
+    pub(crate) point_lock: Num,
     pub(crate) fuel: Ticks,
     pub(crate) cruise: Option<CruiseData>,
     pub(crate) tracks: bool,
@@ -94,6 +96,7 @@ impl ProjectileSpec {
                 turn: (degrees < Num::int(180)).then(|| SinCos::of_degrees(degrees)),
                 straight: steer.straight,
                 lock: steer.lock,
+                point_lock: steer.point_lock.unwrap_or(steer.lock),
                 fuel: rate
                     .duration(steer.fuel_ms.into())
                     .expect("a fuel of 32 bits of milliseconds counts in ticks"),

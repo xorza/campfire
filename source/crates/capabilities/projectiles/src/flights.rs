@@ -383,7 +383,8 @@ impl TickFlights<'_> {
     /// Flies `aloft` a step of its steer (12-missiles.md, A steered flight). It ends with no hit
     /// when the unit it tracks lives no more or a teleport lost it, and where it stands as its
     /// fuel runs out. Its speed gains its acceleration up to its type's speed. Within its lock of
-    /// its goal on the ground, its tracked unit's center or its point, it steps straight at it;
+    /// its goal on the ground, its tracked unit's center, or within its point's lock of its point,
+    /// it steps straight at it;
     /// else it turns toward its goal, raised to its cruise height over the goal's ground until
     /// its dive, by at most its turn, none within its straight run, and steps along its heading.
     /// It ends where it leaves the world's bound, or meets the ground of a planar map. At its
@@ -424,12 +425,15 @@ impl TickFlights<'_> {
             distance,
             direction,
         };
-        let goal = match tracks {
-            Some(target) => targets
-                .volume_of(target)
-                .filter(|_| !lost)
-                .map(|volume| volume.center()),
-            None => Some(to),
+        let (goal, lock) = match tracks {
+            Some(target) => (
+                targets
+                    .volume_of(target)
+                    .filter(|_| !lost)
+                    .map(|volume| volume.center()),
+                steer.lock,
+            ),
+            None => (Some(to), steer.point_lock),
         };
         let Some(goal) = goal.filter(|_| u64::from(steps) < steer.fuel.get()) else {
             self.reach(fired, Reached::End, hit(position.get(), flown, None));
@@ -437,7 +441,7 @@ impl TickFlights<'_> {
         };
         let here = map.point(position.get());
         let speed = (speed + steer.acceleration).min(spec.speed);
-        let (point, heading) = if here.within_ground(goal, steer.lock) {
+        let (point, heading) = if here.within_ground(goal, lock) {
             (
                 here.step_toward(goal, speed),
                 heading.turned(goal - here, None),

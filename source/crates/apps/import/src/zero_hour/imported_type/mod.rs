@@ -5,7 +5,7 @@ use campfire_geometry::BodyBox;
 use campfire_math::Num;
 use campfire_mode::{BountyData, Pays};
 use campfire_orders::AcquirePatch;
-use campfire_projectiles::{CurveData, ProjectileData, ProjectileHits};
+use campfire_projectiles::ProjectileData;
 use campfire_stats::{StatValue, StatsData, TypePoolsData};
 use campfire_units::{BodyForm, CollisionData, TypeTagsData};
 use campfire_values::{EngineStat, FilterData, Stat};
@@ -15,9 +15,8 @@ use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
 use crate::zero_hour::format::ini::object_ini::fight_data::BodyKind;
 use crate::zero_hour::format::ini::object_ini::{GeometryShape, IniObject};
-use crate::zero_hour::format::ini::weapon_ini::IniWeapon;
 use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::weapon_drop::{self, WeaponDrop};
+use crate::zero_hour::weapon_drop;
 
 /// An object's unit type as the import writes it in `data/units.toml`  (09-zero-hour.md, Units move
 /// by the generic backends with the original's numbers; 09-zero-hour.md, Only walkers and standing
@@ -28,13 +27,14 @@ use crate::zero_hour::weapon_drop::{self, WeaponDrop};
 /// geometry, else a circle of its radius, of its geometry's height (04-capabilities/00-overview.md,
 /// A body has a height); the life of an active or a structure body, with its `combat` section of
 /// the armor of its starting armor set; the tags of its kinds, of victory for a structure that
-/// counts for one, and of a structure, a wall and infantry, which a shell's hits and a scatter
-/// name; the turn rate of the turret of its AI module, which turns its weapons; and, of a life, its
+/// counts for one, and of a structure, a wall and infantry, which a projectile's hits and a
+/// scatter name; the turn rate of the turret of its AI module, which turns its weapons; and, of a life, its
 /// `BuildCost` in money as the cost a kill's bounty takes its share of. Every other object has none
 /// of these. What every type shares, a death that despawns and a turret's tolerance and slot kind,
 /// is Zero Hour's rules data, `[defaults]`, which lies under each type's own (03-game-scripting.md,
-/// Defaults under each unit type). A shell's type is a projectile alone (09-zero-hour.md, The
-/// import converts shells, splash, scatter, pitch, turrets and slow weapons).
+/// Defaults under each unit type). A fired projectile's type is a projectile alone
+/// (09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and slow weapons;
+/// 12-missiles.md, A missile converts to a steered projectile).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedType {
     pools: Option<TypePoolsData>,
@@ -231,8 +231,8 @@ impl ImportedType {
         }
     }
 
-    /// The type of a shell, of `projectile` alone: it has no life, no body and no tag.
-    pub(crate) fn shell(projectile: ProjectileData) -> Self {
+    /// The type of a projectile, of `projectile` alone: it has no life, no body and no tag.
+    pub(crate) fn of_projectile(projectile: ProjectileData) -> Self {
         Self {
             pools: None,
             tags: None,
@@ -244,66 +244,6 @@ impl ImportedType {
             projectile: Some(projectile),
             acquire: None,
         }
-    }
-
-    /// The projectile `weapon` fires, of `shell`, an object of a `DumbProjectileBehavior`: at its
-    /// `WeaponSpeed`, twice its geometry's radius wide, detonating on what its
-    /// `ProjectileCollidesWith` names, on the curve of its behavior; why the import drops the
-    /// weapon, for a mask of what the engine's units are not, a number past what the engine
-    /// holds, or a projectile the engine's type refuses.
-    pub(crate) fn projectile(
-        weapon: &IniWeapon,
-        shell: &IniObject,
-    ) -> Result<ProjectileData, WeaponDrop> {
-        let flight = shell
-            .fight()
-            .shell
-            .expect("a shell's object has a `DumbProjectileBehavior`");
-        let collides = weapon.collides;
-        // Shrubbery, projectiles and missiles are no units of the engine's.
-        if collides.shrubbery
-            || collides.projectiles
-            || collides.small_missiles
-            || collides.ballistic_missiles
-        {
-            return Err(WeaponDrop::Collides);
-        }
-        // As each player is a team of its own, a structure of no other player is an enemy's or a
-        // neutral's, and one of its own an ally's; `ALLIES` and `ENEMIES` name the objects of
-        // their relation alone, structures among them, and no neutral's.
-        let filters = [
-            (collides.allies, "allies"),
-            (collides.enemies, "hostiles"),
-            (collides.structures, "enemies:structure"),
-            (collides.controlled_structures, "allies:structure"),
-            (collides.walls, "all:wall"),
-        ];
-        let filters: Vec<FilterData> = filters
-            .into_iter()
-            .filter_map(|(holds, filter)| holds.then_some(filter))
-            .map(|filter| FilterData::parse(filter).expect("the import's filters parse"))
-            .collect();
-        let number = |value: f32| game_float::to_num(value).map_err(|_| WeaponDrop::BadNumber);
-        let life_ms = weapon_drop::game_ms(flight.lifespan_ms)?;
-        let life_ms = u32::try_from(life_ms).map_err(|_| WeaponDrop::BadNumber)?;
-        let curve = CurveData::new(
-            [number(flight.first_indent)?, number(flight.first_height)?],
-            [number(flight.second_indent)?, number(flight.second_height)?],
-            number(flight.follow)?,
-            Some(life_ms),
-        )
-        .map_err(|_| WeaponDrop::BadNumber)?;
-        let hits = if filters.is_empty() {
-            ProjectileHits::Nothing
-        } else {
-            ProjectileHits::Units(filters)
-        };
-        ProjectileData::builder(number(weapon.speed)?)
-            .width(number(2.0 * shell.geometry().major)?)
-            .hits(hits)
-            .curve(curve)
-            .build()
-            .map_err(|_| WeaponDrop::BadNumber)
     }
 
     /// The stat of the most life.
@@ -360,35 +300,6 @@ fn num(value: f32) -> Result<Num, TypeError> {
 /// `name`, a name the import gives, as a declared name.
 fn declared(name: &str) -> DeclaredName {
     DeclaredName::new(name).expect("the import's names are declared names")
-}
-
-#[cfg(test)]
-pub(crate) mod samples {
-    use campfire_math::Num;
-    use campfire_projectiles::{CurveData, ProjectileData, ProjectileHits};
-    use campfire_values::FilterData;
-
-    /// The projectile of the fixture's `TankShell`, fired at `speed` m/s by a weapon of
-    /// `STRUCTURES WALLS`: 2 m wide, its inner points at 50% and 90% of the way, 10 m up, its end
-    /// following its victim by 100 m/s, for 10 s. 90% is 90 ÷ 100 in `f32`, 0.89999997615…, the
-    /// bits 15,099,494 · 2⁻²⁴ of a `Num`.
-    pub(crate) fn shell_projectile(speed: i64) -> ProjectileData {
-        let filters =
-            ["enemies:structure", "all:wall"].map(|text| FilterData::parse(text).unwrap());
-        let curve = CurveData::new(
-            [Num::HALF, Num::int(10)],
-            [Num::from_bits(15_099_494), Num::int(10)],
-            Num::int(100),
-            Some(10_000),
-        )
-        .unwrap();
-        ProjectileData::builder(Num::int(speed))
-            .width(Num::int(2))
-            .hits(ProjectileHits::Units(filters.into()))
-            .curve(curve)
-            .build()
-            .unwrap()
-    }
 }
 
 #[cfg(test)]

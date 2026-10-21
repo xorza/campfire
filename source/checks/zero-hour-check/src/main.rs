@@ -25,9 +25,11 @@
 //! and the money after each of its first deliveries is pinned. In a fourth, player 1 plays China
 //! against America's bot: its dozer builds a power plant and a Gattling Cannon, and the cannon,
 //! ordered nothing, fires at the bot's dozer, which drives within its reach, its hits coming
-//! sooner as the original's spin up, and kills it. Every other map the game lists loads in the
-//! imported mode. It fails when `GENERALSZH_DATA` names no install, so a machine with no copy
-//! never passes as one that checked.
+//! sooner as the original's spin up, and kills it. In a fifth, player 1 plays China against
+//! America's bot: its dozer builds a barracks, which trains a Tank Hunter, and the hunter, ordered
+//! nothing, fires steered missiles at the bot's dozer, which drives within its reach, and kills
+//! it. Every other map the game lists loads in the imported mode. It fails when `GENERALSZH_DATA`
+//! names no install, so a machine with no copy never passes as one that checked.
 //!
 //! Run it with `cargo drive run zero-hour [out]`, which builds it with the `release-dev` profile;
 //! it writes to `~/zh-package` unless `out` names another directory. `CAMPFIRE_BLESS=1` before
@@ -59,6 +61,7 @@ mod failure;
 mod golden;
 mod import_check;
 mod match_play;
+mod missile_play;
 mod pins;
 mod skirmish_play;
 mod start_drive;

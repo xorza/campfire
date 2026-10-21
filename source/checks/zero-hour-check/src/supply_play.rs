@@ -8,19 +8,14 @@ use campfire_script::MatchNames;
 use campfire_values::ResourceId;
 
 use crate::failure::CheckFailure;
-use crate::match_play::{BuildingDozer, MatchPlay, PlannedBuilding, STEP_LIMIT};
+use crate::match_play::{
+    BuildingDozer, CHINA, CHINA_DOZER, MatchPlay, PlannedBuilding, START_MONEY, STEP_LIMIT,
+};
 use crate::pins::{DELIVERIES, SupplyDelivery, SupplySteps};
 
-/// China's start, and the supply center's free truck.
+/// China's command center, and the supply center's free truck.
 const CENTER: &str = "chinacommandcenter";
-const DOZER: &str = "chinavehicledozer";
 const TRUCK: &str = "chinavehiclesupplytruck";
-
-/// Player 1's pick of China (09-zero-hour.md, Each player picks a faction).
-const CHINA: &str = "0:faction=china";
-
-/// The money player 1 starts with, as the skirmish play's host picks it.
-const START_MONEY: &str = "start_money=50000";
 
 /// The buildings the dozer builds, the power plant the supply center needs first, then the
 /// center: the plant 150 m along −x from `Player_1_Start`, where the skirmish play's America
@@ -97,11 +92,11 @@ impl SupplyPlay {
         let [_center] = play.owned(CENTER, 0)?[..] else {
             return Err(CheckFailure::ProductionStart);
         };
-        let [dozer] = play.owned(DOZER, 0)?[..] else {
+        let [dozer] = play.owned(CHINA_DOZER, 0)?[..] else {
             return Err(CheckFailure::ProductionStart);
         };
         let builder = BuildingDozer {
-            unit: DOZER,
+            unit: CHINA_DOZER,
             id: dozer,
         };
         let mut built = [0; BUILDINGS.len()];

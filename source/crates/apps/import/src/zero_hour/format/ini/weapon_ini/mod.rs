@@ -24,6 +24,7 @@ pub(crate) struct WeaponIni {
 pub(crate) struct IniWeapon {
     pub(crate) damage: f32,
     pub(crate) radius: f32,
+    pub(crate) secondary_damage: f32,
     pub(crate) secondary_radius: f32,
     pub(crate) scatter: f32,
     pub(crate) infantry_scatter: f32,
@@ -43,6 +44,11 @@ pub(crate) struct IniWeapon {
     pub(crate) clip_reload_ms: i32,
     pub(crate) pre_attack_ms: i32,
     pub(crate) projectile: Option<String>,
+    /// It names a `ProjectileStreamName`, which draws its projectiles as a stream.
+    pub(crate) stream: bool,
+    /// It names a `ProjectileDetonationOCL`, the objects its projectile creates where it
+    /// detonates.
+    pub(crate) detonation_objects: bool,
 }
 
 /// How a weapon fires faster as it keeps firing, as `FiringTracker` reads its template: the shots
@@ -141,6 +147,7 @@ impl Default for IniWeapon {
         Self {
             damage: 0.0,
             radius: 0.0,
+            secondary_damage: 0.0,
             secondary_radius: 0.0,
             scatter: 0.0,
             infantry_scatter: 0.0,
@@ -160,6 +167,8 @@ impl Default for IniWeapon {
             clip_reload_ms: 0,
             pre_attack_ms: 0,
             projectile: None,
+            stream: false,
+            detonation_objects: false,
         }
     }
 }
@@ -201,6 +210,7 @@ impl IniWeapon {
         match word {
             "primarydamage" => self.damage = at.real()?,
             "primarydamageradius" => self.radius = at.real()?,
+            "secondarydamage" => self.secondary_damage = at.real()?,
             "secondarydamageradius" => self.secondary_radius = at.real()?,
             "scatterradius" => self.scatter = at.real()?,
             "scatterradiusvsinfantry" => self.infantry_scatter = at.real()?,
@@ -234,6 +244,8 @@ impl IniWeapon {
             "clipreloadtime" => self.clip_reload_ms = at.int()?,
             "preattackdelay" => self.pre_attack_ms = at.int()?,
             "projectileobject" => self.projectile = none(at.value()?),
+            "projectilestreamname" => self.stream = none(at.value()?).is_some(),
+            "projectiledetonationocl" => self.detonation_objects = none(at.value()?).is_some(),
             _ => {}
         }
         Ok(())
@@ -556,136 +568,4 @@ End\r
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
-        let mut ini = WeaponIni::default();
-        ini.read(samples::WEAPONS.as_bytes()).unwrap();
-        let rifle = ini.get("RangerRifle").unwrap();
-        assert_eq!(
-            *rifle,
-            IniWeapon {
-                damage: 5.0,
-                radius: 0.0,
-                secondary_radius: 0.0,
-                scatter: 0.0,
-                infantry_scatter: 0.0,
-                range: 100.0,
-                speed: IniWeapon::INSTANT,
-                pitch: [-180.0, 180.0],
-                laser: false,
-                anti_ground: true,
-                affects: RadiusAffects::DEFAULT,
-                collides: CollideMask::DEFAULT,
-                at_self: false,
-                continuous_fire: ContinuousFire::default(),
-                min_range: 0.0,
-                damage_type: DamageType::SmallArms,
-                delay: ShotDelay::Fixed(100),
-                clip_size: 3,
-                clip_reload_ms: 700,
-                pre_attack_ms: 0,
-                projectile: None,
-            }
-        );
-        // The cannon's shell detonates on structures and walls, and its radius damages every
-        // relation but its own unit; its pitch is read in degrees.
-        let cannon = ini.get("TankCannon").unwrap();
-        assert_eq!(cannon.projectile.as_deref(), Some("TankShell"));
-        assert_eq!(cannon.pitch, [-15.0, 15.0]);
-        let collides = CollideMask {
-            walls: true,
-            ..CollideMask::DEFAULT
-        };
-        assert_eq!(cannon.collides, collides);
-        assert_eq!(cannon.affects, RadiusAffects::DEFAULT);
-        assert_eq!(ini.get("Pistol").unwrap().delay, ShotDelay::Random);
-        // A weapon that names no type is of the default; a type of none of the game's names is
-        // refused, as the game's reader refuses it.
-        assert_eq!(
-            ini.get("Mortar").unwrap().damage_type,
-            DamageType::Explosion
-        );
-        let mut other = WeaponIni::default();
-        assert_eq!(
-            other.read(b"Weapon W\n  DamageType = SPLASH\nEnd\n"),
-            Err(IniError::NotListed { line: 2 })
-        );
-        assert_eq!(ini.get("Knife").unwrap().pre_attack_ms, 833);
-        assert!(ini.get("rangerrifle").is_none());
-        // `SUICIDE` is held by a list of it, or added by `+`, and gone after `NONE`, a list
-        // without it, or `-`.
-        let affects = |lines: &str| {
-            let mut ini = WeaponIni::default();
-            ini.read(format!("Weapon W\n{lines}End\n").as_bytes())
-                .unwrap();
-            ini.get("W").unwrap().affects.suicide
-        };
-        assert!(affects("  RadiusDamageAffects = ENEMIES SUICIDE\n"));
-        assert!(affects("  RadiusDamageAffects = +SUICIDE\n"));
-        assert!(!affects(
-            "  RadiusDamageAffects = SUICIDE\n  RadiusDamageAffects = NONE\n"
-        ));
-        assert!(!affects(
-            "  RadiusDamageAffects = SUICIDE\n  RadiusDamageAffects = ENEMIES\n"
-        ));
-        assert!(!affects("  RadiusDamageAffects = +SUICIDE -SUICIDE\n"));
-        // `SELF` is the unit itself; a name the game does not list is refused, as its reader
-        // refuses it.
-        let mut own = WeaponIni::default();
-        own.read(b"Weapon W\n  RadiusDamageAffects = SELF NOT_SIMILAR\nEnd\n")
-            .unwrap();
-        let own = own.get("W").unwrap().affects;
-        let expected = RadiusAffects {
-            source: true,
-            not_similar: true,
-            ..RadiusAffects::NONE
-        };
-        assert_eq!(own, expected);
-        for line in [
-            "RadiusDamageAffects = FRIENDS",
-            "ProjectileCollidesWith = STRUCTURES TREES",
-        ] {
-            let text = format!("Weapon W\n  {line}\nEnd\n");
-            let read = WeaponIni::default().read(text.as_bytes());
-            assert_eq!(read, Err(IniError::NotListed { line: 2 }), "{line}");
-        }
-        // The minigun's stages above 1 and 5 shots give it twice and thrice its rate of fire,
-        // names of either case, and its coast is 2,000 ms; its upgrade's damage is no stage's.
-        // The spinner's fast stage changes its damage too; a later line of a field takes the
-        // earlier's place, so one back to 100 % changes nothing.
-        let minigun = ini.get("Minigun").unwrap().continuous_fire;
-        assert_eq!(
-            (minigun.shots, minigun.coast_ms, minigun.rates()),
-            ([1, 5], 2000, [2.0, 3.0])
-        );
-        assert!(!minigun.changes_other_fields());
-        assert!(
-            ini.get("Spinner")
-                .unwrap()
-                .continuous_fire
-                .changes_other_fields()
-        );
-        let undone = "Weapon W\n  WeaponBonus = CONTINUOUS_FIRE_MEAN DAMAGE 150%\n  \
-                      WeaponBonus = CONTINUOUS_FIRE_MEAN DAMAGE 100%\nEnd\n";
-        let mut read = WeaponIni::default();
-        read.read(undone.as_bytes()).unwrap();
-        let undone = read.get("W").unwrap().continuous_fire;
-        assert_eq!(undone.rates(), [1.0, 1.0]);
-        assert!(!undone.changes_other_fields());
-        for line in [
-            "WeaponBonus = CONTINUOUS_FIRE_SLOW RATE_OF_FIRE 200%",
-            "WeaponBonus = VETERAN SPEED 200%",
-        ] {
-            let text = format!("Weapon W\n  {line}\nEnd\n");
-            let read = WeaponIni::default().read(text.as_bytes());
-            assert_eq!(read, Err(IniError::NotListed { line: 2 }), "{line}");
-        }
-        assert!(!ini.get("Stinger").unwrap().anti_ground);
-        // A line outside a block, and a block left open, are refused.
-        assert!(WeaponIni::default().read(b"PrimaryDamage = 5\r\n").is_err());
-        assert!(WeaponIni::default().read(b"Weapon Open\r\n").is_err());
-    }
-}
+mod tests;

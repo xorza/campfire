@@ -45,8 +45,8 @@ pub(crate) const RULES_FILES: [(&str, &[u8]); 3] = [
 ];
 
 /// The imported package's manifest: a mode of eight players, each on a team of its own, beside the
-/// `neutral` team every placed object stands on, whose units drive, are made and fight with shells:
-/// of `stats`, `orders`, `navigation`, `abilities`, `production`, `combat` and `projectiles`, no
+/// `neutral` team every placed object stands on, whose units drive, are made and fight with shells and
+/// missiles: of `stats`, `orders`, `navigation`, `abilities`, `production`, `combat` and `projectiles`, no
 /// unit faster than `max_move_speed`, at the game's 30 logic frames a second, depending on the
 /// rules package beside it (03-game-scripting.md, The manifest writes as it reads).
 pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capability>> {

@@ -11,13 +11,17 @@ pub(crate) struct LocomotorIni {
 }
 
 /// What the import reads of a locomotor (`LocomotorTemplate`): the surfaces it moves on, its
-/// `Speed` in units a second and its `TurnRate` in degrees a second, each 0 when absent, as the
-/// template starts.
+/// `Speed` in units a second, its `TurnRate` in degrees a second, its `Acceleration` in units a
+/// second each second and its `PreferredHeight` in units, each 0 when absent, as the template
+/// starts, and whether its `Appearance` is `THRUST`, a missile's.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct Locomotor {
     surfaces: Surfaces,
     pub(crate) speed: f32,
     pub(crate) turn_rate: f32,
+    pub(crate) acceleration: f32,
+    pub(crate) preferred_height: f32,
+    pub(crate) thrust: bool,
 }
 
 /// The surfaces of a locomotor's `Surfaces`, a bit each in the order of
@@ -60,6 +64,9 @@ impl Locomotor {
             "surfaces" => self.surfaces.set_by(at)?,
             "speed" => self.speed = at.real()?,
             "turnrate" => self.turn_rate = at.real()?,
+            "acceleration" => self.acceleration = at.real()?,
+            "preferredheight" => self.preferred_height = at.real()?,
+            "appearance" => self.thrust = at.value()?.eq_ignore_ascii_case("thrust"),
             _ => {}
         }
         Ok(())

@@ -6,7 +6,8 @@ use derive_more::Display;
 
 use crate::pins::{
     BotBase, DefenseTicks, FactorySteps, FightSteps, Fingerprints, FoughtCounts, LookCounts,
-    MapCounts, ProducedCounts, ProductionSteps, SuppliedCounts, SupplySteps, TerrainDrawn,
+    MapCounts, MissileTicks, ProducedCounts, ProductionSteps, SuppliedCounts, SupplySteps,
+    TerrainDrawn,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -90,6 +91,15 @@ pub(crate) enum CheckFailure {
     /// The cannon did not kill the bot's dozer within the limit.
     #[display("the cannon did not kill the dozer within the limit")]
     Undefended,
+    /// The missile play's ticks differ from the pinned.
+    #[display("it fired missiles as {_0}")]
+    Missile(Box<Differs<MissileTicks>>),
+    /// The bot's dozer took damage before a steered missile flew.
+    #[display("the dozer took damage before a steered missile flew")]
+    Unsteered,
+    /// The Tank Hunter did not kill the bot's dozer within the limit.
+    #[display("the Tank Hunter did not kill the dozer within the limit")]
+    NoMissileKill,
     /// The supply center freed no truck as it completed.
     #[display("the supply center freed no truck")]
     NoTruck,

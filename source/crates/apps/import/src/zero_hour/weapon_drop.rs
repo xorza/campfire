@@ -2,19 +2,36 @@ use campfire_common::EnumAll;
 
 /// Why the import drops a weapon (09-zero-hour.md, A weapon converts when it hits one target at
 /// once; 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets
-/// and slow weapons).
+/// and slow weapons; 12-missiles.md, What stays dropped).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
 pub enum WeaponDrop {
     /// No file defines it.
     NoWeapon,
-    /// It fires a `ProjectileObject` of no `DumbProjectileBehavior`, as a missile, or one no
-    /// file defines.
-    Missile,
-    /// It damages a `SecondaryDamageRadius`, or a `PrimaryDamageRadius` with no shell, which
+    /// It fires a `ProjectileObject` of neither a `DumbProjectileBehavior` nor a
+    /// `MissileAIUpdate` of a `THRUST` locomotor, or one no file defines.
+    NoFlight,
+    /// It draws its projectiles as a stream, a `ProjectileStreamName`, as a flamethrower or a
+    /// toxin sprayer.
+    Stream,
+    /// Its missile's fuel lasts a frame at most, so it bursts where it leaves, as the toxin
+    /// truck's contamination.
+    Sprayer,
+    /// Its missile ignites after an `IgnitionDelay`.
+    Ignition,
+    /// Its missile detonates as its fuel runs out, `DetonateOnNoFuel`.
+    FuelBurst,
+    /// Its missile kills units garrisoned in what it strikes, a `GarrisonHitKillCount`.
+    GarrisonKill,
+    /// Its missile's fuel lasts for ever, a `FuelLifetime` of 0.
+    NoFuel,
+    /// Its projectile creates objects where it detonates, a `ProjectileDetonationOCL`, as a
+    /// poison field.
+    DetonationObjects,
+    /// It damages a `PrimaryDamageRadius` or a `SecondaryDamageRadius` with no projectile, which
     /// alone ends where a splash is dealt.
     Radius,
     /// It aims within a `ScatterRadius`, or a `ScatterRadiusVsInfantry` at infantry, with no
-    /// shell, which alone flies to a point it scatters to.
+    /// projectile, which alone flies to a point it scatters to.
     Scatter,
     /// Its radius spares the units of its own unit's template or the airborne, `NOT_SIMILAR` or
     /// `NOT_AIRBORNE`, or damages a set of relations no filter names.
@@ -33,7 +50,7 @@ pub enum WeaponDrop {
     ContinuousFire,
     /// It waits a `PreAttackDelay` before it strikes.
     PreAttack,
-    /// It keeps a `MinimumAttackRange`.
+    /// It keeps a `MinimumAttackRange` not within its `AttackRange`.
     MinRange,
     /// Its `DelayBetweenShots` is a range the game draws from.
     RandomDelay,

@@ -150,9 +150,9 @@ impl WeaponNames<'_> {
         })
     }
 
-    /// The rules of `data`'s fields: a weapon's delivery is a homing projectile or a curve, a
-    /// splash goes off where a projectile of its delivery ends, a scatter aims a curve of its
-    /// delivery, a speed delays the hit of a weapon of no delivery, a rate bonus speeds a period
+    /// The rules of `data`'s fields: a weapon's delivery is a projectile launched at a unit, a
+    /// splash goes off where a projectile of its delivery ends, a scatter aims a projectile of its
+    /// delivery that flies to a point, a speed delays the hit of a weapon of no delivery, a rate bonus speeds a period
     /// of its own, and a streak's stages are some, their shots strictly growing
     /// (04-capabilities/combat.md, An attack may splash; 04-capabilities/combat.md, An attack may
     /// scatter; 04-capabilities/combat.md, A slow weapon delays its damage;
@@ -168,7 +168,7 @@ impl WeaponNames<'_> {
             Err(CombatDataError::Delivery)
         } else if data.splash.is_some() && flight.is_none() {
             Err(CombatDataError::Splash)
-        } else if data.scatter.is_some() && flight != Some(ProjectileFlight::Curve) {
+        } else if data.scatter.is_some() && !flight.is_some_and(ProjectileFlight::flies_to_point) {
             Err(CombatDataError::Scatter)
         } else if data.speed.is_some() && delivery.is_some() {
             Err(CombatDataError::Speed)

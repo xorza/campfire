@@ -5,14 +5,15 @@ use crate::zero_hour::format::ini::object_ini::SLOTS;
 /// What an object gives combat, as `ThingTemplate` and its modules read it: its body, none with
 /// none, its weapon sets and armor sets in the order it gives them, each appended as
 /// `parseWeaponTemplateSet` and `parseArmorTemplateSet` append them, its shell's flight, of a
-/// `DumbProjectileBehavior`, and the first turret and the idle scan of its AI module. A reskin
-/// keeps its base's, as its table sets none of them.
+/// `DumbProjectileBehavior`, its missile's, of a `MissileAIUpdate`, and the first turret and the
+/// idle scan of its AI module. A reskin keeps its base's, as its table sets none of them.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct FightData {
     pub(crate) body: Option<IniBody>,
     pub(crate) weapon_sets: Vec<WeaponSet>,
     pub(crate) armor_sets: Vec<ArmorSet>,
     pub(crate) shell: Option<IniShell>,
+    pub(crate) missile: Option<IniMissile>,
     pub(crate) turret: Option<IniTurret>,
     pub(crate) scan: IniScan,
 }
@@ -39,6 +40,28 @@ pub(crate) struct IniShell {
     pub(crate) second_indent: f32,
     pub(crate) follow: f32,
     pub(crate) lifespan_ms: i32,
+}
+
+/// A projectile object's `MissileAIUpdate`, as `MissileAIUpdateModuleData` reads it, each its
+/// default when absent: whether it follows its victim, `TryToFollowTarget`, yes by default; its
+/// `FuelLifetime` and `IgnitionDelay` in milliseconds, 0 by default, a fuel of 0 lasting for
+/// ever; its `InitialVelocity` in units a second; its `DistanceToTravelBeforeTurning`, its
+/// `DistanceToTargetBeforeDiving` and its `DistanceToTargetForLock`, 75 by default; whether it
+/// flies at its weapon's `WeaponSpeed`, `UseWeaponSpeed`; whether it detonates as its fuel runs
+/// out, `DetonateOnNoFuel`; and whether it kills units garrisoned in what it strikes, a
+/// `GarrisonHitKillCount` above 0.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct IniMissile {
+    pub(crate) follow: bool,
+    pub(crate) fuel_ms: i32,
+    pub(crate) ignition_ms: i32,
+    pub(crate) initial_velocity: f32,
+    pub(crate) straight: f32,
+    pub(crate) dive: f32,
+    pub(crate) lock: f32,
+    pub(crate) use_weapon_speed: bool,
+    pub(crate) detonate_on_no_fuel: bool,
+    pub(crate) garrison_kill: bool,
 }
 
 /// An AI module's `Turret`, as `TurretAIData` reads it: its `TurretTurnRate` in degrees a second,
@@ -91,6 +114,7 @@ pub(crate) enum FightBlock {
     WeaponSet,
     ArmorSet,
     Shell,
+    Missile,
     /// An AI module, which may hold a turret.
     Ai,
     /// An AI module's first `Turret`.
@@ -137,6 +161,21 @@ impl IniShell {
         second_indent: 0.0,
         follow: 0.0,
         lifespan_ms: Self::LIFESPAN_MS,
+    };
+}
+
+impl IniMissile {
+    pub(super) const DEFAULT: Self = Self {
+        follow: true,
+        fuel_ms: 0,
+        ignition_ms: 0,
+        initial_velocity: 0.0,
+        straight: 0.0,
+        dive: 0.0,
+        lock: 75.0,
+        use_weapon_speed: false,
+        detonate_on_no_fuel: false,
+        garrison_kill: false,
     };
 }
 
@@ -189,6 +228,9 @@ impl FightData {
                 if module == "dumbprojectilebehavior" {
                     self.shell = Some(IniShell::DEFAULT);
                     Some(FightBlock::Shell)
+                } else if module == "missileaiupdate" {
+                    self.missile = Some(IniMissile::DEFAULT);
+                    Some(FightBlock::Missile)
                 } else if module.ends_with("aiupdate") || module.ends_with("aiupdateinterface") {
                     Some(FightBlock::Ai)
                 } else {
@@ -241,6 +283,25 @@ impl FightData {
                     "secondpercentindent" => shell.second_indent = percent(at.real()?),
                     "flightpathadjustdistpersecond" => shell.follow = at.real()?,
                     "maxlifespan" => shell.lifespan_ms = at.int()?,
+                    _ => {}
+                }
+            }
+            (FightBlock::Missile, field) => {
+                let missile = self
+                    .missile
+                    .as_mut()
+                    .expect("a missile block opened its missile");
+                match field {
+                    "trytofollowtarget" => missile.follow = at.yes()?,
+                    "fuellifetime" => missile.fuel_ms = at.int()?,
+                    "ignitiondelay" => missile.ignition_ms = at.int()?,
+                    "initialvelocity" => missile.initial_velocity = at.real()?,
+                    "distancetotravelbeforeturning" => missile.straight = at.real()?,
+                    "distancetotargetbeforediving" => missile.dive = at.real()?,
+                    "distancetotargetforlock" => missile.lock = at.real()?,
+                    "useweaponspeed" => missile.use_weapon_speed = at.yes()?,
+                    "detonateonnofuel" => missile.detonate_on_no_fuel = at.yes()?,
+                    "garrisonhitkillcount" => missile.garrison_kill = at.int()? > 0,
                     _ => {}
                 }
             }

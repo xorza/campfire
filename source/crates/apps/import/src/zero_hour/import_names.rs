@@ -15,8 +15,8 @@ use crate::zero_hour::unit_types::ImportedTypes;
 /// the second object to give a name is refused. It keeps the unit types each stage makes, each
 /// with the fields its object gives, in three phases its types state, each of the stages that
 /// may run in it: the looks and the placements of the maps and the start; then production, which
-/// starts from every placed type; then the shells combat's weapons fire, which are none of the
-/// others; `close` gives their closed set.
+/// starts from every placed type; then the projectiles combat's weapons fire, which are none of
+/// the others; `close` gives their closed set.
 #[derive(Debug, Default)]
 pub(crate) struct ImportNames {
     taken: BTreeMap<ImportName, String>,
@@ -27,9 +27,9 @@ pub(crate) struct ImportNames {
 #[derive(Debug)]
 pub(crate) struct ProductionNames(ImportNames);
 
-/// The names as combat names the shells its weapons fire, every other type made.
+/// The names as combat names the projectiles its weapons fire, every other type made.
 #[derive(Debug)]
-pub(crate) struct ShellNames(ImportNames);
+pub(crate) struct ProjectileNames(ImportNames);
 
 /// An object's unit type, by its name, and the fields its object gives.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,10 +79,10 @@ impl ImportNames {
         ProductionNames(self)
     }
 
-    /// The unit type of the shell `object` fires, `imported`, by `name`, its object's own or one
-    /// of its own for a weapon's shell; an error when another object took the name, or when the
+    /// The unit type of the projectile `object` fires, `imported`, by `name`, its object's own or
+    /// one of its own for a weapon's projectile; an error when another object took the name, or when the
     /// object's own unit type took it.
-    fn shell(
+    fn projectile(
         &mut self,
         name: ImportName,
         object: &IniObject,
@@ -137,27 +137,27 @@ impl ProductionNames {
         self.0.unit_type(object, locomotors)
     }
 
-    /// Ends production, so combat names its shells beside every other type.
-    pub(crate) fn into_shells(self) -> ShellNames {
-        ShellNames(self.0)
+    /// Ends production, so combat names its projectiles beside every other type.
+    pub(crate) fn into_projectiles(self) -> ProjectileNames {
+        ProjectileNames(self.0)
     }
 }
 
-impl ShellNames {
-    /// Each unit type but the shells, and the shells named so far, as `ImportNames::types` gives
-    /// them.
+impl ProjectileNames {
+    /// Each unit type but the projectiles, and the projectiles named so far, as
+    /// `ImportNames::types` gives them.
     pub(crate) fn types(&self) -> impl Iterator<Item = (&ImportName, &str, &ImportedType)> {
         self.0.types()
     }
 
-    /// The unit type of a shell, as `ImportNames::shell` names it.
-    pub(crate) fn shell(
+    /// The unit type of a projectile, as `ImportNames::projectile` names it.
+    pub(crate) fn projectile(
         &mut self,
         name: ImportName,
         object: &IniObject,
         imported: ImportedType,
     ) -> Result<DeclaredName, NameClash> {
-        self.0.shell(name, object, imported)
+        self.0.projectile(name, object, imported)
     }
 
     /// The closed set of the unit types the stages made, which no stage after adds to.
@@ -199,7 +199,11 @@ mod tests {
         // A look alone is no unit type: the file lists the placed types, which neither drive nor
         // block, so no speed bounds them.
         names.take(object("Oak")).unwrap();
-        let file = names.into_production().into_shells().close().bare_file();
+        let file = names
+            .into_production()
+            .into_projectiles()
+            .close()
+            .bare_file();
         assert_eq!(file.max_speed, None);
         let toml = file.text;
         assert_eq!(toml, "[units.americatank]\n\n[units.rocks1]\n");

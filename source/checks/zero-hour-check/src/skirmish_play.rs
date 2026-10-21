@@ -18,7 +18,8 @@ use campfire_values::ResourceId;
 
 use crate::failure::CheckFailure;
 use crate::match_play::{
-    self, BuildingDozer, CENTER, DOZER, MatchPlay, PlannedBuilding, STEP_LIMIT, america,
+    self, BuildingDozer, CENTER, DOZER, MatchPlay, PlannedBuilding, START_MONEY, STEP_LIMIT,
+    america,
 };
 use crate::pins::{BOT_TYPES, BotBase, CRUSADERS, FactorySteps, FightSteps, ProductionSteps};
 
@@ -64,10 +65,6 @@ const FACTORY_CHAIN: [PlannedBuilding; 3] = [
 /// The builder bot's orders, which the play's bot plays and a host gives a local server's bot
 /// (09-zero-hour.md, A bot that builds and does not fight).
 const BUILDER: &str = include_str!("../bots/builder.toml");
-
-/// The money every player starts with, the most of Zero Hour's choices, which the session's host
-/// picks (09-zero-hour.md, The import writes Zero Hour's money as an option).
-const START_MONEY: &str = "start_money=50000";
 
 /// The skirmish on Tournament Desert of `START_MONEY` against the builder bot (designs 18 and 19;
 /// 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and

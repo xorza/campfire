@@ -3,7 +3,7 @@
 drive_ticks = 1717
 
 [fingerprints]
-game = "90470fde1aaaf7b62aa53436c86d034a1e0675c499358d713e8f475aa6f7d258"
+game = "0a775daa5a6a61f220fcea070fe24f05b5e53aae3d49e55a1a052db1dd0a5b63"
 rules = "67c543837b0ffc42e8fba5f40a74cb7904b0b6295215aa8e9996dd095ecc7712"
 
 [map]
@@ -38,8 +38,8 @@ gathers = 12
 dropped = [0, 0, 5, 6, 0]
 
 [fought]
-weapons = 33
-dropped = [0, 52, 9, 0, 2, 0, 7, 1, 0, 0, 6, 2, 0, 3, 4, 0, 2]
+weapons = 53
+dropped = [0, 0, 8, 0, 1, 0, 1, 0, 8, 6, 0, 6, 2, 12, 1, 0, 0, 11, 0, 0, 6, 4, 0, 2]
 armors = 53
 kinds = 38
 unliving = 38
@@ -60,6 +60,13 @@ deliveries = [447, 901, 1355]
 built = [483, 1050]
 hit = 1012
 death = 1530
+
+[missile]
+built = 721
+trained = 150
+shot = 1136
+hit = 1155
+death = 1333
 
 [bot]
 built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]

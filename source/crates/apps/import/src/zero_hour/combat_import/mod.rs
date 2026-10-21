@@ -7,8 +7,8 @@ use campfire_actions::{ActionKeys, ActionKind, ActionRange, DeliveryData, RangeF
 use campfire_client_files::ClientUnits;
 use campfire_codec::{TomlTable, TomlValue};
 use campfire_combat::{
-    ArmorShare, AttackData, ClipData, PitchData, ScatterData, SplashData, StageData, StreakData,
-    WeaponValue,
+    ArmorShare, AttackData, ClipData, OuterData, PitchData, ScatterData, SplashData, StageData,
+    StreakData, WeaponValue,
 };
 use campfire_common::DeclaredName;
 use campfire_math::Num;
@@ -18,11 +18,13 @@ use campfire_values::{FilterData, Number, Ranked, RelationSet, Scalar, Speed, St
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::damage_type::DamageType;
+use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
 use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectIni};
 use crate::zero_hour::format::ini::weapon_ini::{IniWeapon, RadiusAffects, ShotDelay};
 use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::import_names::ShellNames;
+use crate::zero_hour::import_names::ProjectileNames;
 use crate::zero_hour::imported_type::{INFANTRY, ImportedType};
+use crate::zero_hour::object_flight::ObjectFlight;
 use crate::zero_hour::weapon_drop::{self, WeaponDrop};
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
@@ -34,8 +36,8 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// share of each damage kind it does not take whole; the weapons dropped, each once for each
 /// cause, in the order the types are read; the objects whose body the import gives no life, and
 /// those whose body starts below its most life; each type's actions of the slot kind `weapon`, by
-/// its name, which it returns; the shell types of a weapon's own, each with the object whose
-/// look it takes; and the modifiers of the weapons' stages of continuous fire.
+/// its name, which it returns; the projectile types of a weapon's own, each with the object
+/// whose look it takes; and the modifiers of the weapons' stages of continuous fire.
 #[derive(Debug, Default)]
 pub(crate) struct CombatImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedWeapon>,
@@ -45,32 +47,32 @@ pub(crate) struct CombatImport {
     pub(crate) dropped: Vec<DroppedWeapon>,
     pub(crate) unliving: Vec<String>,
     pub(crate) wounded: Vec<String>,
-    shell_looks: Vec<ShellLook>,
+    projectile_looks: Vec<ProjectileLook>,
 }
 
-/// A shell type named for its weapon, and the object whose look it takes.
+/// A projectile type named for its weapon, and the object whose look it takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ShellLook {
+struct ProjectileLook {
     unit_type: DeclaredName,
     object: DeclaredName,
 }
 
 /// An attack as the mode's data writes it, `[actions.weapon_<name>]` (09-zero-hour.md, A weapon
-/// converts when it hits one target at once): its numbers, its clip, the shell it fires, the
-/// damage of its radius, its scatter, the pitches it reaches, and the speed of a weapon of no
-/// shell whose damage lands after its shot.
+/// converts when it hits one target at once): its numbers, its clip, the projectile it fires,
+/// the damage of its radius, its scatter, the pitches it reaches, and the speed of a weapon of
+/// no projectile whose damage lands after its shot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedWeapon {
     pub(crate) keys: ActionKeys,
     pub(crate) attack: AttackData,
 }
 
-/// A weapon the import converts, the shell it fires, if it fires one, and the modifiers of its
-/// stages of continuous fire, by their names.
+/// A weapon the import converts, the projectile it fires, if it fires one, and the modifiers of
+/// its stages of continuous fire, by their names.
 #[derive(Debug, Clone)]
 struct ConvertedWeapon<'a> {
     weapon: ImportedWeapon,
-    shell: Option<FiredShell<'a>>,
+    fired: Option<FiredProjectile<'a>>,
     modifiers: Vec<(DeclaredName, StageModifier)>,
 }
 
@@ -97,9 +99,17 @@ pub(crate) const RATE_OF_FIRE: &str = "rate_of_fire";
 /// `CONTINUOUS_FIRE_FAST`.
 const STAGES: [&str; 2] = ["mean", "fast"];
 
+/// What a weapon's conversion reads past the weapon: the objects, whose projectile it fires, and
+/// the locomotors, which fly a missile.
+#[derive(Debug, Clone, Copy)]
+struct WeaponRules<'a> {
+    objects: &'a ObjectIni,
+    locomotors: &'a LocomotorIni,
+}
+
 /// The object a weapon fires, and its projectile as that weapon fires it.
 #[derive(Debug, Clone)]
-struct FiredShell<'a> {
+struct FiredProjectile<'a> {
     object: &'a IniObject,
     projectile: ProjectileData,
 }
@@ -123,11 +133,14 @@ const QUARTER_DEG: f32 = 90.0;
 
 impl CombatImport {
     /// The combat of `rules`, of the unit types `names` made, each type's weapons by its name;
-    /// the shell types its weapons fire join `names`. An error for a type whose armor no file
+    /// the projectile types its weapons fire join `names`. An error for a type whose armor no file
     /// defines by the name of its case, which the game's debug build stops at as wrong data and
-    /// its release build takes as no armor (`INI::parseArmorTemplate`), and for a shell type's
-    /// name another object took.
-    pub(crate) fn of(rules: &ZeroHourRules, names: &mut ShellNames) -> Result<Self, ZeroHourError> {
+    /// its release build takes as no armor (`INI::parseArmorTemplate`), and for a projectile
+    /// type's name another object took.
+    pub(crate) fn of(
+        rules: &ZeroHourRules,
+        names: &mut ProjectileNames,
+    ) -> Result<Self, ZeroHourError> {
         let mut import = Self::default();
         let mut armors = BTreeMap::new();
         for (name, armor) in rules.armors.iter() {
@@ -148,8 +161,8 @@ impl CombatImport {
                 return Err(ZeroHourError::ArmorName(name.to_owned()));
             }
         }
-        // Each converted weapon's shell, by its action and with its weapon's name.
-        let mut shells = BTreeMap::<DeclaredName, (&str, FiredShell<'_>)>::new();
+        // Each converted weapon's projectile, by its action and with its weapon's name.
+        let mut fired = BTreeMap::<DeclaredName, (&str, FiredProjectile<'_>)>::new();
         for (type_name, object_name, typed) in names.types() {
             let object = rules
                 .objects
@@ -185,16 +198,22 @@ impl CombatImport {
                     .weapons
                     .get(weapon)
                     .ok_or(WeaponDrop::NoWeapon)
-                    .and_then(|ini| ImportedWeapon::of(ini, &rules.objects, &id));
+                    .and_then(|ini| {
+                        let rules = WeaponRules {
+                            objects: &rules.objects,
+                            locomotors: &rules.locomotors,
+                        };
+                        ImportedWeapon::of(ini, rules, &id)
+                    });
                 match converted {
                     Ok(converted) => {
                         // Weapons whose names differ only in case would share one action.
                         match import.actions.entry(id.clone()) {
                             Entry::Occupied(held)
                                 if *held.get() != converted.weapon
-                                    || !FiredShell::alike(
-                                        shells.get(&id).map(|(_, shell)| shell),
-                                        converted.shell.as_ref(),
+                                    || !FiredProjectile::alike(
+                                        fired.get(&id).map(|(_, held)| held),
+                                        converted.fired.as_ref(),
                                     ) =>
                             {
                                 return Err(ZeroHourError::WeaponName(weapon.clone()));
@@ -202,8 +221,8 @@ impl CombatImport {
                             Entry::Occupied(_) => {}
                             Entry::Vacant(new) => {
                                 new.insert(converted.weapon);
-                                if let Some(shell) = converted.shell {
-                                    shells.insert(id.clone(), (weapon.as_str(), shell));
+                                if let Some(projectile) = converted.fired {
+                                    fired.insert(id.clone(), (weapon.as_str(), projectile));
                                 }
                                 import.modifiers.extend(converted.modifiers);
                             }
@@ -226,41 +245,43 @@ impl CombatImport {
             }
         }
         import.armors = armors;
-        import.name_shells(shells, names)?;
+        import.name_projectiles(fired, names)?;
         Ok(import)
     }
 
-    /// Names the shell type of each of `shells`, by its action, in `names`, and delivers it from
+    /// Names the projectile type of each of `fired`, by its action, in `names`, and delivers it from
     /// its action: an object's own name when every weapon that fires it fires it alike, else for
     /// each weapon one of the object's name and the weapon's, which takes the object's look.
-    fn name_shells(
+    fn name_projectiles(
         &mut self,
-        shells: BTreeMap<DeclaredName, (&str, FiredShell<'_>)>,
-        names: &mut ShellNames,
+        fired: BTreeMap<DeclaredName, (&str, FiredProjectile<'_>)>,
+        names: &mut ProjectileNames,
     ) -> Result<(), ZeroHourError> {
-        let mut by_object = BTreeMap::<&str, Vec<(DeclaredName, &str, FiredShell<'_>)>>::new();
-        for (action, (weapon, shell)) in shells {
+        let mut by_object = BTreeMap::<&str, Vec<(DeclaredName, &str, FiredProjectile<'_>)>>::new();
+        for (action, (weapon, projectile)) in fired {
             by_object
-                .entry(shell.object.name.as_str())
+                .entry(projectile.object.name.as_str())
                 .or_default()
-                .push((action, weapon, shell));
+                .push((action, weapon, projectile));
         }
-        for fired in by_object.into_values() {
-            let alike = fired
+        for group in by_object.into_values() {
+            let alike = group
                 .windows(2)
                 .all(|pair| pair[0].2.projectile == pair[1].2.projectile);
             let mut own_type: Option<DeclaredName> = None;
-            for (action, weapon, FiredShell { object, projectile }) in fired {
+            for (action, weapon, FiredProjectile { object, projectile }) in group {
                 let own = ImportName::object(object);
                 let unit_type = if let Some(named) = &own_type {
                     named.clone()
                 } else if alike {
-                    let named = names.shell(own, object, ImportedType::shell(projectile))?;
+                    let named =
+                        names.projectile(own, object, ImportedType::of_projectile(projectile))?;
                     own_type.insert(named).clone()
                 } else {
                     let name = ImportName::latin(&format!("{}_{weapon}", object.name));
-                    let named = names.shell(name, object, ImportedType::shell(projectile))?;
-                    self.shell_looks.push(ShellLook {
+                    let named =
+                        names.projectile(name, object, ImportedType::of_projectile(projectile))?;
+                    self.projectile_looks.push(ProjectileLook {
                         unit_type: named.clone(),
                         object: own.declared(),
                     });
@@ -269,7 +290,7 @@ impl CombatImport {
                 let held = self
                     .actions
                     .get_mut(&action)
-                    .expect("a shell's action is converted");
+                    .expect("a projectile's action is converted");
                 held.keys.delivery = Some(DeliveryData::Projectile {
                     unit_type,
                     count: NonZeroU8::MIN,
@@ -280,10 +301,10 @@ impl CombatImport {
         Ok(())
     }
 
-    /// Gives each shell type named for its weapon, in `looks`, the look of the object it fires,
+    /// Gives each projectile type named for its weapon, in `looks`, the look of the object it fires,
     /// when that object has one.
-    pub(crate) fn add_shell_looks(&self, looks: &mut ClientUnits) {
-        for ShellLook { unit_type, object } in &self.shell_looks {
+    pub(crate) fn add_projectile_looks(&self, looks: &mut ClientUnits) {
+        for ProjectileLook { unit_type, object } in &self.projectile_looks {
             if let Some(look) = looks.units.get(object) {
                 let look = look.clone();
                 looks.units.insert(unit_type.clone(), look);
@@ -292,8 +313,8 @@ impl CombatImport {
     }
 }
 
-impl FiredShell<'_> {
-    /// Whether `a` and `b` are one object's shell of one projectile, or both none.
+impl FiredProjectile<'_> {
+    /// Whether `a` and `b` are one object fired as one projectile, or both none.
     fn alike(a: Option<&Self>, b: Option<&Self>) -> bool {
         match (a, b) {
             (Some(a), Some(b)) => a.object.name == b.object.name && a.projectile == b.projectile,
@@ -308,30 +329,37 @@ impl ImportedWeapon {
         self.keys.table(&self.attack)
     }
 
-    /// The attack `id` of `weapon`, of the objects of `ini`, the shell it fires and the modifiers
-    /// of its stages of continuous fire; why the import drops it, when it hits no target by the
+    /// The attack `id` of `weapon`, by `rules`, the projectile it fires and the modifiers of its
+    /// stages of continuous fire; why the import drops it, when it hits no target by the
     /// engine's rules, or holds a number the engine does not.
     fn of<'a>(
         weapon: &IniWeapon,
-        ini: &'a ObjectIni,
+        rules: WeaponRules<'a>,
         id: &DeclaredName,
     ) -> Result<ConvertedWeapon<'a>, WeaponDrop> {
-        let shell = match &weapon.projectile {
+        let object = match &weapon.projectile {
+            Some(_) if weapon.stream => return Err(WeaponDrop::Stream),
             Some(name) => Some(
-                ini.object(name.as_bytes())
-                    .filter(|object| object.fight().shell.is_some())
-                    .ok_or(WeaponDrop::Missile)?,
+                rules
+                    .objects
+                    .object(name.as_bytes())
+                    .and_then(|object| Some((object, ObjectFlight::of(object, rules.locomotors)?)))
+                    .ok_or(WeaponDrop::NoFlight)?,
             ),
             None => None,
         };
-        if weapon.secondary_radius > 0.0 || (weapon.radius > 0.0 && shell.is_none()) {
+        if weapon.detonation_objects {
+            return Err(WeaponDrop::DetonationObjects);
+        }
+        let splashes = weapon.radius > 0.0 || weapon.secondary_radius > 0.0;
+        if splashes && object.is_none() {
             return Err(WeaponDrop::Radius);
         }
         let scatters = weapon.scatter > 0.0 || weapon.infantry_scatter > 0.0;
-        if scatters && shell.is_none() {
+        if scatters && object.is_none() {
             return Err(WeaponDrop::Scatter);
         }
-        let affects = (weapon.radius > 0.0)
+        let affects = splashes
             .then(|| Self::relations(weapon.affects).ok_or(WeaponDrop::Affects))
             .transpose()?;
         if !weapon.anti_ground {
@@ -346,9 +374,6 @@ impl ImportedWeapon {
         let stages = Self::stages(weapon, id)?;
         if weapon.pre_attack_ms > 0 {
             return Err(WeaponDrop::PreAttack);
-        }
-        if weapon.min_range > 0.0 {
-            return Err(WeaponDrop::MinRange);
         }
         let ShotDelay::Fixed(delay) = weapon.delay else {
             return Err(WeaponDrop::RandomDelay);
@@ -384,11 +409,22 @@ impl ImportedWeapon {
                 reload_ms: ms(weapon_drop::game_ms(weapon.clip_reload_ms)?)?,
             }),
         };
+        // Damage within a secondary radius past the primary is an outer ring; one no farther
+        // than the primary deals nothing beyond it, as each unit within the primary takes the
+        // primary damage alone (`dealDamageInternal`).
         let splash = match affects {
             Some(affects) => {
                 let radius = number(weapon.radius)?;
-                let splash = SplashData::new(radius, affects, !weapon.affects.source);
-                Some(splash.ok_or(WeaponDrop::BadNumber)?)
+                let splash = SplashData::new(radius, affects, !weapon.affects.source)
+                    .ok_or(WeaponDrop::BadNumber)?;
+                if weapon.secondary_radius > weapon.radius {
+                    let amount = Number::Value(Scalar::Decimal(number(weapon.secondary_damage)?));
+                    let outer =
+                        OuterData::new(number(weapon.secondary_radius)?, Ranked::One(amount));
+                    Some(splash.with_outer(outer).ok_or(WeaponDrop::BadNumber)?)
+                } else {
+                    Some(splash)
+                }
             }
             None => None,
         };
@@ -415,26 +451,37 @@ impl ImportedWeapon {
         } else {
             None
         };
-        // A laser's damage lands at once, and a shell's when it lands.
-        let speed = if shell.is_none() && !weapon.laser && weapon.speed < IniWeapon::INSTANT {
+        // A laser's damage lands at once, and a projectile's when it ends.
+        let speed = if object.is_none() && !weapon.laser && weapon.speed < IniWeapon::INSTANT {
             Some(Speed::new(number(weapon.speed)?).ok_or(WeaponDrop::BadNumber)?)
         } else {
             None
         };
-        let shell = match shell {
-            Some(object) => Some(FiredShell {
+        let fired = match object {
+            Some((object, flight)) => Some(FiredProjectile {
                 object,
-                projectile: ImportedType::projectile(weapon, object)?,
+                projectile: flight.projectile(weapon, object)?,
             }),
             None => None,
         };
         let damage = Ranked::One(Number::Value(Scalar::Decimal(number(weapon.damage)?)));
-        let range = RangeField::Range(ActionRange::meters(number(weapon.range)?));
+        let meters = number(weapon.range)?;
+        let range = RangeField::Range(ActionRange::meters(meters));
+        let min_range = if weapon.min_range > 0.0 {
+            let min = number(weapon.min_range)?;
+            if min >= meters {
+                return Err(WeaponDrop::MinRange);
+            }
+            Some(Ranked::One(Number::Value(Scalar::Decimal(min))))
+        } else {
+            None
+        };
         let enemies = FilterData::parse("enemies").expect("the enemies' filter parses");
         Ok(ConvertedWeapon {
             weapon: Self {
                 keys: ActionKeys {
                     range: Some(Ranked::One(range)),
+                    min_range,
                     ..ActionKeys::new(ActionKind::Attack, Targeting::Unit(enemies))
                 },
                 attack: AttackData {
@@ -452,7 +499,7 @@ impl ImportedWeapon {
                     streak: stages.as_ref().map(|stages| stages.streak.clone()),
                 },
             },
-            shell,
+            fired,
             modifiers: stages.map_or_else(Vec::new, |stages| stages.modifiers),
         })
     }

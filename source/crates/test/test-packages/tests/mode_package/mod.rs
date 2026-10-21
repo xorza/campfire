@@ -260,7 +260,7 @@ fn a_weapon_or_an_action_at_a_unit_or_a_point_may_fly_a_curve_or_steer_and_one_a
 }
 
 #[test]
-fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_its_pitch_a_bound() {
+fn a_weapons_splash_needs_a_projectile_its_scatter_a_point_its_speed_none_and_its_pitch_a_bound() {
     let splash = (
         "actions.tower_attack.splash",
         r#"{ radius = "2", affects = "enemies", spares_source = false }"#,
@@ -274,6 +274,10 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_it
         "units.tower_bolt.projectile",
         r#"{ speed = "20", curve = { first = ["0.3", "4"], second = ["0.7", "4"] } }"#,
     );
+    let steered = (
+        "units.tower_bolt.projectile",
+        r#"{ speed = "20", steer = { turn_rate = "90", fuel_ms = 3000 } }"#,
+    );
     let set = |edits: &[(&'static str, &'static str)]| {
         let mut files: Vec<(&str, Edit<'static>)> = Vec::new();
         for &(path, value) in edits {
@@ -286,7 +290,8 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_it
         }
         load(&edited(files))
     };
-    // A homing bolt splashes and bounds its pitch; a curve scatters too. A splash of 0 m with an
+    // A homing bolt splashes and bounds its pitch; a curve and a steered bolt, which fly to a
+    // point, scatter too. A splash of 0 m with an
     // outer ring past it loads.
     assert!(set(&[splash, pitch]).is_ok());
     let ringed = (
@@ -295,6 +300,7 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_it
     );
     assert!(set(&[ringed]).is_ok());
     assert!(set(&[splash, scatter, pitch, curve]).is_ok());
+    assert!(set(&[scatter, steered]).is_ok());
     // A homing bolt does not scatter, and a weapon of no projectile does not splash.
     let error = set(&[scatter]).unwrap_err();
     let scatters = |problem: &LoadProblem| {

@@ -1,17 +1,89 @@
 use campfire_client_files::ClientUnit;
+use campfire_projectiles::{CruiseData, ProjectileHits, SteerData};
 
 use super::*;
 use crate::zero_hour::error::NameClash;
 use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
-use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
 use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::import_names::ImportNames;
-use crate::zero_hour::imported_type::samples::shell_projectile;
+use crate::zero_hour::object_flight::samples::shell_projectile;
 
-/// A rocket of no `DumbProjectileBehavior`, a missile's.
+/// A rocket of a `MissileAIUpdate` and no locomotor that thrusts, which the import flies not.
 const ROCKET: &str = "Object Rocket\n  Behavior = MissileAIUpdate ModuleTag_01\n  End\nEnd\n";
+
+/// The missiles of the fixture: a guided one, 2 m wide, that flies 1,250 ms, leaves at 150 u/s
+/// and flies 20 u straight; a point one, as a Scud's, that flies 5 s, leaves at 50 u/s, flies
+/// 200 u straight and dives within 200 u of its point; a missile that ignites late, one of no fuel
+/// limit, one that flies a frame, one that bursts as its fuel ends, one that kills a garrison,
+/// and one that walks.
+const MISSILES: &str = "Object Missile\n  Behavior = MissileAIUpdate ModuleTag_01\n    \
+    TryToFollowTarget = Yes\n    FuelLifetime = 1250\n    InitialVelocity = 150\n    \
+    DistanceToTravelBeforeTurning = 20\n  End\n  Locomotor = SET_NORMAL MissileLocomotor\n  \
+    Geometry = Sphere\n  GeometryMajorRadius = 1.0\nEnd\n\
+    Object Scud\n  Behavior = MissileAIUpdate ModuleTag_01\n    TryToFollowTarget = No\n    \
+    FuelLifetime = 5000\n    InitialVelocity = 50\n    DistanceToTravelBeforeTurning = 200\n    \
+    DistanceToTargetBeforeDiving = 200\n  End\n  Locomotor = SET_NORMAL ScudLocomotor\nEnd\n\
+    Object Ignited\n  Behavior = MissileAIUpdate ModuleTag_01\n    FuelLifetime = 1000\n    \
+    IgnitionDelay = 30\n  End\n  Locomotor = SET_NORMAL MissileLocomotor\nEnd\n\
+    Object Endless\n  Behavior = MissileAIUpdate ModuleTag_01\n  End\n  \
+    Locomotor = SET_NORMAL MissileLocomotor\nEnd\n\
+    Object Puff\n  Behavior = MissileAIUpdate ModuleTag_01\n    FuelLifetime = 1\n  End\n  \
+    Locomotor = SET_NORMAL MissileLocomotor\nEnd\n\
+    Object Burster\n  Behavior = MissileAIUpdate ModuleTag_01\n    FuelLifetime = 1000\n    \
+    DetonateOnNoFuel = Yes\n  End\n  Locomotor = SET_NORMAL MissileLocomotor\nEnd\n\
+    Object Flasher\n  Behavior = MissileAIUpdate ModuleTag_01\n    FuelLifetime = 1000\n    \
+    GarrisonHitKillCount = 3\n  End\n  Locomotor = SET_NORMAL MissileLocomotor\nEnd\n\
+    Object Walker\n  Behavior = MissileAIUpdate ModuleTag_01\n    FuelLifetime = 1000\n  End\n  \
+    Locomotor = SET_NORMAL Feet\nEnd\n";
+
+/// The missiles' locomotors: one of 225 u/s, 675 u/s² and 100 °/s, one of 200 u/s, 675 u/s² and
+/// 540 °/s that holds 120 u over the ground, each thrusting, and feet.
+const LOCOMOTORS: &str = "Locomotor MissileLocomotor\n  Speed = 225\n  Acceleration = 675\n  \
+    TurnRate = 100\n  Appearance = THRUST\nEnd\n\
+    Locomotor ScudLocomotor\n  Speed = 200\n  Acceleration = 675\n  TurnRate = 540\n  \
+    PreferredHeight = 120\n  Appearance = THRUST\nEnd\n\
+    Locomotor Feet\n  Speed = 20\n  Appearance = TWO_LEGS\nEnd\n";
+
+/// The weapons of the missiles: a Tank Hunter's of a radius of 5 and a minimum range of 5; a
+/// Scud's of an outer ring of 100 dealing 50 and a minimum range of 200; a torch that sprays a
+/// stream; a poisoner whose missile leaves a poison field; a buggy's that scatters 10 m; one of
+/// each missile that drops; and one whose minimum range is its range.
+const MISSILE_WEAPONS: &str = "Weapon TankHunter\n  PrimaryDamage = 40\n  \
+    PrimaryDamageRadius = 5\n  AttackRange = 175\n  MinimumAttackRange = 5\n  \
+    DelayBetweenShots = 1000\n  ProjectileObject = Missile\nEnd\n\
+    Weapon ScudGun\n  PrimaryDamage = 300\n  PrimaryDamageRadius = 50\n  SecondaryDamage = 50\n  \
+    SecondaryDamageRadius = 100\n  AttackRange = 350\n  MinimumAttackRange = 200\n  \
+    DelayBetweenShots = 100\n  ProjectileObject = Scud\nEnd\n\
+    Weapon BuggyRocket\n  PrimaryDamage = 20\n  ScatterRadius = 10\n  AttackRange = 300\n  \
+    DelayBetweenShots = 100\n  ProjectileObject = Missile\nEnd\n\
+    Weapon Torch\n  PrimaryDamage = 10\n  AttackRange = 75\n  DelayBetweenShots = 100\n  \
+    ProjectileObject = Missile\n  ProjectileStreamName = FlameStream\nEnd\n\
+    Weapon Poisoner\n  PrimaryDamage = 10\n  AttackRange = 75\n  DelayBetweenShots = 100\n  \
+    ProjectileObject = Missile\n  ProjectileDetonationOCL = OCL_Poison\nEnd\n\
+    Weapon Igniter\n  PrimaryDamage = 10\n  AttackRange = 75\n  DelayBetweenShots = 100\n  \
+    ProjectileObject = Ignited\nEnd\n\
+    Weapon Endless\n  PrimaryDamage = 10\n  AttackRange = 75\n  DelayBetweenShots = 100\n  \
+    ProjectileObject = Endless\nEnd\n\
+    Weapon Puffer\n  PrimaryDamage = 10\n  AttackRange = 75\n  DelayBetweenShots = 100\n  \
+    ProjectileObject = Puff\nEnd\n\
+    Weapon Burster\n  PrimaryDamage = 10\n  AttackRange = 75\n  DelayBetweenShots = 100\n  \
+    ProjectileObject = Burster\nEnd\n\
+    Weapon Flasher\n  PrimaryDamage = 10\n  AttackRange = 75\n  DelayBetweenShots = 100\n  \
+    ProjectileObject = Flasher\nEnd\n\
+    Weapon Walker\n  PrimaryDamage = 10\n  AttackRange = 75\n  DelayBetweenShots = 100\n  \
+    ProjectileObject = Walker\nEnd\n\
+    Weapon Close\n  PrimaryDamage = 10\n  AttackRange = 50\n  MinimumAttackRange = 50\n  \
+    DelayBetweenShots = 100\nEnd\n";
+
+/// The rules a weapon of the fixture converts by: `objects` and `locomotors`.
+const fn rules<'a>(objects: &'a ObjectIni, locomotors: &'a LocomotorIni) -> WeaponRules<'a> {
+    WeaponRules {
+        objects,
+        locomotors,
+    }
+}
 
 #[test]
 fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_its_first_cause() {
@@ -21,9 +93,10 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
     objects.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
     objects.read(OBJECTS.as_bytes()).unwrap();
     objects.read(ROCKET.as_bytes()).unwrap();
+    let locomotors = LocomotorIni::default();
     let of = |name: &str| {
         let id = DeclaredName::new(&format!("weapon_{}", name.to_lowercase())).unwrap();
-        ImportedWeapon::of(ini.get(name).unwrap(), &objects, &id)
+        ImportedWeapon::of(ini.get(name).unwrap(), rules(&objects, &locomotors), &id)
     };
     let weapon = |name: &str| of(name).map(|converted| converted.weapon);
     // The rifle's 100 ms are ⌈100 × 0.03⌉ = 3 frames, written back as ⌊3 × 100 / 3⌋ = 100;
@@ -54,7 +127,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
         },
     };
     assert_eq!(weapon("RangerRifle"), Ok(rifle.clone()));
-    assert!(of("RangerRifle").unwrap().shell.is_none());
+    assert!(of("RangerRifle").unwrap().fired.is_none());
     // The cannon fires its shell, which deals its damage within 5 m of where it ends to
     // every relation, its own unit spared, of no `SELF`; it scatters 10 m more at infantry,
     // and reaches from 15° below to 15° above. Its 2,000 ms are 60 frames, 2,000.
@@ -83,22 +156,27 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
             },
         }
     );
-    let shell = cannon.shell.unwrap();
+    let shell = cannon.fired.unwrap();
     assert_eq!(shell.object.name, "TankShell");
     assert_eq!(shell.projectile, shell_projectile(400));
-    // A projectile of no dumb behavior, a missile's, and one no file defines, are dropped.
-    assert_eq!(weapon("Launcher"), Err(WeaponDrop::Missile));
-    assert_eq!(weapon("Phantom"), Err(WeaponDrop::Missile));
-    // A radius or a scatter of no shell, which alone ends where it is dealt or aims at its
-    // scattered point; a second radius; a radius that spares its own kind; a shell that
-    // detonates on shrubbery.
+    // A projectile of no dumb behavior and no locomotor that thrusts, and one no file defines,
+    // are dropped.
+    assert_eq!(weapon("Launcher"), Err(WeaponDrop::NoFlight));
+    assert_eq!(weapon("Phantom"), Err(WeaponDrop::NoFlight));
+    // A radius or a scatter of no projectile, which alone ends where it is dealt or aims at its
+    // scattered point; a second radius of no projectile; a radius that spares its own kind; a shell
+    // that detonates on shrubbery.
     assert_eq!(weapon("Flamer"), Err(WeaponDrop::Radius));
     assert_eq!(weapon("Shotgun"), Err(WeaponDrop::Radius));
     assert_eq!(weapon("Gatling"), Err(WeaponDrop::Scatter));
     assert_eq!(weapon("Lobber"), Err(WeaponDrop::Affects));
     assert_eq!(weapon("Popper"), Err(WeaponDrop::Collides));
     assert_eq!(weapon("Knife"), Err(WeaponDrop::PreAttack));
-    assert_eq!(weapon("Mortar"), Err(WeaponDrop::MinRange));
+    // The mortar keeps its minimum range of 50 within its 300.
+    assert_eq!(
+        weapon("Mortar").map(|mortar| mortar.keys.min_range),
+        Ok(Some(decimal(50)))
+    );
     assert_eq!(weapon("Pistol"), Err(WeaponDrop::RandomDelay));
     assert_eq!(weapon("Marker"), Err(WeaponDrop::NoDelay));
     // A speed below the default lands the damage after the shot, at 2,400 m a second, but a
@@ -156,6 +234,101 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
 }
 
 #[test]
+fn a_missile_converts_to_a_steered_projectile_with_its_rings_and_minimum_or_drops_by_its_cause() {
+    let mut ini = WeaponIni::default();
+    ini.read(MISSILE_WEAPONS.as_bytes()).unwrap();
+    let mut objects = ObjectIni::default();
+    objects.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
+    objects.read(MISSILES.as_bytes()).unwrap();
+    let mut locomotors = LocomotorIni::default();
+    locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+    let of = |name: &str| {
+        let id = DeclaredName::new(&format!("weapon_{}", name.to_lowercase())).unwrap();
+        ImportedWeapon::of(ini.get(name).unwrap(), rules(&objects, &locomotors), &id)
+    };
+    let int = |value: i64| Num::int(value);
+    let decimal = |value: i64| Ranked::One(Number::Value(Scalar::Decimal(Num::int(value))));
+    // The Tank Hunter's missile: its locomotor's 225 u/s, 675 u/s² and 100 °/s, its own launch of
+    // 150 u/s and straight run of 20 u, the default lock of 75 u, half that at a point, its
+    // 1,250 ms of fuel, ⌈37.5⌉ =
+    // 38 frames, 1,266 ms, tracking its target, 2 m wide, striking structures on its way; a splash
+    // of 5 m and a minimum range of 5 m.
+    let hunter = of("TankHunter").unwrap();
+    let steer = SteerData::builder(int(100), 1266)
+        .launch_speed(int(150))
+        .acceleration(int(675))
+        .straight(int(20))
+        .lock(int(75))
+        .point_lock(int(75) / 2)
+        .build()
+        .unwrap();
+    let structures = vec![FilterData::parse("enemies:structure").unwrap()];
+    let missile = ProjectileData::builder(int(225))
+        .width(int(2))
+        .hits(ProjectileHits::Units(structures.clone()))
+        .steer(steer)
+        .build()
+        .unwrap();
+    let fired = hunter.fired.unwrap();
+    assert_eq!(
+        (fired.object.name.as_str(), &fired.projectile),
+        ("Missile", &missile)
+    );
+    assert_eq!(hunter.weapon.keys.min_range, Some(decimal(5)));
+    assert_eq!(
+        hunter.weapon.attack.splash,
+        SplashData::new(int(5), RelationSet::All, true)
+    );
+    // The Scud's: at its point, which it locks on within half its 75 u, cruising 120 u up until
+    // within 200 u,
+    // 5,000 ms of fuel, 150 frames, 5,000, 2 m wide by the default geometry's radius of 1; its
+    // splash of 50 m deals 50 out to 100 m; its minimum range of 200 lies within its 350.
+    let scud = of("ScudGun").unwrap();
+    let steer = SteerData::builder(int(540), 5000)
+        .launch_speed(int(50))
+        .acceleration(int(675))
+        .straight(int(200))
+        .lock(int(75))
+        .point_lock(int(75) / 2)
+        .cruise(CruiseData::new(int(120), int(200)))
+        .tracks(false)
+        .build()
+        .unwrap();
+    let point = ProjectileData::builder(int(200))
+        .width(int(2))
+        .hits(ProjectileHits::Units(structures))
+        .steer(steer)
+        .build()
+        .unwrap();
+    assert_eq!(scud.fired.unwrap().projectile, point);
+    let ring = OuterData::new(int(100), decimal(50));
+    let splash = SplashData::new(int(50), RelationSet::All, true)
+        .unwrap()
+        .with_outer(ring);
+    assert_eq!(scud.weapon.attack.splash, splash);
+    assert_eq!(scud.weapon.keys.min_range, Some(decimal(200)));
+    // The buggy's missile scatters 10 m, and flies to its scattered point.
+    let buggy = of("BuggyRocket").unwrap();
+    let scatter = ScatterData::new(int(10), [].into());
+    assert_eq!(buggy.weapon.attack.scatter, scatter);
+    // Each other drops by its own cause.
+    let dropped = |name: &str| of(name).map(|converted| converted.weapon).err();
+    for (name, cause) in [
+        ("Torch", WeaponDrop::Stream),
+        ("Poisoner", WeaponDrop::DetonationObjects),
+        ("Igniter", WeaponDrop::Ignition),
+        ("Endless", WeaponDrop::NoFuel),
+        ("Puffer", WeaponDrop::Sprayer),
+        ("Burster", WeaponDrop::FuelBurst),
+        ("Flasher", WeaponDrop::GarrisonKill),
+        ("Walker", WeaponDrop::NoFlight),
+        ("Close", WeaponDrop::MinRange),
+    ] {
+        assert_eq!(dropped(name), Some(cause), "{name}");
+    }
+}
+
+#[test]
 fn a_continuous_fire_converts_with_a_rate_for_each_stage_or_drops() {
     let streak = |lines: &str| {
         let mut ini = WeaponIni::default();
@@ -163,7 +336,8 @@ fn a_continuous_fire_converts_with_a_rate_for_each_stage_or_drops() {
             format!("Weapon W\n  PrimaryDamage = 5\n  DelayBetweenShots = 100\n{lines}End\n");
         ini.read(text.as_bytes()).unwrap();
         let id = DeclaredName::new("weapon_w").unwrap();
-        ImportedWeapon::of(ini.get("W").unwrap(), &ObjectIni::default(), &id)
+        let (objects, locomotors) = (ObjectIni::default(), LocomotorIni::default());
+        ImportedWeapon::of(ini.get("W").unwrap(), rules(&objects, &locomotors), &id)
             .map(|converted| converted.weapon.attack.streak.map(|streak| streak.coast_ms))
     };
     let rates = "  WeaponBonus = CONTINUOUS_FIRE_MEAN RATE_OF_FIRE 150%\n  \
@@ -197,7 +371,8 @@ fn a_pitch_bound_reads_within_a_quarter_turn_and_a_radius_its_relations() {
             format!("Weapon W\n  PrimaryDamage = 5\n  DelayBetweenShots = 100\n{lines}End\n");
         ini.read(text.as_bytes()).unwrap();
         let id = DeclaredName::new("weapon_w").unwrap();
-        ImportedWeapon::of(ini.get("W").unwrap(), &ObjectIni::default(), &id)
+        let (objects, locomotors) = (ObjectIni::default(), LocomotorIni::default());
+        ImportedWeapon::of(ini.get("W").unwrap(), rules(&objects, &locomotors), &id)
             .map(|converted| converted.weapon.attack.pitch_deg)
     };
     // A bound of the defaults, a turn either way, is none; one side's bound keeps the
@@ -297,7 +472,7 @@ fn weapons_of_one_name_but_case_share_an_action_only_of_the_same_numbers() {
             let object = rules.objects.object(object.as_bytes()).unwrap();
             names.unit_type(object, &LocomotorIni::default()).unwrap();
         }
-        CombatImport::of(&rules, &mut names.into_production().into_shells())
+        CombatImport::of(&rules, &mut names.into_production().into_projectiles())
     };
     let gun = |name: &str, damage: u8| {
         format!("Weapon {name}\n  PrimaryDamage = {damage}\n  DelayBetweenShots = 100\nEnd\n")
@@ -326,7 +501,7 @@ fn a_living_type_takes_its_armor_by_the_name_of_its_case() {
         let mut names = ImportNames::default();
         let object = rules.objects.object(b"Guard").unwrap();
         names.unit_type(object, &LocomotorIni::default()).unwrap();
-        let mut names = names.into_production().into_shells();
+        let mut names = names.into_production().into_projectiles();
         CombatImport::of(&rules, &mut names).map(|import| import.armors.len())
     };
     // The fixture's two armors are written whatever the types name; an armor of another
@@ -371,7 +546,7 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
             let object = rules.objects.object(object.as_bytes()).unwrap();
             names.unit_type(object, &LocomotorIni::default()).unwrap();
         }
-        let mut names = names.into_production().into_shells();
+        let mut names = names.into_production().into_projectiles();
         let combat = CombatImport::of(&rules, &mut names)?;
         let deliveries: Vec<(String, String)> = combat
             .actions
@@ -389,13 +564,13 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
             .filter(|(name, ..)| name.as_str().starts_with("tankshell"))
             .map(|(name, _, imported)| (name.as_str().to_owned(), imported.clone()))
             .collect();
-        Ok::<_, ZeroHourError>((deliveries, shells, combat.shell_looks))
+        Ok::<_, ZeroHourError>((deliveries, shells, combat.projectile_looks))
     };
     let pair = |a: &str, b: &str| (a.to_owned(), b.to_owned());
     let shell = |name: &str, speed| {
         (
             name.to_owned(),
-            ImportedType::shell(shell_projectile(speed)),
+            ImportedType::of_projectile(shell_projectile(speed)),
         )
     };
     // Two weapons of one speed fire one type, of the object's name, which keeps its look.
@@ -426,7 +601,7 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
             shell("tankshell_howitzer", 300)
         ]
     );
-    let look = |unit_type: &str| ShellLook {
+    let look = |unit_type: &str| ProjectileLook {
         unit_type: DeclaredName::new(unit_type).unwrap(),
         object: DeclaredName::new("tankshell").unwrap(),
     };
@@ -440,10 +615,10 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
         .units
         .insert(DeclaredName::new("tankshell").unwrap(), own);
     CombatImport {
-        shell_looks: looks,
+        projectile_looks: looks,
         ..CombatImport::default()
     }
-    .add_shell_looks(&mut client);
+    .add_projectile_looks(&mut client);
     let named: Vec<&str> = client.units.keys().map(DeclaredName::as_str).collect();
     assert_eq!(
         named,

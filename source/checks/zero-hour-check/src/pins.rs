@@ -167,6 +167,19 @@ pub(crate) struct DefenseTicks {
     pub(crate) death: u64,
 }
 
+/// The ticks of the missile play's steps no closed form gives: the barracks' and the Tank
+/// Hunter's, and from the bot dozer's order to the first steered missile, which the hunter fires
+/// ordered nothing, to the dozer's first damage, and to its death.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MissileTicks {
+    pub(crate) built: u64,
+    pub(crate) trained: u64,
+    pub(crate) shot: u64,
+    pub(crate) hit: u64,
+    pub(crate) death: u64,
+}
+
 /// The ticks of the skirmish's steps no closed form gives: the barracks', from its order to its
 /// whole building, its dozer's drive round the command center's box to the site among them; each
 /// of the factory's chain's; and the fight's, from the attack's order to the first shell's launch,

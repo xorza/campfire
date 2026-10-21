@@ -1,18 +1,23 @@
 use campfire_actions::TypeSlotsData;
-use campfire_bots::{BotBuffers, BotScript, BotSink, HeldBotView, NamedRefs, OrderUnsent};
+use std::num::NonZeroU32;
+
+use campfire_bots::{
+    BotBuffers, BotNames, BotScript, BotSink, HeldBotView, Location, NamedRefs, OrderScript,
+    OrderUnsent, ScriptedOrder, ScriptedUnits,
+};
 use campfire_capabilities::{Directive, Match, Order};
 use campfire_common::{DeclaredName, Seat, Tick};
-use campfire_harness::{FixedMatch, MatchUnits};
+use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
 use campfire_math::{Num, Vec3};
-use campfire_mode::SeatPick;
+use campfire_mode::{OptionPicks, OptionValue, SeatPick};
 use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
 use campfire_players::PlayersWorld;
 use campfire_production::Site;
-use campfire_protocol::ServerInput;
+use campfire_protocol::{InputRules, SeatPlan, ServerInput};
 use campfire_runner::SessionWorld;
 use campfire_sim::{Position, StableId};
-use campfire_units::{BuildTarget, GroundPoint, Life, Units};
+use campfire_units::{BuildTarget, GroundPoint, Life, MapPoint, Units};
 use campfire_values::{ResourceId, UnitType};
 
 use crate::failure::CheckFailure;
@@ -22,6 +27,16 @@ use crate::pins::HZ;
 pub(crate) const CENTER: &str = "americacommandcenter";
 /// America's dozer, the unit a skirmish starts a player with.
 pub(crate) const DOZER: &str = "americavehicledozer";
+
+/// China's dozer, the unit a skirmish starts China's player with.
+pub(crate) const CHINA_DOZER: &str = "chinavehicledozer";
+
+/// The money every player starts with, the most of Zero Hour's choices, which a play's host
+/// picks (09-zero-hour.md, The import writes Zero Hour's money as an option).
+pub(crate) const START_MONEY: &str = "start_money=50000";
+
+/// Player 1's pick of China (09-zero-hour.md, Each player picks a faction).
+pub(crate) const CHINA: &str = "0:faction=china";
 
 /// The most ticks a play waits for a step, past which it never ends.
 pub(crate) const STEP_LIMIT: u64 = HZ * 60 * 5;
@@ -94,6 +109,30 @@ pub(crate) fn america(seats: u32) -> Vec<SeatPick> {
         .collect()
 }
 
+/// Plays `steps` in a match of `packages` at `rate` ticks a second, of player 1, China, against
+/// America's bot, player 1 starting with `START_MONEY`, and ends the match; what they measured,
+/// or their failure, or a failure when the mode takes no such pick.
+pub(crate) fn china_against_america<T>(
+    packages: ModePackages,
+    rate: NonZeroU32,
+    steps: impl FnOnce(&mut MatchPlay, &ModePackages) -> Result<T, CheckFailure>,
+) -> Result<T, CheckFailure> {
+    let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
+    let picks = OptionPicks::named(&packages.data().options, &[start_money])
+        .map_err(CheckFailure::Options)?;
+    let plan = [SeatPlan::Player, SeatPlan::Bot];
+    let china: SeatPick = CHINA.parse().expect("the play's pick");
+    let bot = america(2).pop().expect("the bot's pick of America");
+    let session = FixedSession::planned(packages, InputRules::ROOMY, plan)
+        .rate(rate)
+        .picked(picks.places())
+        .seat_picked(&[china, bot]);
+    let mut play = MatchPlay::new(session.start());
+    let played = steps(&mut play, session.packages());
+    play.end();
+    played
+}
+
 impl MatchPlay {
     /// `fixed`, before its first tick.
     pub(crate) const fn new(fixed: FixedMatch) -> Self {
@@ -122,6 +161,35 @@ impl MatchPlay {
             farthest: Num::ZERO,
         });
         Ok(())
+    }
+
+    /// Drives the bot, player 2, by one order in the tick it runs next, of `packages`: its dozer
+    /// moves to the point `short` meters along −z of player 1's `unit`; the dozer, or a failure
+    /// when the bot lacks its one dozer or the mode a name the order reads.
+    pub(crate) fn drive_bot_dozer(
+        &mut self,
+        packages: &ModePackages,
+        unit: StableId,
+        short: Num,
+    ) -> Result<StableId, CheckFailure> {
+        let at = MatchUnits::of(self.game()).position(unit);
+        let to = MapPoint::Ground([at.x, at.z - short]);
+        let drive = ScriptedOrder {
+            tick: self.tick,
+            units: ScriptedUnits::Typed(DeclaredName::new(DOZER).expect("the dozer's name")),
+            directive: Directive::Orders(OrdersDirective::Move {
+                to: Location::At(to),
+            }),
+        };
+        let script = OrderScript::of_orders([drive]).map_err(CheckFailure::BotOrders)?;
+        let books = packages.name_books();
+        let bot =
+            BotScript::new(&script, &BotNames::new(&books)).map_err(CheckFailure::BotNames)?;
+        self.drive_bot(1, bot)?;
+        let [dozer] = self.owned(DOZER, 1)?[..] else {
+            return Err(CheckFailure::FightStart);
+        };
+        Ok(dozer)
     }
 
     /// The farthest a unit of the bot stood from its command center, on the ground plane, in

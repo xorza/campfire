@@ -21,6 +21,7 @@ use crate::defense_play::DefensePlay;
 use crate::error::CheckError;
 use crate::failure::{CheckFailure, Differs};
 use crate::golden::{Golden, Measured};
+use crate::missile_play::MissilePlay;
 use crate::pins::{
     FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
     ProducedCounts, ProductionSteps, SkirmishTicks, SuppliedCounts, SupplySteps, TerrainCounts,
@@ -406,6 +407,24 @@ impl ImportCheck<'_> {
                 hit = defense.hit,
                 death = defense.death,
                 "player 1's Gattling Cannon, ordered nothing, spun up and killed the bot's dozer"
+            );
+        }
+        let played = self
+            .game
+            .mode_packages(Some(self.map))
+            .map_err(CheckError::Load)?;
+        if let Some(missile) = MissilePlay::run(played, rate, &mut self.failures) {
+            let expected = self.pinned(|golden| golden.missile, missile);
+            self.failures
+                .extend(Differs::of(missile, expected).map(CheckFailure::Missile));
+            self.measured.missile = Some(missile);
+            info!(
+                built = missile.built,
+                trained = missile.trained,
+                shot = missile.shot,
+                hit = missile.hit,
+                death = missile.death,
+                "player 1's Tank Hunter, ordered nothing, killed the bot's dozer with its missiles"
             );
         }
         if let Some(drive) = StartDrive::run(self.packages, rate, &mut self.failures) {

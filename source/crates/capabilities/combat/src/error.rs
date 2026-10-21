@@ -31,8 +31,8 @@ pub enum CombatDataError {
     #[error(transparent)]
     Time(#[from] TimeTooLarge),
     /// A weapon whose delivery is an area or a projectile that flies in a line, where a weapon's
-    /// is a homing projectile or a curve.
-    #[error("a weapon's delivery is a homing projectile or a curve")]
+    /// is a projectile launched at a unit.
+    #[error("a weapon's delivery is a projectile launched at a unit")]
     Delivery,
     /// A splash, and no projectile delivery for it to go off where it ends.
     #[error("a splash goes off where a projectile of its delivery ends")]
@@ -40,8 +40,8 @@ pub enum CombatDataError {
     /// A splash's outer ring whose amount is not a number at least 0 at a rank.
     #[error("a splash's outer ring deals a number at least 0")]
     OuterAmount,
-    /// A scatter, and no projectile delivery that flies a curve for it to aim.
-    #[error("a scatter aims a curve of its delivery")]
+    /// A scatter, and no projectile delivery that flies to a point for it to aim.
+    #[error("a scatter aims a projectile of its delivery that flies to a point")]
     Scatter,
     /// A speed, which delays the hit of a weapon of no delivery, and a delivery.
     #[error("a speed delays the hit of a weapon of no delivery")]

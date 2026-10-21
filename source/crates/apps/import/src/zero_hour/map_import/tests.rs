@@ -336,7 +336,7 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
     // has the game's default height, 1 m, as no geometry names its own.
     let units = mem::take(&mut names)
         .into_production()
-        .into_shells()
+        .into_projectiles()
         .close()
         .bare_file();
     assert_eq!(units.text, UNITS_TOML);

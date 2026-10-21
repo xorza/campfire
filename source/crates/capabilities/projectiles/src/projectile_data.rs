@@ -33,7 +33,8 @@ pub struct ProjectileData {
 /// A projectile's `steer` (12-missiles.md, A steered flight): it leaves at `launch_speed` m/s,
 /// gains `acceleration` m/s each second up to its projectile's speed, flies straight for
 /// `straight` meters, then turns toward its target by at most `turn_rate` degrees a second; it
-/// flies straight at its target within `lock` meters on the ground; it holds `cruise`'s height
+/// flies straight at its target within `lock` meters on the ground, or at its point within
+/// `point_lock`, `lock` when it has none; it holds `cruise`'s height
 /// over its target until within its dive; it ends as `fuel_ms` runs out; and, unless it
 /// `tracks` its target, it flies to the point where its target stood as it launched.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +44,7 @@ pub struct SteerData {
     pub(crate) turn_rate: Num,
     pub(crate) straight: Num,
     pub(crate) lock: Num,
+    pub(crate) point_lock: Option<Num>,
     pub(crate) fuel_ms: u32,
     pub(crate) cruise: Option<CruiseData>,
     pub(crate) tracks: bool,
@@ -372,6 +374,7 @@ impl SteerData {
             turn_rate,
             straight: Num::ZERO,
             lock: Num::ZERO,
+            point_lock: None,
             fuel_ms,
             cruise: None,
             tracks: true,
@@ -405,6 +408,12 @@ impl SteerDataBuilder {
     }
 
     #[must_use]
+    pub const fn point_lock(mut self, point_lock: Num) -> Self {
+        self.0.point_lock = Some(point_lock);
+        self
+    }
+
+    #[must_use]
     pub const fn cruise(mut self, cruise: CruiseData) -> Self {
         self.0.cruise = Some(cruise);
         self
@@ -416,8 +425,8 @@ impl SteerDataBuilder {
         self
     }
 
-    /// The steer; an error for a fuel of 0, a turn rate below 0, or a launch speed, an
-    /// acceleration, a straight run, a lock or a cruise's height or dive below 0 or past
+    /// The steer; an error for a fuel of 0, a turn rate or an acceleration below 0, or a launch
+    /// speed, a straight run, a lock, a point's lock or a cruise's height or dive below 0 or past
     /// `MAX_BOUND`.
     pub fn build(self) -> Result<SteerData, ProjectileDataError> {
         let steer = self.0;
@@ -427,14 +436,17 @@ impl SteerDataBuilder {
         let holds = |value: Num| (Num::ZERO..=MAX_BOUND).contains(&value);
         let numbers = [
             steer.launch_speed.unwrap_or(Num::ZERO),
-            steer.acceleration,
             steer.straight,
             steer.lock,
+            steer.point_lock.unwrap_or(Num::ZERO),
         ];
         let cruise = steer
             .cruise
             .map_or([Num::ZERO; 2], |cruise| [cruise.height, cruise.dive]);
-        if steer.turn_rate < Num::ZERO || !numbers.into_iter().chain(cruise).all(holds) {
+        let rates = [steer.turn_rate, steer.acceleration];
+        if rates.into_iter().any(|rate| rate < Num::ZERO)
+            || !numbers.into_iter().chain(cruise).all(holds)
+        {
             return Err(ProjectileDataError::SteerNumber);
         }
         Ok(steer)
@@ -462,6 +474,7 @@ impl<'de> Deserialize<'de> for SteerData {
             straight: Num,
             #[serde(default)]
             lock: Num,
+            point_lock: Option<Num>,
             fuel_ms: u32,
             cruise: Option<CruiseData>,
             tracks: Option<bool>,
@@ -474,6 +487,9 @@ impl<'de> Deserialize<'de> for SteerData {
             .tracks(fields.tracks.unwrap_or(true));
         if let Some(launch) = fields.launch_speed {
             builder = builder.launch_speed(launch);
+        }
+        if let Some(point_lock) = fields.point_lock {
+            builder = builder.point_lock(point_lock);
         }
         if let Some(cruise) = fields.cruise {
             builder = builder.cruise(cruise);
@@ -498,6 +514,9 @@ impl Serialize for SteerData {
         }
         if self.lock != Num::ZERO {
             map.serialize_entry("lock", &self.lock)?;
+        }
+        if let Some(point_lock) = self.point_lock {
+            map.serialize_entry("point_lock", &point_lock)?;
         }
         map.serialize_entry("fuel_ms", &self.fuel_ms)?;
         if let Some(cruise) = &self.cruise {
@@ -651,7 +670,8 @@ mod tests {
                 "a projectile's range is not negative",
             ),
             // A steer takes nothing of another flight, leaves no faster than its speed, flies for
-            // some time, turns by a rate not negative, and holds its other numbers within 2,048.
+            // some time, turns and speeds up by rates not negative, and holds its other numbers
+            // within 2,048.
             (
                 "speed = 20\nhoming = true\nsteer = { turn_rate = 90, fuel_ms = 1000 }",
                 "a steer takes no `homing`",
@@ -666,11 +686,19 @@ mod tests {
             ),
             (
                 "speed = 20\nsteer = { turn_rate = -1, fuel_ms = 1000 }",
-                "a steer's turn rate is not negative",
+                "a steer's turn rate and acceleration are not negative",
             ),
             (
                 "speed = 20\nsteer = { turn_rate = 90, fuel_ms = 1000, lock = 2049 }",
-                "a steer's turn rate is not negative",
+                "a steer's turn rate and acceleration are not negative",
+            ),
+            (
+                "speed = 20\nsteer = { turn_rate = 90, acceleration = -1, fuel_ms = 1000 }",
+                "a steer's turn rate and acceleration are not negative",
+            ),
+            (
+                "speed = 20\nsteer = { turn_rate = 90, fuel_ms = 1000, point_lock = -1 }",
+                "a steer's turn rate and acceleration are not negative",
             ),
         ] {
             assert!(refusal(text).starts_with(message), "{text}");
@@ -678,14 +706,19 @@ mod tests {
         // A projectile writes each field but its defaults, and reads back what it wrote: a line of
         // its speed alone, one of every field a line takes, a curve that hits nothing, and a steer
         // of every field and of the fewest, which tracks its target and leaves at its speed.
-        let steered = read("speed = 20\nsteer = { turn_rate = 9000, fuel_ms = 1 }").unwrap();
-        let steer = SteerData::builder(Num::int(9000), 1).build().unwrap();
+        let steered =
+            read("speed = 20\nsteer = { turn_rate = 9000, acceleration = 9160, fuel_ms = 1 }")
+                .unwrap();
+        let steer = SteerData::builder(Num::int(9000), 1)
+            .acceleration(Num::int(9160))
+            .build()
+            .unwrap();
         assert_eq!(
             (steered.steer, steered.flight()),
             (Some(steer), ProjectileFlight::Steered)
         );
         for text in [
-            "speed = 20\n\n[steer]\nlaunch_speed = 15\nacceleration = 675\nturn_rate = 100\nstraight = 3\nlock = 75\nfuel_ms = 1800\ntracks = false\n\n[steer.cruise]\nheight = 120\ndive = 100\n",
+            "speed = 20\n\n[steer]\nlaunch_speed = 15\nacceleration = 675\nturn_rate = 100\nstraight = 3\nlock = 75\npoint_lock = \"37.5\"\nfuel_ms = 1800\ntracks = false\n\n[steer.cruise]\nheight = 120\ndive = 100\n",
             "speed = 20\n\n[steer]\nturn_rate = 100\nfuel_ms = 1800\n",
             "speed = \"0.5\"\n",
             "speed = 20\nwidth = 2\nrange = 9\nhoming = true\nstop_on_hit = true\nonce_per_cast = true\nhits = [\"enemies:structure\", \"all:wall\"]\n",

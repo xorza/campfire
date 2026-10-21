@@ -53,7 +53,9 @@ pub enum ProjectileDataError {
     SteerLaunch,
     #[error("a steer's `fuel_ms` is positive")]
     SteerFuel,
-    #[error("a steer's turn rate is not negative, and its other numbers are from 0 to 2,048")]
+    #[error(
+        "a steer's turn rate and acceleration are not negative, and its other numbers are from 0 to 2,048"
+    )]
     SteerNumber,
 }
 

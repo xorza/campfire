@@ -45,4 +45,9 @@ impl ProjectileFlight {
     pub const fn is_at_unit(self) -> bool {
         matches!(self, Self::Homing | Self::Curve | Self::Steered)
     }
+
+    /// Whether a shot of it at a point flies to that point, as a scatter aims it.
+    pub const fn flies_to_point(self) -> bool {
+        matches!(self, Self::Curve | Self::Steered)
+    }
 }

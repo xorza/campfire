@@ -1,28 +1,11 @@
 use std::num::NonZeroU32;
 
-use campfire_bots::{BotNames, BotScript, Location, OrderScript, ScriptedOrder, ScriptedUnits};
-use campfire_capabilities::Directive;
-use campfire_common::DeclaredName;
-use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::Num;
-use campfire_mode::{OptionPicks, OptionValue, SeatPick};
-use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
-use campfire_protocol::{InputRules, SeatPlan};
-use campfire_units::MapPoint;
 
 use crate::failure::{CheckFailure, Differs};
-use crate::match_play::{BuildingDozer, DOZER, MatchPlay, PlannedBuilding, STEP_LIMIT, america};
+use crate::match_play::{self, BuildingDozer, CHINA_DOZER, MatchPlay, PlannedBuilding, STEP_LIMIT};
 use crate::pins::DefenseTicks;
-
-/// The money player 1 starts with, as the skirmish play's host picks it.
-const START_MONEY: &str = "start_money=50000";
-
-/// Player 1's pick of China.
-const CHINA: &str = "0:faction=china";
-
-/// China's dozer.
-const CHINA_DOZER: &str = "chinavehicledozer";
 
 /// The power plant, which the cannon needs, where the supply play places its own, and the
 /// cannon, 216 m along −z from `Player_1_Start`, where the skirmish play places its barracks,
@@ -73,31 +56,9 @@ impl DefensePlay {
         rate: NonZeroU32,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<DefenseTicks> {
-        let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
-        let picks = match OptionPicks::named(&packages.data().options, &[start_money]) {
-            Ok(picks) => picks,
-            Err(error) => {
-                failures.push(CheckFailure::Options(error));
-                return None;
-            }
-        };
-        let plan = [SeatPlan::Player, SeatPlan::Bot];
-        let china: SeatPick = CHINA.parse().expect("the play's pick");
-        let bot = america(2).pop().expect("the bot's pick of America");
-        let session = FixedSession::planned(packages, InputRules::ROOMY, plan)
-            .rate(rate)
-            .picked(picks.places())
-            .seat_picked(&[china, bot]);
-        let mut play = MatchPlay::new(session.start());
-        let played = Self::steps(&mut play, session.packages());
-        play.end();
-        match played {
-            Ok(played) => Some(played),
-            Err(failure) => {
-                failures.push(failure);
-                None
-            }
-        }
+        match_play::china_against_america(packages, rate, Self::steps)
+            .map_err(|failure| failures.push(failure))
+            .ok()
     }
 
     /// The steps in `play` of `packages`, after its start's tick.
@@ -117,23 +78,7 @@ impl DefensePlay {
         let [cannon] = play.owned(CANNON, 0)?[..] else {
             return Err(CheckFailure::ProductionStart);
         };
-        let at = MatchUnits::of(play.game()).position(cannon);
-        let to = MapPoint::Ground([at.x, at.z - SHORT_OF_THE_CANNON]);
-        let drive = ScriptedOrder {
-            tick: play.tick(),
-            units: ScriptedUnits::Typed(DeclaredName::new(DOZER).expect("the dozer's name")),
-            directive: Directive::Orders(OrdersDirective::Move {
-                to: Location::At(to),
-            }),
-        };
-        let script = OrderScript::of_orders([drive]).map_err(CheckFailure::BotOrders)?;
-        let books = packages.name_books();
-        let bot =
-            BotScript::new(&script, &BotNames::new(&books)).map_err(CheckFailure::BotNames)?;
-        play.drive_bot(1, bot)?;
-        let [enemy] = play.owned(DOZER, 1)?[..] else {
-            return Err(CheckFailure::FightStart);
-        };
+        let enemy = play.drive_bot_dozer(packages, cannon, SHORT_OF_THE_CANNON)?;
         let mut life = play.life(enemy);
         let mut hits = Vec::with_capacity(SPIN_UP.len() + 1);
         for ticks in 1..=STEP_LIMIT {

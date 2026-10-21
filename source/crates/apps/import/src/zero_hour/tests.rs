@@ -36,9 +36,9 @@ use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, MORE_O
 use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::format::map::map_file::samples::map;
-use crate::zero_hour::imported_type::samples::shell_projectile;
 use crate::zero_hour::install::samples::{fixture, packed_map};
 use crate::zero_hour::model_import::{Converted, ModelImport};
+use crate::zero_hour::object_flight::samples::shell_projectile;
 use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::weapon_drop::WeaponDrop;
 
@@ -642,7 +642,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     SkirmishStart::of(&rules, &mut names).unwrap();
     let mut names = names.into_production();
     let production = ProductionImport::of(&rules, &mut names);
-    let mut names = names.into_shells();
+    let mut names = names.into_projectiles();
     let combat = CombatImport::of(&rules, &mut names).unwrap();
     let types = names.close();
     let units = types.units_file(TypeAdditions {

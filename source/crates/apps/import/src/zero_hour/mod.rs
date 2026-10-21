@@ -62,6 +62,7 @@ pub(crate) mod model_assets;
 pub(crate) mod model_import;
 pub(crate) mod model_nodes;
 pub(crate) mod model_writer;
+pub(crate) mod object_flight;
 mod press_import;
 pub(crate) mod production_import;
 pub(crate) mod rules_package;
@@ -246,12 +247,12 @@ impl ZeroHour {
         let money = game.multiplayer.money()?;
         let mut object_names = object_names.into_production();
         let production = ProductionImport::of(&game, &mut object_names);
-        let mut object_names = object_names.into_shells();
+        let mut object_names = object_names.into_projectiles();
         let combat = CombatImport::of(&game, &mut object_names)?;
-        combat.add_shell_looks(&mut looks);
+        combat.add_projectile_looks(&mut looks);
         let text = Toml::write(&looks);
         writer.write(ClientUnits::path(), text.as_bytes())?;
-        // Every unit type is made: the maps', the start's, the command sets' and the shells'
+        // Every unit type is made: the maps', the start's, the command sets' and the projectiles
         // their weapons fire. The stages after read their closed set, and return what they give
         // each.
         let types = object_names.close();

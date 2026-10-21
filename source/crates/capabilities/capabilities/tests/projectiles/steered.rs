@@ -295,6 +295,27 @@ fn a_cruising_missile_holds_its_height_until_its_dive_and_one_ends_on_the_ground
 }
 
 #[test]
+fn a_flight_to_a_point_locks_on_within_its_points_lock_its_units_lock_by_default() {
+    // Tracking no target, turning any way, at a target at (4, 0, 0), cruising 3 m up with no dive:
+    // within a point's lock of 10 m, its own or its lock's, it steps straight at the point, to
+    // (1, 0, 0); within a point's lock of 0 it steers at (4, 3, 0), its step (4, 3, 0) / 5, to
+    // (0.8, 0.6, 0), however wide its lock at a unit.
+    let first = |lock: SteerDataBuilder| {
+        let cruise = CruiseData::new(Num::int(3), Num::ZERO);
+        let data = missile(lock.cruise(cruise).tracks(false).build().unwrap());
+        let mut game = volley_match();
+        Steering::place(&mut game, &data).launch(&mut game, (4, 0, 0));
+        game.step();
+        standing(&game).unwrap()
+    };
+    let ten = Num::int(10);
+    assert_eq!(first(steer(5400).point_lock(ten)), Vec3::from((1, 0, 0)));
+    assert_eq!(first(steer(5400).lock(ten)), Vec3::from((1, 0, 0)));
+    let unlocked = first(steer(5400).lock(ten).point_lock(Num::ZERO));
+    assert!(near(unlocked, ["0.8", "0.6", "0"], 4), "{unlocked:?}");
+}
+
+#[test]
 fn a_missile_that_tracks_no_target_flies_to_where_it_stood_and_ends_there() {
     // Tracking no target, at a target at (4, 0, 0) that moves to (0, 0, 4): it flies on to
     // (4, 0, 0), a meter a tick, and ends there, its target struck by nothing.
