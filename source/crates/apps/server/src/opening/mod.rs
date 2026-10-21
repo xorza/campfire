@@ -5,8 +5,8 @@ use std::time::{Duration, SystemTime};
 use campfire_common::MapName;
 use campfire_mode::{OptionPicks, OptionValue, SeatPick, SeatPicks};
 use campfire_net::{
-    Lobby, LobbyOpening, PendingRestore, Publisher, RestoredSession, ServerBots, ServerDir,
-    ServerSetup, SessionDir, SessionOpening, UncheckedRestore,
+    Lobby, LobbyOpening, LobbyStart, PendingRestore, Publisher, RestoredSession, ServerBots,
+    ServerDir, ServerSetup, SessionDir, SessionOpening, UncheckedRestore,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::SessionTerms;
@@ -217,6 +217,7 @@ impl Opening {
             options: setup.options,
             seat_picks: setup.seat_picks,
             server: setup.server,
+            start: LobbyStart::Players,
         };
         Lobby::open(opening, setup.data).map_err(OpeningError::Open)
     }

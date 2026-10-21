@@ -2,22 +2,26 @@
 //! setting): a link with no slot, admitted while the session holds a place for it, watches every
 //! unit through any fog, or the teams' views it chooses, and holds of each entity what its kind's
 //! audience gives spectators. It predicts nothing, and its join's burst of the whole world crosses
-//! a slow link in the frames its rate allows.
+//! a slow link in the frames its rate allows. A watched session may seat bots alone, and starts as
+//! its watcher joins.
 
 use std::collections::BTreeSet;
 
-use bevy_app::App;
+use bevy_app::{App, AppExit};
 use bevy_ecs::query::{Allow, With};
 use campfire_bots::OrderScript;
 use campfire_net::{
-    CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, WatchRequest,
+    CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, LobbyStart, Loss,
+    MatchClock, SimServerWorld, StopRequest, WatchRequest,
 };
 use campfire_net_core::LinkDirection;
 use campfire_net_emulator::{LinkModel, RateLimit};
-use campfire_net_harness::{InProcessMatch, InProcessSetup};
+use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_prediction::RollbackMode;
 use campfire_net_replication::Replicate;
+use campfire_progression::Experience;
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
+use campfire_store::internals::TestDir;
 use campfire_units::{Life, SpawnPoint, UnitsWorld};
 use campfire_values::{Relations, Team, TeamSet};
 
@@ -107,6 +111,51 @@ fn a_spectator_watches_every_unit_holds_what_spectators_may_and_only_one_finds_a
             cause: LinkLossCause::ClientClosed(CloseCode::JoinRefused)
         }]
     );
+}
+
+#[test]
+fn a_watched_session_of_bots_alone_starts_as_its_watcher_joins_and_runs_on_until_a_stop() {
+    // Two bots, one a side, each picking its hero in tick 0, and no player
+    // (12-test-matches.md, A local session may seat bots alone).
+    const PICK: &str = "[[input]]\ntick = 0\nname = \"pick\"\nvalue = \"runner\"\n";
+    let test_dir = TestDir::new();
+    let mut local = InProcessMatch::new(InProcessSetup {
+        players: 0,
+        bots: &[PICK, PICK],
+        start: LobbyStart::Watched,
+        ..duo(&[], 1)
+    });
+    local.keep_data(test_dir.path("data"));
+    local.open_lobby();
+    for _ in 0..JOIN_STEPS {
+        local.step();
+    }
+    assert!(!local.server().world().contains_resource::<MatchClock>());
+
+    // The match starts as the watcher joins, which watches as the server played tick 0 alone,
+    // and holds every entity, both sides' heroes among them.
+    let spectator = local.add_spectator();
+    local.step_until(JOIN_STEPS, |local| {
+        state(local, spectator).watching_clock().is_some()
+    });
+    assert_eq!(local.next_tick(End::Server), 1);
+    for _ in 0..5 {
+        local.step();
+    }
+    let all = replicated(local.server_mut());
+    assert_eq!(held(local.client_mut(spectator)), all);
+    let world = local.server_mut().world_mut();
+    let mut heroes = world.query_filtered::<&Team, With<Experience>>();
+    let teams: BTreeSet<Team> = heroes.iter(world).copied().collect();
+    assert_eq!(teams.len(), 2);
+
+    // No player is left to leave: the session runs on until a stop.
+    for _ in 0..30 {
+        local.step();
+    }
+    let world = local.server_mut().world_mut();
+    assert_eq!(world.exit_due(StopRequest::NotAsked), None);
+    assert_eq!(world.exit_due(StopRequest::Asked), Some(AppExit::Success));
 }
 
 #[test]

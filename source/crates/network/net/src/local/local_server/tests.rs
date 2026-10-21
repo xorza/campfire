@@ -50,6 +50,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         bots: Vec::new(),
         options: Vec::new(),
         seat_picks: Vec::new(),
+        role: JoinRole::Play,
         pace,
         os: Os {
             clock: UnixClock::manual(TestKey::NOW),

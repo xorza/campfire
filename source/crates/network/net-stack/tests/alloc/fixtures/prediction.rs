@@ -50,7 +50,7 @@ fn a_sealed_predicted_update_each_tick_stays_in_its_budget() {
 
 #[track_caller]
 fn audit_prediction(kind: ClientKind) {
-    let mut stepper = Stepper::new(FullStack, StepperSetup::with_clients(vec![kind]));
+    let mut stepper = Stepper::new(FullStack, StepperSetup::with_clients(kind, 1));
     stepper.server_app_mut().add_systems(FixedUpdate, increment);
     stepper
         .client_app_mut(0)

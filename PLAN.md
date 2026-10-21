@@ -16,17 +16,9 @@ The user. Last: it ends the slice. Its decisions are in [Production](docs/design
 
 The user starts the client as a spectator of Tournament Desert, where two bots, China and America, each start with a base of every building its faction builds and two of each unit it trains, and send their armies at each other; and the user starts a match of their own on such a base ([proposal](docs/design/12-test-matches.md)). Each batch is one commit, ends with `cargo drive gate` passing, and stops for review.
 
-### 1. A session of bots alone (M)
-
-`net`, `client`, 08-sessions.md. First: the watch needs it, with the plain start of today.
-
-- **The session.** `LobbyOpening` names whom the lobby waits for: its players, or, of a local watch, its watcher; `Lobby::new` (`network/net/src/sim_server/lobby/mod.rs:159`) opens a local watch's plan of no player seat and keeps `LobbyError::NoPlayer` for every other, and `Lobby::start_when_full` (`lobby/mod.rs:281`) starts a local watch's match as its spectator joins; `exit_due` (`network/net/src/sim_server/sim_server_world/mod.rs:135`) ends a session of no player seat as its match ends or a stop asks it to, never because every player left. Builds: what can be forgotten is a type.
-- **The local watch.** With `--spectate`, the client's arguments (`apps/client/src/command_line/mod.rs:121`, as `server_bot` at `:174` reads one bot alone) take a server bot in seat 0, and `LocalServer::start` (`network/net/src/local/local_server/mod.rs:140`) leaves seat 0 to it or open and admits one spectator of `SpectatorFog::All` (`HostVisibility`, `:150`).
-- **Check:** tests of a local watch's lobby that starts as its watcher joins and not before, of a dedicated plan of no player refused, and of a session of no player that ends with its match and not before; the arguments' bot in seat 0 when it watches, refused when it plays; a net test of a local session of two bots and a watcher who receives both teams' units from tick 0.
-
 ### 2. Room near a point (M)
 
-`mode`, `navigation`, 06-script-api-reference.md. After batch 1, independent of it.
+`mode`, `navigation`, 06-script-api-reference.md. First: the base start needs it.
 
 - **Every body's room.** `NavigationColumn::room_for` (`capabilities/navigation/src/navigation_column.rs:68`) tests any body, a circle as a box, against the walls, the static bodies and every body the call spawns, and `spawn_unit` (`capabilities/mode/src/mode_api.rs:649`) keeps each spawn's body in the call's list (`ModeCall::boxes`, which becomes its bodies). Builds: one home for each operation.
 - **The search.** The mode API's `room_near(type, position, gap, range)` walks the grid points of `gap` meters within `range` of `position`, by distance and then by angle, each compared in integers, to the first where a unit of `type` has room `gap` meters clear of each body, or none; its points are bounded by `range` over `gap`, which the call refuses past a bound.

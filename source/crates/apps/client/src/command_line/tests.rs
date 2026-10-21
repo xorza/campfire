@@ -13,7 +13,7 @@ fn line(args: &[&str]) -> Result<CommandLine, clap::Error> {
 }
 
 fn read(args: &[&str]) -> Args {
-    Args::from(line(args).unwrap())
+    Args::try_from(line(args).unwrap()).unwrap()
 }
 
 /// The error clap gives for `args`, which it refuses.
@@ -154,11 +154,8 @@ fn a_value_its_parser_refuses_gives_that_parsers_error_and_the_help_is_no_refusa
     };
     assert_eq!(
         bot("a.toml"),
-        Some(ServerBotError::File(SeatBotFileError::NotPair(
-            "a.toml".to_owned()
-        )))
+        Some(SeatBotFileError::NotPair("a.toml".to_owned()))
     );
-    assert_eq!(bot("0=a.toml"), Some(ServerBotError::ClientSlot));
     let wrong_tls_key = invalid(&["mode", "10.0.0.2:4433", "03", key, "30"]);
     assert_eq!(
         wrong_tls_key
@@ -202,12 +199,13 @@ fn a_value_its_parser_refuses_gives_that_parsers_error_and_the_help_is_no_refusa
 }
 
 #[test]
-fn a_spectator_watches_a_remote_server_and_names_teams_only_as_one() {
+fn a_spectator_watches_a_remote_or_a_local_server_and_names_teams_only_as_one() {
     let (key, tls_key) = (KEY, tls_key());
     let remote = ["mode", "10.0.0.2:4433", &tls_key, key, "30"];
     let watch = |flags: &[&str]| line(&[flags, &remote[..]].concat());
     let spectator =
-        Args::from(watch(&["--spectate", "--watch", "west", "--watch", "east"]).unwrap());
+        Args::try_from(watch(&["--spectate", "--watch", "west", "--watch", "east"]).unwrap())
+            .unwrap();
     assert_eq!(spectator.role, JoinRole::Watch);
     let names = |names: &[&str]| -> Vec<DeclaredName> {
         names
@@ -219,7 +217,7 @@ fn a_spectator_watches_a_remote_server_and_names_teams_only_as_one() {
     // A player, with neither.
     let player = read(&remote);
     assert!(player.role == JoinRole::Play && player.watch.is_empty());
-    // A team named with no spectator, a spectator of a local server or a bot, and no team's name.
+    // A team named with no spectator, a spectator that is a bot, and no team's name.
     for (flags, kind) in [
         (&["--watch", "west"][..], ErrorKind::MissingRequiredArgument),
         (
@@ -233,6 +231,19 @@ fn a_spectator_watches_a_remote_server_and_names_teams_only_as_one() {
     ] {
         assert_eq!(watch(flags).unwrap_err().kind(), kind, "{flags:?}");
     }
-    let local = refused(&["--spectate", "--local", "--data", "d", "mode"]);
-    assert_eq!(local.kind(), ErrorKind::ArgumentConflict);
+
+    // A local server's watcher leaves slot 0 to a bot, which a player keeps for itself.
+    let local = ["--local", "--data", "d", "--server-bot", "0=a.toml", "mode"];
+    let watcher = read(&[&["--spectate"], &local[..]].concat());
+    let PlayedServer::Local { bots, .. } = watcher.server else {
+        panic!("a local server");
+    };
+    assert_eq!(watcher.role, JoinRole::Watch);
+    assert_eq!(bots[0].seat, Seat::new(0));
+    assert_eq!(
+        Args::try_from(line(&local).unwrap()).unwrap_err(),
+        ArgsError::ClientSlot
+    );
+    let team = refused(&[&["--spectate", "--watch", "west"], &local[..]].concat());
+    assert_eq!(team.kind(), ErrorKind::ArgumentConflict);
 }

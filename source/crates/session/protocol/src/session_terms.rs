@@ -61,6 +61,11 @@ pub struct SessionTerms {
 }
 
 impl SessionTerms {
+    /// Whether its plan seats a player.
+    pub fn seats_a_player(&self) -> bool {
+        self.seats.contains(&SeatPlan::Player)
+    }
+
     /// `BLAKE3(domain ‖ server key ‖ u32 tick rate ‖ u64 max delay ‖ u64 max lead ‖ u32 max
     /// payload length ‖ u32 max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release
     /// ‖ mode fingerprint ‖ u64 map name length ‖ map name ‖ u64 dependency count ‖ dependency

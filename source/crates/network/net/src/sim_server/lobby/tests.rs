@@ -59,11 +59,12 @@ fn opening(bots: &[u32], open: &[u32]) -> LobbyOpening {
                 entropy: Entropy::Fixed(5),
             },
         },
+        start: LobbyStart::Players,
     }
 }
 
 #[test]
-fn the_lobby_plans_each_seat_once_and_leaves_one_to_a_player() {
+fn the_lobby_plans_each_seat_once_and_leaves_one_to_a_player_unless_it_is_watched() {
     let plan = |bots: &[u32], open: &[u32]| {
         Lobby::new(setup(bots, open)).map(|lobby| lobby.terms().seats.clone())
     };
@@ -74,6 +75,11 @@ fn the_lobby_plans_each_seat_once_and_leaves_one_to_a_player() {
     assert_eq!(plan(&[1, 1], &[]), Err(LobbyError::SeatNamedTwice(seat(1))));
     assert_eq!(plan(&[1], &[1]), Err(LobbyError::SeatNamedTwice(seat(1))));
     assert_eq!(plan(&[0], &[1]), Err(LobbyError::NoPlayer));
+    // A local watch seats bots alone.
+    let mut watched = setup(&[0], &[1]);
+    watched.opening.start = LobbyStart::Watched;
+    let watched = Lobby::new(watched).map(|lobby| lobby.terms().seats.clone());
+    assert_eq!(watched, Ok(vec![SeatPlan::Bot, SeatPlan::Open]));
 }
 
 #[test]

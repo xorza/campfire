@@ -80,7 +80,7 @@ pub use crate::sim_server::ServerFrameSystems;
 pub use crate::sim_server::error::MatchBeginError;
 pub use crate::sim_server::journal_watch::JournalWatch;
 pub use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
-pub use crate::sim_server::lobby::{Lobby, LobbyOpening, LobbySetup};
+pub use crate::sim_server::lobby::{Lobby, LobbyOpening, LobbySetup, LobbyStart};
 pub use crate::sim_server::pending_restore::{PendingRestore, UncheckedRestore};
 pub use crate::sim_server::seat_bot_file::SeatBotFile;
 pub use crate::sim_server::seat_bot_file::error::SeatBotFileError;

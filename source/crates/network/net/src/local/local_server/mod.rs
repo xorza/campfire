@@ -17,7 +17,7 @@ use campfire_net_packets::EmulatedWires;
 use campfire_package::ModePackages;
 use campfire_sim::MatchRate;
 use campfire_threads::{Job, Worker};
-use campfire_visibility::HostVisibility;
+use campfire_visibility::{HostVisibility, SettingValue, SpectatorFog};
 use tracing::error;
 
 use crate::hosting::Hosting;
@@ -25,13 +25,14 @@ use crate::key_file::KeyFile;
 use crate::local::local_link::LocalLink;
 use crate::local::local_pace::LocalPacePlugin;
 use crate::local::local_server::error::LocalServerError;
+use crate::net_protocol::join::JoinRole;
 use crate::os::Os;
 use crate::pace::Pace;
 use crate::paced_runner::PacedRunnerPlugin;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_server::ServerFrameSystems;
-use crate::sim_server::lobby::{Lobby, LobbyOpening};
+use crate::sim_server::lobby::{Lobby, LobbyOpening, LobbyStart};
 use crate::sim_server::pending_restore::{PendingRestore, UncheckedRestore};
 use crate::sim_server::server_bots::{SeatScript, ServerBots};
 use crate::sim_server::server_dir::ServerDir;
@@ -90,8 +91,12 @@ pub struct LocalServerSetup {
     pub packages: Arc<ModePackages>,
     /// Its data directory, which it holds locked while it runs.
     pub data: PathBuf,
-    /// The bots it plays, none in seat 0.
+    /// The bots it plays; one in seat 0 while its client plays leaves no seat to it, which the
+    /// lobby refuses.
     pub bots: Vec<SeatScript>,
+    /// Whether its client plays seat 0, or watches with no seat (12-test-matches.md, A local
+    /// watcher takes no seat and sees every unit).
+    pub role: JoinRole,
     /// The values the player picks of the mode's options, the others their defaults.
     pub options: Vec<OptionValue>,
     /// The values the player picks of each seat's choices of values, the others none.
@@ -115,6 +120,7 @@ impl LocalServer {
             bots,
             options,
             seat_picks,
+            role,
             pace,
             os,
         } = setup;
@@ -138,7 +144,19 @@ impl LocalServer {
         };
         let bots = ServerBots::new(bots, None, &packages).map_err(LocalServerError::Bots)?;
         let seats = u32::try_from(packages.manifest().seats()).expect("seats fit u32");
-        let open = (1..seats)
+        // A client that watches holds no seat, so seat 0 is a bot's or open; and the local server
+        // admits it as its one spectator, who sees every unit.
+        let (first_open, host, start) = match role {
+            JoinRole::Play => (1, HostVisibility::default(), LobbyStart::Players),
+            JoinRole::Watch => {
+                let host = HostVisibility {
+                    settings: vec![SettingValue::Spectators(SpectatorFog::All)],
+                    max_spectators: 1,
+                };
+                (0, host, LobbyStart::Watched)
+            }
+        };
+        let open = (first_open..seats)
             .map(Seat::new)
             .filter(|&seat| bots.seats.iter().all(|bot| bot.seat != seat))
             .collect();
@@ -147,10 +165,11 @@ impl LocalServer {
             packages: Arc::clone(&packages),
             bots: bots.clone(),
             open,
-            host: HostVisibility::default(),
+            host,
             options,
             seat_picks,
             server: server.clone(),
+            start,
         };
         let lobby = Lobby::open(opening, &dir).map_err(LocalServerError::Open)?;
         let LocalPair {

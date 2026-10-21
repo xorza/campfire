@@ -43,7 +43,7 @@ fn send_both_ways<C: Channel>(stepper: &mut Stepper<FullStack>) {
 
 #[track_caller]
 fn audit_both_ways<C: Channel>(kind: ClientKind) {
-    let mut stepper = Stepper::new(FullStack, StepperSetup::with_clients(vec![kind]));
+    let mut stepper = Stepper::new(FullStack, StepperSetup::with_clients(kind, 1));
     for app in stepper.apps_mut() {
         app.init_resource::<Received>().add_systems(Update, count);
     }

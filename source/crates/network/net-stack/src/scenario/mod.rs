@@ -84,7 +84,7 @@ impl Scenario {
     }
 
     fn run_unchecked(&self) -> ScenarioOutcome {
-        let mut setup = StepperSetup::with_clients(vec![self.kind; self.clients]);
+        let mut setup = StepperSetup::with_clients(self.kind, self.clients);
         setup.seed = self.seed;
         let mut stepper = Stepper::new(FullStack, setup);
         self.start_workload(&mut stepper);

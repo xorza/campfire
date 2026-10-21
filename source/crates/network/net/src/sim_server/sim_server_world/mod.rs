@@ -42,10 +42,11 @@ pub trait SimServerWorld {
     /// How the server of the session exits in this frame, when it does: as `WorkerFaults`
     /// says, once a worker failed, which for its journal or a checkpoint's snapshot is with
     /// `ExitStatus::Storage`; before the match started, at once when `stop` asks it to. Once the
-    /// match started, when `stop` asks it to or every player left, it ends the session, as the
-    /// mode ended the match or aborted, and closes its journal, whose last sync's failure ends it
-    /// as one in a frame does; it then publishes the log in its `ServerDir`, and exits, with an
-    /// error when the log is not written, as the session it holds is lost.
+    /// match started, when `stop` asks it to or, of a plan that seats a player, every player
+    /// left, it ends the session, as the mode ended the match or aborted, and closes its journal,
+    /// whose last sync's failure ends it as one in a frame does; it then publishes the log in its
+    /// `ServerDir`, and exits, with an error when the log is not written, as the session it holds
+    /// is lost.
     fn exit_due(&mut self, stop: StopRequest) -> Option<AppExit>;
 }
 
@@ -143,9 +144,13 @@ impl SimServerWorld for World {
         ) {
             return (stop == StopRequest::Asked).then_some(AppExit::Success);
         }
-        if self.resource::<Session>().log().result().is_none() {
-            // Every seat a player controlled left, and no player holds a link.
-            if stop == StopRequest::NotAsked && !Door::is_empty(self) {
+        let log = self.resource::<Session>().log();
+        if log.result().is_none() {
+            // Every seat a player controlled left, and no player holds a link; a session of bots
+            // alone runs on until its match ends or a stop (12-test-matches.md, A local session
+            // may seat bots alone).
+            let bots_alone = !log.header().terms.seats_a_player();
+            if stop == StopRequest::NotAsked && (bots_alone || !Door::is_empty(self)) {
                 return None;
             }
             if let Err(error) = self.end_session() {

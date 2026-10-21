@@ -25,7 +25,7 @@ fn a_sealed_replicated_update_each_frame_stays_in_its_budget() {
 
 #[track_caller]
 fn audit_replication(kind: ClientKind) {
-    let mut stepper = Stepper::new(FullStack, StepperSetup::with_clients(vec![kind]));
+    let mut stepper = Stepper::new(FullStack, StepperSetup::with_clients(kind, 1));
     let server_entity = stepper
         .server_world_mut()
         .spawn((CompFull(0.0), Replicate::to_clients(NetworkTarget::All)))

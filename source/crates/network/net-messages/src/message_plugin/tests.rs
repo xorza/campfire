@@ -441,7 +441,7 @@ const KINDS: [ClientKind; 2] = [ClientKind::Plain, ClientKind::Udp];
 #[test]
 fn messages_cross_both_ways_for_each_client_kind() {
     for kind in KINDS {
-        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(vec![kind]));
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(kind, 1));
         let (client, server) = (stepper.client_entity(0), stepper.client_of_entity(0));
         ReceivedMessages::<StringMessage>::collect_in(stepper.server_app_mut());
         ReceivedMessages::<StringMessage>::collect_in(stepper.client_app_mut(0));
@@ -512,7 +512,7 @@ fn messages_cross_both_ways_for_each_client_kind() {
 #[test]
 fn only_a_client_maps_the_entities_a_message_names() {
     for kind in KINDS {
-        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(vec![kind]));
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(kind, 1));
         let (client, server) = (stepper.client_entity(0), stepper.client_of_entity(0));
         let replicated = stepper.server_world_mut().spawn(Replicated).id();
         let server_only_systems = stepper.server_world_mut().spawn_empty().id();
@@ -597,7 +597,7 @@ fn collect_events(
 #[test]
 fn events_reach_the_server_for_each_client_kind() {
     for kind in KINDS {
-        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(vec![kind]));
+        let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(kind, 1));
         let server = stepper.client_of_entity(0);
         stepper
             .server_app_mut()

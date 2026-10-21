@@ -127,7 +127,7 @@ impl WireCase {
     /// Each end takes its RTT samples and sends its heartbeat at the default interval, not in
     /// each frame as the sync stack does for its tests.
     pub(crate) fn measure(&self) -> WireCost {
-        let mut setup = StepperSetup::with_clients(vec![self.kind]);
+        let mut setup = StepperSetup::with_clients(self.kind, 1);
         setup.tick_rate = TICK_RATE;
         setup.frame_interval = TICK;
         setup.server_frame_interval = TICK;

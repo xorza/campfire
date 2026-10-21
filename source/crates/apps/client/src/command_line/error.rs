@@ -1,15 +1,12 @@
 use std::net::AddrParseError;
 
-use campfire_net::SeatBotFileError;
 use thiserror::Error;
 
-/// Why a `--server-bot` names no bot of the local server.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub(crate) enum ServerBotError {
-    #[error(transparent)]
-    File(SeatBotFileError),
-    /// A bot of slot 0, which the client plays.
-    #[error("slot 0 is the client's")]
+/// Why a command line clap took names no run of the client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub(crate) enum ArgsError {
+    /// A server bot in slot 0, which the client plays unless it watches.
+    #[error("slot 0 is the client's, as it plays")]
     ClientSlot,
 }
 

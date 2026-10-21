@@ -8,7 +8,7 @@ use campfire_net::{JoinRole, SeatBotFile};
 use clap::Parser;
 use secp256k1::XOnlyPublicKey;
 
-use crate::command_line::error::{ServerAddressError, ServerBotError, TeamNameError};
+use crate::command_line::error::{ArgsError, ServerAddressError, TeamNameError};
 
 mod error;
 
@@ -68,19 +68,26 @@ pub(crate) struct CommandLine {
     /// Plays the mode alone on a local server, a thread of the client's process
     #[arg(long, requires = "data")]
     local: bool,
-    /// Watches the session as a spectator, with no slot
-    #[arg(long, conflicts_with_all = ["local", "bot"])]
+    /// Watches the session as a spectator, with no slot; of a local server, which then admits it
+    /// as its one spectator, who sees every unit
+    #[arg(long, conflicts_with = "bot")]
     spectate: bool,
     /// A team whose view the spectator watches, in a session whose spectators watch teams' views;
-    /// every team's together without one
-    #[arg(long, value_name = "TEAM", requires = "spectate", value_parser = CommandLine::team)]
+    /// every team's together without one. A local server's spectator sees every unit
+    #[arg(
+        long,
+        value_name = "TEAM",
+        requires = "spectate",
+        conflicts_with = "local",
+        value_parser = CommandLine::team
+    )]
     watch: Vec<DeclaredName>,
-    /// A bot of the local server, in a slot other than the player's 0
+    /// A bot of the local server, in a slot other than the player's 0, or in any slot of a
+    /// client that watches
     #[arg(
         long = "server-bot",
         value_name = "SLOT=ORDERS FILE",
-        requires = "local",
-        value_parser = CommandLine::server_bot
+        requires = "local"
     )]
     server_bots: Vec<SeatBotFile>,
     /// A value of one of the mode's options for the local server's session, as name=value; an
@@ -117,9 +124,20 @@ struct Remote {
     tick_hz: NonZeroU32,
 }
 
-/// What the command line clap read as `line` names.
-impl From<CommandLine> for Args {
-    fn from(line: CommandLine) -> Self {
+/// What the command line clap read as `line` names; an error for a server bot in slot 0 of a
+/// client that plays it.
+impl TryFrom<CommandLine> for Args {
+    type Error = ArgsError;
+
+    fn try_from(line: CommandLine) -> Result<Self, ArgsError> {
+        let role = if line.spectate {
+            JoinRole::Watch
+        } else {
+            JoinRole::Play
+        };
+        if role == JoinRole::Play && line.server_bots.iter().any(|bot| bot.seat == Seat::new(0)) {
+            return Err(ArgsError::ClientSlot);
+        }
         let server = match line.remote {
             Some(remote) => PlayedServer::Remote {
                 address: remote.address,
@@ -135,12 +153,7 @@ impl From<CommandLine> for Args {
                 data: line.data.expect("clap takes --local only with --data"),
             },
         };
-        let role = if line.spectate {
-            JoinRole::Watch
-        } else {
-            JoinRole::Play
-        };
-        Self {
+        Ok(Self {
             bot: line.bot,
             role,
             watch: line.watch,
@@ -148,7 +161,7 @@ impl From<CommandLine> for Args {
             mode: line.mode,
             map: line.map,
             server,
-        }
+        })
     }
 }
 
@@ -168,15 +181,6 @@ impl CommandLine {
     /// The team `text` names, as the mode's teams are named.
     fn team(text: &str) -> Result<DeclaredName, TeamNameError> {
         DeclaredName::new(text).ok_or(TeamNameError)
-    }
-
-    /// The server bot `text` names; an error for a bot in slot 0, which the client plays.
-    fn server_bot(text: &str) -> Result<SeatBotFile, ServerBotError> {
-        let bot: SeatBotFile = text.parse().map_err(ServerBotError::File)?;
-        if bot.seat == Seat::new(0) {
-            return Err(ServerBotError::ClientSlot);
-        }
-        Ok(bot)
     }
 }
 

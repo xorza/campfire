@@ -123,21 +123,12 @@ impl<S: Stack> Stepper<S> {
             setup.frame_interval > Duration::ZERO && setup.server_frame_interval > Duration::ZERO,
             "a frame interval is positive"
         );
-        let remote = if setup.clients.contains(&ClientKind::Udp) {
-            assert!(
-                !setup.clients.contains(&ClientKind::Plain),
-                "the server's one endpoint takes plain or sealed packet sessions, not both"
-            );
-            ClientKind::Udp
-        } else {
-            ClientKind::Plain
-        };
         let mut stepper = Self {
             stack,
             server_app: App::new(),
             server_entity: Entity::PLACEHOLDER,
             clients: vec![],
-            remote,
+            remote: setup.kind,
             frame_interval: setup.frame_interval,
             tick_rate: setup.tick_rate,
             origin: Instant::now(),
@@ -155,7 +146,7 @@ impl<S: Stack> Stepper<S> {
         let ServerApp { app, entity } = stepper.build_server();
         stepper.server_app = app;
         stepper.server_entity = entity;
-        for _ in 0..setup.clients.len() {
+        for _ in 0..setup.clients {
             stepper.add_remote_client();
         }
         if setup.init == Init::Ready {

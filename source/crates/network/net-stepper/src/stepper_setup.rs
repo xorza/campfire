@@ -36,7 +36,11 @@ pub struct StepperSetup {
     /// `Stepper::set_frame_interval` changes it.
     pub server_frame_interval: Duration,
     pub tick_rate: TickRate,
-    pub clients: Vec<ClientKind>,
+    /// The kind of every remote client, which the server's one endpoint takes, whatever their
+    /// count (11-net-stack/testing.md, The stepper's remote clients are all plain or all sealed).
+    pub kind: ClientKind,
+    /// How many remote clients it starts with.
+    pub clients: usize,
     pub init: Init,
     /// How each remote client's link carries packets; client `i`'s draws follow `seed + i`.
     pub link: DuplexModel,
@@ -51,11 +55,13 @@ pub struct StepperSetup {
 }
 
 impl StepperSetup {
-    pub fn with_clients(clients: Vec<ClientKind>) -> Self {
+    /// `clients` remote clients of `kind`.
+    pub fn with_clients(kind: ClientKind, clients: usize) -> Self {
         Self {
             frame_interval: TICK_RATE.period(),
             server_frame_interval: TICK_RATE.period(),
             tick_rate: TICK_RATE,
+            kind,
             clients,
             init: Init::Ready,
             link: DuplexModel::default(),
@@ -73,11 +79,11 @@ impl StepperSetup {
 
     /// One remote client.
     pub fn single() -> Self {
-        Self::with_clients(vec![ClientKind::Plain])
+        Self::with_clients(ClientKind::Plain, 1)
     }
 
     /// `n` remote clients.
     pub fn with_plain_clients(n: usize) -> Self {
-        Self::with_clients(vec![ClientKind::Plain; n])
+        Self::with_clients(ClientKind::Plain, n)
     }
 }

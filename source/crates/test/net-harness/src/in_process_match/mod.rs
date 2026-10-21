@@ -16,9 +16,9 @@ use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::TickHashes;
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
-    ClientDir, JoinState, Lobby, LobbyOpening, LobbySetup, MatchClock, Os, Pace, PendingOrders,
-    PendingRestore, SeatScript, ServerBots, ServerDir, ServerSetup, SessionDir, SessionOpening,
-    SessionTimes, SimServerWorld, UdpLinks, UncheckedRestore, UnixClock,
+    ClientDir, JoinState, Lobby, LobbyOpening, LobbySetup, LobbyStart, MatchClock, Os, Pace,
+    PendingOrders, PendingRestore, SeatScript, ServerBots, ServerDir, ServerSetup, SessionDir,
+    SessionOpening, SessionTimes, SimServerWorld, UdpLinks, UncheckedRestore, UnixClock,
 };
 use campfire_net_connection::Connected;
 use campfire_net_core::LinkDirection;
@@ -84,6 +84,9 @@ pub struct InProcessSetup {
     pub visibility: &'static [&'static str],
     /// The most spectators the session admits.
     pub max_spectators: u32,
+    /// Whom the lobby waits for: its players, or a watcher too, of a plan that may seat bots
+    /// alone.
+    pub start: LobbyStart,
 }
 
 /// What a step cost each end: each client's frame, by client, and the server's worst frame.
@@ -151,6 +154,7 @@ impl InProcessSetup {
             takeover: None,
             visibility: &[],
             max_spectators: 0,
+            start: LobbyStart::Players,
         }
     }
 
@@ -232,8 +236,8 @@ impl InProcessMatch {
     /// A match of the test lane mode at its default rate, its clients connected and synced.
     pub fn new(setup: InProcessSetup) -> Self {
         assert!(
-            (1..=2).contains(&setup.players),
-            "the lane mode takes 1 or 2 players"
+            (1..=2).contains(&(setup.players + setup.bots.len())),
+            "the lane mode takes 1 or 2 seats"
         );
         let packages = PackageTree::of(TestMode::Lane)
             .players_and_saves(&setup.rules, &setup.saves)
@@ -292,7 +296,7 @@ impl InProcessMatch {
                 seed: setup.seed,
                 identity: Self::server_identity,
                 alpn: UdpLinks::ALPN,
-                ..StepperSetup::with_clients(vec![ClientKind::Udp; players])
+                ..StepperSetup::with_clients(ClientKind::Udp, players)
             },
         );
         let mut local = Self {
@@ -536,6 +540,27 @@ impl InProcessMatch {
     /// Opens the session for every client, and steps until each joined and every end runs the
     /// match; see `Lobby`. The players take the slots in player order, as `LinkLayout` says.
     pub fn open_match(&mut self) {
+        self.open_lobby();
+        for _ in 0..CONNECT_FRAMES {
+            let playing = |client: usize| {
+                let state = self.stepper.client_world(client).resource::<JoinState>();
+                state.playing_clock().is_some() || state.watching_clock().is_some()
+            };
+            if self
+                .stepper
+                .server_world()
+                .contains_resource::<MatchClock>()
+                && (0..self.stepper.client_count()).all(playing)
+            {
+                return;
+            }
+            self.step();
+        }
+        panic!("the match did not start in {CONNECT_FRAMES} frames");
+    }
+
+    /// Opens the session's lobby on the server, which then takes joins, and steps none.
+    pub fn open_lobby(&mut self) {
         let packages = Arc::clone(&self.packages);
         let opening = LobbyOpening {
             packages: Arc::clone(&packages),
@@ -553,6 +578,7 @@ impl InProcessMatch {
                 max_spectators: self.setup.max_spectators,
             },
             server: self.server_setup(),
+            start: self.setup.start,
         };
         let mut lobby = Lobby::new(LobbySetup {
             opening,
@@ -568,22 +594,6 @@ impl InProcessMatch {
         self.stepper
             .server_world_mut()
             .open_session(SessionOpening::New(Box::new(lobby)));
-        for _ in 0..CONNECT_FRAMES {
-            let playing = |client: usize| {
-                let world = self.stepper.client_world(client);
-                world.resource::<JoinState>().playing_clock().is_some()
-            };
-            if self
-                .stepper
-                .server_world()
-                .contains_resource::<MatchClock>()
-                && (0..self.stepper.client_count()).all(playing)
-            {
-                return;
-            }
-            self.step();
-        }
-        panic!("the match did not start in {CONNECT_FRAMES} frames");
     }
 
     /// Steps until each player's client holds its player's avatar, for at most `frames` frames:

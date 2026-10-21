@@ -50,7 +50,7 @@ fn a_step_runs_each_app_once_unless_stalled() {
 fn a_client_disconnects_through_the_stack() {
     let mut stepper = Stepper::new(
         ConnectionStack,
-        StepperSetup::with_clients(vec![ClientKind::Plain; 2]),
+        StepperSetup::with_clients(ClientKind::Plain, 2),
     );
     let link = stepper.client_of_entity(1);
     stepper.disconnect(1);

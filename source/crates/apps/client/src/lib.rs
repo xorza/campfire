@@ -76,8 +76,12 @@ pub fn run() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let args = match Logging::command_line::<CommandLine>(env::args_os()) {
-        Ok(line) => Args::from(line),
+    let args = match Logging::command_line::<CommandLine>(env::args_os()).map(Args::try_from) {
+        Ok(Ok(args)) => args,
+        Ok(Err(error)) => {
+            error!(error = %error, "the command line is refused");
+            return ExitCode::from(ExitStatus::Usage);
+        }
         Err(status) => return ExitCode::from(status),
     };
     let packages = match load_mode(&args) {

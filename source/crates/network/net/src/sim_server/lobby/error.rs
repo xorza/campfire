@@ -18,7 +18,8 @@ pub enum LobbyError {
     /// Two bots, or a bot and an open seat, name the same seat.
     #[error("seat {} is a bot's or open twice", .0.get())]
     SeatNamedTwice(Seat),
-    /// Every seat is a bot's or open: no player starts the session.
+    /// Every seat is a bot's or open, in a lobby that waits for its players: no player starts
+    /// the session.
     #[error("every seat is a bot's or open")]
     NoPlayer,
     /// The host's visibility settings are not ones the mode leaves it.

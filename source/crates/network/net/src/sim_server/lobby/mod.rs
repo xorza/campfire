@@ -45,6 +45,8 @@ pub struct Lobby {
     packages: Arc<ModePackages>,
     /// How many seats players take: every seat but the bots'.
     players: usize,
+    /// Whom it waits for before its match starts.
+    start: LobbyStart,
     bots: ServerBots,
     server: ServerSetup,
     /// The links that joined, by seat, with their delegations.
@@ -72,6 +74,16 @@ pub struct LobbyOpening {
     /// The values the host picks of each seat's choices of values, the others none.
     pub seat_picks: Vec<SeatPick>,
     pub server: ServerSetup,
+    pub start: LobbyStart,
+}
+
+/// Whom a lobby waits for before its match starts: every player seat taken, of a plan of one
+/// player seat at least; or, of a local watch, also its watcher, the client that hosts it, of a
+/// plan that may seat bots alone (12-test-matches.md, A local session may seat bots alone).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LobbyStart {
+    Players,
+    Watched,
 }
 
 /// What a server opens a session with: its opening, and the session's rules a new session of
@@ -133,6 +145,7 @@ impl Lobby {
                     options,
                     seat_picks,
                     server,
+                    start,
                 },
             seed_chain,
             tick_hz,
@@ -155,7 +168,7 @@ impl Lobby {
             .iter()
             .filter(|&&plan| plan == SeatPlan::Player)
             .count();
-        if players == 0 {
+        if players == 0 && start == LobbyStart::Players {
             return Err(LobbyError::NoPlayer);
         }
         let session_rules = SessionRules::of(&packages);
@@ -188,6 +201,7 @@ impl Lobby {
             seed_chain,
             packages,
             players,
+            start,
             bots,
             server,
             joined: Vec::with_capacity(players),
@@ -276,11 +290,18 @@ impl Lobby {
         }
     }
 
-    /// Starts the match once every seat is taken, and closes the lobby: the door takes the
-    /// joins from then on.
+    /// Starts the match once every seat is taken and, of a watched lobby, its watcher joined, and
+    /// closes the lobby: the door takes the joins from then on.
     pub(crate) fn start_when_full(world: &mut World) {
-        if world.resource::<Self>().joined.len() < world.resource::<Self>().players {
+        let lobby = world.resource::<Self>();
+        if lobby.joined.len() < lobby.players {
             return;
+        }
+        if lobby.start == LobbyStart::Watched {
+            let mut viewers = world.query::<&Viewer>();
+            if Spectators::count(viewers.iter(world)) == 0 {
+                return;
+            }
         }
         let lobby = world.remove_resource::<Self>().expect("the lobby is open");
         let terms = SessionTerms::clone(&lobby.offering.terms);

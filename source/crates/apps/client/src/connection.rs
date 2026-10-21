@@ -9,8 +9,8 @@ use campfire_common::{ErrorReport, ExitStatus};
 use campfire_math::TickRate;
 use campfire_mode::{OptionValue, SeatPick};
 use campfire_net::{
-    ClientDir, LocalPacePlugin, LocalRelinkPlugin, LocalServer, LocalServerSetup, Os, Pace,
-    SeatBotFile, ServerPin, UdpLinks,
+    ClientDir, JoinRole, LocalPacePlugin, LocalRelinkPlugin, LocalServer, LocalServerSetup, Os,
+    Pace, SeatBotFile, ServerPin, UdpLinks,
 };
 use campfire_net_endpoint::Endpoint;
 use campfire_net_socket::ClientSocket;
@@ -36,7 +36,8 @@ pub(crate) enum Connection {
 }
 
 /// What a local server starts with: the client's data directory, the mode, the bots, the values
-/// the player picks of the mode's options and of its seats' choices, and the pace it follows.
+/// the player picks of the mode's options and of its seats' choices, whether the client plays or
+/// watches, and the pace it follows.
 #[derive(Debug, Clone, Copy)]
 struct LocalStart<'a> {
     data: &'a ClientDir,
@@ -44,6 +45,7 @@ struct LocalStart<'a> {
     bots: &'a [SeatBotFile],
     options: &'a [OptionValue],
     seat_picks: &'a [SeatPick],
+    role: JoinRole,
     pace: &'a Arc<Pace>,
 }
 
@@ -85,6 +87,7 @@ impl Connection {
                     bots,
                     options,
                     seat_picks,
+                    role: args.role,
                     pace,
                 })?;
                 Ok(Self::Local { server, data })
@@ -166,6 +169,7 @@ impl Connection {
             bots,
             options,
             seat_picks,
+            role,
             pace,
         } = start;
         let slots = bots
@@ -183,6 +187,7 @@ impl Connection {
             bots: slots,
             options: options.to_vec(),
             seat_picks: seat_picks.to_vec(),
+            role,
             pace: Arc::clone(pace),
             os: Os::SYSTEM,
         })
