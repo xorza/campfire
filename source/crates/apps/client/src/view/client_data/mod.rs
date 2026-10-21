@@ -5,7 +5,7 @@ use bevy::app::{App, Plugin};
 use bevy::ecs::resource::Resource;
 use campfire_client_files::{
     CameraFile, ClientFile, ClientObjects, ClientUnits, HudFile, KeysFile, MapConditions,
-    MapLights, TeamColors, TerrainFile,
+    MapLights, PickingFile, TeamColors, TerrainFile,
 };
 use campfire_common::{ErrorReport, MapName};
 use campfire_geometry::Metric;
@@ -20,12 +20,12 @@ use crate::view::ground_heights::GroundHeights;
 
 /// The client data of the mode's packages, which the view draws units by: each package's own, by
 /// the package's place; the ground's heights from the map's heightmap, which the packages hold; and
-/// the mode's own package's camera, `client/camera.toml`, HUD, `client/hud.toml`, and team colors,
-/// `client/team_colors.toml`, the map's lights, `client/maps/<map>/lights.toml`, its client
-/// objects, `client/maps/<map>/objects.toml`, whose looks are its package's, and its terrain,
-/// `client/maps/<map>/terrain.bin`, kept when its quads are the heights' cells. Each file is read
-/// once, as the view starts, and checked against its package's index; one that does not read is
-/// logged, and drawn as if it were not there.
+/// the mode's own package's camera, `client/camera.toml`, HUD, `client/hud.toml`, picking,
+/// `client/picking.toml`, and team colors, `client/team_colors.toml`, the map's lights,
+/// `client/maps/<map>/lights.toml`, its client objects, `client/maps/<map>/objects.toml`, whose
+/// looks are its package's, and its terrain, `client/maps/<map>/terrain.bin`, kept when its quads
+/// are the heights' cells. Each file is read once, as the view starts, and checked against its
+/// package's index; one that does not read is logged, and drawn as if it were not there.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct ClientData {
     pub(crate) packages: Vec<PackageClient>,
@@ -40,6 +40,8 @@ pub(crate) struct ClientData {
     pub(crate) camera: Option<CameraFile>,
     /// The mode's own package's HUD file, its default for a package of none.
     pub(crate) hud: HudFile,
+    /// The mode's own package's picking file, its default for a package of none.
+    pub(crate) picking: PickingFile,
     /// The mode's own package's team colors, the engine's for a package of none.
     pub(crate) team_colors: TeamColors,
     /// The map's lights, which its units are drawn in.
@@ -111,6 +113,7 @@ impl ClientData {
         self.heights = grid.map(|grid| GroundHeights::of(grid, quads));
         self.camera = Self::file(mode, &CameraFile::path());
         self.hud = Self::file(mode, &HudFile::path()).unwrap_or_default();
+        self.picking = Self::file(mode, &PickingFile::path()).unwrap_or_default();
         self.team_colors = Self::file(mode, &TeamColors::path()).unwrap_or_default();
         self.lights = Self::file(mode, &MapLights::path(map));
         self.objects = Self::file(mode, &ClientObjects::path(map)).unwrap_or_default();

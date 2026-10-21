@@ -5,11 +5,13 @@ use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::math::{Quat, Vec2, Vec3};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
+use bevy::picking::Pickable;
+use bevy::shape::Ray3d;
 use bevy::transform::components::Transform;
 use campfire_units::Body;
 
 use crate::view::float_num::FloatNum;
-use crate::view::footing::Footing;
+use crate::view::footing::{Footing, Span};
 
 /// On the drawing root of a unit drawn as its shape: the figure that draws it, the root's child,
 /// and the material it wears while the unit lives. A dead unit lies on the ground, gray.
@@ -23,8 +25,10 @@ pub(crate) struct Look {
 /// lies down by, whether its figure or its models draw it: a player's avatar, a creep that walks, or
 /// a structure that does not, each of its kind's proportions, and a model drawing as tall as its
 /// models. A capsule of `radius`, `height` tall, or, for a box body, a cuboid as tall standing on
-/// its `footing`.
+/// its `footing`. The pointer picks the unit by it, so the root blocks the units it stands in
+/// front of.
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
+#[require(Pickable)]
 pub(crate) struct UnitShape {
     pub(crate) radius: f32,
     pub(crate) height: f32,
@@ -168,66 +172,24 @@ impl UnitShape {
     pub(crate) fn reach(&self) -> f32 {
         self.footing.bound()
     }
+
+    /// How far along `ray` it first meets the shape standing on `base`, in meters: its footing,
+    /// turned as the world turns it whatever turns its root, raised from `base` to its height, an
+    /// upright cylinder or a turned box, its radius and each half side widened to at least
+    /// `least` meters; 0 from inside, none when the ray misses it or meets it only behind its
+    /// origin.
+    pub(crate) fn entry(&self, base: Vec3, ray: Ray3d, least: f32) -> Option<f32> {
+        let (from, way) = (ray.origin - base, *ray.direction);
+        let half = self.height / 2.0;
+        let ground = self.footing.span(from, way, least)?;
+        let rise = Span::slab(half, from.y - half, way.y)?;
+        let ahead = Span {
+            near: 0.0,
+            far: f32::INFINITY,
+        };
+        Some(ground.and(rise)?.and(ahead)?.near)
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use bevy::ecs::world::World;
-    use campfire_math::Num;
-    use campfire_units::BodyForm;
-
-    use super::*;
-
-    #[test]
-    fn a_unit_is_drawn_at_its_bodys_radius_and_its_kinds_height_and_lies_down_dead() {
-        let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
-        // A radius of 0.75 m, of an avatar's proportions, 2 m tall at 0.5 m: 3 m tall.
-        let avatar = UnitShape {
-            radius: 0.75,
-            height: 3.0,
-            footing: Footing::Circle(0.75),
-        };
-        assert_eq!(UnitShape::of(ShapeKind::Avatar, Some(&body)), avatar);
-        assert_eq!(UnitShape::of(ShapeKind::Creep, None), CREEP);
-        assert_eq!(UnitShape::of(ShapeKind::Structure, None), STRUCTURE);
-        // A box of 4 × 2 m turned a quarter: its first half edge points along −z, which Bevy's
-        // turn of π/2 about y takes x to, as the unit's facing of 90° turns its model; it stands
-        // as tall as a structure 1 m wide, its shorter half edge, and reaches √5 m.
-        let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
-        let boxed = UnitShape::of(ShapeKind::Structure, Some(&form.at(Num::int(90))));
-        let expected = Footing::Box {
-            half: [2.0, 1.0],
-            yaw: FRAC_PI_2,
-        };
-        assert_eq!(boxed.footing, expected);
-        assert_eq!(
-            (boxed.radius, boxed.height),
-            (1.0, STRUCTURE.height / STRUCTURE.radius)
-        );
-        let figure = World::new().spawn_empty().id();
-        let look = Look {
-            figure,
-            alive: Handle::default(),
-        };
-        assert!((boxed.reach() - 5.0_f32.sqrt()).abs() < 1e-6);
-        assert!(
-            Quat::from_rotation_y(-FRAC_PI_2)
-                .mul_vec3(Vec3::X)
-                .abs_diff_eq(Vec3::Z, 1e-6)
-        );
-        // The avatar's capsule stands its half height up, 1.5 m; dead, it lies on its side, its
-        // axis its radius over the ground. The box stands as it stood.
-        let dead = Handle::default();
-        let standing = look.pose(avatar, Condition::Alive, &dead).transform;
-        let lying = look.pose(avatar, Condition::Dead, &dead).transform;
-        assert_eq!(standing.translation, Vec3::Y * 1.5);
-        assert_eq!(
-            (lying.translation, lying.rotation),
-            (Vec3::Y * 0.75, Quat::from_rotation_z(FRAC_PI_2))
-        );
-        assert_eq!(
-            look.pose(boxed, Condition::Dead, &dead).transform,
-            look.pose(boxed, Condition::Alive, &dead).transform
-        );
-    }
-}
+mod tests;

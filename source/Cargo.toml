@@ -179,6 +179,7 @@ campfire-app-threads = { path = "crates/base/app-threads" }
 campfire-codec = { path = "crates/base/codec" }
 campfire-common = { path = "crates/base/common" }
 campfire-common-derive = { path = "crates/base/common-derive" }
+campfire-client = { path = "crates/apps/client" }
 campfire-import = { path = "crates/apps/import" }
 campfire-log = { path = "crates/base/log" }
 campfire-math = { path = "crates/sim/math" }

@@ -1,0 +1,2 @@
+# A hero's player points at enemy heroes first, then at the other enemies.
+tiers = ["enemies:avatar", "enemies"]

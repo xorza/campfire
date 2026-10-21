@@ -7,6 +7,45 @@ license.workspace = true
 [package.metadata.campfire]
 kind = "app"
 
+[features]
+internals = [
+    "campfire-actions/internals",
+    "campfire-areas/internals",
+    "campfire-bots/internals",
+    "campfire-capabilities/internals",
+    "campfire-client-files/internals",
+    "campfire-combat/internals",
+    "campfire-declarations/internals",
+    "campfire-geometry/internals",
+    "campfire-interaction/internals",
+    "campfire-items/internals",
+    "campfire-log/internals",
+    "campfire-math/internals",
+    "campfire-mode/internals",
+    "campfire-net/internals",
+    "campfire-net-endpoint/internals",
+    "campfire-net-replication/internals",
+    "campfire-net-socket/internals",
+    "campfire-net-sync/internals",
+    "campfire-orders/internals",
+    "campfire-package/internals",
+    "campfire-package-disk/internals",
+    "campfire-players/internals",
+    "campfire-protocol/internals",
+    "campfire-production/internals",
+    "campfire-progression/internals",
+    "campfire-projectiles/internals",
+    "campfire-script/internals",
+    "campfire-sim/internals",
+    "campfire-stats/internals",
+    "campfire-store/internals",
+    "campfire-units/internals",
+    "campfire-values/internals",
+    "campfire-vision/internals",
+    "dep:campfire-measure",
+    "dep:criterion",
+]
+
 [dependencies]
 campfire-app-threads.workspace = true
 campfire-actions.workspace = true
@@ -44,6 +83,9 @@ campfire-store.workspace = true
 campfire-units.workspace = true
 campfire-values = { workspace = true, features = ["ecs"] }
 campfire-vision.workspace = true
+
+campfire-measure = { workspace = true, optional = true }
+criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
 
 async-lock = { workspace = true, features = ["std"] }
 bevy = { workspace = true, features = [
@@ -93,16 +135,17 @@ tracing = { workspace = true, features = ["attributes", "std"] }
 unic-langid.workspace = true
 
 [dev-dependencies]
-campfire-actions = { workspace = true, features = ["internals"] }
-campfire-capabilities = { workspace = true, features = ["internals"] }
+campfire-client = { workspace = true, features = ["internals"] }
 campfire-codec = { workspace = true, features = ["internals"] }
-campfire-net = { workspace = true, features = ["internals"] }
-campfire-production = { workspace = true, features = ["internals"] }
-campfire-script = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
 campfire-test-packages.workspace = true
 fluent-syntax.workspace = true
 naga = { workspace = true, features = ["wgsl-in"] }
 
 [lints]
 workspace = true
+
+
+[[bench]]
+name = "client"
+harness = false
+required-features = ["internals"]

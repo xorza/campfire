@@ -1,8 +1,9 @@
 //! The client's data files of a package, which the sim never reads, and which only the import, that
 //! writes them, and the client, that draws them, depend on: how its camera moves, which keys do
-//! what, which units show their bars, its teams' colors, how its unit types and its maps' client
-//! objects look, what its models' materials say past glTF's own, the light its maps are drawn in,
-//! their terrain and its ground heights, and the objects of each map the client alone draws.
+//! what, which units show their bars, how the pointer picks its units, its teams' colors, how its
+//! unit types and its maps' client objects look, what its models' materials say past glTF's own,
+//! the light its maps are drawn in, their terrain and its ground heights, and the objects of each
+//! map the client alone draws.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
@@ -20,6 +21,7 @@ mod ktx2_image;
 mod map_conditions;
 mod map_lights;
 mod material_extras;
+mod picking_file;
 mod team_colors;
 mod terrain_file;
 mod texture_format;
@@ -38,6 +40,7 @@ pub use crate::ktx2_image::Ktx2Image;
 pub use crate::map_conditions::MapConditions;
 pub use crate::map_lights::{MapLight, MapLights};
 pub use crate::material_extras::{Blend, MaterialExtras, TeamPaint};
+pub use crate::picking_file::{PickingFile, PixelRadius};
 pub use crate::team_colors::TeamColors;
 pub use crate::terrain_file::{
     BorderWrap, GroundQuad, Overlay, TerrainFile, TerrainQuads, TerrainSurface, TerrainTexture,

@@ -25,6 +25,7 @@ use crate::inventory_bar::InventoryBarPlugin;
 use crate::item_names::ItemNamesPlugin;
 use crate::local_keys::LocalKeysPlugin;
 use crate::orders::OrdersPlugin;
+use crate::pointer::unit_picking::UnitPickingPlugin;
 use crate::selecting::SelectingPlugin;
 use crate::shop_panel::ShopPanelPlugin;
 use crate::view::ViewPlugin;
@@ -49,6 +50,7 @@ pub(crate) enum ClientModule {
     View,
     AreaView,
     PlayerCamera,
+    UnitPicking,
     UnitModels,
     TerrainView,
     Hud,
@@ -93,6 +95,7 @@ impl ClientModule {
             | Self::ClientFiles
             | Self::View
             | Self::PlayerCamera
+            | Self::UnitPicking
             | Self::UnitModels
             | Self::TerrainView
             | Self::Hud
@@ -111,6 +114,7 @@ impl ClientModule {
             | Self::View
             | Self::AreaView
             | Self::PlayerCamera
+            | Self::UnitPicking
             | Self::UnitModels
             | Self::TerrainView
             | Self::Hud
@@ -209,6 +213,9 @@ impl ClientModule {
             Self::PlayerCamera => {
                 app.add_plugins(PlayerCameraPlugin);
             }
+            Self::UnitPicking => {
+                app.add_plugins(UnitPickingPlugin);
+            }
             Self::UnitModels => {
                 app.add_plugins(UnitModelsPlugin);
             }
@@ -299,6 +306,7 @@ mod tests {
             ClientModule::ClientFiles,
             ClientModule::View,
             ClientModule::PlayerCamera,
+            ClientModule::UnitPicking,
             ClientModule::UnitModels,
             ClientModule::TerrainView,
             ClientModule::Hud,
