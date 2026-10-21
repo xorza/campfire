@@ -40,7 +40,7 @@ pub(crate) struct SpawnOf {
 
 impl KeptSpawns {
     /// Sends the spawns of the producer of `entity` out of its exit, each as a train leaves it,
-    /// and keeps them: the server's, as its site completes.
+    /// and keeps them: the server's, as it stands whole.
     pub(crate) fn send(world: &mut World, entity: Entity) {
         let spec = Self::spec(world, entity).expect("a producer that keeps spawns");
         let spawner = *world.get::<StableId>(entity).expect("a producer has an id");

@@ -30,6 +30,13 @@ pub struct SpawnSpec {
     pub replace: Ticks,
 }
 
+impl ProducerSpec {
+    /// Whether it sends units of its own as it stands whole: free units, or kept spawns.
+    pub(crate) const fn sends(&self) -> bool {
+        !self.free.is_empty() || self.spawns.is_some()
+    }
+}
+
 impl PerType for ProducerSpec {
     const SCRIPTS_ONLY: bool = false;
 }

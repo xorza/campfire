@@ -21,7 +21,7 @@ use campfire_players::Player;
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::{Capability, SimSystems};
 use campfire_stats::StatsSystems;
-use campfire_units::{BodyUnit, StatusTags, UnitGrid, UnitTypes, UnitsSystems};
+use campfire_units::{BodyUnit, SpawnCallbacks, StatusTags, UnitGrid, UnitTypes, UnitsSystems};
 use campfire_values::{Block, EngineTag, TagProperties};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
@@ -198,6 +198,7 @@ impl Module for Production {
         d.state::<BodyUnit, KeptSpawns>();
         d.component::<SpawnOf>();
         d.state::<BodyUnit, SpawnOf>();
+        d.callback::<SpawnCallbacks>(Capability::Production, Construction::spawned);
         d.resource::<TrainedUnits>();
         d.resource::<CompletedSites>();
         d.hook::<OnUnitTrained>(Status::Runs(ApiVersion::FIRST));

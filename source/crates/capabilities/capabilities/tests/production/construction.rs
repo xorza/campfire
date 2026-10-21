@@ -300,7 +300,70 @@ fn a_completed_site_frees_its_units_out_of_its_exit_in_their_order() {
         } else {
             assert_eq!((grunts.len(), builders.len()), (0, 1));
         }
+        // A depot spawned whole, not as a site, at (10, 0), frees them as it spawns, out of its
+        // exit at (13.5, 0.5) (12-test-matches.md, A building that spawns whole frees its units).
+        shop.hall(&mut game, halves(20, 0));
+        let grunts = Shop::spawned(&mut game, shop.grunt);
+        let builders = Shop::spawned(&mut game, yard.builder);
+        let whole = Spawned {
+            position: halves(27, 1),
+            ..freed
+        };
+        if frees {
+            assert_eq!(place(&grunts[1]), whole);
+            assert_eq!((grunts.len(), builders.len()), (2, 3));
+            assert_eq!(place(&builders[2]), whole);
+        } else {
+            assert_eq!((grunts.len(), builders.len()), (0, 1));
+        }
     }
+}
+
+#[test]
+fn a_depot_spawned_whole_keeps_its_spawns_and_a_restore_sends_none_again() {
+    // A depot that keeps two grunts, spawned whole at (10, 0): both leave its exit at (13.5, 0.5)
+    // as it spawns; a restore of the next tick holds those two, and sends none again
+    // (12-test-matches.md, A building that spawns whole frees its units).
+    let scene = || {
+        let Building { mut game, shop, .. } = Building::new(Rules::of(Style::Alone));
+        let spec = ProducerSpec {
+            queue: NonZeroU8::new(1).unwrap(),
+            exit: FramePoint::new([Num::int(7) / Num::int(2), Num::HALF]),
+            rally: None,
+            gathers: false,
+            free: Box::new([]),
+            spawns: Some(SpawnSpec {
+                unit_type: shop.grunt,
+                count: NonZeroU8::new(2).unwrap(),
+                replace: Ticks::new(5),
+            }),
+        };
+        Shop::give(&mut game, shop.depot, spec);
+        (game, shop)
+    };
+    let (mut game, shop) = scene();
+    shop.hall(&mut game, halves(20, 0));
+    let at = |game: &mut Match| {
+        let grunts = Shop::spawned(game, shop.grunt);
+        grunts
+            .iter()
+            .map(|grunt| grunt.position)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(at(&mut game), [halves(27, 1); 2]);
+    game.step();
+    let (mut restored, _) = scene();
+    let players: Vec<Entity> = restored
+        .query_filtered::<Entity, With<StableId>>()
+        .iter(&restored)
+        .collect();
+    for player in players {
+        restored.despawn(player);
+    }
+    Release::restore_into(&game, &mut restored);
+    assert_eq!(at(&mut restored).len(), 2);
+    restored.step();
+    assert_eq!(at(&mut restored).len(), 2);
 }
 
 #[test]

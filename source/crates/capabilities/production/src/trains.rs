@@ -272,7 +272,7 @@ impl Trains {
     }
 
     /// Spawns each unit type the producer of `entity` frees, in its list's order, out of its exit
-    /// as `leave` sends it: the server's, as its site completes (04-capabilities/production.md, A
+    /// as `leave` sends it: the server's, as it stands whole (04-capabilities/production.md, A
     /// building may come with its units).
     pub(crate) fn free_units(world: &mut World, entity: Entity) {
         let unit_type = *world

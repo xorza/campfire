@@ -42,6 +42,35 @@ pub(crate) mod step;
 pub struct Construction;
 
 impl Construction {
+    /// Sends the free units and the kept spawns of the producer of `entity`, which stands whole:
+    /// the server's, as its site completes, or as the spawner spawns it whole.
+    fn send(world: &mut World, entity: Entity) {
+        let unit_type = *world
+            .get::<UnitType>(entity)
+            .expect("a producer has a type");
+        let producers = world.resource::<ByType<ProducerSpec>>();
+        let Some(spec) = producers.get(unit_type) else {
+            return;
+        };
+        let (frees, keeps) = (!spec.free.is_empty(), spec.spawns.is_some());
+        if frees {
+            Trains::free_units(world, entity);
+        }
+        if keeps {
+            KeptSpawns::send(world, entity);
+        }
+    }
+
+    /// The spawn callback of production: a producer the spawner spawns whole, not as a site,
+    /// sends its free units and its kept spawns at once, as a site does as it completes, and a
+    /// restore, which spawns nothing through the spawner, sends none again (12-test-matches.md,
+    /// A building that spawns whole frees its units).
+    pub(crate) fn spawned(world: &mut World, entity: Entity) {
+        if !world.entity(entity).contains::<Site>() {
+            Self::send(world, entity);
+        }
+    }
+
     /// Checks each build order that changed since the last run, in Inputs, after the orders
     /// apply, as it applies: a point's build passes its action's checks, its requirements and
     /// its placement against the match as it stands, and a site's is a living site of the same
@@ -384,14 +413,8 @@ impl Construction {
                 commands.entity(entity).remove::<(Site, SiteProgress)>();
                 *status = status.turned(Production::CONSTRUCTING, false);
                 done.push(id);
-                let spec = producers.get(unit_type);
-                let frees = spec.is_some_and(|spec| !spec.free.is_empty());
-                if frees && !F::PREDICTS {
-                    commands.queue(move |world: &mut World| Trains::free_units(world, entity));
-                }
-                let keeps = spec.is_some_and(|spec| spec.spawns.is_some());
-                if keeps && !F::PREDICTS {
-                    commands.queue(move |world: &mut World| KeptSpawns::send(world, entity));
+                if producers.get(unit_type).is_some_and(ProducerSpec::sends) && !F::PREDICTS {
+                    commands.queue(move |world: &mut World| Self::send(world, entity));
                 }
             }
         }
