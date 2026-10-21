@@ -14,7 +14,8 @@ use campfire_mode::{ChoiceData, ListEntry, ModeParam, Offers, OptionData, Relati
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AcquireData;
 use campfire_production::{
-    BuildData, BuildStart, ConstructData, FramePoint, ProductionData, RequiresData, TrainData,
+    BuildData, BuildStart, ConstructData, FramePoint, ProductionData, RequiredUnit, RequiresData,
+    TrainData,
 };
 use campfire_projectiles::ProjectileData;
 use campfire_sim::Capability;
@@ -95,8 +96,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         include_bytes!("../../../../../packages/zero-hour/package.index")
     );
     // The package's own reader takes its units file: the tank, the wall and the rocks the map
-    // places, America's start objects, the barracks and the ranger their command sets make, and the
-    // shell the tank's cannon fires. Its units drive, by stats, orders and navigation, no faster
+    // places, America's start objects, the barracks, the ranger and the pathfinder their command
+    // sets make, and the shell the tank's cannon fires. Its units drive, by stats, orders and navigation, no faster
     // than the tank's 30.5 m a second.
     let mode = PackageDir::new(test_dir.path("one/game"))
         .mode_packages(Some(&named))
@@ -112,6 +113,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         [
             "americabarracks",
             "americacommandcenter",
+            "americainfantrypathfinder",
             "americainfantryranger",
             "americatankcrusader",
             "americavehicledozer",
@@ -227,7 +229,16 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let ranger = train(
         "americainfantryranger",
         Some(RequiresData {
-            units: all_declared(&["americabarracks"]),
+            units: vec![RequiredUnit::from(declared("americabarracks"))],
+            modifiers: Vec::new(),
+        }),
+    );
+    // The pathfinder's line of two objects, either of which passes it.
+    let either = ["americabarracks", "americacommandcenter"].map(declared);
+    let pathfinder = train(
+        "americainfantrypathfinder",
+        Some(RequiresData {
+            units: vec![RequiredUnit::any_of(either).unwrap()],
             modifiers: Vec::new(),
         }),
     );
@@ -289,6 +300,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         *actions,
         BTreeMap::from([
             made("build_americabarracks", 600, 10000, barracks),
+            made("train_americainfantrypathfinder", 300, 6000, pathfinder),
             made("train_americainfantryranger", 225, 5000, ranger),
             made(
                 "train_americavehicledozer",
@@ -351,7 +363,10 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     );
     assert_eq!(
         command("americabarracks"),
-        all_declared(&["train_americainfantryranger"])
+        all_declared(&[
+            "train_americainfantryranger",
+            "train_americainfantrypathfinder"
+        ])
     );
     assert_eq!(command("americainfantryranger"), Vec::<DeclaredName>::new());
     // Each type's weapons, of its starting set, in slot order, those dropped left out; its life,
@@ -504,8 +519,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     );
     assert_eq!(production("americavehicledozer"), None);
     // The names, of the string table's labels, their hotkeys' markers dropped and `&&` an
-    // `&`, braces escaped as Fluent reads them; the ranger's label the table lacks, so its
-    // object's name.
+    // `&`, braces escaped as Fluent reads them; the ranger's and the pathfinder's labels the table
+    // lacks, so their objects' names.
     assert_eq!(
         test_dir.read_text("one/game/locale/en.ftl"),
         "mode-name = Zero Hour\nchoice-faction = Faction\nteam-player-1 = Player 1\nteam-player-2 = Player 2\n\
@@ -513,6 +528,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
          team-player-6 = Player 6\nteam-player-7 = Player 7\nteam-player-8 = Player 8\n\
          team-neutral = Neutral\n\
          action-build-americabarracks = Barracks & {\"{\"}Yard{\"}\"}\n\
+         action-train-americainfantrypathfinder = AmericaInfantryPathfinder\n\
          action-train-americainfantryranger = AmericaInfantryRanger\n\
          action-train-americavehicledozer = Dozer\n"
     );
@@ -538,10 +554,6 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             (
                 "Command_ConstructAmericaInfantryRanger",
                 ButtonDropCause::NoQueue
-            ),
-            (
-                "Command_ConstructAmericaInfantryPathfinder",
-                ButtonDropCause::EitherOr
             ),
             ("Command_ConstructFortressWall", ButtonDropCause::NoWalker),
             ("Command_ConstructGhost", ButtonDropCause::NoObject),

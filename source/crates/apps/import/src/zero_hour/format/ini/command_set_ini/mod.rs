@@ -57,7 +57,7 @@ CommandSet AmericaDozerCommandSet\r
 End\r
 CommandSet AmericaBarracksCommandSet\r
   1 = Command_ConstructAmericaInfantryRanger\r
-  2 = Command_ConstructAmericaInfantryPathfinder ; either of two\r
+  2 = Command_ConstructAmericaInfantryPathfinder ; either of two objects\r
   3 = Command_ConstructFortressWall ; a train of no walker\r
   5 = Command_ConstructGhost ; no object\r
   6 = Command_ConstructAmericaPowerPlant ; dropped again, reported once\r

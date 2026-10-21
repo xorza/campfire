@@ -33,6 +33,7 @@ use crate::placement_data::{PlacementData, PlacementRule};
 use crate::producer_spec::ProducerSpec;
 use crate::production_data::ProductionData;
 use crate::requirement_book::RequirementBook;
+use crate::requires_data::RequiredUnit;
 use crate::resource_set::ResourceSet;
 use crate::supply_book::SupplyBook;
 use crate::supply_cost_book::SupplyCostBook;
@@ -112,6 +113,7 @@ impl Production {
                 let requires = train.and_then(|train| train.requires.as_ref());
                 let requires = requires.or_else(|| build?.requires.as_ref());
                 let required = requires.iter().flat_map(|requires| &requires.units);
+                let required = required.flat_map(RequiredUnit::names);
                 let mut delivered = required
                     .filter(|name| source.units.get(*name).is_some_and(UnitTypeData::delivers));
                 if let Some(name) = delivered.next() {
@@ -307,11 +309,15 @@ impl RequirementBook {
                 continue;
             };
             let scope = TypeScope::of_package(action.package);
-            let units = requires.units.iter().map(|name| {
+            let resolve = |name: &DeclaredName| {
                 let unit_type = cx.unit_type(scope, name.as_str());
                 unit_type.ok_or_else(|| UnknownName::new(UnitType::NAMES, name))
+            };
+            let units = requires.units.iter().map(|entry| {
+                let types = entry.names().iter().map(resolve);
+                types.collect::<Result<Vec<UnitType>, UnknownName>>()
             });
-            let units = units.collect::<Result<Vec<UnitType>, UnknownName>>();
+            let units = units.collect::<Result<Vec<Vec<UnitType>>, UnknownName>>();
             let units = units.map_err(|name| action.unknown(name))?;
             let held = requires.modifiers.iter().map(|name| {
                 let modifier = modifiers

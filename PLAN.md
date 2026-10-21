@@ -6,17 +6,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 A player builds a Patriot battery, a tunnel network and a Stinger site and sees each fire at an enemy that comes near, the site's three Stinger soldiers with missiles, each soldier back 30 s after it dies and the tunnel's two defenders 10 s after; and trains Technicals, each of one of three chassis, Inferno cannons and, after a Strategy Center, Tomahawks, and sees them fire ([proposal](docs/design/12-base-defenses.md)). The Scud launcher, which needs a science, the demo trap, which has no body, and the weapons of `NOT_AIRBORNE` stay dropped. Each batch is one commit, ends with `cargo drive gate` passing, and stops for review.
 
-### 2. A requirement of any one (S)
-
-`production`, `import`, 04-capabilities/production.md, 09. First of what is left; the Tomahawk needs the Strategy Center it lets stand.
-
-- **The requirement.** An entry of `RequiresData::units` (`production/src/requires_data.rs:11`) is a name or a list of names; `RequirementBook` (`production/src/requirement_book.rs`, built at `production/src/book_builders.rs:309`) holds each entry as the types any one of which passes, and the start step's test of a train and a build passes an entry when the player holds one of them. Builds: a name is resolved once.
-- **The import.** `ProductionImport::requires` (`apps/import/src/zero_hour/production_import/mod.rs:293`) converts a line of several objects to one entry; `ButtonDropCause::EitherOr` goes.
-- **Check:** tests of a train that needs one of two types: refused with neither, passed with either, its holding counted as the types come and go; the import of a fixture's line of two objects; the Zero Hour check's count of builds.
-
 ### 3. Spared kin and a clip of one shot (S)
 
-`combat`, `import`, 04-capabilities/combat.md, 09. After batch 2, which makes the Tomahawk trainable.
+`combat`, `import`, 04-capabilities/combat.md, 09. First of what is left: the Strategy Center now stands, so the Tomahawk trains.
 
 - **Spared kin.** `SplashData` (`combat/src/attack_data.rs`) and the run's `Splash` (`combat/src/weapon/mod.rs`) gain `spares_kin`; `Attacks::take_hits` (`combat/src/attacks.rs:134`) skips each ally of the source of the source's unit type. Builds: a capability serves every game.
 - **The import.** `ImportedWeapon::relations` (`apps/import/src/zero_hour/combat_import/mod.rs:568`) converts `NOT_SIMILAR` to `spares_kin`, and `NOT_AIRBORNE` keeps `WeaponDrop::Affects`; a weapon of `ClipSize = 1` (`combat_import/mod.rs:381`, `:404`) converts to a period of its reload and no clip, so `WeaponDrop::NoDelay` stays for a weapon of more shots alone.

@@ -125,13 +125,13 @@ fn a_dead_producers_queue_holds_its_supply_and_its_own_cost_does_not_count() {
 
 #[test]
 fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
-    // The train needs a living forge of its player's, and its player's modifier 0.
+    // The train needs a living forge or depot of its player's, and its player's modifier 0.
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
     let train = Production::add_train(&mut game, shop.grunt, Ticks::new(5), None);
     let drill = ModifierId::new(0);
     let mut requirements = RequirementBook::default();
-    requirements.push(train, [shop.forge], [drill]);
+    requirements.push(train, [[shop.forge, shop.depot]], [drill]);
     game.insert_resource(requirements);
     // A match of production alone, whose players hold no modifiers until one is given them.
     Players::spawn(&mut game, 2, 0);
@@ -168,7 +168,10 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     let held = game.player_modifiers_mut(player);
     held.unwrap().add(drill);
     step(&mut game, 1, 3);
-    // The forge dies: the next is refused, and the queued one stays.
+    // The forge dies: the next is refused, and the queued one stays; a depot of its player's
+    // meets the entry in its place, and the next joins.
     game.insert_parts(forge, Dead);
     step(&mut game, 1, 4);
+    Production::owned(&mut game, shop.depot, player);
+    step(&mut game, 2, 5);
 }

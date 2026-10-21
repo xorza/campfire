@@ -3,7 +3,7 @@
 drive_ticks = 1717
 
 [fingerprints]
-game = "4daf5d701d0187aeedbbf005734a961b59b19af7c9a8e4213d9b45e422768b76"
+game = "9f783e5aaa7be85bfe20fa91fe872f1285090ec5585a4e2fb580f3b95e182879"
 rules = "67c543837b0ffc42e8fba5f40a74cb7904b0b6295215aa8e9996dd095ecc7712"
 
 [map]
@@ -28,8 +28,8 @@ snowy = 17
 
 [produced]
 trains = 187
-builds = 156
-dropped = [0, 22, 4, 36, 6, 0, 0, 0]
+builds = 160
+dropped = [0, 22, 36, 6, 0, 0, 0]
 
 [supplied]
 nodes = 4

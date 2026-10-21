@@ -6,7 +6,8 @@ use campfire_codec::TomlTable;
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::{Num, Rounding};
 use campfire_production::{
-    BuildData, BuildStart, ConstructData, FramePoint, ProductionData, RequiresData, TrainData,
+    BuildData, BuildStart, ConstructData, FramePoint, ProductionData, RequiredUnit, RequiresData,
+    TrainData,
 };
 use campfire_values::{Number, Ranked, Share, TextId};
 
@@ -80,8 +81,6 @@ pub enum ButtonDropCause {
     NoObject,
     /// Its object's prerequisites need a science.
     Science,
-    /// Its object's prerequisites hold a line of several objects, any one of which passes.
-    EitherOr,
     /// It trains an object that does not walk.
     NoWalker,
     /// It builds an object of no body, as a small structure (12-base-defenses.md, A cylinder
@@ -217,11 +216,15 @@ impl ProductionImport {
             return drop(ButtonDropCause::BadTime);
         };
         let mut units = Vec::with_capacity(requires.len());
-        for required in requires {
-            let Ok(typed) = names.unit_type(required, &rules.locomotors) else {
-                return drop(ButtonDropCause::NoType);
-            };
-            units.push(typed.name);
+        for line in requires {
+            let mut any = Vec::with_capacity(line.len());
+            for required in line {
+                let Ok(typed) = names.unit_type(required, &rules.locomotors) else {
+                    return drop(ButtonDropCause::NoType);
+                };
+                any.push(typed.name);
+            }
+            units.push(RequiredUnit::any_of(any).expect("a prerequisite line names an object"));
         }
         let Ok(typed) = names.unit_type(made, &rules.locomotors) else {
             return drop(ButtonDropCause::NoType);
@@ -289,24 +292,26 @@ impl ProductionImport {
         Some(made.name.clone())
     }
 
-    /// The objects `build`'s prerequisites require, a line of one object each; a cause for a
-    /// line of a science, of several objects, or of an object no file defines.
+    /// The objects `build`'s prerequisites require, each line the objects any one of which
+    /// passes it, as `ProductionPrerequisite::isSatisfied` reads a line (12-base-defenses.md, A
+    /// prerequisite line converts to a list); a cause for a line of a science, or of an object no
+    /// file defines.
     fn requires<'a>(
         rules: &'a ZeroHourRules,
         build: &IniBuild,
-    ) -> Result<Vec<&'a IniObject>, ButtonDropCause> {
+    ) -> Result<Vec<Vec<&'a IniObject>>, ButtonDropCause> {
         build
             .prerequisites
             .iter()
             .map(|line| match line {
                 Prerequisite::Science(_) => Err(ButtonDropCause::Science),
-                Prerequisite::Objects(objects) => match objects.as_slice() {
-                    [object] => rules
-                        .objects
-                        .object(object.as_bytes())
-                        .ok_or(ButtonDropCause::NoObject),
-                    _ => Err(ButtonDropCause::EitherOr),
-                },
+                Prerequisite::Objects(objects) => objects
+                    .iter()
+                    .map(|object| {
+                        let object = rules.objects.object(object.as_bytes());
+                        object.ok_or(ButtonDropCause::NoObject)
+                    })
+                    .collect(),
             })
             .collect()
     }

@@ -277,6 +277,8 @@ End\r
 Object AmericaInfantryPathfinder\r
   KindOf = INFANTRY\r
   Locomotor = SET_NORMAL TankTreads\r
+  BuildCost = 300\r
+  BuildTime = 6.0\r
   Prerequisites\r
 Object = AmericaBarracks AmericaCommandCenter\r
   End\r

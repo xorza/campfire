@@ -106,7 +106,7 @@ pub use crate::production_orders::ProductionOrders;
 pub use crate::rally::Rally;
 pub use crate::rally_target::RallyTarget;
 pub use crate::requirement_book::{Required, RequirementBook};
-pub use crate::requires_data::RequiresData;
+pub use crate::requires_data::{RequiredUnit, RequiresData};
 pub use crate::resource_set::ResourceSet;
 pub use crate::site::{Progressed, Site, SiteProgress, SiteStart};
 pub use crate::supply_book::SupplyBook;

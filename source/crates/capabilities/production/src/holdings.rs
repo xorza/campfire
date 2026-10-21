@@ -136,8 +136,9 @@ impl Holdings {
         self.sums_mut(seat).used += u64::from(cost);
     }
 
-    /// Whether `owner`, who holds `modifiers`, holds what `required` needs: one with no
-    /// `requires` needs nothing, and a unit no player owns meets no need.
+    /// Whether `owner`, who holds `modifiers`, holds what `required` needs, a unit of one type of
+    /// each of its entries: one with no `requires` needs nothing, and a unit no player owns meets
+    /// no need.
     pub(crate) fn meet(
         &self,
         owner: Option<Seat>,
@@ -154,10 +155,11 @@ impl Holdings {
         let Some(owner) = owner else {
             return false;
         };
-        let units = required
-            .units
-            .iter()
-            .all(|&unit_type| self.held_at(owner, unit_type).is_ok());
+        let mut units = required.units();
+        let units = units.all(|any| {
+            any.iter()
+                .any(|&unit_type| self.held_at(owner, unit_type).is_ok())
+        });
         let modifiers = required
             .modifiers
             .iter()
