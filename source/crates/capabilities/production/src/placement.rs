@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_geometry::{BodyBox, Placed, Shape};
+use campfire_geometry::Placed;
 use campfire_math::{Num, Vec3};
 use campfire_players::OnMatch;
 use campfire_sim::{Position, Unpredicted};
@@ -12,7 +12,7 @@ use campfire_vision::{Fog, TeamSight, VisionBook};
 
 use crate::build_book::{BuildSpec, PlacementCheck};
 
-/// What a placement tests a building's box against: the bounds, the walls, whether the builder's
+/// What a placement tests a building's body against: the bounds, the walls, whether the builder's
 /// team sees its point, the static bodies, seen or not, and the living units near it that the
 /// builder's team sees, by `S`, of a match with no vision every unit, the walkers among them,
 /// each found by the unit grid. A client tests the units it holds and does not predict too, where
@@ -40,23 +40,22 @@ type PlacedUnit<S> = (
 );
 
 impl<S: TeamSight> Placement<'_, '_, S> {
-    /// Whether `body`, the box of `spec`'s building, may stand at `position` for a builder of
-    /// `team`: it lies within the bounds, `team` saw its point in the last Vision stage, as Zero
-    /// Hour refuses a build point under shroud (04-capabilities/production.md, A build point its
-    /// team sees), and its inside shares no point with a wall of its layer, a static body of its
-    /// layer, or the body on its layer of a walker that is not of a team friendly to `team`; and it
-    /// meets its placement's rules. Each unit it tests is one `team` sees, as `SeenNear` finds
-    /// them. Touching is not overlap.
+    /// Whether `body`, the box or the circle of `spec`'s building, may stand at `position` for a
+    /// builder of `team`: it lies within the bounds, `team` saw its point in the last Vision
+    /// stage, as Zero Hour refuses a build point under shroud (04-capabilities/production.md, A
+    /// build point its team sees), and its inside shares no point with a wall of its layer, a
+    /// static body of its layer, or the body on its layer of a walker that is not of a team
+    /// friendly to `team`; and it meets its placement's rules. Each unit it tests is one `team` sees, as `SeenNear` finds
+    /// them. Touching is not overlap (12-base-defenses.md, A building may stand on a circle).
     pub fn passes(&mut self, team: Team, position: Vec3, body: Body, spec: BuildSpec<'_>) -> bool {
-        let Shape::Box(boxed) = body.shape() else {
-            panic!("a building's body is a box");
-        };
+        let placed = Placed::new(position, body.shape());
+        let bound = placed.shape.bound();
         let layer = body.layer();
         let walled = self
             .walls
             .as_deref()
-            .is_some_and(|walls| walls.overlaps_box(position, &boxed, layer));
-        if !self.map.bounds.holds_box(position, &boxed) || walled {
+            .is_some_and(|walls| walls.overlaps(placed, layer));
+        if !self.map.bounds.holds(position, &placed.shape) || walled {
             return false;
         }
         let grid = self.vision.as_deref().and_then(VisionBook::grid);
@@ -78,23 +77,23 @@ impl<S: TeamSight> Placement<'_, '_, S> {
         let overlaps = |unit: &NearUnit<'_>, walks: bool| {
             unit.body
                 .filter(|other| unit.walks == walks && other.layer() == layer)
-                .is_some_and(|other| overlap(&boxed, position, other, unit.position))
+                .is_some_and(|other| placed.overlaps(Placed::new(unit.position, other.shape())))
         };
-        if seen.any_static(position, boxed.bound(), |unit| overlaps(&unit, false)) {
+        if seen.any_static(position, bound, |unit| overlaps(&unit, false)) {
             return false;
         }
-        let blocked = seen.any(position, boxed.bound(), |unit| {
+        let blocked = seen.any(position, bound, |unit| {
             overlaps(&unit, true) && relations.between(team, unit.team) != Relation::Friendly
         });
         // A rule's unit is one its filter selects for a builder of `team`, of those `team` sees,
-        // that comes within its distance of the box by the reach rule.
+        // that comes within its distance of the body by the reach rule.
         let mut meets = |rule: &PlacementCheck| {
-            let reach = boxed.bound().checked_add(rule.distance).unwrap_or(Num::MAX);
+            let reach = bound.checked_add(rule.distance).unwrap_or(Num::MAX);
             seen.any(position, reach, |unit| {
                 rule.filter
                     .selects(relations.between(team, unit.team), unit.tags)
                     && map.metric().reaches(
-                        Placed::new(position, body.shape()),
+                        placed,
                         rule.distance,
                         Placed::new(unit.position, Body::shape_of(unit.body)),
                     )
@@ -130,15 +129,6 @@ struct SeenNear<'p, 'w, 's, S: TeamSight> {
 enum Sighted {
     Seen,
     Any,
-}
-
-/// Whether the inside of `boxed`, a box at `position`, shares a point with that of `other`, a body
-/// at `at`: touching is not overlap.
-fn overlap(boxed: &BodyBox, position: Vec3, other: &Body, at: Vec3) -> bool {
-    match other.shape() {
-        Shape::Circle(radius) => boxed.closer(position, at, radius.get()),
-        Shape::Box(other) => boxed.overlaps(position, &other, at),
-    }
 }
 
 impl<S: TeamSight> SeenNear<'_, '_, '_, S> {

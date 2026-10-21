@@ -2,7 +2,7 @@ use campfire_math::{Num, Rounding, Vec3};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::body_box::BodyBox;
+use crate::shape::Shape;
 
 /// A map's bounds: the closed rectangle from `min` to `max` on the ground plane, each `[x, z]`.
 /// No unit is ever outside them. A map's `[bounds]` writes them as `min` and `max`.
@@ -52,10 +52,10 @@ impl Bounds {
             && position.y.to_bits().unsigned_abs() <= Vec3::BOUND.to_bits().unsigned_abs()
     }
 
-    /// Whether the box `body` at `position` lies within the bounds on the ground plane, its edges
-    /// on theirs among them.
-    pub fn holds_box(self, position: Vec3, body: &BodyBox) -> bool {
-        let extent = body.extent();
+    /// Whether `shape` at `position` lies within the bounds on the ground plane, its edges on
+    /// theirs among them.
+    pub fn holds(self, position: Vec3, shape: &Shape) -> bool {
+        let extent = shape.extent();
         let ground = [position.x, position.z];
         (0..2).all(|axis| {
             ground[axis]

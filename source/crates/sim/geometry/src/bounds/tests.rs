@@ -1,4 +1,6 @@
 use super::*;
+use crate::body_box::BodyBox;
+use crate::radius::Radius;
 
 #[test]
 fn bounds_hold_their_closed_rectangle_and_clamp_to_it() {
@@ -58,7 +60,23 @@ fn bounds_hold_their_closed_rectangle_and_clamp_to_it() {
         (Num::ZERO, -half - e, false),
     ] {
         let position = Vec3::new(x, Num::ZERO, z);
-        assert_eq!(bounds.holds_box(position, &boxed), held, "{x:?} {z:?}");
+        assert_eq!(
+            bounds.holds(position, &Shape::Box(boxed)),
+            held,
+            "{x:?} {z:?}"
+        );
+    }
+    // A circle of 1.5 m reaches 1.5 along each axis: within them from x = −0.5 to 2.5 and z = 0.5
+    // to 1.5, its edge on theirs; a bit past either is out.
+    let circle = Shape::Circle(Radius::new(Num::int(3) / 2).unwrap());
+    for (x, z, held) in [
+        (-half, half, true),
+        (Num::int(5) / 2, Num::int(3) / 2, true),
+        (-half - e, Num::ONE, false),
+        (Num::ONE, Num::int(3) / 2 + e, false),
+    ] {
+        let position = Vec3::new(x, Num::ZERO, z);
+        assert_eq!(bounds.holds(position, &circle), held, "{x:?} {z:?}");
     }
     for height in [Vec3::BOUND, -Vec3::BOUND] {
         assert!(bounds.contains(Vec3::new(Num::ZERO, height, Num::ZERO)));

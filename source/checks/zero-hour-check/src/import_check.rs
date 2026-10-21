@@ -397,7 +397,7 @@ impl ImportCheck<'_> {
             .game
             .mode_packages(Some(self.map))
             .map_err(CheckError::Load)?;
-        if let Some(defense) = DefensePlay::run(played, rate, &mut self.failures) {
+        if let Some(defense) = DefensePlay::GATTLING.run(played, rate, &mut self.failures) {
             let expected = self.pinned(|golden| golden.defense, defense);
             self.failures
                 .extend(Differs::of(defense, expected).map(CheckFailure::Defense));
@@ -407,6 +407,22 @@ impl ImportCheck<'_> {
                 hit = defense.hit,
                 death = defense.death,
                 "player 1's Gattling Cannon, ordered nothing, spun up and killed the bot's dozer"
+            );
+        }
+        let played = self
+            .game
+            .mode_packages(Some(self.map))
+            .map_err(CheckError::Load)?;
+        if let Some(patriot) = DefensePlay::PATRIOT.run(played, rate, &mut self.failures) {
+            let expected = self.pinned(|golden| golden.patriot, patriot);
+            self.failures
+                .extend(Differs::of(patriot, expected).map(CheckFailure::Patriot));
+            self.measured.patriot = Some(patriot);
+            info!(
+                built = ?patriot.built,
+                hit = patriot.hit,
+                death = patriot.death,
+                "player 1's Patriot battery, ordered nothing, killed the bot's dozer"
             );
         }
         let played = self

@@ -278,11 +278,9 @@ impl ImportedType {
         self.stats.walks()
     }
 
-    /// Whether its body is a box, which a build places.
-    pub(crate) fn is_box(&self) -> bool {
-        self.collision
-            .as_ref()
-            .is_some_and(|collision| collision.form.is_box())
+    /// Whether it has a body, a box or a circle, which a build places.
+    pub(crate) const fn has_body(&self) -> bool {
+        self.collision.is_some()
     }
 
     /// Its speed in meters a second, when it drives.

@@ -271,16 +271,16 @@ impl Navigation {
     }
 
     /// The spawn callback that makes room for the body of `entity`, which the mode's spawner just
-    /// spawned, when a box: each walker of its layer whose body the box overlaps goes at once to
-    /// the nearest cell its walker may stand in, by stable id, as a teleport places a unit but
-    /// with no disjoint. The static index and the pathing grid take the box first, so the cell
-    /// is clear of every static body, and no push of collision can hold the walker between two.
-    /// With no pathing grid, the box pushes it out as collision would.
+    /// spawned, when it stands, a box or a circle: each walker of its layer whose body it overlaps
+    /// goes at once to the nearest cell its walker may stand in, by stable id, as a teleport
+    /// places a unit but with no disjoint. The static index and the pathing grid take the body
+    /// first, so the cell is clear of every static body, and no push of collision can hold the
+    /// walker between two. With no pathing grid, the body pushes it out as collision would.
     fn make_room(world: &mut World, entity: Entity) {
         let run = world.resource::<RoomMakingRun>().0;
         world
             .run_system_with(run, entity)
-            .expect("a box makes room on any world");
+            .expect("a static body makes room on any world");
     }
 
     /// The center of the cell nearest `ask.near` among those its type's walker may stand in, as

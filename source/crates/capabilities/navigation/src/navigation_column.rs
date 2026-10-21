@@ -1,6 +1,6 @@
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
-use campfire_geometry::Shape;
+use campfire_geometry::{Placed, Shape};
 use campfire_math::Vec3;
 use campfire_script::{AnyKeptRows, Checked, KeptRows, MaybeName, RowFill, Unit, View, ViewColumn};
 use campfire_sim::StableId;
@@ -76,8 +76,9 @@ impl NavigationColumn {
             .all(|other| !other.overlaps_box(position, &boxed));
         let room = view.column(|column: &Self| {
             let rows = column.rows.now();
-            let mut clear = view.bounds().holds_box(position, &boxed)
-                && !column.walls.overlaps_box(position, &boxed, layer);
+            let placed = Placed::new(position, Shape::Box(boxed));
+            let mut clear = view.bounds().holds(position, &placed.shape)
+                && !column.walls.overlaps(placed, layer);
             view.each_row(|place, row| {
                 let stands = !rows[place].walks && rows[place].layer == layer;
                 if clear && stands && row.alive && row.shape != Shape::POINT {
@@ -92,7 +93,7 @@ impl NavigationColumn {
             });
             clear
         });
-        let room = room.unwrap_or_else(|| view.bounds().holds_box(position, &boxed));
+        let room = room.unwrap_or_else(|| view.bounds().holds(position, &Shape::Box(boxed)));
         room && clear_of_spawning
     }
 

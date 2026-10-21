@@ -4,7 +4,7 @@ use bevy_ecs::system::{Query, Res, ResMut, SystemParam};
 use campfire_actions::{
     ActionBook, ActionCheck, ActionSlots, ActionTarget, Caster, Purse, SlotAim, SlotTimes,
 };
-use campfire_geometry::{Metric, Placed, Shape};
+use campfire_geometry::{Metric, Placed};
 use campfire_math::{Num, Vec3};
 use campfire_players::{PlayerResources, PlayerRows};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
@@ -263,10 +263,10 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         };
         let builder = Placed::new(from.get(), Body::shape_of(body));
         if !placed.reached_by(self.map.metric(), builder, building.range) {
-            let Shape::Box(boxed) = placed.body.shape() else {
-                panic!("a building's body is a box");
-            };
-            let to = boxed.nearest_point(placed.position, from.get());
+            let to = placed
+                .body
+                .shape()
+                .nearest_point(placed.position, from.get());
             return if Destination::gives_up(destination, arrived, to) {
                 Step::End
             } else {

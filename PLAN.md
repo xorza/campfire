@@ -6,17 +6,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 A player builds a Patriot battery, a tunnel network and a Stinger site and sees each fire at an enemy that comes near, the site's three Stinger soldiers with missiles, each soldier back 30 s after it dies and the tunnel's two defenders 10 s after; and trains Technicals, each of one of three chassis, Inferno cannons and, after a Strategy Center, Tomahawks, and sees them fire ([proposal](docs/design/12-base-defenses.md)). The Scud launcher, which needs a science, the demo trap, which has no body, and the weapons of `NOT_AIRBORNE` stay dropped. Each batch is one commit, ends with `cargo drive gate` passing, and stops for review.
 
-### 1. Buildings on a circle (M)
-
-`production`, `client`, `import`, 04-capabilities/production.md, 09. First: the Patriot battery, the tunnel network and the Stinger site need it to stand at all.
-
-- **The build.** `BuildBook::build` (`production/src/book_builders.rs:206`) takes a building of a box or a circle body and refuses one of none; `Placement::passes` (`production/src/placement.rs:50`) tests the building's shape against the walls, the map's bounds and the bodies; the builder's walk (`production/src/construction/build_view.rs:269`) goes to the shape's nearest point; the client's preview (`apps/client/src/build_preview.rs:179`) draws and tests the circle. `ProductionDataError::NoBox` becomes `NoBody`. Builds: what can be forgotten is a type.
-- **The import.** `ButtonDropCause::NoBox` (`apps/import/src/zero_hour/production_import/mod.rs:205`) becomes `NoBody`, for a building of no body alone.
-- **Check:** tests of a circle's placement by hand-computed points: clear, touching a wall and a body at its edge and a hair inside it, past the map's bound, a hidden walker moved out; a builder's walk to its nearest point; the client preview's fit; the import's build of a cylinder fixture and its drop of a small one; `cargo drive run zero-hour`, on request, moves its counts, and its defense play gains an America case where a Patriot battery, ordered nothing, kills the bot's dozer.
-
 ### 2. A requirement of any one (S)
 
-`production`, `import`, 04-capabilities/production.md, 09. After batch 1, independent of it; the Tomahawk needs the Strategy Center it lets stand.
+`production`, `import`, 04-capabilities/production.md, 09. First of what is left; the Tomahawk needs the Strategy Center it lets stand.
 
 - **The requirement.** An entry of `RequiresData::units` (`production/src/requires_data.rs:11`) is a name or a list of names; `RequirementBook` (`production/src/requirement_book.rs`, built at `production/src/book_builders.rs:309`) holds each entry as the types any one of which passes, and the start step's test of a train and a build passes an entry when the player holds one of them. Builds: a name is resolved once.
 - **The import.** `ProductionImport::requires` (`apps/import/src/zero_hour/production_import/mod.rs:293`) converts a line of several objects to one entry; `ButtonDropCause::EitherOr` goes.

@@ -72,12 +72,18 @@ impl WalkerSpawn {
     /// Spawns it in `world`.
     pub fn place(self, world: &mut World) -> StableId {
         let spawn = self.spawn.angle(self.angle);
-        let id = match self.form {
-            Some(form) => spawn.parts(form.at(self.angle)).place(world),
-            None => spawn.place(world),
+        let body = self.form.map(|form| form.at(self.angle));
+        let walker = self
+            .walk
+            .map(|walk| Navigation::walker(MoveStep::new(walk.step).unwrap()));
+        // A walker spawns whole, its step with it, so its spawn tells it from a static body.
+        let id = match (body, walker) {
+            (Some(body), Some(walker)) => spawn.parts((body, walker)).place(world),
+            (Some(body), None) => spawn.parts(body).place(world),
+            (None, Some(walker)) => spawn.parts(walker).place(world),
+            (None, None) => spawn.place(world),
         };
-        if let Some(Walk { step, to }) = self.walk {
-            world.insert_parts(id, Navigation::walker(MoveStep::new(step).unwrap()));
+        if let Some(Walk { to, .. }) = self.walk {
             *world.part_mut::<Destination>(id) = Destination::to(to);
         }
         id

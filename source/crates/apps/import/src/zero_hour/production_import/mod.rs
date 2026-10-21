@@ -84,8 +84,9 @@ pub enum ButtonDropCause {
     EitherOr,
     /// It trains an object that does not walk.
     NoWalker,
-    /// It builds an object of no box body.
-    NoBox,
+    /// It builds an object of no body, as a small structure (12-base-defenses.md, A cylinder
+    /// structure builds as a circle).
+    NoBody,
     /// It trains at an object of no `ProductionUpdate`, or of a queue past 1 to 255.
     NoQueue,
     /// Its object, or an object its prerequisites name, gives no unit type.
@@ -202,7 +203,7 @@ impl ProductionImport {
         };
         match making {
             Making::Train if !imported.walks() => return drop(ButtonDropCause::NoWalker),
-            Making::Build if !imported.is_box() => return drop(ButtonDropCause::NoBox),
+            Making::Build if !imported.has_body() => return drop(ButtonDropCause::NoBody),
             _ => {}
         }
         let section = match making {

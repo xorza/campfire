@@ -16,7 +16,7 @@ use crate::pins::{
 /// What the check measured of the known version and this importer, each a value no closed form
 /// gives: the fingerprints, a run on Linux and a run on macOS alike; Tournament Desert's counts;
 /// the import's looks, trains, builds, supply and weapons; the plays' ticks, the supply play's
-/// deliveries, the defense play's hit and kill and the missile play's shot, hit and kill among
+/// deliveries, the defense plays' hits and kills and the missile play's shot, hit and kill among
 /// them; and the bot's base.
 /// A run pins them, and a run that blesses writes them again (09-zero-hour.md, The check's
 /// measures are a golden file).
@@ -35,6 +35,7 @@ pub(crate) struct Golden {
     pub(crate) skirmish: SkirmishTicks,
     pub(crate) supply: SupplyTicks,
     pub(crate) defense: DefenseTicks,
+    pub(crate) patriot: DefenseTicks,
     pub(crate) missile: MissileTicks,
     pub(crate) bot: BotBase,
 }
@@ -54,6 +55,7 @@ pub(crate) struct Measured {
     pub(crate) skirmish: Option<SkirmishTicks>,
     pub(crate) supply: Option<SupplyTicks>,
     pub(crate) defense: Option<DefenseTicks>,
+    pub(crate) patriot: Option<DefenseTicks>,
     pub(crate) missile: Option<MissileTicks>,
     pub(crate) bot: Option<BotBase>,
 }
@@ -111,6 +113,7 @@ impl Measured {
             skirmish: self.skirmish?,
             supply: self.supply?,
             defense: self.defense?,
+            patriot: self.patriot?,
             missile: self.missile?,
             bot: self.bot?,
         })

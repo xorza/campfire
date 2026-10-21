@@ -64,10 +64,8 @@ impl WalkCheck<'_> {
             .map(|placed| IndexedBody::of(ids.allocate(), placed.position, &placed.body))
             .collect();
         for (placed, body) in self.placed.iter().zip(&structures) {
-            let Shape::Box(boxed) = body.shape else {
-                continue;
-            };
-            if !bounds.holds_box(body.position, &boxed) {
+            let boxed = matches!(body.shape, Shape::Box(_));
+            if boxed && !bounds.holds(body.position, &body.shape) {
                 return Err(MapProblem::BoxOutside {
                     unit: placed.unit,
                     unit_type: name_of(placed.unit_type),

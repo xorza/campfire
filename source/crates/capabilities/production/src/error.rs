@@ -41,9 +41,9 @@ pub enum ProductionDataError {
     /// A producer's free unit of a type that does not walk out of its exit.
     #[error("a free unit's type does not walk")]
     FreeStands,
-    /// A build whose unit type has no box body.
-    #[error("its building has no box body")]
-    NoBox,
+    /// A build whose unit type has no body, or a circle of no radius.
+    #[error("its building has no body")]
+    NoBody,
     /// A build whose site starts at no life: its `start_life` is 0, or missing for a building
     /// with the life pool.
     #[error("its building's site starts at no life")]

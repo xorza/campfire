@@ -82,14 +82,17 @@ pub(crate) enum CheckFailure {
     /// The supply play's ticks or money differ from the expected.
     #[display("it played supply as {_0}")]
     Supply(Box<Differs<SupplySteps>>),
-    /// The defense play's ticks differ from the pinned.
+    /// The Gattling Cannon's defense play's ticks differ from the pinned.
     #[display("it defended as {_0}")]
     Defense(Box<Differs<DefenseTicks>>),
+    /// The Patriot battery's defense play's ticks differ from the pinned.
+    #[display("its Patriot battery defended as {_0}")]
+    Patriot(Box<Differs<DefenseTicks>>),
     /// The cannon's first hits came apart otherwise than the original's.
     #[display("the cannon's hits came apart as {_0}")]
     SpinUp(Box<Differs<[u64; 7]>>),
-    /// The cannon did not kill the bot's dozer within the limit.
-    #[display("the cannon did not kill the dozer within the limit")]
+    /// A defense did not kill the bot's dozer within the limit.
+    #[display("a defense did not kill the dozer within the limit")]
     Undefended,
     /// The missile play's ticks differ from the pinned.
     #[display("it fired missiles as {_0}")]

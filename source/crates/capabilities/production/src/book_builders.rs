@@ -165,10 +165,10 @@ impl Production {
 }
 
 impl BuildBook {
-    /// The build of each action that constructs: its style, the box body of its building, a type
+    /// The build of each action that constructs: its style, the body of its building, a type
     /// of its package that stands, its life and refund at the start, and its placement rules; an
-    /// error for a name the match does not have, a building of no box, or a start of no life for
-    /// a building that lives.
+    /// error for a name the match does not have, a building of no body (12-base-defenses.md, A
+    /// building may stand on a circle), or a start of no life for a building that lives.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let tags = cx.fact::<UnitTypes>()?.tags();
         let bodies = cx.book::<ByType<BodyForm>>()?;
@@ -203,8 +203,9 @@ impl BuildBook {
             let unit_type = unit_type.filter(|&unit_type| cx.type_of(unit_type).stands());
             let unit_type = unit_type
                 .ok_or_else(|| action.unknown(UnknownName::new(UnitType::NAMES, building)))?;
-            let form = bodies.get(unit_type).copied().filter(|form| form.is_box());
-            let form = form.ok_or_else(|| action.broken(ProductionDataError::NoBox))?;
+            let form = bodies.get(unit_type).copied();
+            let form = form.filter(|form| form.circle_radius() != Some(Num::ZERO));
+            let form = form.ok_or_else(|| action.broken(ProductionDataError::NoBody))?;
             let held = cx.type_of(unit_type).data.section::<TypePoolsData>();
             let alive = held.is_some_and(|held| {
                 held.0.iter().any(|name| {

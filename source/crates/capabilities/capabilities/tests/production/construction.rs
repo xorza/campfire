@@ -44,9 +44,10 @@ fn share(text: &str) -> Share {
         .share
 }
 
-/// How a yard's build starts, how it grows and where it places.
+/// How a yard's build starts, how it grows and where it places, and its depot's body.
 #[derive(Debug, Clone)]
 struct Rules<'a> {
+    form: BodyForm,
     start: BuildStart,
     style: Style<'a>,
     near: Vec<PlacementCheck>,
@@ -55,8 +56,9 @@ struct Rules<'a> {
 }
 
 impl<'a> Rules<'a> {
-    const fn of(style: Style<'a>) -> Self {
+    fn of(style: Style<'a>) -> Self {
         Rules {
+            form: BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
             start: BuildStart::Arrival,
             style,
             near: Vec::new(),
@@ -93,12 +95,13 @@ impl Building {
 
 impl Yard {
     /// A match of production and its orders over 1 m cells from (−20, −20) to (20, 20), with its
-    /// `walls`, for walkers of a half meter. Its depot is a box of 4 by 2 m of 100 life; its build,
+    /// `walls`, for walkers of a half meter. Its depot is of the rules' body, a box of 4 by 2 m
+    /// unless they name another, of 100 life; its build,
     /// within 1 m, takes 4 ticks and 15 gold, its site starting at 0.1 of its life, a cancel giving
     /// back 0.5. Player 0 holds 100 gold.
     fn place(game: &mut Match, shop: Shop, rules: Rules<'_>) -> Self {
         let depot = shop.depot;
-        let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
+        let form = rules.form;
         Shop::give(game, depot, form);
         Shop::give(game, depot, Life::full(Num::int(100)));
         let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
@@ -700,6 +703,90 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         Production::build_at(&mut game, builder, 0, 0);
         assert_eq!(shop.depots(&mut game).len(), depots, "{case}");
     }
+}
+
+#[test]
+fn a_round_building_places_by_its_circle_and_its_builder_walks_to_its_edge() {
+    // A depot of a circle of 2 m, built at the origin by a builder at (−3, 0) unless the case
+    // names another x, in range of its edge at x = −2. A wall from x = 2 touches it and one a bit
+    // nearer refuses it; a static body of 1 m centered at (3, 0) touches it and one at (2.5, 0)
+    // refuses it; at x = 18 it reaches the bound at 20, and at x = 19 it passes it.
+    let round = || Rules {
+        form: BodyForm::circle(Num::int(2)).unwrap(),
+        ..Rules::of(Style::Alone)
+    };
+    let wall = |from: Num| Rules {
+        walls: vec![Wall {
+            layer: Layer::FIRST,
+            area: Polygon::new([
+                [from, -Num::ONE],
+                [Num::int(4), -Num::ONE],
+                [Num::int(4), Num::ONE],
+                [from, Num::ONE],
+            ])
+            .unwrap(),
+        }],
+        ..round()
+    };
+    let two = Num::int(2);
+    // Each case's rules, the x of its static body in halves of a meter, if one, its build's x,
+    // and the depots it places.
+    let cases: [(&str, Rules<'_>, Option<i64>, i64, usize); 7] = [
+        ("clear", round(), None, 0, 1),
+        ("touching wall", wall(two), None, 0, 1),
+        ("wall", wall(two - Num::EPSILON), None, 0, 0),
+        ("touching body", round(), Some(6), 0, 1),
+        ("body", round(), Some(5), 0, 0),
+        ("at the bound", round(), None, 18, 1),
+        ("past the bound", round(), None, 19, 0),
+    ];
+    for (case, rules, body, x, placed) in cases {
+        let Building {
+            mut game,
+            shop,
+            yard,
+        } = Building::new(rules);
+        if let Some(body) = body {
+            Navigation::walker_at(&mut game, halves(body, 0))
+                .team(Team::new(2))
+                .body(BodyForm::circle(Num::ONE).unwrap())
+                .place(&mut game);
+        }
+        let from = Vec3::new(Num::int(x - 3), Num::ZERO, Num::ZERO);
+        let builder = yard.builder(&mut game, from, Team::new(0), 0);
+        Production::build_at(&mut game, builder, x, 0);
+        assert_eq!(shop.depots(&mut game).len(), placed, "{case}");
+    }
+
+    // From (−10, 0) its builder walks a meter a tick toward the circle's nearest point, (−2, 0),
+    // and stands in range at x = −3 as tick 7 begins, as it does for a box of that edge.
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(round());
+    let builder = yard.builder(&mut game, halves(-20, 0), Team::new(0), 0);
+    Production::build_at(&mut game, builder, 0, 0);
+    for _ in 1..7 {
+        assert_eq!(shop.depots(&mut game), vec![]);
+        game.step();
+    }
+    game.step();
+    assert_eq!(shop.depots(&mut game).len(), 1);
+    assert_eq!(game.part::<Position>(builder).get(), halves(-6, 0));
+
+    // A friendly walker at (0.5, 1.5) in the circle goes to the nearest cell clear of it, (0.5,
+    // 2.5), its center √6.5 m from the origin, past the 2.5 m of the two radii.
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(round());
+    let pressed = Production::yard_walker(&mut game, halves(1, 3), Team::new(0), None);
+    let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
+    Production::build_at(&mut game, builder, 0, 0);
+    assert_eq!(shop.depots(&mut game).len(), 1);
+    assert_eq!(game.part::<Position>(pressed).get(), halves(1, 5));
 }
 
 #[test]

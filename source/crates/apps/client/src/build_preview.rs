@@ -16,9 +16,9 @@ use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::MouseButton;
 use bevy::material::AlphaMode;
 use bevy::math::{Quat, Vec3};
-use bevy::mesh::{Mesh, Mesh3d, Meshable};
+use bevy::mesh::{Mesh, Mesh3d};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
-use bevy::shape::Cuboid;
+use bevy::shape::{Cuboid, Cylinder};
 use bevy::state::condition::in_state;
 use bevy::state::state::{NextState, OnExit};
 use bevy::transform::components::Transform;
@@ -45,14 +45,14 @@ use crate::view::unit_looks::UnitLooks;
 
 /// The build preview (02-engine-core.md, A command panel from the actions): while the player places
 /// a build, its building's look follows the ground point under the cursor, at its type's angle,
-/// over its box drawn green where it may stand and red where it overlaps a wall or a body the
+/// over its footprint drawn green where it may stand and red where it overlaps a wall or a body the
 /// client holds; a left click on green orders the build there, and a right click or the key map's
 /// drop chord, Esc of the engine's, drops it. It takes the clicks in `InputMode::Place`, which the
 /// selection and the orders leave to it, and ends the placing as the mode leaves.
 #[derive(Debug)]
 pub(crate) struct BuildPreviewPlugin;
 
-/// The root of the preview's drawing: the build it shows, its box's figure, the point it stands
+/// The root of the preview's drawing: the build it shows, its footprint's figure, the point it stands
 /// at, none while the cursor is off the ground, and whether the building may stand there.
 #[derive(Component, Debug)]
 struct Ghost {
@@ -80,14 +80,14 @@ impl Fit {
     }
 }
 
-/// The see-through tints of the preview's box, by its fit.
+/// The see-through tints of the preview's footprint, by its fit.
 #[derive(Resource, Debug)]
 struct Tints {
     clear: Handle<StandardMaterial>,
     blocked: Handle<StandardMaterial>,
 }
 
-/// The height of the preview's box, which marks the ground the building takes.
+/// The height of the preview's footprint, which marks the ground the building takes.
 const FOOTPRINT_HEIGHT: f32 = 0.5;
 
 impl Plugin for BuildPreviewPlugin {
@@ -172,13 +172,18 @@ impl BuildPreviewPlugin {
         let spec = builds
             .of(placing.action)
             .expect("a build button's action is a build");
-        let [a, b] = spec
-            .form()
-            .at(Num::ZERO)
-            .half_edges()
-            .expect("a building's body is a box");
-        let length = |edge: [Num; 2]| 2.0 * edge[0].float().hypot(edge[1].float());
-        let mesh = meshes.add(Cuboid::new(length(a), FOOTPRINT_HEIGHT, length(b)).mesh());
+        let form = spec.form();
+        let mesh = if let Some(radius) = form.circle_radius() {
+            Mesh::from(Cylinder::new(radius.float(), FOOTPRINT_HEIGHT))
+        } else {
+            let [a, b] = form
+                .at(Num::ZERO)
+                .half_edges()
+                .expect("a building's body is a box or a circle");
+            let length = |edge: [Num; 2]| 2.0 * edge[0].float().hypot(edge[1].float());
+            Mesh::from(Cuboid::new(length(a), FOOTPRINT_HEIGHT, length(b)))
+        };
+        let mesh = meshes.add(mesh);
         let footprint = commands
             .spawn((
                 Mesh3d(mesh),
@@ -234,7 +239,7 @@ impl BuildPreviewPlugin {
         visibility.set_if_neq(Visibility::Inherited);
     }
 
-    /// Tests the building's box where the preview stands, as the sim tests its placement for
+    /// Tests the building's body where the preview stands, as the sim tests its placement for
     /// the builder's team, against what the client holds.
     fn judge(
         index: Res<'_, EntityIndex>,
@@ -262,7 +267,7 @@ impl BuildPreviewPlugin {
         ghost.fit = fit;
     }
 
-    /// Gives the preview's box the tint of its fit, and its look the builder's team and, where
+    /// Gives the preview's footprint the tint of its fit, and its look the builder's team and, where
     /// the building may not stand, the blocked tint.
     fn tint(
         tints: Res<'_, Tints>,
@@ -396,22 +401,28 @@ mod tests {
         let builder = Production::yard_walker(&mut game, (0, 0, 0), own, None);
         Production::yard_walker(&mut game, (10, 0, 0), enemy, None);
         Production::yard_walker(&mut game, (-10, 0, 0), own, None);
-        // A build of a box of 4 by 2 m.
-        let action = ActionId::new(0);
+        // A build of a box of 4 by 2 m, and one of a circle of 2 m.
+        let (action, round) = (ActionId::new(0), ActionId::new(1));
         let mut builds = BuildBook::default();
-        let build = NewBuild {
-            unit_type: UnitType::new(0),
-            form: BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
-            start: BuildStart::Order,
-            style: Style::Builder,
-            start_life: None,
-            refund: Share::ALL,
-            near: Vec::new(),
-            away: Vec::new(),
-        };
-        builds.push(action, build);
+        let forms = [
+            BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+            BodyForm::circle(Num::int(2)).unwrap(),
+        ];
+        for (id, form) in [action, round].into_iter().zip(forms) {
+            let build = NewBuild {
+                unit_type: UnitType::new(0),
+                form,
+                start: BuildStart::Order,
+                style: Style::Builder,
+                start_life: None,
+                refund: Share::ALL,
+                near: Vec::new(),
+                away: Vec::new(),
+            };
+            builds.push(id, build);
+        }
         game.insert_resource(builds);
-        let mut fit = |x: i64, angle: i64| {
+        let mut fit_of = |action: ActionId, x: i64, angle: i64| {
             let placing = Placing {
                 builder,
                 slot: 0,
@@ -433,6 +444,7 @@ mod tests {
             game.despawn(ghost);
             fit
         };
+        let mut fit = |x: i64, angle: i64| fit_of(action, x, angle);
         // Its box reaches 2 m along x and 1 m along z, unturned: at (10, 0) it lies over the
         // enemy, and at (5, 0) it reaches x = 7, short of the enemy's edge at 9.5. At (8, 0) it
         // reaches 10, past that edge; turned a quarter, its 1 m half lies along x and reaches 9,
@@ -442,6 +454,10 @@ mod tests {
         assert_eq!(fit(8, 0), Fit::Blocked);
         assert_eq!(fit(8, 90), Fit::Clear);
         assert_eq!(fit(-10, 0), Fit::Clear);
+        // The circle reaches 2 m every way: at (7, 0) it reaches x = 9, short of the enemy's edge,
+        // and at (8, 0) 10, past it, at any angle.
+        assert_eq!(fit_of(round, 7, 0), Fit::Clear);
+        assert_eq!(fit_of(round, 8, 90), Fit::Blocked);
         // Its look takes the builder's team, and red where it may not stand.
         let team = Some(Team::new(1));
         assert_eq!(

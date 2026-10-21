@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 use campfire_math::{Num, Vec3};
 
 use crate::approach::Approach;
+use crate::polygon::Polygon;
 use crate::shape::Shape;
 
 #[cfg(feature = "internals")]
@@ -64,4 +65,52 @@ impl Placed {
             Shape::Box(body) => body.comes_closer(position, from, to, reach),
         }
     }
+
+    /// Whether the insides of it and `other` share a point on the ground plane, exactly:
+    /// touching is not overlap. Two circles overlap closer than the sum of their radii; a box and
+    /// a circle when the circle's center lies closer than its radius to the box, which a center
+    /// inside the open box does at any radius; two boxes as `BodyBox::overlaps` gives.
+    pub fn overlaps(self, other: Self) -> bool {
+        match (self.shape, other.shape) {
+            (Shape::Circle(radius), Shape::Circle(other_radius)) => radius
+                .get()
+                .checked_add(other_radius.get())
+                .is_none_or(|reach| {
+                    Vec3::ZERO.distance_order(self.position.ground_offset(other.position), reach)
+                        == Ordering::Less
+                }),
+            (Shape::Box(body), Shape::Circle(radius)) => {
+                body.closer(self.position, other.position, radius.get())
+            }
+            (Shape::Circle(radius), Shape::Box(body)) => {
+                body.closer(other.position, self.position, radius.get())
+            }
+            (Shape::Box(body), Shape::Box(other_body)) => {
+                body.overlaps(self.position, &other_body, other.position)
+            }
+        }
+    }
+
+    /// Whether its inside and `polygon`'s share a point, exactly: touching is not overlap. A box
+    /// as `BodyBox::overlaps_polygon` gives; a circle when its center lies inside the polygon,
+    /// off its edge, or an edge comes closer than its radius to the center, as
+    /// `Placed::comes_closer` measures a path.
+    pub fn overlaps_polygon(self, polygon: &Polygon) -> bool {
+        match self.shape {
+            Shape::Box(body) => body.overlaps_polygon(self.position, polygon),
+            Shape::Circle(radius) => {
+                let points = polygon.points();
+                let center = Self::point(self.position);
+                let ground = |[x, z]: [Num; 2]| Vec3::new(x, self.position.y, z);
+                polygon.holds_inside([self.position.x, self.position.z])
+                    || (0..points.len()).any(|at| {
+                        let next = points[(at + 1) % points.len()];
+                        center.comes_closer(ground(points[at]), ground(next), radius.get())
+                    })
+            }
+        }
+    }
 }
+
+#[cfg(test)]
+mod tests;

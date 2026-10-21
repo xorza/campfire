@@ -534,7 +534,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
                 "Command_ConstructAmericaPowerPlant",
                 ButtonDropCause::Science
             ),
-            ("Command_ConstructAmericaFireBase", ButtonDropCause::NoBox),
+            ("Command_ConstructAmericaFireBase", ButtonDropCause::NoBody),
             (
                 "Command_ConstructAmericaInfantryRanger",
                 ButtonDropCause::NoQueue

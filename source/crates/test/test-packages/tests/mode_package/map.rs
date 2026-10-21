@@ -548,7 +548,7 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
             )
         },
     },
-    // A build aims at a point, within meters, of a unit type of its package with a box body;
+    // A build aims at a point, within meters, of a unit type of its package with a body;
     // its site starts with a share of its life above 0 when the type has the life pool; its
     // construct is needed, and its placement's filters name the mode's tags.
     Flaw {
@@ -571,7 +571,7 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
         file: MODE_DATA,
         edit: Edit::Replace(
             "[actions.melee_creep_attack]",
-            "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"tower\"\nconstruct = \"alone\"\n\n[actions.melee_creep_attack]",
+            "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"sight_ward\"\nconstruct = \"alone\"\n\n[actions.melee_creep_attack]",
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
@@ -579,7 +579,7 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
             rule_at(
                 problem,
                 &entry("actions", "raise"),
-                &ProductionDataError::NoBox,
+                &ProductionDataError::NoBody,
             )
         },
     },

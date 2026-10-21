@@ -109,28 +109,42 @@ pub(crate) fn america(seats: u32) -> Vec<SeatPick> {
         .collect()
 }
 
-/// Plays `steps` in a match of `packages` at `rate` ticks a second, of player 1, China, against
-/// America's bot, player 1 starting with `START_MONEY`, and ends the match; what they measured,
-/// or their failure, or a failure when the mode takes no such pick.
-pub(crate) fn china_against_america<T>(
-    packages: ModePackages,
-    rate: NonZeroU32,
-    steps: impl FnOnce(&mut MatchPlay, &ModePackages) -> Result<T, CheckFailure>,
-) -> Result<T, CheckFailure> {
-    let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
-    let picks = OptionPicks::named(&packages.data().options, &[start_money])
-        .map_err(CheckFailure::Options)?;
-    let plan = [SeatPlan::Player, SeatPlan::Bot];
-    let china: SeatPick = CHINA.parse().expect("the play's pick");
-    let bot = america(2).pop().expect("the bot's pick of America");
-    let session = FixedSession::planned(packages, InputRules::ROOMY, plan)
-        .rate(rate)
-        .picked(picks.places())
-        .seat_picked(&[china, bot]);
-    let mut play = MatchPlay::new(session.start());
-    let played = steps(&mut play, session.packages());
-    play.end();
-    played
+/// A play's match against America's bot: player 1's pick of its faction.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AgainstAmerica {
+    player: &'static str,
+}
+
+impl AgainstAmerica {
+    pub(crate) const CHINA: Self = Self { player: CHINA };
+    pub(crate) const AMERICA: Self = Self {
+        player: "0:faction=america",
+    };
+
+    /// Plays `steps` in a match of `packages` at `rate` ticks a second, of player 1 against
+    /// America's bot, player 1 starting with `START_MONEY`, and ends the match; what they
+    /// measured, or their failure, or a failure when the mode takes no such pick.
+    pub(crate) fn play<T>(
+        self,
+        packages: ModePackages,
+        rate: NonZeroU32,
+        steps: impl FnOnce(&mut MatchPlay, &ModePackages) -> Result<T, CheckFailure>,
+    ) -> Result<T, CheckFailure> {
+        let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
+        let picks = OptionPicks::named(&packages.data().options, &[start_money])
+            .map_err(CheckFailure::Options)?;
+        let plan = [SeatPlan::Player, SeatPlan::Bot];
+        let player: SeatPick = self.player.parse().expect("the play's pick");
+        let bot = america(2).pop().expect("the bot's pick of America");
+        let session = FixedSession::planned(packages, InputRules::ROOMY, plan)
+            .rate(rate)
+            .picked(picks.places())
+            .seat_picked(&[player, bot]);
+        let mut play = MatchPlay::new(session.start());
+        let played = steps(&mut play, session.packages());
+        play.end();
+        played
+    }
 }
 
 impl MatchPlay {

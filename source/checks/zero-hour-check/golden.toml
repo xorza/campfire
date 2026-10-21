@@ -3,7 +3,7 @@
 drive_ticks = 1717
 
 [fingerprints]
-game = "0a775daa5a6a61f220fcea070fe24f05b5e53aae3d49e55a1a052db1dd0a5b63"
+game = "4daf5d701d0187aeedbbf005734a961b59b19af7c9a8e4213d9b45e422768b76"
 rules = "67c543837b0ffc42e8fba5f40a74cb7904b0b6295215aa8e9996dd095ecc7712"
 
 [map]
@@ -28,8 +28,8 @@ snowy = 17
 
 [produced]
 trains = 187
-builds = 138
-dropped = [0, 22, 4, 36, 24, 0, 0, 0]
+builds = 156
+dropped = [0, 22, 4, 36, 6, 0, 0, 0]
 
 [supplied]
 nodes = 4
@@ -39,7 +39,7 @@ dropped = [0, 0, 5, 6, 0]
 
 [fought]
 weapons = 53
-dropped = [0, 0, 8, 0, 1, 0, 1, 0, 8, 6, 0, 6, 2, 12, 1, 0, 0, 11, 0, 0, 6, 4, 0, 2]
+dropped = [0, 0, 8, 0, 1, 0, 1, 0, 8, 9, 0, 6, 2, 12, 1, 0, 0, 11, 0, 0, 6, 4, 0, 2]
 armors = 53
 kinds = 38
 unliving = 38
@@ -60,6 +60,11 @@ deliveries = [447, 901, 1355]
 built = [483, 1050]
 hit = 1012
 death = 1530
+
+[patriot]
+built = [488, 1020]
+hit = 1037
+death = 1201
 
 [missile]
 built = 721

@@ -173,6 +173,9 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     // makes its mine large, a box of 6 × 6.
     assert_eq!(of("Mine").unwrap(), structure(None));
     assert_eq!(of("Rock").unwrap(), stands(None));
+    // A build places the box and the cylinder, and no small structure.
+    let built = ["Barracks", "Tower", "Mine"].map(|name| of(name).unwrap().has_body());
+    assert_eq!(built, [true, true, false]);
     assert_eq!(
         of("BigMine").unwrap(),
         structure(body(boxed([int(6), int(6)]), int(1)))

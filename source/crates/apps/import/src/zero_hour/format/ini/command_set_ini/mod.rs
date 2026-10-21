@@ -52,7 +52,7 @@ End\r
 CommandSet AmericaDozerCommandSet\r
   3 = Command_ConstructAmericaBarracks\r
   1 = Command_ConstructAmericaPowerPlant ; a science\r
-  4 = Command_ConstructAmericaFireBase ; no box\r
+  4 = Command_ConstructAmericaFireBase ; no body\r
   5 = Command_ConstructAmericaInfantryRanger ; no queue to train at\r
 End\r
 CommandSet AmericaBarracksCommandSet\r

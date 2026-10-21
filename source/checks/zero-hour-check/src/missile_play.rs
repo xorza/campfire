@@ -8,7 +8,9 @@ use campfire_package::ModePackages;
 use campfire_projectiles::{Flight, Projectile};
 
 use crate::failure::CheckFailure;
-use crate::match_play::{self, BuildingDozer, CHINA_DOZER, MatchPlay, PlannedBuilding, STEP_LIMIT};
+use crate::match_play::{
+    self, AgainstAmerica, BuildingDozer, CHINA_DOZER, MatchPlay, PlannedBuilding, STEP_LIMIT,
+};
 use crate::pins::MissileTicks;
 
 /// China's barracks, 216 m along −z from `Player_1_Start`, where the skirmish play places its
@@ -44,7 +46,8 @@ impl MissilePlay {
         rate: NonZeroU32,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<MissileTicks> {
-        match_play::china_against_america(packages, rate, Self::steps)
+        AgainstAmerica::CHINA
+            .play(packages, rate, Self::steps)
             .map_err(|failure| failures.push(failure))
             .ok()
     }
