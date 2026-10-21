@@ -26,7 +26,8 @@
 //! against America's bot: its dozer builds a power plant and a Gattling Cannon, and the cannon,
 //! ordered nothing, fires at the bot's dozer, which drives within its reach, its hits coming
 //! sooner as the original's spin up, and kills it; a second plays America, whose Patriot battery,
-//! a building on a circle, kills the dozer so. In a fifth, player 1 plays China against
+//! a building on a circle, kills the dozer so, and a third GLA, whose Stinger site's kept
+//! soldiers kill it. In a fifth, player 1 plays China against
 //! America's bot: its dozer builds a barracks, which trains a Tank Hunter, and the hunter, ordered
 //! nothing, fires steered missiles at the bot's dozer, which drives within its reach, and kills
 //! it. Every other map the game lists loads in the imported mode. It fails when `GENERALSZH_DATA`

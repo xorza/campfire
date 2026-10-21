@@ -30,7 +30,7 @@ use crate::node::Node;
 use crate::node_book::{NodeBook, NodeSpec};
 use crate::node_data::NodeData;
 use crate::placement_data::{PlacementData, PlacementRule};
-use crate::producer_spec::ProducerSpec;
+use crate::producer_spec::{ProducerSpec, SpawnSpec};
 use crate::production_data::ProductionData;
 use crate::requirement_book::RequirementBook;
 use crate::requires_data::RequiredUnit;
@@ -389,8 +389,9 @@ impl SupplyBook {
 
 impl ProducerSpec {
     /// The production of each unit type that stands and produces; an error for a producer that
-    /// starts its gatherers in a match without navigation, which walks them, and for a free unit
-    /// type its package does not have, or one that does not walk out of its exit.
+    /// starts its gatherers in a match without navigation, which walks them, for a free or a kept
+    /// spawn's unit type its package does not have, or one that does not walk out of its exit,
+    /// and for a spawns' time too large to count in ticks.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
@@ -401,12 +402,12 @@ impl ProducerSpec {
             if data.gathers {
                 cx.require(Capability::Navigation, unit.package, at)?;
             }
-            let free = data.free.iter().map(|name| {
+            let broken = |problem| BookError::rule(unit.package, at(), problem);
+            let leaver = |name: &DeclaredName| {
                 let unknown = || {
                     let name = UnknownName::new(UnitType::NAMES, name);
                     BookError::unknown(unit.package, at(), name)
                 };
-                let broken = |problem| BookError::rule(unit.package, at(), problem);
                 let scope = TypeScope::of_package(unit.package);
                 let freed = cx.unit_type(scope, name.as_str()).ok_or_else(unknown)?;
                 let data = cx.type_of(freed).data;
@@ -417,13 +418,23 @@ impl ProducerSpec {
                     return Err(broken(ProductionDataError::FreeStands));
                 }
                 Ok(freed)
+            };
+            let spawns = data.spawns.as_ref().map(|spawns| {
+                let replace = cx.rate().ticks(spawns.replace_ms.into());
+                Ok::<_, BookError>(SpawnSpec {
+                    unit_type: leaver(&spawns.unit_type)?,
+                    count: spawns.count,
+                    replace: replace
+                        .ok_or_else(|| BookError::rule(unit.package, at(), TimeTooLarge))?,
+                })
             });
             let spec = Self {
                 queue: data.queue,
                 exit: data.exit,
                 rally: data.rally,
                 gathers: data.gathers,
-                free: free.collect::<Result<_, BookError>>()?,
+                free: data.free.iter().map(leaver).collect::<Result<_, _>>()?,
+                spawns: spawns.transpose()?,
             };
             book.set(unit.unit_type, spec);
         }

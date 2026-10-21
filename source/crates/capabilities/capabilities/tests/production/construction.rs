@@ -1,5 +1,9 @@
+use bevy_ecs::entity::Entity;
+use bevy_ecs::query::With;
+
 use crate::halves;
 use campfire_codec::Toml;
+use campfire_combat::DamagePass;
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersDirective;
@@ -266,6 +270,7 @@ fn a_completed_site_frees_its_units_out_of_its_exit_in_their_order() {
             rally: None,
             gathers: false,
             free,
+            spawns: None,
         };
         Shop::give(&mut game, shop.depot, spec);
         let builder = yard.builder(&mut game, halves(-20, 0), Team::new(0), 0);
@@ -296,6 +301,89 @@ fn a_completed_site_frees_its_units_out_of_its_exit_in_their_order() {
             assert_eq!((grunts.len(), builders.len()), (0, 1));
         }
     }
+}
+
+#[test]
+fn a_completed_site_keeps_its_spawns_brings_each_back_and_takes_them_as_it_dies() {
+    // As in the first test, the depot's site completes in tick 10, and it keeps two grunts of 10
+    // life that come back 5 ticks after each dies: both leave its exit in tick 10. One whose life
+    // is taken dies in the next tick, 11, and comes back in tick 11 + 5 = 16, not a tick before,
+    // and so in a match a snapshot of tick 11 restores. The depot's death in a tick takes its
+    // spawns' life, so they die in the next, and none comes back.
+    let scene = || {
+        let building = Building::new(Rules::of(Style::Alone));
+        let (mut game, shop) = (building.game, building.shop);
+        let spec = ProducerSpec {
+            queue: NonZeroU8::new(1).unwrap(),
+            exit: FramePoint::new([Num::int(7) / Num::int(2), Num::HALF]),
+            rally: None,
+            gathers: false,
+            free: Box::new([]),
+            spawns: Some(SpawnSpec {
+                unit_type: shop.grunt,
+                count: NonZeroU8::new(2).unwrap(),
+                replace: Ticks::new(5),
+            }),
+        };
+        Shop::give(&mut game, shop.depot, spec);
+        Shop::give(&mut game, shop.grunt, Life::full(Num::int(10)));
+        Building {
+            game,
+            shop,
+            yard: building.yard,
+        }
+    };
+    let living = |game: &mut Match, shop: Shop| {
+        let grunts = Shop::spawned(game, shop.grunt);
+        grunts
+            .iter()
+            .filter(|grunt| game.part::<Life>(grunt.id).current() > Num::ZERO)
+            .count()
+    };
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = scene();
+    let builder = yard.builder(&mut game, halves(-20, 0), Team::new(0), 0);
+    Production::build_at(&mut game, builder, 0, 0);
+    for _ in 1..10 {
+        game.step();
+    }
+    assert_eq!(living(&mut game, shop), 0);
+    game.step();
+    let grunts = Shop::spawned(&mut game, shop.grunt);
+    assert_eq!(grunts.len(), 2);
+    assert!(grunts.iter().all(|grunt| grunt.position == halves(7, 1)));
+    DamagePass::kill(&mut game, grunts[0].id);
+    game.step();
+    // The restored match loads the same books, its players left for the snapshot to bring.
+    let mut restored = scene().game;
+    let players: Vec<Entity> = restored
+        .query_filtered::<Entity, With<StableId>>()
+        .iter(&restored)
+        .collect();
+    for player in players {
+        restored.despawn(player);
+    }
+    Release::restore_into(&game, &mut restored);
+    for game in [&mut game, &mut restored] {
+        for tick in 12..16 {
+            assert_eq!(living(game, shop), 1, "tick {tick}");
+            game.step();
+        }
+        assert_eq!(living(game, shop), 1);
+        game.step();
+        assert_eq!(living(game, shop), 2);
+    }
+    let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
+    DamagePass::kill(&mut game, depot);
+    game.step();
+    assert_eq!(living(&mut game, shop), 0);
+    for _ in 0..10 {
+        game.step();
+    }
+    assert_eq!(living(&mut game, shop), 0);
 }
 
 #[test]

@@ -187,6 +187,8 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_items::trade_orders::TradeOrders::trade_items",
         "campfire_orders::acquiring::Acquiring::scan",
         "campfire_production::gather_loop::GatherLoop::despawn_empty_nodes",
+        "campfire_production::kept_spawns::KeptSpawns::bring_back",
+        "campfire_production::kept_spawns::KeptSpawns::follow_deaths",
         "campfire_production::player_supply::PlayerSupply::refresh",
         "campfire_production::production_orders::ProductionOrders::set_rallies",
         "campfire_production::trains::Trains::finish_trains",

@@ -36,6 +36,7 @@ pub(crate) struct Golden {
     pub(crate) supply: SupplyTicks,
     pub(crate) defense: DefenseTicks,
     pub(crate) patriot: DefenseTicks,
+    pub(crate) stinger: DefenseTicks,
     pub(crate) missile: MissileTicks,
     pub(crate) bot: BotBase,
 }
@@ -56,6 +57,7 @@ pub(crate) struct Measured {
     pub(crate) supply: Option<SupplyTicks>,
     pub(crate) defense: Option<DefenseTicks>,
     pub(crate) patriot: Option<DefenseTicks>,
+    pub(crate) stinger: Option<DefenseTicks>,
     pub(crate) missile: Option<MissileTicks>,
     pub(crate) bot: Option<BotBase>,
 }
@@ -114,6 +116,7 @@ impl Measured {
             supply: self.supply?,
             defense: self.defense?,
             patriot: self.patriot?,
+            stinger: self.stinger?,
             missile: self.missile?,
             bot: self.bot?,
         })

@@ -8,7 +8,7 @@ use crate::match_play::{AgainstAmerica, BuildingDozer, MatchPlay, PlannedBuildin
 use crate::pins::DefenseTicks;
 
 /// How far south of its defense the bot's dozer drives, in meters: within the 225 m that the
-/// Gattling Cannon's gun and the Patriot battery's missiles reach.
+/// Gattling Cannon's gun, the Patriot battery's missiles and the Stinger soldiers' reach.
 const SHORT_OF_THE_DEFENSE: Num = Num::int(150);
 
 /// A base defense's defense on Tournament Desert (04-capabilities/combat.md, A shot streak
@@ -65,6 +65,26 @@ impl DefensePlay {
                 unit: "americapatriotbattery",
                 action: "build_americapatriotbattery",
                 at: [1005, -800, -135],
+            },
+        ],
+        spin_up: None,
+    };
+
+    /// GLA's Stinger site, whose three kept Stinger soldiers kill the dozer with their missiles
+    /// (12-base-defenses.md, A building may keep spawns).
+    pub(crate) const STINGER: Self = Self {
+        against: AgainstAmerica::GLA,
+        dozer: "glainfantryworker",
+        buildings: [
+            PlannedBuilding {
+                unit: "glabarracks",
+                action: "build_glabarracks",
+                at: [855, -584, -45],
+            },
+            PlannedBuilding {
+                unit: "glastingersite",
+                action: "build_glastingersite",
+                at: [1005, -800, -45],
             },
         ],
         spin_up: None,

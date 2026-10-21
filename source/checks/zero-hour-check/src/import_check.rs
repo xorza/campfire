@@ -429,6 +429,22 @@ impl ImportCheck<'_> {
             .game
             .mode_packages(Some(self.map))
             .map_err(CheckError::Load)?;
+        if let Some(stinger) = DefensePlay::STINGER.run(played, rate, &mut self.failures) {
+            let expected = self.pinned(|golden| golden.stinger, stinger);
+            self.failures
+                .extend(Differs::of(stinger, expected).map(CheckFailure::Stinger));
+            self.measured.stinger = Some(stinger);
+            info!(
+                built = ?stinger.built,
+                hit = stinger.hit,
+                death = stinger.death,
+                "player 1's Stinger site's soldiers, ordered nothing, killed the bot's dozer"
+            );
+        }
+        let played = self
+            .game
+            .mode_packages(Some(self.map))
+            .map_err(CheckError::Load)?;
         if let Some(missile) = MissilePlay::run(played, rate, &mut self.failures) {
             let expected = self.pinned(|golden| golden.missile, missile);
             self.failures

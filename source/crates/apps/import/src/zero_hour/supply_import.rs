@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
-use std::num::NonZeroU32;
+use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_actions::{ActionKeys, ActionKind, ActionRange, RangeField, Targeting};
 use campfire_codec::TomlTable;
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::Num;
-use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData};
+use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData, SpawnsData};
 use campfire_values::{Distance, FilterData, Number, Ranked};
 
 use crate::zero_hour::format::game_float;
@@ -45,6 +45,13 @@ pub(crate) struct FreedUnit {
     pub(crate) object: String,
 }
 
+/// The spawns a building keeps: its producer's `spawns`, and its spawn's object's name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct KeptUnits {
+    pub(crate) spawns: SpawnsData,
+    pub(crate) object: String,
+}
+
 /// A supply module the import does not convert, by its object's name, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DroppedSupply {
@@ -59,12 +66,12 @@ pub enum SupplyDropCause {
     NoBoxes,
     /// A number past what the engine holds.
     BadNumber,
-    /// A gatherer, or a unit a building spawns once, that does not walk, as the USA's Chinook
-    /// flies (09-zero-hour.md, The USA's income waits for aircraft).
+    /// A gatherer, or a unit a building spawns, that does not walk, as the USA's Chinook flies
+    /// (09-zero-hour.md, The USA's income waits for aircraft).
     NoWalker,
-    /// A unit a building that trains nothing spawns once, which has no exit to leave.
+    /// A unit a building of no production spawns, which has no exit to leave.
     NoExit,
-    /// A unit spawned once that no file defines, or that gives no unit type.
+    /// A spawned unit that no file defines, or that gives no unit type.
     NoObject,
 }
 
@@ -157,10 +164,47 @@ impl SupplyImport {
         freed
     }
 
-    /// Drops each one-shot spawn of `object`, a building that trains nothing, so has no exit to
-    /// free its units by (09-zero-hour.md, A free unit needs an exit).
+    /// The spawns `object`, a building that trains, keeps: its kept spawn's first template,
+    /// which walks, typed in `names`, its number and its replace delay as the import converts a
+    /// time (12-base-defenses.md, A kept `SpawnBehavior` converts to spawns); none for no kept
+    /// spawn, and its spawn dropped for a number or a delay past what the engine holds.
+    pub(crate) fn kept(
+        &mut self,
+        rules: &ZeroHourRules,
+        object: &IniObject,
+        names: &mut ProductionNames,
+    ) -> Option<KeptUnits> {
+        let kept = object.supply().kept()?;
+        let spawned = self.walker(rules, &kept.templates[0])?;
+        let count = u8::try_from(kept.number).ok().and_then(NonZeroU8::new);
+        let replace_ms = weapon_drop::game_ms(kept.replace_ms).ok();
+        let replace_ms = replace_ms.and_then(|ms| u32::try_from(ms).ok());
+        let (Some(count), Some(replace_ms)) = (count, replace_ms) else {
+            self.drop(spawned, SupplyDropCause::BadNumber);
+            return None;
+        };
+        let Ok(typed) = names.unit_type(spawned, &rules.locomotors) else {
+            self.drop(spawned, SupplyDropCause::NoObject);
+            return None;
+        };
+        Some(KeptUnits {
+            spawns: SpawnsData {
+                unit_type: typed.name,
+                count,
+                replace_ms,
+            },
+            object: spawned.name.clone(),
+        })
+    }
+
+    /// Drops each spawn of `object`, a building of no production, so of no exit to send its
+    /// units by (09-zero-hour.md, A free unit needs an exit).
     pub(crate) fn strand(&mut self, rules: &ZeroHourRules, object: &IniObject) {
-        for template in object.supply().one_shots() {
+        let kept = object
+            .supply()
+            .kept()
+            .map(|kept| kept.templates[0].as_str());
+        for template in object.supply().one_shots().chain(kept) {
             if let Some(spawned) = self.walker(rules, template) {
                 self.drop(spawned, SupplyDropCause::NoExit);
             }

@@ -26,6 +26,7 @@ use campfire_values::{Block, EngineTag, TagProperties};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 use crate::holdings::Holdings;
+use crate::kept_spawns::{KeptSpawns, SpawnOf};
 use crate::production_column::RowReads;
 
 mod book_builders;
@@ -44,6 +45,7 @@ mod gather_loop;
 mod gather_spec;
 mod gatherer;
 mod holdings;
+mod kept_spawns;
 mod mode_supply_data;
 mod node;
 mod node_book;
@@ -97,10 +99,10 @@ pub use crate::node_data::{EmptyNode, NodeData};
 pub use crate::placement::Placement;
 pub use crate::placement_data::{PlacementData, PlacementRule};
 pub use crate::player_supply::PlayerSupply;
-pub use crate::producer_spec::ProducerSpec;
+pub use crate::producer_spec::{ProducerSpec, SpawnSpec};
 pub use crate::production_api::ProductionApi;
 pub use crate::production_column::ProductionColumn;
-pub use crate::production_data::ProductionData;
+pub use crate::production_data::{ProductionData, SpawnsData};
 pub use crate::production_directive::ProductionDirective;
 pub use crate::production_orders::ProductionOrders;
 pub use crate::rally::Rally;
@@ -191,6 +193,11 @@ impl Module for Production {
         d.timed::<Builder>();
         d.component::<Site>();
         d.component::<SiteProgress>();
+        d.component::<KeptSpawns>();
+        d.timed::<KeptSpawns>();
+        d.state::<BodyUnit, KeptSpawns>();
+        d.component::<SpawnOf>();
+        d.state::<BodyUnit, SpawnOf>();
         d.resource::<TrainedUnits>();
         d.resource::<CompletedSites>();
         d.hook::<OnUnitTrained>(Status::Runs(ApiVersion::FIRST));
@@ -281,6 +288,12 @@ impl Module for Production {
         cx.server(
             ProductionSystems::Finish,
             Trains::finish_trains.after(Construction::progress_sites::<ServerForm>),
+        );
+        cx.server(
+            ProductionSystems::Finish,
+            (KeptSpawns::follow_deaths, KeptSpawns::bring_back)
+                .chain()
+                .after(Trains::finish_trains),
         );
         cx.server(ProductionSystems::Supply, GatherLoop::despawn_empty_nodes);
     }

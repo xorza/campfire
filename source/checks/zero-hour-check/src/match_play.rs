@@ -120,6 +120,9 @@ impl AgainstAmerica {
     pub(crate) const AMERICA: Self = Self {
         player: "0:faction=america",
     };
+    pub(crate) const GLA: Self = Self {
+        player: "0:faction=gla",
+    };
 
     /// Plays `steps` in a match of `packages` at `rate` ticks a second, of player 1 against
     /// America's bot, player 1 starting with `START_MONEY`, and ends the match; what they

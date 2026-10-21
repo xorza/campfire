@@ -575,6 +575,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `rally` | production | since 1.0 |
 | `gathers` | production | since 1.0 |
 | `free` | production | since 1.0 |
+| `spawns` | production | since 1.0 |
 
 ### A unit type's `supply`
 

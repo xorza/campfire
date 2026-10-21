@@ -3,7 +3,7 @@
 drive_ticks = 1717
 
 [fingerprints]
-game = "f178d2a3eff685a762e82d56453243580b670407298f4fdf729e67227d42b6c2"
+game = "1bd7ee18837c424258d037eb688ccc9e6d31af6baaeee29892526dc743293ea0"
 rules = "67c543837b0ffc42e8fba5f40a74cb7904b0b6295215aa8e9996dd095ecc7712"
 
 [map]
@@ -65,6 +65,11 @@ death = 1530
 built = [488, 1020]
 hit = 1037
 death = 1201
+
+[stinger]
+built = [822, 627]
+hit = 1013
+death = 1247
 
 [missile]
 built = 721

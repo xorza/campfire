@@ -43,6 +43,13 @@ struct TrainPoints {
     rally: Option<Vec3>,
 }
 
+/// Where a unit leaves its producer, as the spawner takes it, and the point it then rallies to.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ExitSpawn {
+    pub(crate) at: SpawnAt,
+    rally: Option<Vec3>,
+}
+
 /// The parts of a living unit a train it was ordered reads and changes.
 type Training = (
     Entity,
@@ -266,20 +273,21 @@ impl Trains {
     }
 
     /// Spawns a unit of `unit_type` out of the exit of the producer of `entity`, of its team and
-    /// player, through the mode's spawner, at its spawn point, and sends it on: a gatherer to the
-    /// node the producer rallies to, by its first gather of the node's resource, else, of a
-    /// producer that starts its gatherers, to the free node its first gather finds, either to be
-    /// checked as the next tick's orders are; any other to the producer's rally point. Its id.
+    /// player, through the mode's spawner, at its spawn point, and sends it on as `send_on` does.
+    /// Its id.
     fn leave(world: &mut World, entity: Entity, unit_type: UnitType) -> StableId {
+        let exit = Self::exit_spawn(world, entity, unit_type);
+        let unit = Spawner::spawn(world, exit.at, ());
+        Self::send_on(world, entity, unit, exit);
+        exit.at.id
+    }
+
+    /// Where a unit of `unit_type` leaves the producer of `entity`: of its team and player, at
+    /// its spawn point, with a new id, and the point it rallies to.
+    pub(crate) fn exit_spawn(world: &mut World, entity: Entity, unit_type: UnitType) -> ExitSpawn {
         let producer = world.entity(entity);
         let team = *producer.get::<Team>().expect("a producer has a team");
         let owner = producer.get::<Owner>().map(|owner| owner.seat());
-        let gathers = producer.get::<UnitType>().is_some_and(|&producer_type| {
-            let producers = world.resource::<ByType<ProducerSpec>>();
-            producers
-                .get(producer_type)
-                .is_some_and(|spec| spec.gathers)
-        });
         let points = TrainPoints::of(world, entity);
         let position = points.spawn_point(world, entity, unit_type);
         let id = world.resource_mut::<IdAllocator>().allocate();
@@ -291,7 +299,23 @@ impl Trains {
             owner,
             angle: Num::ZERO,
         };
-        let unit = Spawner::spawn(world, at, ());
+        ExitSpawn {
+            at,
+            rally: points.rally,
+        }
+    }
+
+    /// Sends `unit`, which left the producer of `entity` by `exit`, on: a gatherer to the node
+    /// the producer rallies to, by its first gather of the node's resource, else, of a producer
+    /// that starts its gatherers, to the free node its first gather finds, either to be checked
+    /// as the next tick's orders are; any other to the producer's rally point.
+    pub(crate) fn send_on(world: &mut World, entity: Entity, unit: Entity, exit: ExitSpawn) {
+        let gathers = world.get::<UnitType>(entity).is_some_and(|&producer_type| {
+            let producers = world.resource::<ByType<ProducerSpec>>();
+            producers
+                .get(producer_type)
+                .is_some_and(|spec| spec.gathers)
+        });
         let gatherer = world.entity(unit).contains::<Gatherer>();
         let mut order = Self::gather_at_rally(world, entity, unit).filter(|_| gatherer);
         if order.is_none() && gatherer && gathers {
@@ -301,13 +325,12 @@ impl Trains {
         }
         if let Some(order) = order {
             Gatherer::set_in(world, unit, Some(order));
-        } else if let Some(to) = points.rally
+        } else if let Some(to) = exit.rally
             && let Some(mut destination) = world.get_mut::<Destination>(unit)
         {
-            let to = Vec3::new(to.x, position.y, to.z);
+            let to = Vec3::new(to.x, exit.at.position.y, to.z);
             destination.set_if_neq(Destination::to(Some(to)));
         }
-        id
     }
 
     /// The gather loop of `trained`, a unit the producer of `entity` trained, when the producer

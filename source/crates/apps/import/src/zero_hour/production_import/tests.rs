@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData};
+use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData, SpawnsData};
 use campfire_values::{Distance, FilterData};
 
 use super::*;
@@ -73,6 +73,20 @@ const SUPPLY: &str = "Object Center\n\
        SpawnTemplateName = Guard\n  OneShot = Yes\n End\n\
     End\n\
     Object Guard\n Locomotor = SET_NORMAL TankTreads\nEnd\n\
+    Object Site\n Behavior = ProductionUpdate M1\n End\n\
+     Behavior = SpawnBehavior M2\n  SpawnNumber = 3\n  SpawnReplaceDelay = 30000\n\
+       SpawnTemplateName = Guard\n End\n\
+    End\n\
+    Object Shelter\n Behavior = SpawnBehavior M1\n  SpawnNumber = 2\n\
+       SpawnTemplateName = Guard\n End\n\
+    End\n\
+    Object Burrow\n Behavior = ProductionUpdate M1\n End\n\
+     Behavior = SpawnBehavior M2\n  SpawnNumber = 2\n  SpawnTemplateName = Guard\n\
+       OneShot = Yes\n End\n\
+    End\n\
+    Object Crowd\n Behavior = ProductionUpdate M1\n End\n\
+     Behavior = SpawnBehavior M2\n  SpawnNumber = 0\n  SpawnTemplateName = Guard\n End\n\
+    End\n\
     Object Helix\n Locomotor = SET_NORMAL JetWings\n Behavior = ChinookAIUpdate M1\n End\nEnd\n";
 
 const SETS: &str = "CommandSet CenterSet\n 1 = Command_Truck\nEnd\n\
@@ -102,6 +116,10 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         "Helipad",
         "Tunnel",
         "Helix",
+        "Site",
+        "Burrow",
+        "Shelter",
+        "Crowd",
     ] {
         let object = rules.objects.object(placed.as_bytes()).unwrap();
         names.unit_type(object, &rules.locomotors).unwrap();
@@ -166,9 +184,26 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         keys.table(&gather)
     );
     assert_eq!(supply.gathers.len(), 1);
-    // The dock of no box, the helicopter, which flies, and the guard of a tunnel that trains
-    // nothing are dropped, in the order the types are visited; the Helix, of no box, is no
-    // gatherer, so nothing of it is dropped.
+    // The site of a production update keeps 3 guards, each back 30,000 ms, 900 frames, after
+    // it dies, and trains nothing (12-base-defenses.md, A kept `SpawnBehavior` converts to
+    // spawns).
+    let spawns = SpawnsData {
+        unit_type: declared("guard"),
+        count: NonZeroU8::new(3).unwrap(),
+        replace_ms: 30_000,
+    };
+    let site = &import.sections[&name("Site")];
+    assert_eq!((&site.spawns, &site.free), (&Some(spawns), &Vec::new()));
+    // The burrow, which trains nothing, frees its two guards by the production of its update.
+    let burrow = &import.sections[&name("Burrow")];
+    assert_eq!(
+        (&burrow.spawns, &burrow.free),
+        (&None, &vec![declared("guard"), declared("guard")])
+    );
+    // The dock of no box, the helicopter, which flies, the guard of a tunnel and of a shelter,
+    // of no production, once for its cause, and the guard a crowd keeps none of are dropped, in
+    // the order the types are visited; the Helix, of no box, is no gatherer, so nothing of it is
+    // dropped.
     let dropped: Vec<(&str, SupplyDropCause)> = supply
         .dropped
         .iter()
@@ -177,6 +212,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     assert_eq!(
         dropped,
         [
+            ("Guard", SupplyDropCause::BadNumber),
             ("EmptyDock", SupplyDropCause::NoBoxes),
             ("Heli", SupplyDropCause::NoWalker),
             ("Guard", SupplyDropCause::NoExit),

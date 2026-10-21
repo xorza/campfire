@@ -507,6 +507,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         rally,
         gathers: false,
         free: Vec::new(),
+        spawns: None,
     };
     let production = |name: &str| unit(name).section::<ProductionData>();
     assert_eq!(

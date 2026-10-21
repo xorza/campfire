@@ -88,6 +88,9 @@ pub(crate) enum CheckFailure {
     /// The Patriot battery's defense play's ticks differ from the pinned.
     #[display("its Patriot battery defended as {_0}")]
     Patriot(Box<Differs<DefenseTicks>>),
+    /// The Stinger site's defense play's ticks differ from the pinned.
+    #[display("its Stinger site defended as {_0}")]
+    Stinger(Box<Differs<DefenseTicks>>),
     /// The cannon's first hits came apart otherwise than the original's.
     #[display("the cannon's hits came apart as {_0}")]
     SpinUp(Box<Differs<[u64; 7]>>),

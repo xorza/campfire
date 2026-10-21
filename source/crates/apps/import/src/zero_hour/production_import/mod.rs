@@ -134,8 +134,10 @@ impl ProductionImport {
     }
 
     /// Converts the supply of `producer`, a unit type of `names`, its buttons converted: its
-    /// node, its drop-off, its gather, the last of its command slots, and the units it frees as
-    /// its production's; the names of the objects it frees.
+    /// node, its drop-off, its gather, the last of its command slots, and the units it frees and
+    /// keeps as its production's, a building that spawns and trains nothing taking the production
+    /// of its `ProductionUpdate` (12-base-defenses.md, A spawner takes its production update); the
+    /// names of the objects it frees and keeps.
     fn supply_of(
         &mut self,
         rules: &ZeroHourRules,
@@ -147,13 +149,24 @@ impl ProductionImport {
         if let Some(gather) = self.supply.gather(rules, producer, names) {
             self.commands.entry(name.clone()).or_default().push(gather);
         }
+        let supply = producer.supply();
+        let spawns = supply.kept().is_some() || supply.one_shots().next().is_some();
+        if spawns
+            && !self.sections.contains_key(&name)
+            && let Some(section) = Self::section(producer.build())
+        {
+            self.sections.insert(name.clone(), section);
+        }
         let Some(section) = self.sections.get_mut(&name) else {
             self.supply.strand(rules, producer);
             return Vec::new();
         };
         let freed = self.supply.free(rules, producer, names);
         section.free = freed.iter().map(|unit| unit.unit_type.clone()).collect();
-        freed.into_iter().map(|unit| unit.object).collect()
+        let kept = self.supply.kept(rules, producer, names);
+        section.spawns = kept.as_ref().map(|kept| kept.spawns.clone());
+        let freed = freed.into_iter().map(|unit| unit.object);
+        freed.chain(kept.map(|kept| kept.object)).collect()
     }
 
     /// Converts the button `button_name` of the set of `producer`: its action, made once, and
@@ -335,6 +348,7 @@ impl ProductionImport {
             rally: exit.and_then(|exit| frame(exit.rally)),
             gathers: exit.is_some_and(|exit| exit.starts_gatherers),
             free: Vec::new(),
+            spawns: None,
         })
     }
 

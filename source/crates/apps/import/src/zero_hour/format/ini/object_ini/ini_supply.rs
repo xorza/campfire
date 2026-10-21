@@ -31,12 +31,13 @@ pub(crate) struct SupplyGatherer {
     pub(crate) scan_distance: f32,
 }
 
-/// A `SpawnBehavior`: its `SpawnNumber`, whether it spawns once, its `OneShot`, and its
-/// `SpawnTemplateName`s, in order.
+/// A `SpawnBehavior`: its `SpawnNumber`, whether it spawns once, its `OneShot`, its
+/// `SpawnReplaceDelay` in milliseconds, and its `SpawnTemplateName`s, in order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct IniSpawn {
     pub(crate) number: i32,
     pub(crate) one_shot: bool,
+    pub(crate) replace_ms: i32,
     pub(crate) templates: Vec<String>,
 }
 
@@ -113,6 +114,7 @@ impl IniSupply {
                 match word {
                     "spawnnumber" => spawn.number = at.int()?,
                     "oneshot" => spawn.one_shot = at.yes()?,
+                    "spawnreplacedelay" => spawn.replace_ms = at.int()?,
                     // `parseAsciiStringVectorAppend` adds each name of each line.
                     "spawntemplatename" => {
                         at.value()?;
@@ -124,6 +126,14 @@ impl IniSupply {
             }
         }
         Ok(())
+    }
+
+    /// The spawns its object keeps: its first `SpawnBehavior` of no `OneShot` that names a
+    /// template (12-base-defenses.md, A kept `SpawnBehavior` converts to spawns).
+    pub(crate) fn kept(&self) -> Option<&IniSpawn> {
+        self.spawns
+            .iter()
+            .find(|spawn| !spawn.one_shot && !spawn.templates.is_empty())
     }
 
     /// The objects its one-shot spawns make as its object is made, in order: each spawn's

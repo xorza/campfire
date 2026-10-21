@@ -2,7 +2,7 @@
 
 A proposal for one slice. When it ends, each lasting decision moves into the document of the system it governs, and this document is deleted ([A slice's proposal is temporary](../../AGENTS.md#documents)); its plan is in `PLAN.md`. Its facts are in [Zero Hour base defenses](../research/zero-hour-base-defenses.md).
 
-**At the slice's end** a player builds a Patriot battery, a tunnel network and a Stinger site and sees each fire at an enemy that comes near, the site's three Stinger soldiers with missiles, each soldier back 30 s after it dies and the tunnel's two defenders 10 s after; and trains Technicals, each of one of three chassis, and Inferno cannons, and sees them fire, and Tomahawks after a Strategy Center.
+**At the slice's end** a player builds a Patriot battery, a tunnel network and a Stinger site and sees each fire at an enemy that comes near, the site's three Stinger soldiers with missiles, each soldier back 30 s after it dies, and the tunnel's two defenders once; and trains Technicals, each of one of three chassis, and Inferno cannons, and sees them fire, and Tomahawks after a Strategy Center.
 
 ## Decisions
 
@@ -20,4 +20,5 @@ A proposal for one slice. When it ends, each lasting decision moves into the doc
 - **A clip of one shot is a period.** A weapon of `ClipSize = 1` converts to a period of its `ClipReloadTime` and no clip, as each shot of the original empties the clip and reloads it from the shot, so its `DelayBetweenShots` never counts (`Weapon::privateFireWeapon`); the engine counts a period and a reload alike from the attack's start, so the conversion is exact.
 - **`NOT_SIMILAR` of a projectile's blast converts to nothing.** A projectile detonates as its own source, so `NOT_SIMILAR` spares only the allied projectiles of its type (`MissileAIUpdate::detonate`, `dealDamageInternal`), and the engine's projectiles take no damage, so the import drops the flag and changes nothing. Refused: a splash option that spares the source's kin, which no imported weapon needs. `NOT_SIMILAR` of a weapon of no projectile, and `NOT_AIRBORNE`, keep the drop.
 - **A kept `SpawnBehavior` converts to spawns.** One of no `OneShot` becomes the producer's `spawns` of its first `SpawnTemplateName`, `SpawnNumber` and `SpawnReplaceDelay`; a `OneShot` stays a free unit.
+- **A spawner takes its production update.** A building that spawns and trains nothing takes the production section of its `ProductionUpdate`, as the Stinger site and the tunnel network have one, so its spawns leave by its exit; one of none, as the Chemical general's Stinger site, drops them by `NoExit`. Refused: no section for a building that trains nothing, which dropped the tunnel's defenders, as the original gives it the production update it trains nothing with.
 - **`BuildVariations` converts to a train's variants.** A train of a type of `BuildVariations` makes its variations, each a unit type of its own object, with its own look.

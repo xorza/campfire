@@ -26,6 +26,7 @@ use crate::completed_sites::CompletedSites;
 use crate::construction::build_view::{BuildFootprint, BuildView};
 use crate::construction::building_at::BuildingAt;
 use crate::construction::step::{StartingBuild, Step};
+use crate::kept_spawns::KeptSpawns;
 use crate::order_dues::{self, OrderDues};
 use crate::producer_spec::ProducerSpec;
 use crate::site::{Site, SiteProgress, SiteStart};
@@ -383,11 +384,14 @@ impl Construction {
                 commands.entity(entity).remove::<(Site, SiteProgress)>();
                 *status = status.turned(Production::CONSTRUCTING, false);
                 done.push(id);
-                let frees = producers
-                    .get(unit_type)
-                    .is_some_and(|spec| !spec.free.is_empty());
+                let spec = producers.get(unit_type);
+                let frees = spec.is_some_and(|spec| !spec.free.is_empty());
                 if frees && !F::PREDICTS {
                     commands.queue(move |world: &mut World| Trains::free_units(world, entity));
+                }
+                let keeps = spec.is_some_and(|spec| spec.spawns.is_some());
+                if keeps && !F::PREDICTS {
+                    commands.queue(move |world: &mut World| KeptSpawns::send(world, entity));
                 }
             }
         }
