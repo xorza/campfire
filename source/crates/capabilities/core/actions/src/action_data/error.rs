@@ -4,6 +4,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionField {
     Range,
+    MinRange,
     Cooldown,
     Cost,
     Windup,

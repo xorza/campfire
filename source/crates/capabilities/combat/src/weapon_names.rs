@@ -13,10 +13,11 @@ use campfire_values::{
     TimeTooLarge,
 };
 
-use crate::attack_data::{AttackData, StreakData, WeaponValue};
+use crate::attack_data::{AttackData, SplashData, StreakData, WeaponValue};
 use crate::error::CombatDataError;
 use crate::weapon::{
-    ClipRule, Pitch, Rate, Scatter, ScatterTag, Streak, StreakStage, Weapon, WeaponDamage,
+    ClipRule, OuterRing, Pitch, Rate, Scatter, ScatterTag, Splash, Streak, StreakStage, Weapon,
+    WeaponDamage,
 };
 
 /// What an attack's weapon resolves by: its action as the load holds it and as the book holds
@@ -94,11 +95,38 @@ impl WeaponNames<'_> {
             damage,
             kind,
             clip: clip.transpose()?,
-            splash: data.splash,
+            splash: data
+                .splash
+                .as_ref()
+                .map(|splash| self.splash(splash))
+                .transpose()?,
             scatter: scatter.transpose()?,
             pitch: data.pitch_deg.map(|pitch| Pitch::of(pitch.low, pitch.high)),
             speed: data.speed,
             streak: streak.transpose()?,
+        })
+    }
+
+    /// The splash `data` gives, its outer ring's amount at each rank.
+    fn splash(self, data: &SplashData) -> Result<Splash, BookError> {
+        let outer = data.outer.as_ref().map(|outer| {
+            let amounts = self.at_ranks(|rank| {
+                let amount = self.loaded.data.value_at(rank, &outer.amount);
+                let amount = amount.and_then(Scalar::to_num);
+                amount
+                    .filter(|amount| *amount >= Num::ZERO)
+                    .ok_or(CombatDataError::OuterAmount)
+            })?;
+            Ok::<_, BookError>(OuterRing {
+                radius: outer.radius,
+                amounts,
+            })
+        });
+        Ok(Splash {
+            radius: data.radius,
+            affects: data.affects,
+            spares_source: data.spares_source,
+            outer: outer.transpose()?,
         })
     }
 

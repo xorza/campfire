@@ -174,7 +174,7 @@ const fn raw(x: i64, y: i64, z: i64) -> Vec3 {
 }
 
 /// 100 health, and 30 damage within 2 m, 2 ticks after the start of an attack every 5 ticks.
-const fn fighter_stats() -> Armed {
+fn fighter_stats() -> Armed {
     combatant(100, 2, 2, 5, 30).on_death(OnDeath::Stay)
 }
 
@@ -635,7 +635,7 @@ fn attack_orders_need_a_living_enemy() {
 }
 
 /// 1000 health; reaches nothing and never moves, so only its target changes.
-const fn standing() -> Armed {
+fn standing() -> Armed {
     combatant(1000, 0, 0, 1, 0).on_death(OnDeath::Stay)
 }
 

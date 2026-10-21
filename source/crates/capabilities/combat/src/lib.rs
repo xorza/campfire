@@ -73,7 +73,8 @@ mod wielded;
 
 pub use crate::armor::{Armor, ArmorShare};
 pub use crate::attack_data::{
-    AttackData, ClipData, PitchData, ScatterData, SplashData, StageData, StreakData, WeaponValue,
+    AttackData, ClipData, OuterData, PitchData, ScatterData, SplashData, StageData, StreakData,
+    WeaponValue,
 };
 pub use crate::attacks::Attacks;
 pub use crate::clip_shots::ClipShots;
@@ -102,7 +103,9 @@ pub use crate::streak_book::StreakBook;
 pub use crate::turret::Turret;
 pub use crate::turret::turret_angle::TurretAngle;
 pub use crate::turret::turret_data::{TurretData, TurretPatch};
-pub use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Streak, Weapon, WeaponDamage};
+pub use crate::weapon::{
+    ClipRule, OuterRing, Pitch, Rate, Scatter, Splash, Streak, Weapon, WeaponDamage,
+};
 pub use crate::weighers::{Weigh, Weighers};
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
@@ -343,11 +346,11 @@ pub mod internals {
     use campfire_units::{Life, PoolId, UnitTypeCore, Units};
     use campfire_units::{PoolCost, StatId};
     use campfire_values::{
-        ActionId, DamageKind, PackageIndex, Rank, RelationSet, Speed, Stat, UnitType,
+        ActionId, DamageKind, Distance, PackageIndex, Rank, RelationSet, Speed, Stat, UnitType,
     };
 
     use crate::Combat;
-    use crate::attack_data::{AttackData, SplashData};
+    use crate::attack_data::AttackData;
     use crate::attacks::Attacks;
     use crate::combat_book::CombatBook;
     use crate::damage::{Damage, DamageCause};
@@ -357,7 +360,7 @@ pub mod internals {
     use crate::pass_queue::PassEntry;
     use crate::streak_book::StreakBook;
     use crate::volley::Volley;
-    use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Streak, Weapon, WeaponDamage};
+    use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Splash, Streak, Weapon, WeaponDamage};
     use crate::weapon_names::WeaponNames;
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
@@ -369,6 +372,7 @@ pub mod internals {
     pub struct TestWeapon {
         pub aim: Filter,
         pub range: ActionRange,
+        pub min_range: Option<Distance>,
         pub windup: Ticks,
         pub projectile: Option<UnitType>,
         pub rate: Rate,
@@ -377,7 +381,7 @@ pub mod internals {
         pub clip: Option<ClipRule>,
         pub cost: PoolCost,
         pub resource_cost: Option<ResourceAmount>,
-        pub splash: Option<SplashData>,
+        pub splash: Option<Splash>,
         pub scatter: Option<Num>,
         pub pitch: Option<Pitch>,
         pub speed: Option<Speed>,
@@ -391,6 +395,7 @@ pub mod internals {
             Self {
                 aim,
                 range,
+                min_range: None,
                 windup,
                 projectile: None,
                 rate: Rate::Stat(StatId::new(0)),
@@ -413,6 +418,7 @@ pub mod internals {
         /// the first kind, and its streak's modifiers to the book of the streaks' modifiers.
         pub fn add_weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
             let action = TestAction {
+                min_range: weapon.min_range,
                 cost: weapon.cost,
                 resource_cost: weapon.resource_cost,
                 ..TestAction::new(
@@ -525,14 +531,15 @@ pub mod internals {
     /// again `period` after an attack's start, deals `damage`, fires a projectile of the type
     /// `projectile` when given, and splashes, scatters, bounds its pitch and flies its hit at a
     /// speed as given.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct Arms {
         range: Num,
+        min_range: Option<Num>,
         windup: Ticks,
         period: Ticks,
         damage: Num,
         projectile: Option<UnitType>,
-        splash: Option<SplashData>,
+        splash: Option<Splash>,
         scatter: Option<Num>,
         pitch: Option<[Num; 2]>,
         speed: Option<Speed>,
@@ -540,7 +547,7 @@ pub mod internals {
 
     /// A test unit's combat values: the life pool it starts with, whether it stays when it dies,
     /// and its one weapon, if it has one.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct Armed {
         pub life: Num,
         pub on_death: OnDeath,
@@ -561,6 +568,7 @@ pub mod internals {
         pub const fn melee(range: Num, windup: u64, period: u64, damage: Num) -> Self {
             Self {
                 range,
+                min_range: None,
                 windup: Ticks::new(windup),
                 period: Ticks::new(period),
                 damage,
@@ -574,7 +582,7 @@ pub mod internals {
 
         /// The same weapon, firing projectiles of the homing type `projectile`.
         #[must_use]
-        pub const fn ranged(self, projectile: UnitType) -> Self {
+        pub fn ranged(self, projectile: UnitType) -> Self {
             Self {
                 projectile: Some(projectile),
                 ..self
@@ -592,6 +600,7 @@ pub mod internals {
                 scatter: self.scatter,
                 pitch: self.pitch.map(|[low, high]| Pitch::of(low, high)),
                 speed: self.speed,
+                min_range: self.min_range.map(|meters| Distance::new(meters).unwrap()),
                 ..TestWeapon::new(
                     Filter::of_match_relations(world, RelationSet::Enemies),
                     ActionRange::meters(self.range),
@@ -631,7 +640,7 @@ pub mod internals {
 
         /// A unit of 10 life that stays when it dies, with a melee weapon of 2 m that winds up no
         /// tick and deals nothing, each tick.
-        pub const fn sparring() -> Self {
+        pub fn sparring() -> Self {
             Self::melee(Num::int(10), Num::int(2), 0, 1, Num::ZERO).on_death(OnDeath::Stay)
         }
 
@@ -646,13 +655,13 @@ pub mod internals {
 
         /// The same unit, which `on_death` says whether it stays when it dies.
         #[must_use]
-        pub const fn on_death(self, on_death: OnDeath) -> Self {
+        pub fn on_death(self, on_death: OnDeath) -> Self {
             Self { on_death, ..self }
         }
 
         /// The same unit, its weapon firing projectiles of the homing type `projectile`.
         #[must_use]
-        pub const fn ranged(self, projectile: UnitType) -> Self {
+        pub fn ranged(self, projectile: UnitType) -> Self {
             let arms = self
                 .arms
                 .expect("a ranged unit is armed")
@@ -663,9 +672,22 @@ pub mod internals {
             }
         }
 
+        /// The same unit, its weapon taking no target nearer than `meters`.
+        #[must_use]
+        pub fn keeping_off(self, meters: Num) -> Self {
+            let arms = self.arms.expect("a unit that keeps off is armed");
+            Self {
+                arms: Some(Arms {
+                    min_range: Some(meters),
+                    ..arms
+                }),
+                ..self
+            }
+        }
+
         /// The same unit, its weapon's projectile splashing as `splash` says.
         #[must_use]
-        pub const fn splashing(self, splash: SplashData) -> Self {
+        pub fn splashing(self, splash: Splash) -> Self {
             let arms = self.arms.expect("a splashing unit is armed");
             Self {
                 arms: Some(Arms {
@@ -678,7 +700,7 @@ pub mod internals {
 
         /// The same unit, its weapon's projectile scattering within `radius` of its target.
         #[must_use]
-        pub const fn scattering(self, radius: Num) -> Self {
+        pub fn scattering(self, radius: Num) -> Self {
             let arms = self.arms.expect("a scattering unit is armed");
             Self {
                 arms: Some(Arms {
@@ -691,7 +713,7 @@ pub mod internals {
 
         /// The same unit, its weapon's targets lying from `low` to `high` degrees of pitch.
         #[must_use]
-        pub const fn pitched(self, low: Num, high: Num) -> Self {
+        pub fn pitched(self, low: Num, high: Num) -> Self {
             let arms = self.arms.expect("a pitched unit is armed");
             Self {
                 arms: Some(Arms {
@@ -705,7 +727,7 @@ pub mod internals {
         /// The same unit, its weapon of no projectile slow: its hit flies at `speed` meters a
         /// second.
         #[must_use]
-        pub const fn slow(self, speed: Num) -> Self {
+        pub fn slow(self, speed: Num) -> Self {
             let arms = self.arms.expect("a slow unit is armed");
             Self {
                 arms: Some(Arms {

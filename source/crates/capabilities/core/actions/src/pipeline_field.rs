@@ -9,6 +9,7 @@ use crate::kind_takes::{KindTakes, RangeTakes, Takes};
 pub enum PipelineField {
     Script,
     Range,
+    MinRange,
     CooldownMs,
     Cost,
     WindupMs,
@@ -33,6 +34,7 @@ impl PipelineField {
         match self {
             Self::Script => "script",
             Self::Range => "range",
+            Self::MinRange => "min_range",
             Self::CooldownMs => "cooldown_ms",
             Self::Cost => "cost",
             Self::WindupMs => "windup_ms",
@@ -61,6 +63,10 @@ impl PipelineField {
                 RangeTakes::May => Takes::May,
                 RangeTakes::Meters => Takes::Must,
             },
+            Self::MinRange => match takes.range {
+                RangeTakes::Never => Takes::Never,
+                RangeTakes::May | RangeTakes::Meters => Takes::May,
+            },
             Self::CooldownMs => takes.cooldown,
             Self::Cost => takes.cost,
             Self::WindupMs => takes.windup,
@@ -85,6 +91,7 @@ impl PipelineField {
         match self {
             Self::Script => data.script.is_some(),
             Self::Range => data.range.is_some(),
+            Self::MinRange => data.min_range.is_some(),
             Self::CooldownMs => data.cooldown_ms.is_some(),
             Self::Cost => !data.cost.is_empty(),
             Self::WindupMs => data.windup_ms.is_some(),

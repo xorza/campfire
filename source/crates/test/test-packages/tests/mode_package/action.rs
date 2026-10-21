@@ -61,6 +61,31 @@ pub(super) static ACTION_FLAWS: &[Flaw] = &[
             )
         },
     ),
+    // A minimum range lies within the range of meters, and is meters at least 0.
+    Flaw::of(
+        MODE_DATA,
+        Edit::Set("actions.tower_attack.min_range", r#""999""#),
+        MODE,
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &ActionProblem::MinRange,
+            )
+        },
+    ),
+    Flaw::of(
+        MODE_DATA,
+        Edit::Set("actions.tower_attack.min_range", r#""-1""#),
+        MODE,
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &ActionProblem::Field(ActionField::MinRange),
+            )
+        },
+    ),
     Flaw::of(
         MODE_DATA,
         Edit::Replace(

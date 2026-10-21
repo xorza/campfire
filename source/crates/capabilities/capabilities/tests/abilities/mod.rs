@@ -54,7 +54,7 @@ pub(crate) const fn half_meters(value: i64) -> Num {
 }
 
 /// A unit that strikes for `damage` within 2 m, as its windup of no ticks ends, every 5 ticks.
-const fn striker(damage: i64) -> Armed {
+fn striker(damage: i64) -> Armed {
     Armed::melee(Num::int(500), Num::int(2), 0, 5, Num::int(damage)).on_death(OnDeath::Stay)
 }
 

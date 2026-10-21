@@ -173,7 +173,13 @@ impl KindSection for AttackData {
         let own = own.filter_map(|value| value.own());
         let clip = self.clip.iter();
         let clip = clip.flat_map(|clip| [&clip.shots, &clip.reload_ms]);
-        own.chain(clip).collect()
+        let outer = self
+            .splash
+            .iter()
+            .filter_map(|splash| splash.outer.as_ref());
+        own.chain(clip)
+            .chain(outer.map(|outer| &outer.amount))
+            .collect()
     }
 }
 
@@ -220,12 +226,24 @@ pub struct StageData {
 
 /// A weapon's `splash` (04-capabilities/combat.md, An attack may splash): where its projectile
 /// ends, its damage to each living unit of the relations `affects` names whose volume lies
-/// within `radius` meters, and to its source unless `spares_source`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+/// within `radius` meters, and to its source unless `spares_source`; and, with `outer`, its
+/// outer ring's amount to each such unit beyond `radius` and within the ring's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SplashData {
     pub(crate) radius: Num,
     pub(crate) affects: RelationSet,
     pub(crate) spares_source: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) outer: Option<OuterData>,
+}
+
+/// A splash's `outer` ring (12-missiles.md, A second ring of splash): its radius in
+/// meters, past its splash's, and the amount it deals at each rank, at least 0.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OuterData {
+    pub(crate) radius: Num,
+    pub(crate) amount: Ranked<Number>,
 }
 
 /// A weapon's `scatter` (04-capabilities/combat.md, An attack may scatter): the most meters
@@ -249,13 +267,32 @@ pub struct PitchData {
 
 impl SplashData {
     /// A splash of `radius` to the units of `affects`, and to its source unless `spares_source`;
-    /// `None` for a radius that is not positive or past `MAX_BOUND`.
+    /// `None` for a radius below 0 or past `MAX_BOUND`. A radius of 0 reaches the unit whose
+    /// volume holds its point alone, as Zero Hour's rocket buggy's of no primary radius does.
     pub fn new(radius: Num, affects: RelationSet, spares_source: bool) -> Option<Self> {
-        (radius > Num::ZERO && radius <= MAX_BOUND).then_some(Self {
+        (Num::ZERO..=MAX_BOUND).contains(&radius).then_some(Self {
             radius,
             affects,
             spares_source,
+            outer: None,
         })
+    }
+
+    /// The same splash with the outer ring `outer`; `None` for a ring not past its radius or past
+    /// `MAX_BOUND`.
+    #[must_use]
+    pub fn with_outer(self, outer: OuterData) -> Option<Self> {
+        (self.radius < outer.radius && outer.radius <= MAX_BOUND).then_some(Self {
+            outer: Some(outer),
+            ..self
+        })
+    }
+}
+
+impl OuterData {
+    /// A ring of `radius` meters dealing `amount` at each rank.
+    pub const fn new(radius: Num, amount: Ranked<Number>) -> Self {
+        Self { radius, amount }
     }
 }
 
@@ -280,7 +317,8 @@ impl PitchData {
     }
 }
 
-/// Data is untrusted, so a radius that is not positive or past `MAX_BOUND` fails to read.
+/// Data is untrusted, so a radius below 0 or past `MAX_BOUND`, or an outer ring's not past it or
+/// past `MAX_BOUND`, fails to read.
 impl<'de> Deserialize<'de> for SplashData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
@@ -289,11 +327,18 @@ impl<'de> Deserialize<'de> for SplashData {
             radius: Num,
             affects: RelationSet,
             spares_source: Option<bool>,
+            outer: Option<OuterData>,
         }
         let fields = Fields::deserialize(deserializer)?;
         let spares_source = fields.spares_source.unwrap_or(true);
-        Self::new(fields.radius, fields.affects, spares_source)
-            .ok_or_else(|| D::Error::custom("a splash's radius is positive, up to 2,048 m"))
+        let splash = Self::new(fields.radius, fields.affects, spares_source)
+            .ok_or_else(|| D::Error::custom("a splash's radius is from 0 to 2,048 m"))?;
+        match fields.outer {
+            None => Ok(splash),
+            Some(outer) => splash.with_outer(outer).ok_or_else(|| {
+                D::Error::custom("a splash's outer ring is past its radius, up to 2,048 m")
+            }),
+        }
     }
 }
 

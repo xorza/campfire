@@ -33,6 +33,9 @@ pub enum ActionProblem {
     /// A range global at a rank, where its kind needs meters at every rank.
     #[error("its range is global at a rank, where its kind needs meters")]
     Global,
+    /// A minimum range at a rank whose range is global or no farther.
+    #[error("its minimum range lies within its range of meters")]
+    MinRange,
     /// The projectile type its delivery names lacks its `projectile` section.
     #[error("unit type {0} lacks the projectile section its delivery needs")]
     Section(DeclaredName),

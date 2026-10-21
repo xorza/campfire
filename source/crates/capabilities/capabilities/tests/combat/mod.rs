@@ -647,7 +647,7 @@ fn strikes_in_one_tick_see_the_state_before_any_of_them() {
 fn targets_are_living_enemies() {
     let mut game = fight_match();
     let prey = combatant(10, 0, 0, 1, 0);
-    let [prey, stays] = load_types(&mut game, [prey, prey.on_death(OnDeath::Stay)]);
+    let [prey, stays] = load_types(&mut game, [prey.clone(), prey.on_death(OnDeath::Stay)]);
     // Up at y = 9: a target all the same.
     let high = Spawn::of(prey, (0, 9, 3)).place(&mut game);
     let far = Spawn::of(prey, (6, 0, 0)).place(&mut game);
@@ -745,7 +745,7 @@ fn targets_are_living_enemies() {
 fn every_combat_type_is_state_and_restores() {
     let armed = [fighter(), combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay)];
     let mut game = fight_match();
-    let [fighter, doomed] = load_types(&mut game, armed);
+    let [fighter, doomed] = load_types(&mut game, armed.clone());
     let fighter = Spawn::of(fighter, (0, 0, 0)).place(&mut game);
     let doomed = Spawn::of(doomed, (1, 0, 0))
         .team(Team::new(1))
@@ -898,7 +898,12 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
         }
         let team = Team::new(0);
         let victim = combatant(130, 0, 0, 1, 0);
-        let armed = [fighter(), slow, victim.on_death(OnDeath::Stay), victim];
+        let armed = [
+            fighter(),
+            slow.clone(),
+            victim.clone().on_death(OnDeath::Stay),
+            victim,
+        ];
         let [fighter, slow, hero, creep] = load_types(&mut game, armed);
         let [first, killer] =
             [4, 6].map(|x| Spawn::of(fighter, (x, 0, 0)).team(team).place(&mut game));
@@ -1155,7 +1160,7 @@ fn damage_after_the_pass_waits_for_the_next_and_a_life_at_zero_acts_no_more() {
         fighter().on_death(OnDeath::Stay),
         dummy().on_death(OnDeath::Stay),
     ];
-    let [fighter, stays] = load_types(&mut game, armed);
+    let [fighter, stays] = load_types(&mut game, armed.clone());
     let attacker = Spawn::of(fighter, (0, 0, 0)).place(&mut game);
     let target = Spawn::of(stays, (1, 0, 0))
         .team(Team::new(1))

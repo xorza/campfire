@@ -3,6 +3,8 @@ use std::num::NonZeroU8;
 use campfire_players::ResourceAmount;
 use campfire_units::PoolCost;
 
+use campfire_values::Distance;
+
 use crate::action_range::ActionRange;
 
 /// The pipeline's capability fields of an action at one rank, as data gives them: times in
@@ -10,6 +12,7 @@ use crate::action_range::ActionRange;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RankFields {
     pub range: ActionRange,
+    pub min_range: Option<Distance>,
     pub cooldown_ms: u64,
     pub cost: PoolCost,
     pub resource_cost: Vec<ResourceAmount>,

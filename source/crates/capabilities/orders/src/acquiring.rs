@@ -4,7 +4,7 @@ use bevy_ecs::query::Without;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{
     ActionBook, ActionKind, ActionProgress, ActionRange, ActionSlots, AttackTarget,
-    ProgressIndexes, Targets,
+    ProgressIndexes, RangeFit, Targets,
 };
 use campfire_declarations::ByType;
 use campfire_geometry::Placed;
@@ -109,12 +109,11 @@ impl Acquiring {
                 };
                 let relation = targets.relation(team, unit.team);
                 let weapon = slots.weapon_in(&actions, Some((relation, unit.tags)));
-                let range = weapon.map(|slot| slots.range_in(&actions, slot));
-                let reached = match range {
-                    Some(ActionRange::Meters(range)) => targets.reaches(from, range.get(), &unit),
-                    Some(ActionRange::Global) => true,
-                    None => false,
-                };
+                let to = Placed::new(unit.position, unit.shape);
+                let reached = weapon.is_some_and(|slot| {
+                    let values = slots.values_of(&actions, slot);
+                    targets.reach(from, values.range, values.min_range, to) == RangeFit::Within
+                });
                 if reached && acquire.targets.selects(relation, unit.tags) && seen.sees(team, other)
                 {
                     let distance = metric

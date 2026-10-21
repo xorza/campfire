@@ -23,6 +23,7 @@ use crate::action_slots::{ActionSlot, ActionSlots};
 use crate::action_target::ActionTarget;
 use crate::checked_action::CheckedAction;
 use crate::purse::Purse;
+use crate::range_fit::RangeFit;
 use crate::rank_fields::TogglePer;
 use crate::rank_values::ChargeRule;
 use crate::slot_aim::SlotAim;
@@ -117,12 +118,12 @@ pub struct StartFrom<'a, 'w, 's> {
     pub targets: &'a Targets<'w, 's>,
 }
 
-/// An action its start checked: what passed its checks, and whether its target lies within its
-/// reach, as an action measured from no place always does.
+/// An action its start checked: what passed its checks, and how its target lies against its
+/// reach, within it for an action measured from no place.
 #[derive(Debug)]
 pub struct StartChecked<'b> {
     pub checked: CheckedAction<'b>,
-    pub reached: bool,
+    pub reach: RangeFit,
 }
 
 /// What the commit of an action spends of its slot: the slot, the tick `now` it commits at, the
@@ -168,11 +169,11 @@ impl SlotTimes {
         from: Option<StartFrom<'_, '_, '_>>,
     ) -> Option<StartChecked<'b>> {
         let mut checked = self.checked_action(check)?;
-        let reached = from.is_none_or(|from| {
+        let reach = from.map_or(RangeFit::Within, |from| {
             checked.clamp(from.position, Body::shape_of(from.body), from.targets);
-            checked.in_range(from.position, from.body, from.targets)
+            checked.reach(from.position, from.body, from.targets)
         });
-        Some(StartChecked { checked, reached })
+        Some(StartChecked { checked, reach })
     }
 
     /// The commit step's spend of the slot's time, which each kind takes at its own moment, as its

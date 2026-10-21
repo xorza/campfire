@@ -2,10 +2,11 @@ use std::num::NonZeroU8;
 use std::ops::Range;
 
 use campfire_common::{DeclaredName, Ticks};
+use campfire_math::Num;
 use campfire_players::ResourceAmount;
 use campfire_sim::MatchRate;
 use campfire_units::PoolCost;
-use campfire_values::{Rank, TimeTooLarge};
+use campfire_values::{Distance, Rank, TimeTooLarge};
 
 use crate::action_data::ActionData;
 use crate::action_range::ActionRange;
@@ -28,6 +29,8 @@ pub struct LoadedRanks {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RankValues {
     pub range: ActionRange,
+    /// The meters nearer than which it takes no target, within its range of meters.
+    pub min_range: Option<Distance>,
     pub cooldown: Ticks,
     pub cost: PoolCost,
     pub windup: Ticks,
@@ -79,10 +82,23 @@ pub struct ChargeRule {
 }
 
 impl RankValues {
+    /// The meters halfway between its minimum range and its range of meters, where a unit too
+    /// near its target steps back to; none without both.
+    pub const fn midway(&self) -> Option<Num> {
+        let (Some(min), ActionRange::Meters(range)) = (self.min_range, self.range) else {
+            return None;
+        };
+        Some(Num::from_bits(i64::midpoint(
+            min.get().to_bits(),
+            range.get().to_bits(),
+        )))
+    }
+
     /// The fields of `data` at each of its `ranks` ranks, times in ticks at `rate`, what its
     /// cost's names take from by `target`; an error for a per-rank array of another length, a
     /// field that does not hold at a rank, a use's, a build's or a gather's range that is global
-    /// at a rank, or a time that does not count in ticks.
+    /// at a rank, a minimum range not within a range of meters at a rank, or a time that does not
+    /// count in ticks.
     pub(crate) fn all(
         data: &ActionData,
         ranks: u8,
@@ -105,11 +121,19 @@ impl RankValues {
             if metered && fields.range == ActionRange::Global {
                 return Err(ActionProblem::Global);
             }
+            let within = |min: Distance| match fields.range {
+                ActionRange::Meters(range) => min < range,
+                ActionRange::Global => false,
+            };
+            if fields.min_range.is_some_and(|min| !within(min)) {
+                return Err(ActionProblem::MinRange);
+            }
             let start = loaded.resource_costs.len();
             loaded.resource_costs.extend(fields.resource_cost);
             let resource_cost = CostRun::new(start, loaded.resource_costs.len());
             loaded.values.push(Self {
                 range: fields.range,
+                min_range: fields.min_range,
                 cooldown: ticks(fields.cooldown_ms)?,
                 cost: fields.cost,
                 windup: ticks(fields.windup_ms)?,

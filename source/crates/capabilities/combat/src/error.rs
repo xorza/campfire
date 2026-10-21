@@ -37,6 +37,9 @@ pub enum CombatDataError {
     /// A splash, and no projectile delivery for it to go off where it ends.
     #[error("a splash goes off where a projectile of its delivery ends")]
     Splash,
+    /// A splash's outer ring whose amount is not a number at least 0 at a rank.
+    #[error("a splash's outer ring deals a number at least 0")]
+    OuterAmount,
     /// A scatter, and no projectile delivery that flies a curve for it to aim.
     #[error("a scatter aims a curve of its delivery")]
     Scatter,

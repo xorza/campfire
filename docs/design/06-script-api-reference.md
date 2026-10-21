@@ -391,6 +391,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `script` | core | since 1.0 |
 | `targeting` | core | since 1.0 |
 | `range` | core | since 1.0 |
+| `min_range` | core | since 1.0 |
 | `cooldown_ms` | core | since 1.0 |
 | `cost` | core | since 1.0 |
 | `windup_ms` | core | since 1.0 |

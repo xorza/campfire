@@ -34,14 +34,14 @@ fn projectile(homing: bool, width: Num, range: Option<Num>, stop_on_hit: bool) -
 
 /// 30 damage within 8 m, fired 2 ticks after the start of an attack every 10 ticks, its
 /// projectiles of the homing type `bolt`.
-const fn shooter(bolt: UnitType) -> Armed {
+fn shooter(bolt: UnitType) -> Armed {
     Armed::melee(Num::int(100), Num::int(8), 2, 10, Num::int(30))
         .ranged(bolt)
         .on_death(OnDeath::Stay)
 }
 
 /// 100 health; never attacks; stays when it dies.
-const fn target() -> Armed {
+fn target() -> Armed {
     Armed::unarmed(Num::int(100)).on_death(OnDeath::Stay)
 }
 

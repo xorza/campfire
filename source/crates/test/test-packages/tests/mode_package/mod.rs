@@ -269,8 +269,14 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_it
         }
         load(&edited(files))
     };
-    // A homing bolt splashes and bounds its pitch; a curve scatters too.
+    // A homing bolt splashes and bounds its pitch; a curve scatters too. A splash of 0 m with an
+    // outer ring past it loads.
     assert!(set(&[splash, pitch]).is_ok());
+    let ringed = (
+        "actions.tower_attack.splash",
+        r#"{ radius = "0", affects = "enemies", outer = { radius = "3", amount = "5" } }"#,
+    );
+    assert!(set(&[ringed]).is_ok());
     assert!(set(&[splash, scatter, pitch, curve]).is_ok());
     // A homing bolt does not scatter, and a weapon of no projectile does not splash.
     let error = set(&[scatter]).unwrap_err();
@@ -303,15 +309,36 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_it
         )
     };
     assert!(splashes(&error.problem), "{error:?}");
+    // An outer ring deals a number at least 0.
+    let negative = (
+        "actions.tower_attack.splash",
+        r#"{ radius = "1", affects = "enemies", outer = { radius = "3", amount = "-5" } }"#,
+    );
+    let error = set(&[negative]).unwrap_err();
+    let outer = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "tower_attack"),
+            &CombatDataError::OuterAmount,
+        )
+    };
+    assert!(outer(&error.problem), "{error:?}");
     // Each reads only within its bounds.
     let file = "data/mode.toml";
     for (edit, message) in [
         (
             (
                 "actions.tower_attack.splash",
-                r#"{ radius = "0", affects = "enemies" }"#,
+                r#"{ radius = "-1", affects = "enemies" }"#,
             ),
             "a splash's radius",
+        ),
+        (
+            (
+                "actions.tower_attack.splash",
+                r#"{ radius = "3", affects = "enemies", outer = { radius = "3", amount = "5" } }"#,
+            ),
+            "a splash's outer ring",
         ),
         (
             ("actions.tower_attack.scatter", r#"{ radius = "-1" }"#),

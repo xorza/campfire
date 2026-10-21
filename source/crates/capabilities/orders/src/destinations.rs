@@ -1,10 +1,9 @@
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res};
 use campfire_actions::{
-    ActionBook, ActionProgress, ActionRange, ActionSlots, ProgressIndexes, TargetSource, Targets,
+    ActionBook, ActionProgress, ActionSlots, ProgressIndexes, RangeFit, TargetSource, Targets,
 };
 use campfire_geometry::Placed;
-use campfire_math::Num;
 use campfire_sim::{DueUnit, Position};
 use campfire_units::{ArrivedShort, Body, Dead, Destination};
 use campfire_values::Team;
@@ -15,11 +14,13 @@ pub struct Destinations;
 
 impl Destinations {
     /// Walks each unit that can move to its attack target while out of the range of the weapon it
-    /// attacks it with, of those the index of the attack targets holds, and stops it in range or
-    /// in its windup; a cast that walks in range walks the unit instead. A unit whose target is
-    /// gone, dead, no longer an enemy or one no weapon of it selects drops it and stops, and so
-    /// does one, that walks or stands, whose scan gave it a target out of that range, which it
-    /// does not chase (04-capabilities/control.md, A scanned target holds only in reach).
+    /// attacks it with, and straight away from it to halfway between the weapon's minimum and its
+    /// range while nearer than its minimum, of those the index of the attack targets holds, and
+    /// stops it in reach or in its windup; a cast that walks in range walks the unit instead. A
+    /// unit whose target is gone, dead, no longer an enemy or one no weapon of it selects drops it
+    /// and stops, and so does one, that walks or stands, whose scan gave it a target out of that
+    /// reach, which it does not chase (04-capabilities/control.md, A scanned target holds only in
+    /// reach; 12-missiles.md, A minimum range).
     pub(super) fn chase(
         book: Res<'_, ActionBook>,
         targets: Targets<'_, '_>,
@@ -56,26 +57,23 @@ impl Destinations {
             let aimed = targets.enemy(team, target).and_then(|unit| {
                 let selected = (targets.relation(team, unit.team), unit.tags);
                 let slot = slots.weapon_in(&book, Some(selected))?;
-                Some((unit, slots.range_in(&book, slot)))
+                Some((unit, slots.values_of(&book, slot)))
             });
-            let reached = |unit, range: Num| {
-                let from = Placed::new(position.get(), Body::shape_of(body));
-                targets.reaches(from, range, unit)
-            };
-            let walk = match aimed {
-                Some((unit, ActionRange::Meters(range))) if !reached(&unit, range.get()) => {
-                    if progress.target_source() == Some(TargetSource::Scan) {
+            let from = Placed::new(position.get(), Body::shape_of(body));
+            let walk = if let Some((unit, values)) = aimed {
+                let to = Placed::new(unit.position, unit.shape);
+                match targets.reach(from, values.range, values.min_range, to) {
+                    RangeFit::Within => None,
+                    _ if progress.target_source() == Some(TargetSource::Scan) => {
                         progress.set_attack_target(None, &mut indexes.of(id, entity));
                         None
-                    } else {
-                        Some(unit.position)
                     }
+                    RangeFit::Far => Some(unit.position),
+                    RangeFit::Near => values.midway().map(|gap| targets.away(from, to, gap)),
                 }
-                Some(_) => None,
-                None => {
-                    progress.set_attack_target(None, &mut indexes.of(id, entity));
-                    None
-                }
+            } else {
+                progress.set_attack_target(None, &mut indexes.of(id, entity));
+                None
             };
             if let Some(destination) = &mut destination {
                 Destination::walk_to(destination, arrived, walk);

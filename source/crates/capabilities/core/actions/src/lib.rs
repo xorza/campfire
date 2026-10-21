@@ -70,6 +70,7 @@ mod pipeline_field;
 mod planned_effect;
 mod purse;
 mod range_field;
+mod range_fit;
 mod rank_fields;
 mod rank_values;
 mod reached;
@@ -150,6 +151,7 @@ pub use crate::pipeline_field::PipelineField;
 pub use crate::planned_effect::PlannedEffect;
 pub use crate::purse::Purse;
 pub use crate::range_field::RangeField;
+pub use crate::range_fit::RangeFit;
 pub use crate::rank_fields::{RankChannel, RankCharges, RankFields, RankToggle, TogglePer};
 pub use crate::rank_values::{ChannelRule, ChargeRule, LoadedRanks, RankValues};
 pub use crate::reached::Reached;
@@ -316,8 +318,8 @@ pub mod internals {
     use campfire_script::{HookSet, MatchNames, UnknownName};
     use campfire_units::{PoolCost, PoolId};
     use campfire_values::{
-        ActionId, DamageKind, ModifierId, Named, PackageIndex, Param, Tag, TrackId, TypeScope,
-        UnitType,
+        ActionId, DamageKind, Distance, ModifierId, Named, PackageIndex, Param, Tag, TrackId,
+        TypeScope, UnitType,
     };
 
     use crate::Actions;
@@ -357,6 +359,7 @@ pub mod internals {
                     aim: action.aim,
                     ranks: vec![RankValues {
                         range: action.range,
+                        min_range: action.min_range,
                         cooldown: Ticks::ZERO,
                         cost: action.cost,
                         windup: action.windup,
@@ -388,6 +391,7 @@ pub mod internals {
                     aim: Aim::None,
                     ranks: vec![RankValues {
                         range: ActionRange::meters(Num::ZERO),
+                        min_range: None,
                         cooldown: Ticks::ZERO,
                         cost: PoolCost::default(),
                         windup: Ticks::ZERO,
@@ -422,6 +426,7 @@ pub mod internals {
         pub kind: ActionKind,
         pub aim: Aim,
         pub range: ActionRange,
+        pub min_range: Option<Distance>,
         pub windup: Ticks,
         pub cost: PoolCost,
         pub resource_cost: Option<ResourceAmount>,
@@ -436,6 +441,7 @@ pub mod internals {
                 kind,
                 aim,
                 range,
+                min_range: None,
                 windup,
                 cost: PoolCost::default(),
                 resource_cost: None,

@@ -8,8 +8,8 @@ use bevy_ecs::world::{Mut, World};
 use campfire_actions::{
     ActionBook, ActionCall, ActionCheck, ActionKind, ActionProgress, ActionSlots, CastSpends,
     Caster, EffectListBook, InProgress, ListCall, ListHook, ListsOf, OnResolve, OrderPhase,
-    ProgressDues, ProgressIndexes, Purse, ResolveKind, ResolvedCast, SlotCommit, SlotTimes,
-    StartChecked, StartFrom, Targets, UseGroup,
+    ProgressDues, ProgressIndexes, Purse, RangeFit, ResolveKind, ResolvedCast, SlotCommit,
+    SlotTimes, StartChecked, StartFrom, Targets, UseGroup,
 };
 use campfire_common::{Seat, Tick};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
@@ -192,7 +192,7 @@ impl Casts {
                 relation,
                 living: |id| targets.living(id),
             };
-            let Some(StartChecked { checked, reached }) = times.start(check, Some(from)) else {
+            let Some(StartChecked { checked, reach }) = times.start(check, Some(from)) else {
                 Self::drop_cast(
                     &mut progress,
                     destination.as_mut(),
@@ -202,8 +202,9 @@ impl Casts {
                 );
                 continue;
             };
-            if !reached {
-                match (destination.is_some(), checked.aimed_at(&targets)) {
+            if reach != RangeFit::Within {
+                let to = checked.walk_to(position.get(), body, reach, &targets);
+                match (destination.is_some(), to) {
                     (true, Some(to)) => {
                         Self::walk(destination.as_mut(), arrived, Some(to));
                         progress.approach();

@@ -1,5 +1,5 @@
 use campfire_actions::ShotDamage;
-use campfire_combat::{SCATTER_STREAM, SplashData};
+use campfire_combat::{SCATTER_STREAM, Splash};
 use campfire_math::SinCos;
 use campfire_units::{CellSplit, Ground, HeightGrid, MapSpace};
 use campfire_values::{ActionId, DamageKind, Rank, RelationSet};
@@ -391,7 +391,7 @@ fn a_shells_splash_damages_the_units_of_its_relations_within_its_radius_once_eac
     // 5. An enemy whose body's edge lies 1.5 m from it takes the damage, and so does one exactly
     // 2 m away, by the one reach rule; one a bit past 2 m does not, nor an ally within it; the
     // target takes it once, its hit dealing nothing of its own.
-    let splash = SplashData::new(Num::int(2), RelationSet::Enemies, true).unwrap();
+    let splash = Splash::new(Num::int(2), RelationSet::Enemies, true).unwrap();
     let mut near = Vec::new();
     let mut shot = Shot::new(
         |armed| armed.splashing(splash),
@@ -423,13 +423,47 @@ fn a_shells_splash_damages_the_units_of_its_relations_within_its_radius_once_eac
     // At the allies, 9 m wide, sparing no source: the shooter, a point 8 m away, takes it, and
     // the target, an enemy, does not; sparing its source, the shooter takes nothing.
     let run = |spares_source| {
-        let splash = SplashData::new(Num::int(9), RelationSet::Allies, spares_source).unwrap();
+        let splash = Splash::new(Num::int(9), RelationSet::Allies, spares_source).unwrap();
         let mut shot = Shot::new(|armed| armed.splashing(splash), |_, _| {});
         shot.through(5);
         [shot.shooter, shot.target].map(|id| Stats::health(&shot.game, id))
     };
     assert_eq!(run(false), [70, 100]);
     assert_eq!(run(true), [100, 100]);
+
+    // An outer ring of 4 m past a splash of 2 m, dealing 10: an enemy whose edge lies 1.5 m from
+    // the end takes the 30, one 3 m away and one exactly 4 m away the ring's 10, once each, and
+    // one a bit past 4 m nothing. Of a splash of 0 m in the same ring, the target, whose volume
+    // holds the end, takes the 30, and the others within the ring its 10.
+    let ringed = |radius: Num| {
+        let splash = Splash::new(radius, RelationSet::Enemies, true).unwrap();
+        let splash = splash
+            .with_outer(Num::int(4), Box::new([Num::int(10)]))
+            .unwrap();
+        let mut near = Vec::new();
+        let mut shot = Shot::new(
+            |armed| armed.splashing(splash),
+            |game, volley| {
+                // Each body 1 m wide, its edge 1.5, 3, 4 and a bit past 4 m from (8, 0, 0).
+                for x in [
+                    Num::int(10) + Num::HALF,
+                    Num::int(12),
+                    Num::int(13),
+                    Num::int(13) + Num::EPSILON,
+                ] {
+                    let at = Vec3::new(x, Num::ZERO, Num::ZERO);
+                    near.push(Spawn::of(volley.flat, at).team(Team::new(1)).place(game));
+                }
+            },
+        );
+        shot.through(5);
+        let [inside, between, at_ring, past_ring] = near[..] else {
+            panic!("four units near");
+        };
+        [shot.target, inside, between, at_ring, past_ring].map(|id| Stats::health(&shot.game, id))
+    };
+    assert_eq!(ringed(Num::int(2)), [70, 70, 90, 90, 100]);
+    assert_eq!(ringed(Num::ZERO), [70, 90, 90, 90, 100]);
 }
 
 #[test]

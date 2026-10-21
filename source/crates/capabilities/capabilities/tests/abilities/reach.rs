@@ -16,7 +16,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimTick, SimWorld};
 use campfire_stats::Stats;
 use campfire_units::{Body, Dead, Destination, GroundPoint, MoveStep, Units};
-use campfire_values::{ActionId, Block, FilterData, PackagePath, Ranked, Team};
+use campfire_values::{ActionId, Block, FilterData, Number, PackagePath, Ranked, Scalar, Team};
 
 use crate::abilities::{abilities_match, abilities_match_with, half_meters};
 
@@ -96,11 +96,12 @@ fn on_resolve(ctx, caster, target) {
 
 /// Hop, which deals 10 to each enemy within half a meter of its point, and Jab, which deals 10 to
 /// its target, in a match of units that walk and take orders; each reaches 4 m, and resolves as
-/// it starts.
+/// it starts; and Lob, a jab that takes no target nearer than 2 m.
 #[derive(Debug, Clone, Copy)]
 struct Reaching {
     hop: ActionId,
     jab: ActionId,
+    lob: ActionId,
 }
 
 impl Reaching {
@@ -136,9 +137,14 @@ impl Reaching {
     "#;
         let jab_script =
             r#"fn on_resolve(ctx, caster, target) { ctx.damage(target, "true", 10); }"#;
+        let lob = ActionData {
+            min_range: Some(Ranked::One(Number::Value(Scalar::Int(2)))),
+            ..jab.clone()
+        };
         let hop = Abilities::load(game, "hop", &hop, hop_script);
+        let lob = Abilities::load(game, "lob", &lob, jab_script);
         let jab = Abilities::load(game, "jab", &jab, jab_script);
-        Self { hop, jab }
+        Self { hop, jab, lob }
     }
 }
 
@@ -194,6 +200,33 @@ fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
         ),
         (Num::int(16), 490)
     );
+
+    // A lob at an enemy 1 m off, inside its minimum of 2 m: the caster walks straight away from
+    // it to halfway between 2 and 4 m, (−2, 0, 0), a meter a tick; in tick 1 it stands at −1, 2 m
+    // off, at its minimum, which it takes, and stops there. A caster that does not walk drops it.
+    let lobber = Abilities::walking_caster(&mut game, reaching.lob);
+    let start = game.resource::<SimTick>().start().get();
+    let close = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    Abilities::cast(&mut game, lobber, ActionTarget::Unit(close));
+    assert!(game.part::<ActionProgress>(lobber).is_approaching());
+    assert_eq!(
+        game.part::<Destination>(lobber).get(),
+        Some(Vec3::from((-2, 0, 0)))
+    );
+    game.run_until(start + 1);
+    assert_eq!(Stats::health(&game, close), 500);
+    game.step();
+    assert_eq!(
+        (game.part::<Position>(lobber).x, Stats::health(&game, close)),
+        (Num::int(-1), 490)
+    );
+    assert_eq!(game.part::<Destination>(lobber).get(), None);
+    let standing = Abilities::caster(&mut game, reaching.lob, 1);
+    let beside = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    Abilities::cast(&mut game, standing, ActionTarget::Unit(beside));
+    assert_eq!(game.part::<ActionProgress>(standing).in_progress(), None);
+    game.step();
+    assert_eq!(Stats::health(&game, beside), 500);
     assert_eq!(Abilities::failed_calls(&game), []);
 }
 

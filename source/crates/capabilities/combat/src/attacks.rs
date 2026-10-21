@@ -6,7 +6,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionCheck, ActionProgress, ActionSlots, ActionTarget, ByAction, Caster,
-    InProgress, Payer, ProgressIndexes, Purse, Reached, Shot, ShotDamage, Shots, SlotAim,
+    InProgress, Payer, ProgressIndexes, Purse, RangeFit, Reached, Shot, ShotDamage, Shots, SlotAim,
     SlotCommit, SlotTimes, StartFrom, Targets,
 };
 use campfire_common::Tick;
@@ -47,6 +47,14 @@ type Attacker<'a> = (
 #[derive(Debug)]
 pub struct Attacks;
 
+/// Which ring of a splash a unit lies in: within its radius, or beyond it and within its outer
+/// ring's, which takes its damage after the inner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum SplashRing {
+    Inner,
+    Outer,
+}
+
 impl Attacks {
     /// Queues the damage of each slow weapon's hit that lands this tick, in the order shot, on
     /// its target when it still lives, whatever its tags let it be as a target by then
@@ -73,14 +81,16 @@ impl Attacks {
     /// tick's deliveries, in the order they came, its weapon's damage with the roll it drew: to the
     /// unit a hit struck, for a weapon of no splash; and where a projectile of a weapon of a splash
     /// ends, to each living unit of the relations its splash affects, to its source when it spares
-    /// none, whose volume lies within its radius of the end's point in space, by stable id
-    /// (04-capabilities/combat.md, An attack may splash).
+    /// none, whose volume lies within its radius of the end's point in space, by stable id, then
+    /// its outer ring's amount to each such unit beyond its radius and within the ring's, by stable
+    /// id (04-capabilities/combat.md, An attack may splash; 12-missiles.md, A second ring of
+    /// splash).
     pub(super) fn take_hits(
         (tick, weapons): (Res<'_, SimTick>, Res<'_, ByAction<Weapon>>),
         (deliveries, mut queue): (Res<'_, DeliveryQueue>, ResMut<'_, PassQueue>),
         targets: Targets<'_, '_>,
         near: UnitsNear<'_>,
-        mut splashed: Local<'_, Vec<StableId>>,
+        mut splashed: Local<'_, Vec<(SplashRing, StableId)>>,
     ) {
         let now = tick.start();
         for &delivered in deliveries.delivered() {
@@ -110,15 +120,13 @@ impl Attacks {
                 depth: 0,
                 hit: Some(hit),
             };
-            match (
-                reach,
-                weapons.get(shot.action).and_then(|weapon| weapon.splash),
-            ) {
+            let weapon = weapons.get(shot.action);
+            match (reach, weapon.and_then(|weapon| weapon.splash.as_ref())) {
                 (Reached::Hit(target), None) => queue.push_damage(damage(target), now),
                 (Reached::End, Some(splash)) => {
                     let point = targets.map().point(hit.position);
                     splashed.clear();
-                    near.current().visit_near(point, splash.radius, |body| {
+                    near.current().visit_near(point, splash.reach(), |body| {
                         let Some(unit) = targets.living_at(body.key) else {
                             return ControlFlow::Continue(());
                         };
@@ -127,17 +135,36 @@ impl Attacks {
                         } else {
                             splash.affects.selects(targets.relation(team, unit.team))
                         };
-                        let within = targets
-                            .volume_at(body.key)
-                            .is_some_and(|volume| volume.reaches(point, splash.radius));
-                        if affects && within {
-                            splashed.push(unit.id);
+                        let ring = targets.volume_at(body.key).and_then(|volume| {
+                            if volume.reaches(point, splash.radius) {
+                                Some(SplashRing::Inner)
+                            } else {
+                                let outer = splash.outer.as_ref()?;
+                                volume
+                                    .reaches(point, outer.radius)
+                                    .then_some(SplashRing::Outer)
+                            }
+                        });
+                        if let Some(ring) = ring.filter(|_| affects) {
+                            splashed.push((ring, unit.id));
                         }
                         ControlFlow::Continue(())
                     });
                     splashed.sort_unstable();
-                    for &target in &*splashed {
-                        queue.push_damage(damage(target), now);
+                    for &(ring, target) in &*splashed {
+                        let amount = match ring {
+                            SplashRing::Inner => shot.amount,
+                            SplashRing::Outer => weapon
+                                .and_then(|weapon| weapon.outer_amount(shot.rank))
+                                .expect("a unit in an outer ring is of a splash that has one"),
+                        };
+                        queue.push_damage(
+                            Damage {
+                                amount,
+                                ..damage(target)
+                            },
+                            now,
+                        );
                     }
                 }
                 (Reached::Hit(_), Some(_)) | (Reached::End, None) => {}
@@ -283,7 +310,7 @@ impl Attacks {
                     });
                     let started = times
                         .start(check, Some(from))
-                        .filter(|started| started.reached && pitched)
+                        .filter(|started| started.reach == RangeFit::Within && pitched)
                         .map(|started| now.after(started.checked.values.windup));
                     if let Some(resolves_at) = started {
                         progress.schedule_attack(slot, resolves_at, &mut indexes.of(id, entity));

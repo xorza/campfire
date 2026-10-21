@@ -1,12 +1,10 @@
 use std::num::NonZeroU16;
 
 use campfire_common::Ticks;
-use campfire_geometry::Volume;
+use campfire_geometry::{MAX_BOUND, Volume};
 use campfire_math::{Num, Rounding, SinCos, Vec3};
 use campfire_units::StatId;
-use campfire_values::{DamageKind, ModifierId, NameId, Rank, Speed, Tag, TagSet};
-
-use crate::attack_data::SplashData;
+use campfire_values::{DamageKind, ModifierId, NameId, Rank, RelationSet, Speed, Tag, TagSet};
 
 /// What makes an action of kind `attack` a weapon, as the match runs it: where its rate and its
 /// damage come from, the stat that speeds its own period, the kind of damage it deals, its clip
@@ -19,11 +17,31 @@ pub struct Weapon {
     pub(crate) damage: WeaponDamage,
     pub kind: DamageKind,
     pub(crate) clip: Option<Box<[ClipRule]>>,
-    pub splash: Option<SplashData>,
+    pub splash: Option<Splash>,
     pub scatter: Option<Scatter>,
     pub pitch: Option<Pitch>,
     pub speed: Option<Speed>,
     pub streak: Option<Streak>,
+}
+
+/// A weapon's splash as the match runs it (04-capabilities/combat.md, An attack may splash):
+/// where its projectile ends, its damage to each living unit of the relations `affects` names
+/// whose volume lies within `radius` meters, and to its source unless `spares_source`; and its
+/// outer ring, if it has one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Splash {
+    pub(crate) radius: Num,
+    pub(crate) affects: RelationSet,
+    pub(crate) spares_source: bool,
+    pub(crate) outer: Option<OuterRing>,
+}
+
+/// A splash's outer ring (12-missiles.md, A second ring of splash): its radius, past
+/// its splash's, and its amount at each rank.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OuterRing {
+    pub(crate) radius: Num,
+    pub(crate) amounts: Box<[Num]>,
 }
 
 /// A weapon's shot streak (04-capabilities/combat.md, A shot streak gives a stage's modifier): the
@@ -204,6 +222,12 @@ impl Weapon {
         }
     }
 
+    /// The amount its splash's outer ring deals at `rank`, if it has one.
+    pub(crate) fn outer_amount(&self, rank: Rank) -> Option<Num> {
+        let outer = self.splash.as_ref()?.outer.as_ref()?;
+        Some(outer.amounts[rank.index()])
+    }
+
     /// Its clip at `rank`, if it has one, its reload sped by its rate bonus for a unit of stats
     /// `stats`.
     pub fn clip(&self, stats: &[Num], rank: Rank) -> Option<ClipRule> {
@@ -253,6 +277,36 @@ pub(crate) mod internals {
                 stages: stages.collect(),
             }
         }
+    }
+}
+
+impl Splash {
+    /// A splash of `radius` to the units of `affects`, and to its source unless `spares_source`;
+    /// `None` for a radius below 0 or past `MAX_BOUND`.
+    pub fn new(radius: Num, affects: RelationSet, spares_source: bool) -> Option<Self> {
+        (Num::ZERO..=MAX_BOUND).contains(&radius).then_some(Self {
+            radius,
+            affects,
+            spares_source,
+            outer: None,
+        })
+    }
+
+    /// The same splash with an outer ring of `radius` dealing `amounts` at each rank; `None` for
+    /// a ring not past its radius or past `MAX_BOUND`.
+    #[must_use]
+    pub fn with_outer(self, radius: Num, amounts: Box<[Num]>) -> Option<Self> {
+        (self.radius < radius && radius <= MAX_BOUND).then_some(Self {
+            outer: Some(OuterRing { radius, amounts }),
+            ..self
+        })
+    }
+
+    /// The farthest it reaches: its outer ring's radius, or its own.
+    pub(crate) fn reach(&self) -> Num {
+        self.outer
+            .as_ref()
+            .map_or(self.radius, |outer| outer.radius)
     }
 }
 

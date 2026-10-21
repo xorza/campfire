@@ -4,8 +4,9 @@
 use campfire_actions::ActionProgress;
 use campfire_capabilities::Match;
 use campfire_combat::Combat;
+use campfire_combat::internals::Armed;
 use campfire_declarations::Role;
-use campfire_math::Vec3;
+use campfire_math::{Num, Vec3};
 use campfire_orders::Orders;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, StableId};
@@ -32,8 +33,13 @@ struct Scene {
 
 impl Scene {
     fn of(game: Match, targets: &[&str], step: Option<MoveStep>) -> Self {
+        Self::armed(game, combatant(100, 2, 1, 30, 10), targets, step)
+    }
+
+    /// A scene whose scanner is armed as `weapon`.
+    fn armed(game: Match, weapon: Armed, targets: &[&str], step: Option<MoveStep>) -> Self {
         let mut game = game;
-        let scanner = armed(&mut game, combatant(100, 2, 1, 30, 10), step);
+        let scanner = armed(&mut game, weapon, step);
         Orders::load_acquire(&mut game, scanner, SCAN_MS, targets);
         let dummy = armed(&mut game, still_target(100), None);
         Self {
@@ -173,6 +179,40 @@ fn a_scanned_target_out_of_reach_is_dropped_and_an_ordered_one_chased() {
         scene.game.part::<Position>(scanner).get(),
         Vec3::from((1, 0, 0))
     );
+}
+
+/// A scanner whose weapon reaches 4 m and keeps off 2 m passes over an enemy at 1 m, inside its
+/// minimum, for one at 3 m. Ordered at the near one, it walks straight away from it, a meter a
+/// tick, toward halfway between 2 and 4 m, (1 − 3, 0, 0) = (−2, 0, 0); in tick 1 it stands at
+/// (−1, 0, 0), 2 m off, at its minimum, where it stops and attacks, striking in tick 2.
+#[test]
+fn a_scan_passes_a_unit_inside_its_minimum_range_and_an_order_backs_away_from_it() {
+    let weapon = combatant(100, 4, 1, 30, 10).keeping_off(Num::int(2));
+    let mut scene = Scene::armed(orders_match(), weapon, &["enemies"], Some(meter()));
+    let scanner = scene.scanner((0, 0, 0));
+    let near = scene.dummy((1, 0, 0), 1);
+    let far = scene.dummy((3, 0, 0), 1);
+    scene.tick();
+    assert_eq!(scene.target(scanner), Some(far));
+    Combat::attack(&mut scene.game, scanner, near);
+    scene.tick();
+    assert_eq!(
+        (
+            scene.game.part::<Position>(scanner).get(),
+            scene.game.part::<Destination>(scanner).get()
+        ),
+        (Vec3::from((-1, 0, 0)), Some(Vec3::from((-2, 0, 0))))
+    );
+    scene.tick();
+    assert_eq!(
+        (
+            scene.game.part::<Position>(scanner).get(),
+            scene.game.part::<Destination>(scanner).get()
+        ),
+        (Vec3::from((-1, 0, 0)), None)
+    );
+    scene.tick();
+    assert_eq!(Stats::health(&scene.game, near), 90);
 }
 
 /// A unit with a destination is not idle, and a client's match scans for none, though an enemy

@@ -43,6 +43,8 @@ pub struct ActionData {
     pub script: Option<PackagePath>,
     pub targeting: Targeting,
     pub range: Option<Ranked<RangeField>>,
+    /// The meters nearer than which it takes no target (12-missiles.md, A minimum range).
+    pub min_range: Option<Ranked<Number>>,
     pub cooldown_ms: Option<Ranked<Number>>,
     /// In each pool of the caster it names, and each resource of the caster's player.
     pub cost: BTreeMap<DeclaredName, Ranked<Number>>,
@@ -83,6 +85,7 @@ impl PartialEq for ActionData {
             script,
             targeting,
             range,
+            min_range,
             cooldown_ms,
             cost,
             windup_ms,
@@ -105,6 +108,7 @@ impl PartialEq for ActionData {
             && *script == other.script
             && *targeting == other.targeting
             && *range == other.range
+            && *min_range == other.min_range
             && *cooldown_ms == other.cooldown_ms
             && *cost == other.cost
             && *windup_ms == other.windup_ms
@@ -143,6 +147,8 @@ pub struct ActionKeys {
     pub targeting: Targeting,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub range: Option<Ranked<RangeField>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_range: Option<Ranked<Number>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cooldown_ms: Option<Ranked<Number>>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -188,6 +194,7 @@ impl ActionKeys {
             script: None,
             targeting,
             range: None,
+            min_range: None,
             cooldown_ms: None,
             cost: BTreeMap::new(),
             windup_ms: None,
@@ -277,9 +284,10 @@ impl ActionData {
     }
 
     /// Each of the pipeline's fields it gives that is a number at each rank, which may read a
-    /// param: its cooldown, windup, channel, charges and charge.
+    /// param: its minimum range, cooldown, windup, channel, charges and charge.
     fn ranked_numbers(&self) -> impl Iterator<Item = &Ranked<Number>> {
         [
+            self.min_range.as_ref(),
             self.cooldown_ms.as_ref(),
             self.windup_ms.as_ref(),
             self.channel.as_ref().map(|channel| &channel.duration_ms),
@@ -389,8 +397,13 @@ impl ActionData {
                 }
             }
         }
+        let min_range = self.min_range.as_ref().map(|ranked| {
+            let meters = self.value_at(rank, ranked).and_then(Scalar::to_num);
+            meters.and_then(Distance::new).ok_or(ActionField::MinRange)
+        });
         Ok(RankFields {
             range,
+            min_range: min_range.transpose()?,
             cooldown_ms: whole(ActionField::Cooldown, self.cooldown_ms.as_ref())?,
             cost: PoolCost::new(cost),
             resource_cost,
@@ -608,6 +621,7 @@ impl ActionData {
             script,
             targeting,
             range,
+            min_range,
             cooldown_ms,
             cost,
             windup_ms,
@@ -639,6 +653,7 @@ impl ActionData {
             script,
             targeting,
             range,
+            min_range,
             cooldown_ms,
             cost,
             windup_ms,
@@ -697,6 +712,7 @@ pub(crate) mod internals {
                 script: None,
                 targeting,
                 range: None,
+                min_range: None,
                 cooldown_ms: None,
                 cost: BTreeMap::new(),
                 windup_ms: None,

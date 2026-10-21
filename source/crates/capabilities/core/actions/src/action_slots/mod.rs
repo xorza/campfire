@@ -116,12 +116,17 @@ impl ActionSlots {
         Some(u8::try_from(at).expect("a unit's slots fit u8"))
     }
 
+    /// The values of the learned action in `slot`, of `book`, at its rank.
+    pub fn values_of(&self, book: &ActionBook, slot: u8) -> RankValues {
+        let slot = self.slot(slot).expect("a unit's slot");
+        *slot
+            .values_in(book)
+            .expect("a learned slot's action is in the book")
+    }
+
     /// The range of the learned action in `slot`, of `book`, at its rank.
     pub fn range_in(&self, book: &ActionBook, slot: u8) -> ActionRange {
-        let slot = self.slot(slot).expect("a unit's slot");
-        slot.values_in(book)
-            .expect("a learned slot's action is in the book")
-            .range
+        self.values_of(book, slot).range
     }
 
     /// The range in meters of the action in `slot`, of `book`, one that reaches in meters at

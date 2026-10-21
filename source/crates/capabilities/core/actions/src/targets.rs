@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
@@ -7,7 +9,10 @@ use campfire_players::OnMatch;
 use campfire_script::LivingUnit;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use campfire_units::{Body, Dead, Life, MapBook};
-use campfire_values::{Block, Relation, Relations, TagSet, Team, UnitTags};
+use campfire_values::{Block, Distance, Relation, Relations, TagSet, Team, UnitTags};
+
+use crate::action_range::ActionRange;
+use crate::range_fit::RangeFit;
 
 /// The units an attack may target: units with a life that live by `stats`' living test, whose
 /// tags let them be targets, those a client holds and does not predict among them, where the
@@ -64,6 +69,38 @@ impl Targets<'_, '_> {
     pub fn reaches(&self, from: Placed, range: Num, target: &LivingUnit) -> bool {
         let target = Placed::new(target.position, target.shape);
         self.map.metric().reaches(from, range, target)
+    }
+
+    /// How the body `to` lies from the body `from` against `range` and `min_range`, exactly, from
+    /// edge to edge: beyond a range of meters, nearer than the minimum, or within its reach.
+    pub fn reach(
+        &self,
+        from: Placed,
+        range: ActionRange,
+        min_range: Option<Distance>,
+        to: Placed,
+    ) -> RangeFit {
+        let metric = self.map.metric();
+        if let ActionRange::Meters(range) = range
+            && metric.order(from, range.get(), to) == Ordering::Greater
+        {
+            return RangeFit::Far;
+        }
+        if min_range.is_some_and(|min| metric.order(from, min.get(), to) == Ordering::Less) {
+            return RangeFit::Near;
+        }
+        RangeFit::Within
+    }
+
+    /// The point the body `from` walks to straight away from the body `to`, so that their bounds
+    /// lie `gap` apart, as Zero Hour's `computeApproachTarget` steps a unit back from a victim
+    /// within its weapon's minimum range; along the first axis from bodies at one place.
+    pub fn away(&self, from: Placed, to: Placed, gap: Num) -> Vec3 {
+        let metric = self.map.metric();
+        let way = metric
+            .direction(metric.offset(to.position, from.position))
+            .unwrap_or(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO));
+        to.position + way * (gap + from.shape.bound() + to.shape.bound())
     }
 
     /// Whether `range` from the body `from` reaches the point `position`, from the edge of the
