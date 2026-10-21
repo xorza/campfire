@@ -127,6 +127,7 @@ pub(crate) fn strike() -> ActionData {
 fn stat_attack() -> AttackData {
     AttackData {
         rate: WeaponValue::Stat(Stat::named("armor").unwrap()),
+        rate_bonus: None,
         damage: WeaponValue::Stat(Stat::named("attack_damage").unwrap()),
         damage_kind: DeclaredName::new("physical").unwrap(),
         clip: None,
@@ -134,6 +135,7 @@ fn stat_attack() -> AttackData {
         scatter: None,
         pitch_deg: None,
         speed: None,
+        streak: None,
     }
 }
 

@@ -5,14 +5,15 @@ use std::num::NonZeroU8;
 
 use campfire_actions::{ActionKeys, ActionKind, ActionRange, DeliveryData, RangeField, Targeting};
 use campfire_client_files::ClientUnits;
-use campfire_codec::TomlTable;
+use campfire_codec::{TomlTable, TomlValue};
 use campfire_combat::{
-    ArmorShare, AttackData, ClipData, PitchData, ScatterData, SplashData, WeaponValue,
+    ArmorShare, AttackData, ClipData, PitchData, ScatterData, SplashData, StageData, StreakData,
+    WeaponValue,
 };
 use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_projectiles::ProjectileData;
-use campfire_values::{FilterData, Number, Ranked, RelationSet, Scalar, Speed};
+use campfire_values::{FilterData, Number, Ranked, RelationSet, Scalar, Speed, Stat};
 
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::game_float;
@@ -33,11 +34,12 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// share of each damage kind it does not take whole; the weapons dropped, each once for each
 /// cause, in the order the types are read; the objects whose body the import gives no life, and
 /// those whose body starts below its most life; each type's actions of the slot kind `weapon`, by
-/// its name, which it returns; and the shell types of a weapon's own, each with the object whose
-/// look it takes.
+/// its name, which it returns; the shell types of a weapon's own, each with the object whose
+/// look it takes; and the modifiers of the weapons' stages of continuous fire.
 #[derive(Debug, Default)]
 pub(crate) struct CombatImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedWeapon>,
+    pub(crate) modifiers: BTreeMap<DeclaredName, StageModifier>,
     pub(crate) weapons: BTreeMap<ImportName, Vec<DeclaredName>>,
     pub(crate) armors: BTreeMap<DeclaredName, BTreeMap<DeclaredName, ArmorShare>>,
     pub(crate) dropped: Vec<DroppedWeapon>,
@@ -63,12 +65,37 @@ pub(crate) struct ImportedWeapon {
     pub(crate) attack: AttackData,
 }
 
-/// A weapon the import converts, and the shell it fires, if it fires one.
+/// A weapon the import converts, the shell it fires, if it fires one, and the modifiers of its
+/// stages of continuous fire, by their names.
 #[derive(Debug, Clone)]
 struct ConvertedWeapon<'a> {
     weapon: ImportedWeapon,
     shell: Option<FiredShell<'a>>,
+    modifiers: Vec<(DeclaredName, StageModifier)>,
 }
+
+/// A stage of a weapon's continuous fire as the mode's data writes it, `[modifiers.<weapon>_mean]`
+/// or `_fast`: what it adds to the rate of fire, the stage's bonus less 1, as
+/// `WeaponBonus::appendBonuses` adds it (09-zero-hour.md, Continuous fire
+/// converts).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StageModifier {
+    pub(crate) stats: BTreeMap<Stat, Number>,
+}
+
+impl StageModifier {
+    /// Its table under `[modifiers]`.
+    pub(crate) fn table(&self) -> TomlValue {
+        TomlValue::of(&BTreeMap::from([("stats", &self.stats)]))
+    }
+}
+
+/// The stat a stage of continuous fire adds to, which the rules package declares.
+pub(crate) const RATE_OF_FIRE: &str = "rate_of_fire";
+
+/// The names of a weapon's stages of continuous fire, after `CONTINUOUS_FIRE_MEAN` and
+/// `CONTINUOUS_FIRE_FAST`.
+const STAGES: [&str; 2] = ["mean", "fast"];
 
 /// The object a weapon fires, and its projectile as that weapon fires it.
 #[derive(Debug, Clone)]
@@ -82,6 +109,13 @@ struct FiredShell<'a> {
 pub struct DroppedWeapon {
     pub weapon: String,
     pub cause: WeaponDrop,
+}
+
+/// A weapon's streak of continuous fire, and the modifiers of its stages, by their names.
+#[derive(Debug, Clone)]
+struct Stages {
+    streak: StreakData,
+    modifiers: Vec<(DeclaredName, StageModifier)>,
 }
 
 /// A quarter turn, the steepest pitch, in degrees.
@@ -144,18 +178,16 @@ impl CombatImport {
                 continue;
             };
             for weapon in set.weapons.iter().flatten() {
+                let id =
+                    DeclaredName::new(&format!("weapon_{}", ImportName::latin(weapon).as_str()))
+                        .expect("a kind and an import name make a declared name");
                 let converted = rules
                     .weapons
                     .get(weapon)
                     .ok_or(WeaponDrop::NoWeapon)
-                    .and_then(|ini| ImportedWeapon::of(ini, &rules.objects));
+                    .and_then(|ini| ImportedWeapon::of(ini, &rules.objects, &id));
                 match converted {
                     Ok(converted) => {
-                        let id = DeclaredName::new(&format!(
-                            "weapon_{}",
-                            ImportName::latin(weapon).as_str()
-                        ))
-                        .expect("a kind and an import name make a declared name");
                         // Weapons whose names differ only in case would share one action.
                         match import.actions.entry(id.clone()) {
                             Entry::Occupied(held)
@@ -173,6 +205,7 @@ impl CombatImport {
                                 if let Some(shell) = converted.shell {
                                     shells.insert(id.clone(), (weapon.as_str(), shell));
                                 }
+                                import.modifiers.extend(converted.modifiers);
                             }
                         }
                         let weapons = import.weapons.entry(type_name.clone()).or_default();
@@ -275,10 +308,14 @@ impl ImportedWeapon {
         self.keys.table(&self.attack)
     }
 
-    /// The attack of `weapon`, of the objects of `ini`, and the shell it fires; why the import
-    /// drops it, when it hits no target by the engine's rules, or holds a number the engine does
-    /// not.
-    fn of<'a>(weapon: &IniWeapon, ini: &'a ObjectIni) -> Result<ConvertedWeapon<'a>, WeaponDrop> {
+    /// The attack `id` of `weapon`, of the objects of `ini`, the shell it fires and the modifiers
+    /// of its stages of continuous fire; why the import drops it, when it hits no target by the
+    /// engine's rules, or holds a number the engine does not.
+    fn of<'a>(
+        weapon: &IniWeapon,
+        ini: &'a ObjectIni,
+        id: &DeclaredName,
+    ) -> Result<ConvertedWeapon<'a>, WeaponDrop> {
         let shell = match &weapon.projectile {
             Some(name) => Some(
                 ini.object(name.as_bytes())
@@ -306,9 +343,7 @@ impl ImportedWeapon {
         if weapon.at_self {
             return Err(WeaponDrop::AtSelf);
         }
-        if weapon.continuous_fire {
-            return Err(WeaponDrop::ContinuousFire);
-        }
+        let stages = Self::stages(weapon, id)?;
         if weapon.pre_attack_ms > 0 {
             return Err(WeaponDrop::PreAttack);
         }
@@ -404,6 +439,9 @@ impl ImportedWeapon {
                 },
                 attack: AttackData {
                     rate: WeaponValue::Own(ms(period_ms)?),
+                    rate_bonus: stages
+                        .as_ref()
+                        .map(|_| Stat::named(RATE_OF_FIRE).expect("a stat's name")),
                     damage: WeaponValue::Own(damage),
                     damage_kind: damage_kind.kind(),
                     clip,
@@ -411,10 +449,64 @@ impl ImportedWeapon {
                     scatter,
                     pitch_deg,
                     speed,
+                    streak: stages.as_ref().map(|stages| stages.streak.clone()),
                 },
             },
             shell,
+            modifiers: stages.map_or_else(Vec::new, |stages| stages.modifiers),
         })
+    }
+
+    /// The streak of `weapon`'s continuous fire, of the action `id`, and the modifiers of its two
+    /// stages, named after it, above `ContinuousFireOne` and `ContinuousFireTwo` shots, each of
+    /// its stage's rate of fire, which adds 0 for a stage of no bonus; none for a weapon whose
+    /// stages change no rate, as they change nothing. Dropped for a stage's bonus to another
+    /// field, or a coast of no time, which the engine does not hold, and for shots below 0 or
+    /// not growing (09-zero-hour.md, Continuous fire converts).
+    fn stages(weapon: &IniWeapon, id: &DeclaredName) -> Result<Option<Stages>, WeaponDrop> {
+        let fire = weapon.continuous_fire;
+        if fire.changes_other_fields() {
+            return Err(WeaponDrop::ContinuousFire);
+        }
+        let rates = fire.rates();
+        if rates == [1.0; 2] {
+            return Ok(None);
+        }
+        let [one, two] = fire
+            .shots
+            .map(|shots| u32::try_from(shots).map_err(|_| WeaponDrop::BadNumber));
+        let shots = [one?, two?];
+        if shots[0] >= shots[1] {
+            return Err(WeaponDrop::BadNumber);
+        }
+        let coast_ms = match weapon_drop::game_ms(fire.coast_ms)? {
+            0 => return Err(WeaponDrop::ContinuousFire),
+            ms => ms,
+        };
+        let stat = Stat::named(RATE_OF_FIRE).expect("a stat's name");
+        let mut modifiers = Vec::with_capacity(STAGES.len());
+        let mut stages = Vec::with_capacity(STAGES.len());
+        for ((stage, shots), rate) in STAGES.into_iter().zip(shots).zip(rates) {
+            let name = DeclaredName::new(&format!("{id}_{stage}"))
+                .expect("an action's name and a stage's make a declared name");
+            // `WeaponBonus::appendBonuses` adds a bonus less 1, in the game's `f32`.
+            let added = game_float::to_num(rate - 1.0).map_err(|_| WeaponDrop::BadNumber)?;
+            let change = Number::Value(Scalar::Decimal(added));
+            modifiers.push((
+                name.clone(),
+                StageModifier {
+                    stats: BTreeMap::from([(stat.clone(), change)]),
+                },
+            ));
+            stages.push(StageData {
+                shots,
+                modifier: name,
+            });
+        }
+        Ok(Some(Stages {
+            streak: StreakData { coast_ms, stages },
+            modifiers,
+        }))
     }
 
     /// `value` at every rank.

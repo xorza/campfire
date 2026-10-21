@@ -1459,4 +1459,5 @@ fn a_read_of_what_the_client_lacks_fails_the_sync_test() {
 }
 
 mod slow_weapons;
+mod streaks;
 mod turrets;

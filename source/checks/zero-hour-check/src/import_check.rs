@@ -405,7 +405,7 @@ impl ImportCheck<'_> {
                 built = ?defense.built,
                 hit = defense.hit,
                 death = defense.death,
-                "player 1's ranger, ordered nothing, killed the bot's dozer"
+                "player 1's Gattling Cannon, ordered nothing, spun up and killed the bot's dozer"
             );
         }
         if let Some(drive) = StartDrive::run(self.packages, rate, &mut self.failures) {

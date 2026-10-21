@@ -23,15 +23,17 @@ pub enum Ends {
 
 /// What holds an instance beside an application: its ability's passive, which its rank keeps; an
 /// aura or an area, which hold it while their rules select its carrier; an action's `hold`,
-/// which its toggle that is on or its channel that runs keeps; or its carrier's player, which
-/// holds it while it holds the modifier and its `affects` selects the carrier. Every hold from
-/// one source of one modifier is one hold: which of them holds it changes nothing.
+/// which its toggle that is on or its channel that runs keeps; its carrier's player, which holds
+/// it while it holds the modifier and its `affects` selects the carrier; or its carrier's shot
+/// streak, which its stage keeps. Every hold from one source of one modifier is one hold: which
+/// of them holds it changes nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hold {
     Passive,
     Held,
     Running,
     Player,
+    Streak,
 }
 
 /// The holds that keep an instance, a bit each.
@@ -111,7 +113,8 @@ impl HoldSet {
     const ALL: u8 = Self::bit(Hold::Passive)
         | Self::bit(Hold::Held)
         | Self::bit(Hold::Running)
-        | Self::bit(Hold::Player);
+        | Self::bit(Hold::Player)
+        | Self::bit(Hold::Streak);
 
     pub(crate) const fn of(hold: Hold) -> Self {
         Self(Self::bit(hold))
@@ -187,8 +190,9 @@ mod tests {
         let all = HoldSet::of(Hold::Passive)
             .union(HoldSet::of(Hold::Held))
             .union(HoldSet::of(Hold::Running))
-            .union(HoldSet::of(Hold::Player));
-        assert_eq!(decode(0b1111), Some(all));
-        assert_eq!(decode(0b1_0000), None);
+            .union(HoldSet::of(Hold::Player))
+            .union(HoldSet::of(Hold::Streak));
+        assert_eq!(decode(0b1_1111), Some(all));
+        assert_eq!(decode(0b10_0000), None);
     }
 }

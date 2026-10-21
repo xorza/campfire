@@ -24,6 +24,7 @@ use crate::combat_event::CombatEvent;
 use crate::damage::{Damage, DamageCause};
 use crate::held_hits::HeldHits;
 use crate::pass_queue::PassQueue;
+use crate::streak_shots::{FiredShot, StreakShot, StreakShots};
 use crate::turret::Turret;
 use crate::turret::turret_angle::TurretAngle;
 use crate::volley::{GoingOff, Volley};
@@ -392,8 +393,9 @@ impl Attacks {
     /// less than 1, which `calc_damage` reads. The weapon's cost is paid, in pools and its
     /// player's resources, and it is ready again a period from the attack's start, its own or the
     /// tick rate over its rate stat; a shot that empties its clip makes it ready its reload from
-    /// the attack's start instead, its clip full again. A windup whose attacker's tags keep it
-    /// from attacking, or that no longer affords its cost, stops instead, and spends nothing. A
+    /// the attack's start instead, its clip full again; the server lists the shot of a streak
+    /// weapon for its unit's streak. A windup whose attacker's tags keep it from attacking, or
+    /// that no longer affords its cost, stops instead, and spends nothing. A
     /// client that predicts the attack only makes the weapon ready again and counts its clip, as
     /// the damage, the launch and the cost come from the server, so it holds no held hits, which
     /// the server alone computes. An attacker that lives no more strikes nothing, as one its tags
@@ -434,7 +436,11 @@ impl Attacks {
             Res<'_, MapBook>,
             Option<ResMut<'_, HeldHits>>,
         ),
-        (mut going, mut indexes): (Local<'_, Vec<GoingOff>>, ProgressIndexes<'_>),
+        (mut going, mut indexes, mut streaks): (
+            Local<'_, Vec<GoingOff>>,
+            ProgressIndexes<'_>,
+            ResMut<'_, StreakShots>,
+        ),
     ) {
         let now = clock.start();
         let life = life.life();
@@ -491,22 +497,35 @@ impl Attacks {
                 .expect("an attack going off started");
             let started = Tick::new(resolves_at.get() - values.windup.get());
             let period = weapon.period(stats, rank, values.windup, clock.rate().hz().get());
-            let clip = weapon.clip(rank);
+            let clip = weapon.clip(stats, rank);
             let reloads = clip.is_some_and(|clip| clips.shoot(action, clip));
             let ready = match clip {
                 Some(clip) if reloads => clip.reload,
                 _ => period,
             };
+            let ready_at = started.after(ready);
             times.commit(SlotCommit {
                 slot: wielded.slot,
                 now,
-                ready_at: started.after(ready),
+                ready_at,
                 charges: values.charges,
                 toggle: None,
             });
             progress.end(dues);
             if F::PREDICTS {
                 continue;
+            }
+            if weapon.streak.is_some() {
+                streaks.push(FiredShot {
+                    unit: source,
+                    entity,
+                    shot: StreakShot {
+                        weapon: action,
+                        target,
+                        now,
+                        ready: ready_at,
+                    },
+                });
             }
             let amount = weapon.damage(stats, rank);
             let roll = rng.open(ROLL_STREAM, source).fraction();

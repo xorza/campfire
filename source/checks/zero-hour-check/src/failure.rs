@@ -84,11 +84,11 @@ pub(crate) enum CheckFailure {
     /// The defense play's ticks differ from the pinned.
     #[display("it defended as {_0}")]
     Defense(Box<Differs<DefenseTicks>>),
-    /// The ranger did not stand still within the limit after it left the barracks.
-    #[display("the ranger's walk from the barracks did not end")]
-    RangerWalk,
-    /// The ranger did not kill the bot's dozer within the limit.
-    #[display("the ranger did not kill the dozer within the limit")]
+    /// The cannon's first hits came apart otherwise than the original's.
+    #[display("the cannon's hits came apart as {_0}")]
+    SpinUp(Box<Differs<[u64; 7]>>),
+    /// The cannon did not kill the bot's dozer within the limit.
+    #[display("the cannon did not kill the dozer within the limit")]
     Undefended,
     /// The supply center freed no truck as it completed.
     #[display("the supply center freed no truck")]

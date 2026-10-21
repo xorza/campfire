@@ -156,9 +156,9 @@ pub(crate) struct SupplyTicks {
     pub(crate) deliveries: [u64; DELIVERIES],
 }
 
-/// The ticks of the defense play's steps no closed form gives: the barracks' and its ranger's, and
-/// from the bot dozer's order to its first damage, which the ranger deals ordered nothing, and to
-/// its death.
+/// The ticks of the defense play's steps no closed form gives: the power plant's and the Gattling
+/// Cannon's, and from the bot dozer's order to its first damage, which the cannon deals ordered
+/// nothing, and to its death.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DefenseTicks {

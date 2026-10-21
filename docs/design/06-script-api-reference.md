@@ -408,6 +408,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `on_hit` | core | since 1.0 |
 | `on_end` | core | since 1.0 |
 | `rate` | combat | since 1.0 |
+| `rate_bonus` | combat | since 1.0 |
 | `damage` | combat | since 1.0 |
 | `damage_kind` | combat | since 1.0 |
 | `amount` | combat | since 1.0 |
@@ -417,6 +418,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `scatter` | combat | since 1.0 |
 | `pitch_deg` | combat | since 1.0 |
 | `speed` | combat | since 1.0 |
+| `streak` | combat | since 1.0 |
 | `unit_type` | production | since 1.0 |
 | `requires` | production | since 1.0 |
 | `construct` | production | since 1.0 |

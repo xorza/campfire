@@ -76,6 +76,61 @@ pub(super) static ACTION_FLAWS: &[Flaw] = &[
             )
         },
     ),
+    // A rate bonus speeds a period of the weapon's own, and a streak's stages are some, their
+    // shots strictly growing, each a modifier of its package
+    // (04-capabilities/combat.md, A weapon's own period may speed up by a stat;
+    // 04-capabilities/combat.md, A shot streak gives a stage's modifier).
+    Flaw::of(
+        MODE_DATA,
+        Edit::Set("actions.tower_attack.rate_bonus", r#""attack_speed""#),
+        MODE,
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &CombatDataError::RateBonus,
+            )
+        },
+    ),
+    Flaw::of(
+        MODE_DATA,
+        Edit::Set(
+            "actions.tower_attack.streak",
+            "{ coast_ms = 1000, stages = [] }",
+        ),
+        MODE,
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &CombatDataError::Stages,
+            )
+        },
+    ),
+    Flaw::of(
+        MODE_DATA,
+        Edit::Set(
+            "actions.tower_attack.streak",
+            r#"{ coast_ms = 1000, stages = [{ shots = 2, modifier = "warden_blessing" }, { shots = 2, modifier = "warden_blessing" }] }"#,
+        ),
+        MODE,
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &CombatDataError::Stages,
+            )
+        },
+    ),
+    Flaw::of(
+        MODE_DATA,
+        Edit::Set(
+            "actions.tower_attack.streak",
+            r#"{ coast_ms = 1000, stages = [{ shots = 2, modifier = "spun_up" }] }"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: ModifierId::NAMES, name, .. } if name == "spun_up"),
+    ),
     Flaw::of(
         MODE_DATA,
         Edit::Replace(

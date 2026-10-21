@@ -43,6 +43,12 @@ pub enum CombatDataError {
     /// A speed, which delays the hit of a weapon of no delivery, and a delivery.
     #[error("a speed delays the hit of a weapon of no delivery")]
     Speed,
+    /// A rate bonus beside the stat `rate`, which already speeds the weapon.
+    #[error("a rate bonus speeds a weapon's own period")]
+    RateBonus,
+    /// A streak of no stage, or of stages whose shots do not strictly grow.
+    #[error("a streak has stages, their shots strictly growing")]
+    Stages,
 }
 
 /// Why the combat capability refused a script call: a script gave it a value it does not take.

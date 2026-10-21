@@ -17,6 +17,7 @@ fn weapon() -> Weapon {
 fn own(periods: [u64; 2], amounts: [i64; 2]) -> Weapon {
     Weapon {
         rate: Rate::Period(Box::new(periods.map(Ticks::new))),
+        rate_bonus: None,
         damage: WeaponDamage::Amount(Box::new(amounts.map(Num::int))),
         kind: DamageKind::new(0),
         clip: None,
@@ -24,6 +25,7 @@ fn own(periods: [u64; 2], amounts: [i64; 2]) -> Weapon {
         scatter: None,
         pitch: None,
         speed: None,
+        streak: None,
     }
 }
 
@@ -94,8 +96,40 @@ fn a_weapon_of_its_own_period_and_amount_reads_them_at_its_rank_and_no_stat() {
         clip: Some(Box::new(clips)),
         ..weapon
     };
-    assert_eq!(clipped.clip(second), Some(clips[1]));
-    assert_eq!(own([1, 1], [0, 0]).clip(Rank::FIRST), None);
+    assert_eq!(clipped.clip(&stats, second), Some(clips[1]));
+    assert_eq!(own([1, 1], [0, 0]).clip(&stats, Rank::FIRST), None);
+}
+
+#[test]
+fn a_rate_bonus_divides_its_own_period_and_reload_by_one_more_than_it_rounded_down() {
+    // A period of 8 ticks and a reload of 21, by the stat 0: at 0, 8 and 21; at 1, 4 and 10.5,
+    // down to 10; at 2, 8 ÷ 3 = 2.67, down to 2, and 7; at −0.5, 16 and 42. At −1 or below, a
+    // divisor of one bit: 8 × 2²⁴ and 21 × 2²⁴ ticks. A period stays past a windup of 3: at 2,
+    // 4 ticks in place of 2.
+    let clip = ClipRule {
+        shots: NonZeroU16::new(3).unwrap(),
+        reload: Ticks::new(21),
+    };
+    let weapon = Weapon {
+        rate_bonus: Some(StatId::new(0)),
+        clip: Some(Box::new([clip, clip])),
+        ..own([8, 8], [1, 1])
+    };
+    let ticks = |bonus: Num, windup: u64| {
+        let stats = [bonus];
+        let period = weapon.period(&stats, Rank::FIRST, Ticks::new(windup), 30);
+        let reload = weapon.clip(&stats, Rank::FIRST).unwrap().reload;
+        [period.get(), reload.get()]
+    };
+    assert_eq!(ticks(Num::ZERO, 0), [8, 21]);
+    assert_eq!(ticks(Num::ONE, 0), [4, 10]);
+    assert_eq!(ticks(Num::int(2), 0), [2, 7]);
+    assert_eq!(ticks(-Num::HALF, 0), [16, 42]);
+    assert_eq!(ticks(-Num::ONE, 0), [8 << 24, 21 << 24]);
+    assert_eq!(ticks(Num::int(-3), 0), [8 << 24, 21 << 24]);
+    assert_eq!(ticks(Num::int(2), 3), [4, 7]);
+    // A unit that holds no value of the stat fires at the weapon's own period.
+    assert_eq!(weapon.period(&[], Rank::FIRST, Ticks::ZERO, 30).get(), 8);
 }
 
 #[test]

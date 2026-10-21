@@ -22,7 +22,10 @@
 //! builds its base, trains its units, each counted and pinned, and attacks nothing, its units no
 //! farther from its center than the pinned distance. In a third match, player 1 plays China: its
 //! dozer builds a power plant and a supply center, whose free truck gathers at the nearest dock,
-//! and the money after each of its first deliveries is pinned. Every other map the game lists loads in the
+//! and the money after each of its first deliveries is pinned. In a fourth, player 1 plays China
+//! against America's bot: its dozer builds a power plant and a Gattling Cannon, and the cannon,
+//! ordered nothing, fires at the bot's dozer, which drives within its reach, its hits coming
+//! sooner as the original's spin up, and kills it. Every other map the game lists loads in the
 //! imported mode. It fails when `GENERALSZH_DATA` names no install, so a machine with no copy
 //! never passes as one that checked.
 //!

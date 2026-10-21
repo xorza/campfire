@@ -14,14 +14,17 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// The section of an action of kind `attack`, a weapon: where its rate and its damage come from,
-/// the kind of damage it deals, its clip, its projectile's splash and scatter, its bound of pitch,
-/// and the speed that delays the hit of a weapon of no projectile
-/// (04-capabilities/actions.md, Each kind owns its section).
+/// the stat that speeds its own period, the kind of damage it deals, its clip, its projectile's
+/// splash and scatter, its bound of pitch, the speed that delays the hit of a weapon of no
+/// projectile, and its shot streak (04-capabilities/actions.md, Each kind owns its section).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttackData {
     /// Its attacks a second, a stat `rate`, or its own time from one attack's start to the next,
     /// `period_ms`.
     pub rate: WeaponValue,
+    /// The stat whose value speeds its own period and its clip's reload, divided by 1 plus the
+    /// value (04-capabilities/combat.md, A weapon's own period may speed up by a stat).
+    pub rate_bonus: Option<Stat>,
     /// Its damage, a stat `damage`, or its own `amount`.
     pub damage: WeaponValue,
     pub damage_kind: DeclaredName,
@@ -32,6 +35,7 @@ pub struct AttackData {
     /// How fast a weapon of no projectile reaches its target, which delays its hit
     /// (04-capabilities/combat.md, A slow weapon delays its damage).
     pub speed: Option<Speed>,
+    pub streak: Option<StreakData>,
 }
 
 /// Where a value of a weapon comes from, as its data gives it: a stat of its attacker, or its own
@@ -60,6 +64,7 @@ impl<'de> Deserialize<'de> for AttackData {
         #[serde(deny_unknown_fields)]
         struct Fields {
             rate: Option<Stat>,
+            rate_bonus: Option<Stat>,
             damage: Option<Stat>,
             damage_kind: DeclaredName,
             amount: Option<Ranked<Number>>,
@@ -69,6 +74,7 @@ impl<'de> Deserialize<'de> for AttackData {
             scatter: Option<ScatterData>,
             pitch_deg: Option<PitchData>,
             speed: Option<Speed>,
+            streak: Option<StreakData>,
         }
         let fields = Fields::deserialize(deserializer)?;
         let value = |stat, own, message| match (stat, own) {
@@ -82,6 +88,7 @@ impl<'de> Deserialize<'de> for AttackData {
                 fields.period_ms,
                 "a weapon's rate is a stat, `rate`, or its own `period_ms`: one of them",
             )?,
+            rate_bonus: fields.rate_bonus,
             damage: value(
                 fields.damage,
                 fields.amount,
@@ -93,12 +100,13 @@ impl<'de> Deserialize<'de> for AttackData {
             scatter: fields.scatter,
             pitch_deg: fields.pitch_deg,
             speed: fields.speed,
+            streak: fields.streak,
         })
     }
 }
 
 /// As data writes it, what `Deserialize` reads: its damage, `amount` or the stat `damage`, its
-/// kind, its rate, `period_ms` or the stat `rate`, and each part it has.
+/// kind, its rate, `period_ms` or the stat `rate`, and each optional field it has.
 impl Serialize for AttackData {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(None)?;
@@ -110,6 +118,9 @@ impl Serialize for AttackData {
         match &self.rate {
             WeaponValue::Own(period) => map.serialize_entry("period_ms", period)?,
             WeaponValue::Stat(stat) => map.serialize_entry("rate", stat)?,
+        }
+        if let Some(stat) = &self.rate_bonus {
+            map.serialize_entry("rate_bonus", stat)?;
         }
         if let Some(clip) = &self.clip {
             map.serialize_entry("clip", clip)?;
@@ -125,6 +136,9 @@ impl Serialize for AttackData {
         }
         if let Some(speed) = &self.speed {
             map.serialize_entry("speed", speed)?;
+        }
+        if let Some(streak) = &self.streak {
+            map.serialize_entry("streak", streak)?;
         }
         map.end()
     }
@@ -182,6 +196,26 @@ impl Listed for AttackData {
 pub struct ClipData {
     pub shots: Ranked<Number>,
     pub reload_ms: Ranked<Number>,
+}
+
+/// A weapon's `streak` (04-capabilities/combat.md, A shot streak gives a stage's
+/// modifier): how long after the weapon is ready again a unit's streak of its shots holds
+/// without a shot, and its stages, each the shots past which its unit holds the stage's
+/// modifier.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StreakData {
+    pub coast_ms: u64,
+    pub stages: Vec<StageData>,
+}
+
+/// A stage of a weapon's streak: the shots in a row its unit fires past, and the modifier of the
+/// weapon's package it then holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StageData {
+    pub shots: u32,
+    pub modifier: DeclaredName,
 }
 
 /// A weapon's `splash` (04-capabilities/combat.md, An attack may splash): where its projectile

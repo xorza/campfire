@@ -17,11 +17,9 @@ pub(crate) struct WeaponIni {
 /// a second, `INSTANT` by default; its `MinTargetPitch` and `MaxTargetPitch` in degrees, −180 and
 /// 180 by default; whether it names a `LaserName`; whether it may hit the ground, `AntiGround`,
 /// yes by default; its `RadiusDamageAffects` and its `ProjectileCollidesWith`; whether it deals its
-/// damage at its own place, `DamageDealtAtSelfPosition`; whether it fires faster as it
-/// keeps firing, of a `ContinuousFireOne` or a `ContinuousFireTwo`; its `DamageType`, of the
-/// game's types, `EXPLOSION` by default; its `DelayBetweenShots`, `ClipSize`,
-/// `ClipReloadTime` and `PreAttackDelay`, times in milliseconds; and its `ProjectileObject`, none
-/// for `NONE`.
+/// damage at its own place, `DamageDealtAtSelfPosition`; its continuous fire; its `DamageType`, of
+/// the game's types, `EXPLOSION` by default; its `DelayBetweenShots`, `ClipSize`, `ClipReloadTime`
+/// and `PreAttackDelay`, times in milliseconds; and its `ProjectileObject`, none for `NONE`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct IniWeapon {
     pub(crate) damage: f32,
@@ -37,7 +35,7 @@ pub(crate) struct IniWeapon {
     pub(crate) affects: RadiusAffects,
     pub(crate) collides: CollideMask,
     pub(crate) at_self: bool,
-    pub(crate) continuous_fire: bool,
+    pub(crate) continuous_fire: ContinuousFire,
     pub(crate) min_range: f32,
     pub(crate) damage_type: DamageType,
     pub(crate) delay: ShotDelay,
@@ -46,6 +44,59 @@ pub(crate) struct IniWeapon {
     pub(crate) pre_attack_ms: i32,
     pub(crate) projectile: Option<String>,
 }
+
+/// How a weapon fires faster as it keeps firing, as `FiringTracker` reads its template: the shots
+/// in a row past which its object reaches `CONTINUOUS_FIRE_MEAN` and `CONTINUOUS_FIRE_FAST`,
+/// `ContinuousFireOne` and `ContinuousFireTwo`, 0 by default; the milliseconds its object keeps a
+/// stage with no shot, `ContinuousFireCoast`; and each stage's bonus to each field of
+/// `BONUS_FIELDS`, of its `WeaponBonus` lines, 1 by default, as `WeaponBonus` starts.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ContinuousFire {
+    pub(crate) shots: [i32; 2],
+    pub(crate) coast_ms: i32,
+    bonuses: [[f32; BONUS_FIELDS.len()]; 2],
+}
+
+/// `TheWeaponBonusNames`, of the game's build, which leaves `ALLOW_DEMORALIZE` out: a bonus's
+/// condition, the two continuous-fire stages at 2 and 3.
+const BONUS_CONDITIONS: [&str; 27] = [
+    "GARRISONED",
+    "HORDE",
+    "CONTINUOUS_FIRE_MEAN",
+    "CONTINUOUS_FIRE_FAST",
+    "NATIONALISM",
+    "PLAYER_UPGRADE",
+    "DRONE_SPOTTING",
+    "DEMORALIZED_OBSOLETE",
+    "ENTHUSIASTIC",
+    "VETERAN",
+    "ELITE",
+    "HERO",
+    "BATTLEPLAN_BOMBARDMENT",
+    "BATTLEPLAN_HOLDTHELINE",
+    "BATTLEPLAN_SEARCHANDDESTROY",
+    "SUBLIMINAL",
+    "SOLO_HUMAN_EASY",
+    "SOLO_HUMAN_NORMAL",
+    "SOLO_HUMAN_HARD",
+    "SOLO_AI_EASY",
+    "SOLO_AI_NORMAL",
+    "SOLO_AI_HARD",
+    "TARGET_FAERIE_FIRE",
+    "FANATICISM",
+    "FRENZY_ONE",
+    "FRENZY_TWO",
+    "FRENZY_THREE",
+];
+
+/// The place of `CONTINUOUS_FIRE_MEAN` among `BONUS_CONDITIONS`, `FAST` the next.
+const CONTINUOUS_FIRE_MEAN: usize = 2;
+
+/// `TheWeaponBonusFieldNames`: what a bonus changes, the rate of fire at 3.
+const BONUS_FIELDS: [&str; 5] = ["DAMAGE", "RADIUS", "RANGE", "RATE_OF_FIRE", "PRE_ATTACK"];
+
+/// The place of `RATE_OF_FIRE` among `BONUS_FIELDS`.
+const RATE_OF_FIRE: usize = 3;
 
 /// A weapon's `RadiusDamageAffects`, of `TheWeaponAffectsMaskNames`: whom its radius damages, by
 /// their relation to its unit, its unit itself, `SELF`, and whether it kills its own unit, spares
@@ -101,7 +152,7 @@ impl Default for IniWeapon {
             affects: RadiusAffects::DEFAULT,
             collides: CollideMask::DEFAULT,
             at_self: false,
-            continuous_fire: false,
+            continuous_fire: ContinuousFire::default(),
             min_range: 0.0,
             damage_type: DamageType::Explosion,
             delay: ShotDelay::default(),
@@ -162,7 +213,10 @@ impl IniWeapon {
             "radiusdamageaffects" => at.set_flags(&mut self.affects)?,
             "projectilecollideswith" => at.set_flags(&mut self.collides)?,
             "damagedealtatselfposition" => self.at_self = at.yes()?,
-            "continuousfireone" | "continuousfiretwo" => self.continuous_fire = true,
+            "continuousfireone" => self.continuous_fire.shots[0] = at.int()?,
+            "continuousfiretwo" => self.continuous_fire.shots[1] = at.int()?,
+            "continuousfirecoast" => self.continuous_fire.coast_ms = at.int()?,
+            "weaponbonus" => self.bonus(at)?,
             "minimumattackrange" => self.min_range = at.real()?,
             "damagetype" => {
                 self.damage_type =
@@ -182,6 +236,59 @@ impl IniWeapon {
             "projectileobject" => self.projectile = none(at.value()?),
             _ => {}
         }
+        Ok(())
+    }
+}
+
+impl Default for ContinuousFire {
+    fn default() -> Self {
+        Self {
+            shots: [0; 2],
+            coast_ms: 0,
+            bonuses: [[1.0; BONUS_FIELDS.len()]; 2],
+        }
+    }
+}
+
+impl ContinuousFire {
+    /// The rate of fire each stage gives, `MEAN`'s and `FAST`'s.
+    pub(crate) const fn rates(&self) -> [f32; 2] {
+        [self.bonuses[0][RATE_OF_FIRE], self.bonuses[1][RATE_OF_FIRE]]
+    }
+
+    /// Whether a stage changes a field other than the rate of fire, its bonus to it not 1.
+    pub(crate) fn changes_other_fields(&self) -> bool {
+        self.bonuses.iter().any(|fields| {
+            let mut fields = fields.iter().enumerate();
+            fields.any(|(at, &bonus)| at != RATE_OF_FIRE && bonus != 1.0)
+        })
+    }
+}
+
+impl IniWeapon {
+    /// Takes a `WeaponBonus` line, its condition, its field and its percent, as
+    /// `WeaponBonusSet::parseWeaponBonusSet` sets one field of one condition, a later line of the
+    /// same over the earlier, keeping the continuous-fire stages'; a name of no list fails the
+    /// read, as `INI::scanIndexList` does.
+    fn bonus(&mut self, at: &IniLine<'_>) -> Result<(), IniError> {
+        let listed = |token: Option<&&str>, names: &[&str]| {
+            let token = token.ok_or(IniError::NoValue { line: at.number })?;
+            let found = names
+                .iter()
+                .position(|name| name.eq_ignore_ascii_case(token));
+            found.ok_or(IniError::NotListed { line: at.number })
+        };
+        let condition = listed(at.tokens.get(1), &BONUS_CONDITIONS)?;
+        let field = listed(at.tokens.get(2), &BONUS_FIELDS)?;
+        // `INI::scanPercentToReal` divides the real by 100 in the game's `f32`.
+        let value = at.real_at(3)? / 100.0;
+        let Some(stage) = condition
+            .checked_sub(CONTINUOUS_FIRE_MEAN)
+            .filter(|&stage| stage < 2)
+        else {
+            return Ok(());
+        };
+        self.continuous_fire.bonuses[stage][field] = value;
         Ok(())
     }
 }
@@ -406,8 +513,25 @@ End\r
 Weapon Minigun\r
   PrimaryDamage = 1\r
   AttackRange = 150\r
-  DelayBetweenShots = 200\r
-  ContinuousFireOne = 10\r
+  DamageType = GATTLING\r
+  DelayBetweenShots = 250\r
+  ContinuousFireOne = 1\r
+  ContinuousFireTwo = 5\r
+  ContinuousFireCoast = 2000\r
+  WeaponBonus = CONTINUOUS_FIRE_MEAN RATE_OF_FIRE 200%\r
+  WeaponBonus = continuous_fire_fast rate_of_fire 300%\r
+  WeaponBonus = PLAYER_UPGRADE DAMAGE 125%\r
+End\r
+Weapon Spinner\r
+  PrimaryDamage = 1\r
+  AttackRange = 150\r
+  DelayBetweenShots = 250\r
+  ContinuousFireOne = 2\r
+  ContinuousFireTwo = 4\r
+  ContinuousFireCoast = 1000\r
+  WeaponBonus = CONTINUOUS_FIRE_MEAN RATE_OF_FIRE 150%\r
+  WeaponBonus = CONTINUOUS_FIRE_FAST RATE_OF_FIRE 200%\r
+  WeaponBonus = CONTINUOUS_FIRE_FAST DAMAGE 150%\r
 End\r
 Weapon Disabler\r
   PrimaryDamage = 100\r
@@ -456,7 +580,7 @@ mod tests {
                 affects: RadiusAffects::DEFAULT,
                 collides: CollideMask::DEFAULT,
                 at_self: false,
-                continuous_fire: false,
+                continuous_fire: ContinuousFire::default(),
                 min_range: 0.0,
                 damage_type: DamageType::SmallArms,
                 delay: ShotDelay::Fixed(100),
@@ -528,7 +652,37 @@ mod tests {
             let read = WeaponIni::default().read(text.as_bytes());
             assert_eq!(read, Err(IniError::NotListed { line: 2 }), "{line}");
         }
-        assert!(ini.get("Minigun").unwrap().continuous_fire);
+        // The minigun's stages above 1 and 5 shots give it twice and thrice its rate of fire,
+        // names of either case, and its coast is 2,000 ms; its upgrade's damage is no stage's.
+        // The spinner's fast stage changes its damage too; a later line of a field takes the
+        // earlier's place, so one back to 100 % changes nothing.
+        let minigun = ini.get("Minigun").unwrap().continuous_fire;
+        assert_eq!(
+            (minigun.shots, minigun.coast_ms, minigun.rates()),
+            ([1, 5], 2000, [2.0, 3.0])
+        );
+        assert!(!minigun.changes_other_fields());
+        assert!(
+            ini.get("Spinner")
+                .unwrap()
+                .continuous_fire
+                .changes_other_fields()
+        );
+        let undone = "Weapon W\n  WeaponBonus = CONTINUOUS_FIRE_MEAN DAMAGE 150%\n  \
+                      WeaponBonus = CONTINUOUS_FIRE_MEAN DAMAGE 100%\nEnd\n";
+        let mut read = WeaponIni::default();
+        read.read(undone.as_bytes()).unwrap();
+        let undone = read.get("W").unwrap().continuous_fire;
+        assert_eq!(undone.rates(), [1.0, 1.0]);
+        assert!(!undone.changes_other_fields());
+        for line in [
+            "WeaponBonus = CONTINUOUS_FIRE_SLOW RATE_OF_FIRE 200%",
+            "WeaponBonus = VETERAN SPEED 200%",
+        ] {
+            let text = format!("Weapon W\n  {line}\nEnd\n");
+            let read = WeaponIni::default().read(text.as_bytes());
+            assert_eq!(read, Err(IniError::NotListed { line: 2 }), "{line}");
+        }
         assert!(!ini.get("Stinger").unwrap().anti_ground);
         // A line outside a block, and a block left open, are refused.
         assert!(WeaponIni::default().read(b"PrimaryDamage = 5\r\n").is_err());

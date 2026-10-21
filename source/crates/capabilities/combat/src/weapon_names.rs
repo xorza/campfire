@@ -6,18 +6,21 @@ use campfire_declarations::BookError;
 use campfire_math::Num;
 use campfire_script::{TagNames, UnknownName};
 use campfire_sim::MatchRate;
-use campfire_stats::StatBook;
+use campfire_stats::{ModifierBook, StatBook};
 use campfire_units::StatId;
 use campfire_values::{
-    DamageKind, NameKind, Named, Names, Number, Rank, Ranked, Scalar, Stat, Tag, TimeTooLarge,
+    DamageKind, ModifierId, NameKind, Named, Names, Number, Rank, Ranked, Scalar, Stat, Tag,
+    TimeTooLarge,
 };
 
-use crate::attack_data::{AttackData, WeaponValue};
+use crate::attack_data::{AttackData, StreakData, WeaponValue};
 use crate::error::CombatDataError;
-use crate::weapon::{ClipRule, Pitch, Rate, Scatter, ScatterTag, Weapon, WeaponDamage};
+use crate::weapon::{
+    ClipRule, Pitch, Rate, Scatter, ScatterTag, Streak, StreakStage, Weapon, WeaponDamage,
+};
 
 /// What an attack's weapon resolves by: its action as the load holds it and as the book holds
-/// it, the match's rate, and the names of the match's stats, damage kinds and tags.
+/// it, the match's rate, and the names of the match's stats, damage kinds, tags and modifiers.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct WeaponNames<'c> {
     pub(crate) loaded: LoadedAction<'c>,
@@ -26,6 +29,7 @@ pub(crate) struct WeaponNames<'c> {
     pub(crate) stats: Option<&'c StatBook>,
     pub(crate) kinds: Option<&'c Names<DamageKind>>,
     pub(crate) tags: &'c TagNames,
+    pub(crate) modifiers: Option<&'c ModifierBook>,
 }
 
 impl WeaponNames<'_> {
@@ -82,8 +86,11 @@ impl WeaponNames<'_> {
                 tags: tags.collect::<Result<_, _>>()?,
             })
         });
+        let rate_bonus = data.rate_bonus.as_ref().map(|stat| self.stat(stat));
+        let streak = data.streak.as_ref().map(|streak| self.streak(streak));
         Ok(Weapon {
             rate,
+            rate_bonus: rate_bonus.transpose()?,
             damage,
             kind,
             clip: clip.transpose()?,
@@ -91,14 +98,38 @@ impl WeaponNames<'_> {
             scatter: scatter.transpose()?,
             pitch: data.pitch_deg.map(|pitch| Pitch::of(pitch.low, pitch.high)),
             speed: data.speed,
+            streak: streak.transpose()?,
         })
     }
 
-    /// The rules of `data`'s fields that its action delivers by: a weapon's delivery is a homing
-    /// projectile or a curve, a splash goes off where a projectile of its delivery ends, a
-    /// scatter aims a curve of its delivery, and a speed delays the hit of a weapon of no
-    /// delivery (04-capabilities/combat.md, An attack may splash; 04-capabilities/combat.md, An
-    /// attack may scatter; 04-capabilities/combat.md, A slow weapon delays its damage).
+    /// The streak `data` gives, its coast in ticks and each stage's modifier one of its
+    /// package's.
+    fn streak(self, data: &StreakData) -> Result<Streak, BookError> {
+        let broken = |problem| self.loaded.broken(problem);
+        let coast = self.ticks(data.coast_ms).map_err(broken)?;
+        let stages = data.stages.iter().map(|stage| {
+            let names = self.modifiers.map(ModifierBook::names);
+            let named =
+                names.and_then(|names| names.named((self.loaded.package, stage.modifier.as_str())));
+            Ok(StreakStage {
+                shots: stage.shots,
+                modifier: named.ok_or_else(|| self.unknown(ModifierId::NAMES, &stage.modifier))?,
+            })
+        });
+        Ok(Streak {
+            coast,
+            stages: stages.collect::<Result<_, BookError>>()?,
+        })
+    }
+
+    /// The rules of `data`'s fields: a weapon's delivery is a homing projectile or a curve, a
+    /// splash goes off where a projectile of its delivery ends, a scatter aims a curve of its
+    /// delivery, a speed delays the hit of a weapon of no delivery, a rate bonus speeds a period
+    /// of its own, and a streak's stages are some, their shots strictly growing
+    /// (04-capabilities/combat.md, An attack may splash; 04-capabilities/combat.md, An attack may
+    /// scatter; 04-capabilities/combat.md, A slow weapon delays its damage;
+    /// 04-capabilities/combat.md, A weapon's own period may speed up by a stat;
+    /// 04-capabilities/combat.md, A shot streak gives a stage's modifier).
     fn rule(self, data: &AttackData) -> Result<(), CombatDataError> {
         let delivery = self.action.delivery.as_ref();
         let flight = delivery.and_then(|delivery| match delivery.shape {
@@ -113,6 +144,15 @@ impl WeaponNames<'_> {
             Err(CombatDataError::Scatter)
         } else if data.speed.is_some() && delivery.is_some() {
             Err(CombatDataError::Speed)
+        } else if data.rate_bonus.is_some() && data.rate.own().is_none() {
+            Err(CombatDataError::RateBonus)
+        } else if data.streak.as_ref().is_some_and(|streak| {
+            streak.stages.is_empty()
+                || !streak
+                    .stages
+                    .is_sorted_by(|low, high| low.shots < high.shots)
+        }) {
+            Err(CombatDataError::Stages)
         } else {
             Ok(())
         }

@@ -7,11 +7,13 @@ resources = ["money"]
 # which a map of no waypoint has on no marker.
 marker_params = ["name"]
 
-# The stats its units drive by, and the life they live by.
+# The stats its units drive by, the life they live by, and the rate of fire a stage of continuous
+# fire adds to, which a weapon of one divides its period by, plus 1.
 [stats]
 move_speed = {}
 turn_rate = {}
 life = {}
+rate_of_fire = {}
 
 [pools.life]
 max = "life"

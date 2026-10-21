@@ -4,8 +4,11 @@ use fluent_syntax::parser;
 use campfire_actions::SlotKindData;
 use campfire_math::Num;
 use campfire_navigation::ModeNavigationData;
+use campfire_stats::StatOp;
+use campfire_values::{Number, Stat};
 
 use super::*;
+use crate::zero_hour::combat_import::{RATE_OF_FIRE, StageModifier};
 use crate::zero_hour::format::ini::damage_type::DamageType;
 use crate::zero_hour::imported_type::{
     BASE_DEFENSE, INFANTRY, LIFE, MONEY, STRUCTURE, VICTORY, WALL,
@@ -23,22 +26,38 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
             offset: Num::int(2),
         }],
     };
-    let data = mode_data(ModeImport {
-        start: &start,
-        production: &ProductionImport::default(),
-        combat: &CombatImport::default(),
-        start_money: &MoneyChoices {
-            values: vec![100],
-            default: 100,
-        },
-    });
+    let money = MoneyChoices {
+        values: vec![100],
+        default: 100,
+    };
+    let data = |combat: &CombatImport| {
+        mode_data(ModeImport {
+            start: &start,
+            production: &ProductionImport::default(),
+            combat,
+            start_money: &money,
+        })
+    };
     // An empty table would write `actions = {}` into `[params]`, and `armors = {}` under a
     // second `[combat]`.
-    assert!(Toml::parse::<TomlTable>(&data).is_ok(), "{data}");
+    let none = data(&CombatImport::default());
+    assert!(Toml::parse::<TomlTable>(&none).is_ok(), "{none}");
     assert!(
-        !data.contains("actions") && !data.contains("armors"),
-        "{data}"
+        !none.contains("actions") && !none.contains("armors") && !none.contains("modifiers"),
+        "{none}"
     );
+    // A stage's modifier reads back as the modifier that adds to the rate of fire.
+    let rate = Stat::named(RATE_OF_FIRE).unwrap();
+    let one = Number::Value(Scalar::Decimal(Num::ONE));
+    let stage = StageModifier {
+        stats: BTreeMap::from([(rate.clone(), one.clone())]),
+    };
+    let mut combat = CombatImport::default();
+    combat.modifiers.insert(name("weapon_w_mean"), stage);
+    let mut written: TomlTable = Toml::parse(&data(&combat)).unwrap();
+    let modifiers: ModifiersData = written.take("modifiers").unwrap().unwrap();
+    let change = &modifiers.0[&name("weapon_w_mean")].stats[&rate];
+    assert_eq!((change.op, &change.value), (StatOp::Add, &one));
 }
 
 #[test]
@@ -70,7 +89,7 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
         .unwrap()
         .unwrap();
     assert_eq!((life, resources), (declared(LIFE), vec![declared(MONEY)]));
-    assert!(stats.holds(LIFE) && pools.holds(LIFE));
+    assert!(stats.holds(LIFE) && stats.holds(RATE_OF_FIRE) && pools.holds(LIFE));
     for tag in [VICTORY, STRUCTURE, WALL, BASE_DEFENSE, INFANTRY] {
         assert!(tags.holds(tag), "{tag}");
     }

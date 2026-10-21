@@ -14,7 +14,7 @@ use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, CastSpends, DeliveryShape};
-use campfire_combat::ClipShots;
+use campfire_combat::{ClipShots, ShotStreak};
 use campfire_common::EnumAll;
 use campfire_declarations::{
     Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
@@ -485,12 +485,13 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     // The audit read every module: the core's four kinds, the stats', the players' and the
     // mode's five parts of a player, its bounty share among them, the mode's three of the match,
     // the 31 of a unit, items' `UseGroup`, orders' `NextThink` and `NextScan`, production's
-    // `StatusTags` and combat's `TurretAngle` among them, and the 58 books, 14 of the core's,
-    // interaction's two, combat's armors, turrets and weapons, orders' scans, production's trains
-    // and gathers, the mode's victory and bounty, and progression's experience among them.
+    // `StatusTags` and combat's `TurretAngle` among them, and the 59 books, 14 of the core's,
+    // interaction's two, combat's armors, turrets, weapons and streaks' modifiers, orders' scans,
+    // production's trains and gathers, the mode's victory and bounty, and progression's
+    // experience among them.
     assert_eq!(audit.kinds.len(), 4);
     assert_eq!(audit.parts.len(), 41);
-    assert_eq!(audit.books.len(), 58);
+    assert_eq!(audit.books.len(), 59);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 14);
     // The observers, the runs out of the schedule and the parts a server derives, which the
@@ -552,6 +553,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
         server,
         [
             (type_name::<ActionSlots>(), type_name::<ClipShots>()),
+            (type_name::<ActionSlots>(), type_name::<ShotStreak>()),
             (type_name::<UnitEntity>(), type_name::<SeenBy>()),
             (type_name::<Player>(), type_name::<PlayerSupply>()),
         ]

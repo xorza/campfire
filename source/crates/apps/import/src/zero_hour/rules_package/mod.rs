@@ -17,6 +17,7 @@ use campfire_package::{
 };
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
+use campfire_stats::ModifiersData;
 use campfire_values::{PackagePath, Relation, Scalar, Speed, TextId};
 
 use crate::zero_hour::ZeroHour;
@@ -108,8 +109,9 @@ pub(crate) struct ModeImport<'a> {
 /// starts with and its choice of a faction, `start` (09-zero-hour.md, A skirmish starts with the
 /// faction's start objects; 09-zero-hour.md, Each player picks a faction), and the
 /// option of the money it starts with, of `start_money`'s values (09-zero-hour.md, The import
-/// writes Zero Hour's money as an option); the armors and weapons of `combat` (09-zero-hour.md)
-/// and the trains and builds of `production` (04-capabilities/production.md).
+/// writes Zero Hour's money as an option); the armors, the weapons and the modifiers of their
+/// stages of `combat` (09-zero-hour.md) and the trains and builds of `production`
+/// (04-capabilities/production.md).
 pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     let ModeImport {
         start,
@@ -217,6 +219,14 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         weapons.chain(trains).chain(gathers).collect();
     if !actions.is_empty() {
         writer.value::<ActionsData>(TomlValue::of(&actions));
+    }
+    if !combat.modifiers.is_empty() {
+        let modifiers = combat
+            .modifiers
+            .iter()
+            .map(|(id, stage)| (id, stage.table()));
+        let modifiers: BTreeMap<&DeclaredName, TomlValue> = modifiers.collect();
+        writer.value::<ModifiersData>(TomlValue::of(&modifiers));
     }
     Toml::write(&writer.into_table())
 }

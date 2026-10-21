@@ -4,17 +4,18 @@ use campfire_common::Ticks;
 use campfire_geometry::Volume;
 use campfire_math::{Num, Rounding, SinCos, Vec3};
 use campfire_units::StatId;
-use campfire_values::{DamageKind, NameId, Rank, Speed, Tag, TagSet};
+use campfire_values::{DamageKind, ModifierId, NameId, Rank, Speed, Tag, TagSet};
 
 use crate::attack_data::SplashData;
 
 /// What makes an action of kind `attack` a weapon, as the match runs it: where its rate and its
-/// damage come from, the kind of damage it deals, its clip at each rank, its projectile's splash
-/// and scatter, its bound of pitch, and the speed that delays the hit of a weapon of no
-/// projectile, if it has them.
+/// damage come from, the stat that speeds its own period, the kind of damage it deals, its clip
+/// at each rank, its projectile's splash and scatter, its bound of pitch, the speed that delays
+/// the hit of a weapon of no projectile, and its shot streak, if it has them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Weapon {
     pub(crate) rate: Rate,
+    pub(crate) rate_bonus: Option<StatId>,
     pub(crate) damage: WeaponDamage,
     pub kind: DamageKind,
     pub(crate) clip: Option<Box<[ClipRule]>>,
@@ -22,6 +23,23 @@ pub struct Weapon {
     pub scatter: Option<Scatter>,
     pub pitch: Option<Pitch>,
     pub speed: Option<Speed>,
+    pub streak: Option<Streak>,
+}
+
+/// A weapon's shot streak (04-capabilities/combat.md, A shot streak gives a stage's modifier): the
+/// ticks after the weapon is ready again that a streak holds without a shot, and its stages, their
+/// shots strictly growing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Streak {
+    pub(crate) coast: Ticks,
+    pub(crate) stages: Box<[StreakStage]>,
+}
+
+/// A stage of a streak: the shots in a row past which its unit holds `modifier`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StreakStage {
+    pub(crate) shots: u32,
+    pub(crate) modifier: ModifierId,
 }
 
 /// Where a weapon's rate comes from: a place among its unit's stats, its attacks a second, or its
@@ -144,11 +162,11 @@ impl Pitch {
 impl Weapon {
     /// The ticks from the start of one attack to the next at the earliest, at `hz` ticks a second,
     /// for a unit of stats `stats` and the weapon at `rank`, of a windup of `windup`: its own
-    /// period, or the tick rate over its rate exactly, rounded up, at least one bit of a second;
-    /// either longer than its windup.
+    /// period, sped by its rate bonus, or the tick rate over its rate exactly, rounded up, at
+    /// least one bit of a second; either longer than its windup.
     pub fn period(&self, stats: &[Num], rank: Rank, windup: Ticks, hz: u32) -> Ticks {
         let period = match &self.rate {
-            Rate::Period(periods) => periods[rank.index()],
+            Rate::Period(periods) => self.sped(stats, periods[rank.index()]),
             Rate::Stat(rate) => {
                 let rate = stats.get(rate.index()).copied().unwrap_or(Num::ZERO);
                 // A count of ticks, not a number: up to 2³² · 2²⁴ at the least rate, past a `Num`.
@@ -186,9 +204,55 @@ impl Weapon {
         }
     }
 
-    /// Its clip at `rank`, if it has one.
-    pub fn clip(&self, rank: Rank) -> Option<ClipRule> {
-        self.clip.as_ref().map(|clips| clips[rank.index()])
+    /// Its clip at `rank`, if it has one, its reload sped by its rate bonus for a unit of stats
+    /// `stats`.
+    pub fn clip(&self, stats: &[Num], rank: Rank) -> Option<ClipRule> {
+        let clip = self.clip.as_ref()?[rank.index()];
+        Some(ClipRule {
+            reload: self.sped(stats, clip.reload),
+            ..clip
+        })
+    }
+
+    /// `ticks` of its own, for a unit of stats `stats`, divided by 1 plus the value of its rate
+    /// bonus and rounded down, as Zero Hour's `getDelayBetweenShots` floors its frames over its
+    /// rate of fire (04-capabilities/combat.md, A weapon's own period may speed up by a
+    /// stat); a divisor below one bit counts as one bit, and the ticks stop at 2⁵⁶, as long as
+    /// the stat rate's longest period.
+    fn sped(&self, stats: &[Num], ticks: Ticks) -> Ticks {
+        let Some(bonus) = self.rate_bonus else {
+            return ticks;
+        };
+        let bonus = stats.get(bonus.index()).copied().unwrap_or(Num::ZERO);
+        let divisor = (i128::from(Num::ONE.to_bits()) + i128::from(bonus.to_bits())).max(1);
+        let sped = (i128::from(ticks.get()) << Num::FRAC_BITS) / divisor;
+        Ticks::new(u64::try_from(sped.min(1 << 56)).expect("2⁵⁶ ticks at most"))
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_common::Ticks;
+    use campfire_values::ModifierId;
+
+    use crate::weapon::{Streak, StreakStage};
+
+    impl Streak {
+        /// A streak of `coast` and of `stages`, each its shots and its modifier, their shots
+        /// strictly growing.
+        pub fn new(coast: Ticks, stages: &[(u32, ModifierId)]) -> Self {
+            debug_assert!(
+                !stages.is_empty() && stages.is_sorted_by(|low, high| low.0 < high.0),
+                "a streak's stages are some, their shots strictly growing"
+            );
+            let stages = stages
+                .iter()
+                .map(|&(shots, modifier)| StreakStage { shots, modifier });
+            Self {
+                coast,
+                stages: stages.collect(),
+            }
+        }
     }
 }
 

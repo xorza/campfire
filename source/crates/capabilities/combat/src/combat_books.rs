@@ -10,7 +10,7 @@ use campfire_declarations::{
     BookCx, BookError, BookPlace, ByType, ByTypeBuilder, NamesListError, Section,
 };
 use campfire_script::UnknownName;
-use campfire_stats::{LifePool, StatBook, TypePoolsData, UnitStartError};
+use campfire_stats::{LifePool, ModifierBook, StatBook, TypePoolsData, UnitStartError};
 use campfire_units::{PoolNames, UnitTypes};
 use campfire_values::{Named, Names, NamesError, PackageIndex};
 
@@ -134,6 +134,7 @@ impl Weapon {
         let stats = cx.book_if::<StatBook>()?;
         let kinds = cx.book_if::<DamageKindBook>()?.map(|kinds| &*kinds.0);
         let tags = cx.fact::<UnitTypes>()?.tags();
+        let modifiers = cx.book_if::<ModifierBook>()?;
         let mut book = ByActionBuilder::default();
         for loaded in LoadedAction::all(cx)? {
             let Some(data) = loaded.section::<AttackData>() else {
@@ -148,6 +149,7 @@ impl Weapon {
                 stats,
                 kinds,
                 tags,
+                modifiers,
             };
             book.set(loaded.action, names.weapon(data)?);
         }

@@ -28,7 +28,8 @@ pub enum WeaponDrop {
     Suicide,
     /// It deals its damage at its own place, `DamageDealtAtSelfPosition`.
     AtSelf,
-    /// It fires faster as it keeps firing, of a `ContinuousFireOne` or a `ContinuousFireTwo`.
+    /// Its continuous fire's stages change a field other than its rate of fire, or coast for no
+    /// time.
     ContinuousFire,
     /// It waits a `PreAttackDelay` before it strikes.
     PreAttack,

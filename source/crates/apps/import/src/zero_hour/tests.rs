@@ -243,6 +243,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let enemies = Targeting::Unit(FilterData::parse("enemies").unwrap());
     let rifle = AttackData {
         rate: WeaponValue::Own(one(100)),
+        rate_bonus: None,
         damage: damage(5),
         damage_kind: declared("small_arms"),
         clip: Some(ClipData {
@@ -253,6 +254,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         scatter: None,
         pitch_deg: None,
         speed: None,
+        streak: None,
     };
     let rifle = ActionData {
         range: meters(100),
@@ -262,6 +264,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // ends, to all but its own unit, which scatters 10 m at infantry, within 15° of level.
     let cannon = AttackData {
         rate: WeaponValue::Own(one(2000)),
+        rate_bonus: None,
         damage: damage(60),
         damage_kind: declared("armor_piercing"),
         clip: None,
@@ -272,6 +275,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         ),
         pitch_deg: PitchData::new(Num::int(-15), Num::int(15)),
         speed: None,
+        streak: None,
     };
     let cannon = ActionData {
         range: meters(150),

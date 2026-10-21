@@ -21,7 +21,10 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
     objects.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
     objects.read(OBJECTS.as_bytes()).unwrap();
     objects.read(ROCKET.as_bytes()).unwrap();
-    let of = |name: &str| ImportedWeapon::of(ini.get(name).unwrap(), &objects);
+    let of = |name: &str| {
+        let id = DeclaredName::new(&format!("weapon_{}", name.to_lowercase())).unwrap();
+        ImportedWeapon::of(ini.get(name).unwrap(), &objects, &id)
+    };
     let weapon = |name: &str| of(name).map(|converted| converted.weapon);
     // The rifle's 100 ms are ⌈100 × 0.03⌉ = 3 frames, written back as ⌊3 × 100 / 3⌋ = 100;
     // its reload's 700 ms are 21 frames, 700.
@@ -36,6 +39,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
         },
         attack: AttackData {
             rate: WeaponValue::Own(own(100)),
+            rate_bonus: None,
             damage: WeaponValue::Own(decimal(5)),
             damage_kind: DamageType::SmallArms.kind(),
             clip: Some(ClipData {
@@ -46,6 +50,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
             scatter: None,
             pitch_deg: None,
             speed: None,
+            streak: None,
         },
     };
     assert_eq!(weapon("RangerRifle"), Ok(rifle.clone()));
@@ -63,6 +68,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
             },
             attack: AttackData {
                 rate: WeaponValue::Own(own(2000)),
+                rate_bonus: None,
                 damage: WeaponValue::Own(decimal(60)),
                 damage_kind: DamageType::ArmorPiercing.kind(),
                 clip: None,
@@ -73,6 +79,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
                 ),
                 pitch_deg: PitchData::new(Num::int(-15), Num::int(15)),
                 speed: None,
+                streak: None,
             },
         }
     );
@@ -105,9 +112,81 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
     assert_eq!(weapon("Stinger"), Err(WeaponDrop::NotGround));
     assert_eq!(weapon("Blast"), Err(WeaponDrop::Suicide));
     assert_eq!(weapon("Pulse"), Err(WeaponDrop::AtSelf));
-    assert_eq!(weapon("Minigun"), Err(WeaponDrop::ContinuousFire));
+    // The minigun's 250 ms are ⌈7.5⌉ = 8 frames, 266 ms; past 1 and 5 shots in a row, its
+    // stages add 2 − 1 = 1 and 3 − 1 = 2 to its rate of fire, each a modifier named for it, and
+    // its coast is 2,000 ms. The spinner's fast stage changes its damage, which the engine does
+    // not hold.
+    let minigun = of("Minigun").unwrap();
+    let stage = |shots, name: &str| StageData {
+        shots,
+        modifier: DeclaredName::new(name).unwrap(),
+    };
+    assert_eq!(minigun.weapon.attack.rate, WeaponValue::Own(own(266)));
+    assert_eq!(
+        minigun.weapon.attack.rate_bonus,
+        Some(Stat::named(RATE_OF_FIRE).unwrap())
+    );
+    assert_eq!(
+        minigun.weapon.attack.streak,
+        Some(StreakData {
+            coast_ms: 2000,
+            stages: vec![
+                stage(1, "weapon_minigun_mean"),
+                stage(5, "weapon_minigun_fast")
+            ],
+        })
+    );
+    let added = |value: i64| StageModifier {
+        stats: BTreeMap::from([(
+            Stat::named(RATE_OF_FIRE).unwrap(),
+            Number::Value(Scalar::Decimal(Num::int(value))),
+        )]),
+    };
+    let named = |name: &str| DeclaredName::new(name).unwrap();
+    assert_eq!(
+        minigun.modifiers,
+        [
+            (named("weapon_minigun_mean"), added(1)),
+            (named("weapon_minigun_fast"), added(2))
+        ]
+    );
+    assert_eq!(weapon("Spinner"), Err(WeaponDrop::ContinuousFire));
     assert_eq!(weapon("Disabler"), Err(WeaponDrop::NoLife));
     assert_eq!(weapon("Mender"), Err(WeaponDrop::Healing));
+}
+
+#[test]
+fn a_continuous_fire_converts_with_a_rate_for_each_stage_or_drops() {
+    let streak = |lines: &str| {
+        let mut ini = WeaponIni::default();
+        let text =
+            format!("Weapon W\n  PrimaryDamage = 5\n  DelayBetweenShots = 100\n{lines}End\n");
+        ini.read(text.as_bytes()).unwrap();
+        let id = DeclaredName::new("weapon_w").unwrap();
+        ImportedWeapon::of(ini.get("W").unwrap(), &ObjectIni::default(), &id)
+            .map(|converted| converted.weapon.attack.streak.map(|streak| streak.coast_ms))
+    };
+    let rates = "  WeaponBonus = CONTINUOUS_FIRE_MEAN RATE_OF_FIRE 150%\n  \
+                 WeaponBonus = CONTINUOUS_FIRE_FAST RATE_OF_FIRE 200%\n";
+    let fire = |one: i32, two: i32, coast: i32| {
+        format!(
+            "  ContinuousFireOne = {one}\n  ContinuousFireTwo = {two}\n  \
+             ContinuousFireCoast = {coast}\n{rates}"
+        )
+    };
+    // Stages of no bonus change nothing, so the weapon converts with no streak; with a rate for
+    // each, its coast of 1,000 ms is 30 frames, 1,000.
+    assert_eq!(streak("  ContinuousFireOne = 3\n"), Ok(None));
+    assert_eq!(streak(&fire(2, 6, 1000)), Ok(Some(1000)));
+    // A rate for one stage alone converts too, its other stage's modifier adding 0; its coast of
+    // 100 ms is 3 frames, 100. A coast of no time the engine does not hold; shots below 0, or that
+    // do not grow, are no number of it.
+    let mean = "  ContinuousFireOne = 1\n  ContinuousFireTwo = 2\n  ContinuousFireCoast = 100\n  \
+                WeaponBonus = CONTINUOUS_FIRE_MEAN RATE_OF_FIRE 150%\n";
+    assert_eq!(streak(mean), Ok(Some(100)));
+    assert_eq!(streak(&fire(2, 6, 0)), Err(WeaponDrop::ContinuousFire));
+    assert_eq!(streak(&fire(-1, 6, 1000)), Err(WeaponDrop::BadNumber));
+    assert_eq!(streak(&fire(6, 6, 1000)), Err(WeaponDrop::BadNumber));
 }
 
 #[test]
@@ -117,7 +196,8 @@ fn a_pitch_bound_reads_within_a_quarter_turn_and_a_radius_its_relations() {
         let text =
             format!("Weapon W\n  PrimaryDamage = 5\n  DelayBetweenShots = 100\n{lines}End\n");
         ini.read(text.as_bytes()).unwrap();
-        ImportedWeapon::of(ini.get("W").unwrap(), &ObjectIni::default())
+        let id = DeclaredName::new("weapon_w").unwrap();
+        ImportedWeapon::of(ini.get("W").unwrap(), &ObjectIni::default(), &id)
             .map(|converted| converted.weapon.attack.pitch_deg)
     };
     // A bound of the defaults, a turn either way, is none; one side's bound keeps the

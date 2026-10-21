@@ -21,13 +21,14 @@ use campfire_declarations::{
 use campfire_math::RngStream;
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::{Capability, SimSystems};
-use campfire_stats::{LifePool, StatsSystems, TypePools};
+use campfire_stats::{LifePool, ModifierAppliers, StatsSystems, TypePools};
 use campfire_units::{BodyUnit, Dead, Deaths, Due, Life, SpawnPoint, UnitGrid, UnitsSystems};
 
 use crate::combat_column::RowReads;
 use crate::combat_event::{OnAttack, OnAttackHit, OnDamageTaken, OnKill, OnTakedown};
 use crate::held_hits::HeldHits;
 use crate::next_damage::NextDamage;
+use crate::streak_shots::StreakShots;
 use crate::turret::aiming::Aiming;
 use crate::volley::{GoingOff, Volley};
 
@@ -60,6 +61,9 @@ mod pass_queue;
 mod recent_attack;
 mod recent_attackers;
 mod respawn;
+mod shot_streak;
+mod streak_book;
+mod streak_shots;
 mod turret;
 mod volley;
 mod weapon;
@@ -69,7 +73,7 @@ mod wielded;
 
 pub use crate::armor::{Armor, ArmorShare};
 pub use crate::attack_data::{
-    AttackData, ClipData, PitchData, ScatterData, SplashData, WeaponValue,
+    AttackData, ClipData, PitchData, ScatterData, SplashData, StageData, StreakData, WeaponValue,
 };
 pub use crate::attacks::Attacks;
 pub use crate::clip_shots::ClipShots;
@@ -93,10 +97,12 @@ pub use crate::pass_queue::{PassEntry, PassQueue};
 pub use crate::recent_attack::RecentAttack;
 pub use crate::recent_attackers::RecentAttackers;
 pub use crate::respawn::Respawn;
+pub use crate::shot_streak::ShotStreak;
+pub use crate::streak_book::StreakBook;
 pub use crate::turret::Turret;
 pub use crate::turret::turret_angle::TurretAngle;
 pub use crate::turret::turret_data::{TurretData, TurretPatch};
-pub use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Weapon, WeaponDamage};
+pub use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Streak, Weapon, WeaponDamage};
 pub use crate::weighers::{Weigh, Weighers};
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
@@ -116,6 +122,9 @@ pub enum CombatSystems {
     /// Dead units whose respawn is due come back, before any input of the tick can reach
     /// them.
     Respawn,
+    /// The streaks whose coast ended lose their stage, and the units whose streak changed push
+    /// their grants, before the grant pass of Inputs.
+    StreakAtInputs,
     /// Attacks start, and targets that are gone are dropped.
     Attack,
     /// After the projectiles fly and before areas trigger: the hits of the attacks'
@@ -127,6 +136,9 @@ pub enum CombatSystems {
     Strike,
     /// The tick's damage is dealt.
     Damage,
+    /// The units whose streak changed as they struck push their grants, before the grant pass of
+    /// Resolve.
+    StreakAtResolve,
     /// Units at zero life die.
     Die,
     /// The dead whose type despawns go, after the Mode stage saw them.
@@ -139,11 +151,15 @@ impl ModuleSystems for CombatSystems {
     fn place(self) -> SetPlace {
         match self {
             Self::Respawn => SetPlace::at(UnitsSystems::Begin),
+            Self::StreakAtInputs => SetPlace::stage(SimSystems::Inputs)
+                .after(UnitsSystems::Begin)
+                .before(ActionsSystems::HoldAtInputs),
             Self::Attack => SetPlace::at(ActionsSystems::WindUp),
             Self::Hits => SetPlace::at(ActionsSystems::Hit),
             Self::Pay => SetPlace::at(ActionsSystems::Pay),
             Self::Strike => SetPlace::at(ActionsSystems::Strike),
             Self::Damage => SetPlace::stage(SimSystems::Resolve).before(ActionsSystems::Resolve),
+            Self::StreakAtResolve => SetPlace::at(ActionsSystems::Resolve),
             Self::Die => (SetPlace::stage(SimSystems::Resolve).after(StatsSystems::GrantAtResolve))
                 .before(StatsSystems::ClearDead),
             Self::Despawn => SetPlace::at(UnitsSystems::End),
@@ -172,6 +188,12 @@ impl Module for Combat {
         // A unit with slots counts the shots of its weapons with a clip, from its spawn or a
         // grant of slots on; a client receives its own units' counts, as it predicts them.
         d.server_part::<ActionSlots, ClipShots>();
+        d.component::<ShotStreak>();
+        // A unit with slots counts its streak on a server, as a script may grant it a streak
+        // weapon; a client never holds it.
+        d.server_part::<ActionSlots, ShotStreak>();
+        d.timed::<ShotStreak>();
+        d.scratch::<StreakShots>();
         d.component::<Respawn>();
         d.timed::<Respawn>();
         d.state::<BodyUnit, Respawn>();
@@ -187,6 +209,8 @@ impl Module for Combat {
         d.book::<CombatBook>(CombatBook::build);
         d.listed::<AttackData>();
         d.book::<ByAction<Weapon>>(Weapon::book);
+        d.book::<StreakBook>(StreakBook::book);
+        d.extend::<ModifierAppliers>(StreakBook::applied_ways);
         d.rule(Self::rule);
         d.rule(Self::attacks_rule);
         d.listed::<DamageEffectData>();
@@ -216,12 +240,14 @@ impl Module for Combat {
     /// attacks in range start once ready; in Hit, windups that end strike, or fire when ranged
     /// and the match has projectiles; in Resolve, the tick's damage is dealt, then units at zero
     /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
-    /// go, after the Mode stage saw them. A unit's hits, damage, death and despawn, its attackers
-    /// and its toggles' pay are the server's: a predicting client deals no damage, as its pools
-    /// and its deaths come from the server, despawns no unit, forgets no attacker it never held,
-    /// and pays no toggle; it predicts a respawn that is due. The turrets' aim, the slow weapons'
-    /// hits and the pay of toggles that cost an attack install only in a match whose books have
-    /// them (02-engine-core.md, Books before the install).
+    /// go, after the Mode stage saw them. A streak weapon's shot counts in its unit's streak, whose
+    /// stage's modifier its unit holds, the stage ending in Inputs past its coast. A unit's hits,
+    /// damage, death and despawn, its attackers, its toggles' pay and its streak are the
+    /// server's: a predicting client deals no damage, as its pools and its deaths come from the
+    /// server, despawns no unit, forgets no attacker it never held, pays no toggle and counts no
+    /// streak; it predicts a respawn that is due. The turrets' aim, the slow weapons' hits, the
+    /// pay of toggles that cost an attack and the streaks install only in a match whose books
+    /// have them (02-engine-core.md, Books before the install).
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         let turrets = cx
             .book::<ByType<Turret>>()
@@ -229,6 +255,9 @@ impl Module for Combat {
         let slow = cx
             .book::<ByAction<Weapon>>()
             .is_some_and(|weapons| weapons.values().any(|weapon| weapon.speed.is_some()));
+        let streaks = cx
+            .book::<StreakBook>()
+            .is_some_and(|modifiers| !modifiers.is_empty());
         let actions = cx.book::<ActionBook>();
         let toggles = actions.is_some_and(|book| {
             book.iter()
@@ -277,6 +306,17 @@ impl Module for Combat {
                 Attacks::land_held.before(Attacks::take_hits),
             );
         }
+        if streaks {
+            cx.server(
+                CombatSystems::StreakAtInputs,
+                (ShotStreak::coast, ShotStreak::want).chain(),
+            );
+            cx.server(
+                CombatSystems::Strike,
+                ShotStreak::count.after(Attacks::strike::<ServerForm>),
+            );
+            cx.server(CombatSystems::StreakAtResolve, ShotStreak::want);
+        }
     }
 }
 
@@ -299,7 +339,7 @@ pub mod internals {
     use campfire_script::{Filter, MatchNames};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{MatchRate, StableId};
-    use campfire_stats::{PoolBook, StatBook, StatRule, Stats};
+    use campfire_stats::{ModifierBook, PoolBook, StatBook, StatRule, Stats};
     use campfire_units::{Life, PoolId, UnitTypeCore, Units};
     use campfire_units::{PoolCost, StatId};
     use campfire_values::{
@@ -315,14 +355,16 @@ pub mod internals {
     use crate::held_hits::HeldHits;
     use crate::on_death::OnDeath;
     use crate::pass_queue::PassEntry;
+    use crate::streak_book::StreakBook;
     use crate::volley::Volley;
-    use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Weapon, WeaponDamage};
+    use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Streak, Weapon, WeaponDamage};
     use crate::weapon_names::WeaponNames;
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
-    /// homing projectile it fires, if it fires one, where its rate and its damage come from, its
-    /// clip, its cost in pools and in a player resource, and its splash, its scatter's radius,
-    /// its bound of pitch and its speed, at its one rank.
+    /// homing projectile it fires, if it fires one, where its rate and its damage come from, the
+    /// stat that speeds its own period, its clip, its cost in pools and in a player resource, and
+    /// its splash, its scatter's radius, its bound of pitch, its speed and its streak, at its one
+    /// rank.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct TestWeapon {
         pub aim: Filter,
@@ -330,6 +372,7 @@ pub mod internals {
         pub windup: Ticks,
         pub projectile: Option<UnitType>,
         pub rate: Rate,
+        pub rate_bonus: Option<StatId>,
         pub damage: WeaponDamage,
         pub clip: Option<ClipRule>,
         pub cost: PoolCost,
@@ -338,6 +381,7 @@ pub mod internals {
         pub scatter: Option<Num>,
         pub pitch: Option<Pitch>,
         pub speed: Option<Speed>,
+        pub streak: Option<Streak>,
     }
 
     impl TestWeapon {
@@ -350,6 +394,7 @@ pub mod internals {
                 windup,
                 projectile: None,
                 rate: Rate::Stat(StatId::new(0)),
+                rate_bonus: None,
                 damage: WeaponDamage::Stat(StatId::new(1)),
                 clip: None,
                 cost: PoolCost::default(),
@@ -358,13 +403,14 @@ pub mod internals {
                 scatter: None,
                 pitch: None,
                 speed: None,
+                streak: None,
             }
         }
     }
 
     impl Combat {
         /// Adds `weapon` to the match's action book and its weapon book, which deals damage of
-        /// the first kind.
+        /// the first kind, and its streak's modifiers to the book of the streaks' modifiers.
         pub fn add_weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
             let action = TestAction {
                 cost: weapon.cost,
@@ -386,6 +432,7 @@ pub mod internals {
                     id,
                     Weapon {
                         rate: weapon.rate,
+                        rate_bonus: weapon.rate_bonus,
                         damage: weapon.damage,
                         kind: DamageKind::new(0),
                         clip: weapon.clip.map(|clip| Box::from([clip])),
@@ -396,9 +443,11 @@ pub mod internals {
                         }),
                         pitch: weapon.pitch,
                         speed: weapon.speed,
+                        streak: weapon.streak,
                     },
                 );
             });
+            StreakBook::load(world);
             id
         }
 
@@ -426,9 +475,11 @@ pub mod internals {
                 stats: world.get_resource::<StatBook>(),
                 kinds: world.resource::<MatchNames>().table::<DamageKind>(),
                 tags: world.resource::<MatchNames>().tags(),
+                modifiers: world.get_resource::<ModifierBook>(),
             };
             let weapon = names.weapon(attack).expect("a test's weapon resolves");
             ByAction::<Weapon>::amend(world, |_, book| book.set(action, weapon));
+            StreakBook::load(world);
         }
 
         /// Strikes with each attack whose windup ended, as the server's strike set does once the
