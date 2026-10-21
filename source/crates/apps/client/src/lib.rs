@@ -60,18 +60,6 @@ mod test_app;
 mod ui_style;
 mod view;
 
-#[cfg(feature = "internals")]
-pub mod bench {
-    use criterion::Criterion;
-
-    use crate::pointer::unit_picking;
-
-    /// Runs each bench of the crate whose id criterion's filter takes.
-    pub fn run(c: &mut Criterion) {
-        unit_picking::bench::picking(c);
-    }
-}
-
 /// What the terminal shows when `RUST_LOG` does not say: the renderer's validation layers report
 /// through `wgpu_hal`, loudly, in debug builds.
 const TERMINAL_FILTER: &str = "info,wgpu=error,wgpu_hal=off,naga=warn";
@@ -214,4 +202,16 @@ fn watched_teams(args: &Args, packages: &ModePackages) -> Result<Option<TeamSet>
         ));
     }
     Ok(Some(watched.into_iter().collect()))
+}
+
+#[cfg(feature = "internals")]
+pub mod bench {
+    use criterion::Criterion;
+
+    use crate::pointer::unit_picking;
+
+    /// Runs each bench of the crate whose id criterion's filter takes.
+    pub fn run(c: &mut Criterion) {
+        unit_picking::bench::picking(c);
+    }
 }

@@ -150,8 +150,9 @@ impl ZeroHour {
             bars: ShownBars::Selected,
         };
         writer.write(HudFile::path(), &hud.encode())?;
-        // Units before structures, each at least 10 pixels wide, where the game picks the nearest
-        // triangle alone (09-zero-hour.md, Zero Hour's units come before its structures).
+        // Units before structures, each widened to a radius of at least 10 pixels, where the game
+        // picks the nearest triangle alone (09-zero-hour.md, Zero Hour's units come before its
+        // structures).
         let picking = PickingFile {
             tiers: vec![FilterData::parse("all:!structure").expect("a filter")],
             least_radius_px: PixelRadius::new(10.0).expect("a radius at least 0"),
