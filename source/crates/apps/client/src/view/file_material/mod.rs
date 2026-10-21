@@ -84,6 +84,12 @@ impl Plugin for FileMaterialPlugin {
 }
 
 impl FileBlend {
+    /// Whether a ray passes through it, as Zero Hour's pick passes a mesh whose shader blends with
+    /// no alpha test, its headlight beams (`MeshClass::Cast_Ray`, `Is_Alpha`).
+    pub(crate) fn lets_rays_through(&self) -> bool {
+        self.factors != Factors::Replace && self.cutoff == 0.0
+    }
+
     /// The extras a glTF material of none draws by, as Bevy draws its alpha mode: opaque or
     /// masked, writing depth, or mixed by its alpha, writing none, and painted by no team.
     pub(crate) const fn plain(gltf: &GltfMaterial) -> MaterialExtras {

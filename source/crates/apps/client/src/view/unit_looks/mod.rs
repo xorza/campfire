@@ -104,9 +104,9 @@ impl LookModel {
         )
     }
 
-    /// The models of `look`, a look of the package at `package`, each loading, its meshes kept
-    /// on the GPU alone: the client reads no mesh's vertices, as the import measures each look's
-    /// top (02-engine-core.md, The import measures a look's height).
+    /// The models of `look`, a look of the package at `package`, each loading, its meshes kept in
+    /// the main world as well as on the GPU, as the pointer casts its ray at their triangles
+    /// (02-engine-core.md, A unit is picked by its drawn triangles).
     pub(crate) fn all(package: PackageIndex, look: &ClientUnit, assets: &AssetServer) -> Vec<Self> {
         look.models
             .iter()
@@ -114,7 +114,7 @@ impl LookModel {
                 scene: assets
                     .load_builder()
                     .with_settings(|settings: &mut GltfLoaderSettings| {
-                        settings.load_meshes = RenderAssetUsages::RENDER_WORLD;
+                        settings.load_meshes = RenderAssetUsages::all();
                     })
                     .load(
                         GltfAssetLabel::Scene(0)

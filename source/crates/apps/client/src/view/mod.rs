@@ -33,7 +33,7 @@ use campfire_values::{Team, UnitType};
 
 use crate::engine_text::{EngineMessage, EngineText};
 use crate::view::client_data::ClientData;
-use crate::view::drawing::{Drawing, DrawingOf};
+use crate::view::drawing::{Drawing, DrawingOf, Drawn};
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
 use crate::view::glide::{Follows, FrameClock, Glide, Spot};
@@ -320,11 +320,8 @@ impl ViewPlugin {
                         point: at,
                         yaw: yaw(facing),
                     };
-                    // A model is as tall as it is drawn, whatever its unit's kind.
-                    let mut shape = UnitShape::of(ShapeKind::of(avatar, walks), body);
-                    if let Some(top) = looks.top(unit_type) {
-                        shape.height = top.max(0.0);
-                    }
+                    let shape =
+                        UnitShape::of(ShapeKind::of(avatar, walks), body, looks.top(unit_type));
                     let root = commands
                         .spawn((
                             DrawingOf(unit),
@@ -337,13 +334,13 @@ impl ViewPlugin {
                         ))
                         .id();
                     for model in models {
-                        commands.spawn((model.bundle(Paint::of(*team)), ChildOf(root)));
+                        commands.spawn((model.bundle(Paint::of(*team)), Drawn, ChildOf(root)));
                     }
                     continue;
                 }
                 None => {}
             }
-            let shape = UnitShape::of(ShapeKind::of(avatar, walks), body);
+            let shape = UnitShape::of(ShapeKind::of(avatar, walks), body, None);
             let mesh = match shape.footing {
                 Footing::Circle(_) => capsules
                     .entry([shape.radius.to_bits(), shape.length().to_bits()])
@@ -362,7 +359,7 @@ impl ViewPlugin {
             } else {
                 &palette.teams[data.team_colors.place(*team)]
             };
-            let figure = commands.spawn((Figure, Mesh3d(mesh.clone()))).id();
+            let figure = commands.spawn((Figure, Drawn, Mesh3d(mesh.clone()))).id();
             let look = Look {
                 figure,
                 alive: alive.clone(),

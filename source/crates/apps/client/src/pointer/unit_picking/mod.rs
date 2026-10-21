@@ -1,18 +1,23 @@
 use bevy::app::{App, Plugin, PreUpdate};
+use bevy::asset::Assets;
+use bevy::camera::primitives::Aabb;
+use bevy::camera::visibility::InheritedVisibility;
 use bevy::camera::{Camera, Camera3d, Projection};
 use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::message::MessageWriter;
-use bevy::ecs::query::{Allow, With, Without};
+use bevy::ecs::query::{Added, Allow, Has, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::{resource_added, resource_exists};
-use bevy::ecs::system::{Local, Query, Res, ResMut, SystemParam};
+use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, SystemParam};
 use bevy::math::Vec3;
+use bevy::mesh::{Mesh, Mesh3d};
+use bevy::pbr::MeshMaterial3d;
 use bevy::picking::PickingSystems;
 use bevy::picking::backend::ray::RayMap;
 use bevy::picking::backend::{HitData, PointerHits};
 use bevy::picking::pointer::PointerId;
-use bevy::shape::Ray3d;
 use bevy::transform::components::GlobalTransform;
 use campfire_client_files::PickingFile;
 use campfire_common::ErrorReport;
@@ -24,8 +29,11 @@ use tracing::error;
 
 use crate::own_player::OwnPlayer;
 use crate::pointer::Pointed;
+use crate::pointer::unit_picking::pick_parts::{PickPartOf, PickParts};
+use crate::pointer::unit_picking::pick_scene::{Part, PartAssets, PickScene, Target, UnitHit};
 use crate::view::client_data::ClientData;
-use crate::view::drawing::DrawingOf;
+use crate::view::drawing::{DrawingOf, Drawn};
+use crate::view::file_material::FileMaterial;
 use crate::view::look::UnitShape;
 use crate::view::pixel_scale::PixelScale;
 
@@ -51,28 +59,8 @@ pub(crate) struct UnitPicking {
     least_radius_px: f32,
 }
 
-/// A unit a pointer's ray meets: its drawing's root, the unit, its tier, the lower on top, and
-/// how far along the ray it was met, in meters.
-#[derive(Debug, Clone, Copy)]
-struct UnitHit {
-    root: Entity,
-    unit: Pointed,
-    tier: u32,
-    depth: f32,
-}
-
-/// A unit's shape where it stands, as a pointer's ray tests it: its drawing's root, the unit, its
-/// tier, the point its shape stands on, and the shape.
-#[derive(Debug, Clone, Copy)]
-struct Target {
-    root: Entity,
-    unit: Pointed,
-    tier: u32,
-    base: Vec3,
-    shape: UnitShape,
-}
-
-/// The drawing roots that have a shape, each with where it stands and its unit.
+/// The drawing roots that have a shape, each with where it stands, its unit, and the meshes that
+/// draw it.
 type ShapedRoots<'w, 's> = Query<
     'w,
     's,
@@ -81,8 +69,27 @@ type ShapedRoots<'w, 's> = Query<
         &'static DrawingOf,
         &'static GlobalTransform,
         &'static UnitShape,
+        Option<&'static PickParts>,
     ),
 >;
+
+/// The meshes that draw units: each one's mesh and box, where it stands, whether it shows, and
+/// its material when it has a file material.
+type PartMeshes<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static Mesh3d,
+        &'static Aabb,
+        &'static GlobalTransform,
+        &'static InheritedVisibility,
+        Option<&'static MeshMaterial3d<FileMaterial>>,
+    ),
+>;
+
+/// The meshes, and the ancestors a new one is told to its unit's drawing by: each one's parent,
+/// whether it is a child that draws its unit, and whether it is a drawing's root that has a shape.
+type Ancestors<'w, 's> = Query<'w, 's, (Option<&'static ChildOf>, Has<Drawn>, Has<UnitShape>)>;
 
 /// The living units the client holds: each one's stable id, its team, the player who controls
 /// it, and its type.
@@ -127,6 +134,7 @@ impl Plugin for UnitPickingPlugin {
                 PreUpdate,
                 (
                     Self::resolve.run_if(resource_added::<MatchNames>),
+                    Self::mark_parts,
                     Self::pick.run_if(resource_exists::<TagBook>),
                 )
                     .chain()
@@ -149,6 +157,32 @@ impl UnitPickingPlugin {
         });
     }
 
+    /// Tells each new mesh that draws a unit, one that is, or hangs under, a `Drawn` child of a
+    /// drawing's root with a shape, to that root, so a gauge or a ring under the root is no part.
+    fn mark_parts(
+        meshes: Query<'_, '_, Entity, Added<Mesh3d>>,
+        above: Ancestors<'_, '_>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        for mesh in &meshes {
+            let mut at = mesh;
+            let mut drawn = false;
+            while let Ok((child_of, is_drawn, is_root)) = above.get(at) {
+                if is_root {
+                    if drawn {
+                        commands.entity(mesh).insert(PickPartOf(at));
+                    }
+                    break;
+                }
+                drawn |= is_drawn;
+                let Some(child_of) = child_of else {
+                    break;
+                };
+                at = child_of.parent();
+            }
+        }
+    }
+
     /// Sends, for each pointer whose ray of the match's camera meets a unit, its hits of each
     /// tier in a `PointerHits` of its own, of an `order` above the camera's and below its UI's, a
     /// higher tier above, and keeps the mouse's ranked units. Bevy's hits own their list, one for
@@ -160,12 +194,12 @@ impl UnitPickingPlugin {
     fn pick(
         rays: Res<'_, RayMap>,
         cameras: MatchCamera<'_, '_>,
-        (roots, units): (ShapedRoots<'_, '_>, Living<'_, '_>),
+        (roots, units, parts): (ShapedRoots<'_, '_>, Living<'_, '_>, PartMeshes<'_, '_>),
         (picking, book, regard): (Res<'_, UnitPicking>, Res<'_, TagBook>, Regard<'_, '_>),
+        (meshes, materials): (Res<'_, Assets<Mesh>>, Res<'_, Assets<FileMaterial>>),
         mut under: ResMut<'_, UnderMouse>,
         mut sent: MessageWriter<'_, PointerHits>,
-        mut targets: Local<'_, Vec<Target>>,
-        mut hits: Local<'_, Vec<UnitHit>>,
+        (mut scene, mut hits): (Local<'_, PickScene>, Local<'_, Vec<UnitHit>>),
     ) {
         under.0.clear();
         let Ok((camera, view, place, projection)) = cameras.single() else {
@@ -181,27 +215,45 @@ impl UnitPickingPlugin {
         let relations = regard.relations.single().ok();
         let side = regard.own.side();
         let relation = |team| Some(relations?.between(side?, team));
-        targets.clear();
-        targets.extend(
-            roots
-                .iter()
-                .filter_map(|(root, &DrawingOf(unit), at, &shape)| {
-                    let (&id, &team, owner, &unit_type) = units.get(unit).ok()?;
-                    Some(Target {
-                        root,
-                        unit: Pointed::new(id, team, owner),
-                        tier: picking.tier(relation(team), book.own(unit_type)),
-                        base: at.translation(),
-                        shape,
+        scene.clear();
+        for (root, &DrawingOf(unit), at, &shape, drawn_by) in &roots {
+            let Ok((&id, &team, owner, &unit_type)) = units.get(unit) else {
+                continue;
+            };
+            let base = at.translation();
+            let target = Target {
+                root,
+                unit: Pointed::new(id, team, owner),
+                tier: picking.tier(relation(team), book.own(unit_type)),
+                base,
+                shape,
+                least: picking.least_at(&scale, base + Vec3::Y * (shape.height / 2.0)),
+            };
+            let shown = drawn_by
+                .into_iter()
+                .flat_map(PickParts::iter)
+                .filter_map(|part| {
+                    let (mesh, aabb, place, shown, material) = parts.get(part).ok()?;
+                    shown.get().then(|| Part {
+                        to_local: place.affine().inverse(),
+                        center: aabb.center.into(),
+                        half: aabb.half_extents.into(),
+                        mesh: mesh.id(),
+                        material: material.map(|material| material.id()),
                     })
-                }),
-        );
+                });
+            scene.push(target, shown);
+        }
+        let assets = PartAssets {
+            meshes: &meshes,
+            materials: &materials,
+        };
         let tiers = picking.tiers();
         for (ray_id, &ray) in rays.iter() {
             if ray_id.camera != camera {
                 continue;
             }
-            picking.hits(ray, &scale, &targets, &mut hits);
+            scene.hits(ray, assets, &mut hits);
             for tier in hits.chunk_by(|a, b| a.tier == b.tier) {
                 let picks = (tier.iter())
                     .map(|hit| (hit.root, HitData::new(camera, hit.depth, None, None)))
@@ -253,27 +305,10 @@ impl UnitPicking {
         u32::try_from(self.filters.len() + 1).expect("a file of few tiers")
     }
 
-    /// Writes to `out` each of `targets` that `ray` meets, each shape widened to the least radius
-    /// turned into meters at its center's depth as `scale` shows it, ranked by tier, then depth,
-    /// then stable id.
-    fn hits(&self, ray: Ray3d, scale: &PixelScale, targets: &[Target], out: &mut Vec<UnitHit>) {
-        out.clear();
-        out.extend(targets.iter().filter_map(|target| {
-            let center = target.base + Vec3::Y * (target.shape.height / 2.0);
-            let meters = scale.meters_at(center).unwrap_or(0.0);
-            let depth = (target.shape).entry(target.base, ray, self.least_radius_px * meters)?;
-            Some(UnitHit {
-                root: target.root,
-                unit: target.unit,
-                tier: target.tier,
-                depth,
-            })
-        }));
-        out.sort_unstable_by(|a, b| {
-            (a.tier.cmp(&b.tier))
-                .then(a.depth.total_cmp(&b.depth))
-                .then(a.unit.id.cmp(&b.unit.id))
-        });
+    /// The least radius in meters at `center`, its pixels as `scale` shows them at its depth;
+    /// none behind the camera.
+    fn least_at(&self, scale: &PixelScale, center: Vec3) -> f32 {
+        self.least_radius_px * scale.meters_at(center).unwrap_or(0.0)
     }
 }
 
@@ -283,6 +318,10 @@ fn tier_order(order: isize, tier: u32, tiers: u32) -> f32 {
     debug_assert!(tier < tiers, "a tier of the ranking");
     order as f32 + 0.5 * (tiers - tier) as f32 / (tiers + 1) as f32
 }
+
+mod mesh_ray;
+mod pick_parts;
+mod pick_scene;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
