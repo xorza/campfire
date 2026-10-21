@@ -10,3 +10,4 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Import.** The Tomahawk's and the Scud launcher's explosive weapons drop by `PreAttack`: each waits a `PreAttackDelay` before it fires.
 
 ## Ready
+- **Net.** A local session of bots alone that ends as its watcher closes the client logs that every player left as it writes its log.
