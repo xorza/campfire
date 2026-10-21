@@ -16,14 +16,14 @@ use campfire_units::{Dead, Owner};
 use campfire_values::Team;
 
 use crate::own_player::OwnPlayer;
-use crate::pointer::unit_meshes::UnitMeshes;
+use crate::pointer::unit_picking::UnderMouse;
 use crate::view::client_data::ClientData;
 use crate::view::drawing::{Drawing, DrawingOf};
 
-mod unit_meshes;
+pub(crate) mod unit_picking;
 
 /// What the cursor points at, as the player sees the match: the ground point under it, and the
-/// living unit whose drawn meshes the cursor's ray meets first.
+/// living units the units' picking backend ranks under it.
 #[derive(SystemParam)]
 pub(crate) struct Pointer<'w, 's> {
     window: Single<'w, 's, &'static Window, With<PrimaryWindow>>,
@@ -31,7 +31,7 @@ pub(crate) struct Pointer<'w, 's> {
     own: OwnPlayer<'w, 's>,
     units: LivingUnits<'w, 's>,
     drawings: Query<'w, 's, &'static Transform, With<DrawingOf>>,
-    meshes: UnitMeshes<'w, 's>,
+    under: Res<'w, UnderMouse>,
     data: Res<'w, ClientData>,
     hovers: Res<'w, HoverMap>,
     nodes: Query<'w, 's, (), With<Node>>,
@@ -89,13 +89,13 @@ impl Pointer<'_, '_> {
             except.is_sorted(),
             "a binary search needs the list in order"
         );
-        self.nearest(|unit| except.binary_search(&unit.id).is_err())
+        (self.under.iter()).find(|unit| except.binary_search(&unit.id).is_err())
     }
 
     /// The living unit of the player's own under the cursor.
     pub(crate) fn own_unit_under(&self) -> Option<StableId> {
         let seat = self.own.seat();
-        let unit = self.nearest(|unit| unit.owned_by(seat))?;
+        let unit = self.under.iter().find(|unit| unit.owned_by(seat))?;
         Some(unit.id)
     }
 
@@ -113,11 +113,6 @@ impl Pointer<'_, '_> {
             .drawn()
             .map(|(unit, at)| (unit, camera.world_to_viewport(place, at).ok()));
         out.extend(shown_within(rect, self.own.seat(), shown));
-    }
-
-    /// Of the living units, the one under the cursor that `keep` keeps.
-    fn nearest(&self, keep: impl Fn(Pointed) -> bool) -> Option<Pointed> {
-        self.meshes.nearest(self.ray()?, keep)
     }
 
     /// Each living unit with a drawing, and where the drawing stands.

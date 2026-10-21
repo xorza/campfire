@@ -16,6 +16,7 @@ use campfire_values::{ActionId, UnitType};
 use bevy::picking::hover::HoverMap;
 
 use super::*;
+use crate::pointer::unit_picking::UnderMouse;
 use crate::test_app;
 use crate::view::ViewPlugin;
 
@@ -200,10 +201,11 @@ fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selecti
 
 #[test]
 fn a_unit_shows_its_bars_while_selected_when_the_hud_shows_the_selected_alone() {
-    // Two units, each gauged on a stand; a camera whose ray meets no unit, as it has no
-    // viewport, so the selection alone shows bars: the first's, then the second's.
+    // Two units, each gauged on a stand, and none under the mouse, so the selection alone shows
+    // bars: the first's, then the second's.
     let mut app = test_app::view();
     app.init_resource::<HoverMap>();
+    app.init_resource::<UnderMouse>();
     app.add_systems(Update, HudPlugin::show_selected_bars);
     let world = app.world_mut();
     world.spawn((Window::default(), PrimaryWindow));

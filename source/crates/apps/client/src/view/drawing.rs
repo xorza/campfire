@@ -19,8 +19,3 @@ impl Drawing {
         self.0
     }
 }
-
-/// On each child of a drawing's root that draws its unit, its figure or one of its models: the
-/// pointer picks the unit by the meshes under it, and not by a gauge or a ring under the root.
-#[derive(Component, Debug)]
-pub(crate) struct Drawn;

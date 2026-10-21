@@ -33,7 +33,7 @@ use campfire_values::{Team, UnitType};
 
 use crate::engine_text::{EngineMessage, EngineText};
 use crate::view::client_data::ClientData;
-use crate::view::drawing::{Drawing, DrawingOf, Drawn};
+use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
 use crate::view::glide::{Follows, FrameClock, Glide, Spot};
@@ -55,6 +55,7 @@ pub(crate) mod ground_heights;
 pub(crate) mod look;
 pub(crate) mod match_colors;
 pub(crate) mod package_source;
+pub(crate) mod pixel_scale;
 pub(crate) mod player_camera;
 pub(crate) mod scene_lights;
 pub(crate) mod terrain_image;
@@ -336,7 +337,7 @@ impl ViewPlugin {
                         ))
                         .id();
                     for model in models {
-                        commands.spawn((model.bundle(Paint::of(*team)), Drawn, ChildOf(root)));
+                        commands.spawn((model.bundle(Paint::of(*team)), ChildOf(root)));
                     }
                     continue;
                 }
@@ -361,7 +362,7 @@ impl ViewPlugin {
             } else {
                 &palette.teams[data.team_colors.place(*team)]
             };
-            let figure = commands.spawn((Figure, Drawn, Mesh3d(mesh.clone()))).id();
+            let figure = commands.spawn((Figure, Mesh3d(mesh.clone()))).id();
             let look = Look {
                 figure,
                 alive: alive.clone(),

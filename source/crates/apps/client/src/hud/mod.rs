@@ -31,7 +31,6 @@ use campfire_units::{Dead, Life};
 use campfire_values::{Rank, Team};
 
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind, SlotPlace};
-use crate::hud::pixel_scale::PixelScale;
 use crate::hud::ring::Ring;
 use crate::own_player::OwnPlayer;
 use crate::pointer::Pointer;
@@ -40,9 +39,9 @@ use crate::view::ViewSystems;
 use crate::view::client_data::ClientData;
 use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::look::UnitShape;
+use crate::view::pixel_scale::PixelScale;
 
 mod gauge;
-mod pixel_scale;
 mod ring;
 
 /// Makes the match readable with plain shapes over the drawings: a bar of the life over every unit
