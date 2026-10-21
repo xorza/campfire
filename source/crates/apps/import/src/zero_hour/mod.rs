@@ -4,7 +4,7 @@ use std::path::Path;
 use bevy_math::UVec2;
 use campfire_client_files::{
     CameraFile, ClientFile, ClientObjects, ClientUnits, HudFile, KeysFile, MapConditions,
-    MapLights, ShownBars, TeamColors, TerrainFile,
+    MapLights, PickingFile, PixelRadius, ShownBars, TeamColors, TerrainFile,
 };
 use campfire_codec::Toml;
 use campfire_common::{MapName, PackageFingerprint};
@@ -12,7 +12,7 @@ use campfire_math::Num;
 use campfire_package_disk::{PackageDir, PackageWriter, WriteError};
 use campfire_store::DurableDir;
 use campfire_units::HeightGrid;
-use campfire_values::{PackagePath, Speed};
+use campfire_values::{FilterData, PackagePath, Speed};
 
 use crate::texture::dds_file::DdsFile;
 use crate::texture::tga_file::{TgaAlpha, TgaFile, TgaHeader};
@@ -150,6 +150,13 @@ impl ZeroHour {
             bars: ShownBars::Selected,
         };
         writer.write(HudFile::path(), &hud.encode())?;
+        // Units before structures, each at least 10 pixels wide, where the game picks the nearest
+        // triangle alone (09-zero-hour.md, Zero Hour's units come before its structures).
+        let picking = PickingFile {
+            tiers: vec![FilterData::parse("all:!structure").expect("a filter")],
+            least_radius_px: PixelRadius::new(10.0).expect("a radius at least 0"),
+        };
+        writer.write(PickingFile::path(), &picking.encode())?;
         // The players' colors, each team's by its index (02-engine-core.md, Team colors in the
         // one material).
         if let Some(colors) = TeamColors::new(game.multiplayer.colors().to_vec()) {

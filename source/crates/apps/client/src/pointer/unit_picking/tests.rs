@@ -8,8 +8,11 @@ use bevy::picking::hover::HoverMap;
 use bevy::transform::components::Transform;
 use bevy::ui::{Node, Val};
 use bevy::window::{CursorMoved, PrimaryWindow, Window, WindowEvent, WindowResolution};
-use campfire_sim::{IdAllocator, StableId};
-use campfire_values::Team;
+use campfire_client_files::PixelRadius;
+use campfire_sim::IdAllocator;
+use campfire_test_packages::TestMode;
+use campfire_units::UnitTypeBook;
+use campfire_values::{EngineTag, FilterData, TagProperties};
 
 use super::*;
 use crate::pointer::Pointer;
@@ -93,12 +96,84 @@ fn the_hits_rank_by_tier_then_depth_then_id_and_a_least_radius_widens_a_small_un
     assert_eq!(ranked(&hits), []);
     let widened = UnitPicking {
         least_radius_px: 10.0,
+        ..UnitPicking::default()
     };
     widened.hits(beside, &scale, &[thin], &mut hits);
     let want = 10.0 - 301.0_f32.sqrt() / 90.0;
     assert!(
         hits.len() == 1 && (hits[0].depth - want).abs() < 1e-5,
         "{hits:?}"
+    );
+}
+
+#[test]
+fn the_mode_s_tiers_rank_a_unit_by_its_type_s_tags_and_its_team_s_relation() {
+    // The engine's tags `avatar` and `projectile`, which a filter selects only when it names
+    // it, and the mode's `structure`.
+    let mut tags = TagNames::new(&[
+        EngineTag::new(0, "avatar", TagProperties::NONE),
+        EngineTag::new(1, "projectile", TagProperties::NONE.with_named_only()),
+    ]);
+    let [avatar, projectile] = ["avatar", "projectile"].map(|name| tags.named(name).unwrap());
+    let structure = tags.names_mut().add("structure");
+    let of = |tiers: &[&str]| {
+        let file = PickingFile {
+            tiers: (tiers.iter())
+                .map(|text| FilterData::parse(text).unwrap())
+                .collect(),
+            least_radius_px: PixelRadius::new(10.0).unwrap(),
+        };
+        UnitPicking::resolve(&file, &tags)
+    };
+    let hero = TagSet::NONE.with(avatar);
+    let [hostile, neutral, friendly] = [Relation::Hostile, Relation::Neutral, Relation::Friendly];
+    // A hero's player points at enemy heroes, then at enemies, then at the rest: a neutral
+    // unit is an enemy, as it may be attacked. With no side, `enemies` selects no unit, as it
+    // does not select a friendly one.
+    let moba = of(&["enemies:avatar", "enemies"]).unwrap();
+    assert_eq!((moba.tiers(), moba.least_radius_px), (3, 10.0));
+    let tier = |relation, tags| moba.tier(relation, tags);
+    assert_eq!(
+        [
+            tier(Some(hostile), hero),
+            tier(Some(neutral), hero),
+            tier(Some(hostile), TagSet::NONE),
+            tier(Some(friendly), hero),
+            tier(None, hero),
+        ],
+        [0, 0, 1, 2, 2]
+    );
+    // Zero Hour's units come before its structures, whatever their relation, and a projectile,
+    // which `all` does not select unless it names it, falls to the last tier.
+    let zero_hour = of(&["all:!structure"]).unwrap();
+    let tier = |relation, tags| zero_hour.tier(relation, tags);
+    assert_eq!(
+        [
+            tier(None, TagSet::NONE),
+            tier(Some(friendly), TagSet::NONE),
+            tier(None, TagSet::NONE.with(structure)),
+            tier(Some(hostile), TagSet::NONE.with(projectile)),
+        ],
+        [0, 0, 1, 1]
+    );
+    // A mode of no file: one tier, and no least size. A tag the match lacks refuses the file.
+    let none = UnitPicking::default();
+    assert_eq!(
+        (none.tier(None, hero), none.tiers(), none.least_radius_px),
+        (0, 1, 0.0)
+    );
+    let refused = of(&["enemies", "enemies:flying"]).unwrap_err();
+    assert_eq!(refused.to_string(), "no filter \"enemies:flying\"");
+    // The MOBA test content's file, against its match's tags: its heroes, then its enemies.
+    let packages = TestMode::Moba3v3.packages();
+    let books = packages.name_books();
+    let tags = books.get::<UnitTypeBook>().unwrap().tags();
+    let moba = UnitPicking::resolve(&ClientData::read(&packages).picking, tags).unwrap();
+    let hero = TagSet::NONE.with(tags.named("avatar").unwrap());
+    assert_eq!((moba.tiers(), moba.least_radius_px), (3, 0.0));
+    assert_eq!(
+        [Some(hostile), Some(friendly)].map(|relation| moba.tier(relation, hero)),
+        [0, 2]
     );
 }
 
@@ -118,6 +193,7 @@ fn the_hover_takes_the_unit_on_top_and_a_ui_node_over_it_hides_it() {
     let mut app = test_app::headless();
     test_app::add_match(&mut app);
     app.add_plugins(UnitPickingPlugin);
+    app.insert_resource(TagBook::new(0, [], []));
     let world = app.world_mut();
     let window = world
         .spawn((
@@ -132,7 +208,7 @@ fn the_hover_takes_the_unit_on_top_and_a_ui_node_over_it_hides_it() {
     let mut ids = IdAllocator::default();
     let [near, behind] = [0.0, -5.0].map(|z| {
         let id = ids.allocate();
-        let unit = world.spawn((id, Team::new(0))).id();
+        let unit = world.spawn((id, Team::new(0), UnitType::new(0))).id();
         let root =
             (world.spawn((DrawingOf(unit), Transform::from_xyz(0.0, 0.0, z), post(0.5)))).id();
         (id, root)

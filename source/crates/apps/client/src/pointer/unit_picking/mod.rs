@@ -2,10 +2,11 @@ use bevy::app::{App, Plugin, PreUpdate};
 use bevy::camera::{Camera, Camera3d, Projection};
 use bevy::ecs::entity::Entity;
 use bevy::ecs::message::MessageWriter;
-use bevy::ecs::query::With;
+use bevy::ecs::query::{Allow, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::{Local, Query, Res, ResMut};
+use bevy::ecs::schedule::common_conditions::{resource_added, resource_exists};
+use bevy::ecs::system::{Local, Query, Res, ResMut, SystemParam};
 use bevy::math::Vec3;
 use bevy::picking::PickingSystems;
 use bevy::picking::backend::ray::RayMap;
@@ -13,26 +14,40 @@ use bevy::picking::backend::{HitData, PointerHits};
 use bevy::picking::pointer::PointerId;
 use bevy::shape::Ray3d;
 use bevy::transform::components::GlobalTransform;
+use campfire_client_files::PickingFile;
+use campfire_common::ErrorReport;
+use campfire_script::{Filter, MatchNames, TagNames, UnknownName};
+use campfire_sim::{StableId, Unpredicted};
+use campfire_units::{Dead, Owner, TagBook};
+use campfire_values::{Relation, Relations, TagSet, Team, UnitType};
+use tracing::error;
 
-use crate::pointer::{LivingUnits, Pointed};
+use crate::own_player::OwnPlayer;
+use crate::pointer::Pointed;
+use crate::view::client_data::ClientData;
 use crate::view::drawing::DrawingOf;
 use crate::view::look::UnitShape;
 use crate::view::pixel_scale::PixelScale;
 
 /// The units' picking backend: each frame, the units the ray of each pointer through the match's
 /// camera meets, by their shapes, sent to Bevy's picking as hits of their drawings' roots, ranked
-/// by tier, then depth, then stable id (12-unit-picking.md, Picking is a Bevy picking backend).
+/// by tier, then depth, then stable id (02-engine-core.md, Picking is a Bevy picking backend).
 #[derive(Debug)]
 pub(crate) struct UnitPickingPlugin;
 
 /// The living units the mouse's ray meets this frame, ranked as the hover ranks them, the first
-/// on top (12-unit-picking.md, One ranked list for the client's queries).
+/// on top (02-engine-core.md, One ranked list for the client's queries).
 #[derive(Resource, Debug, Default)]
 pub(crate) struct UnderMouse(Vec<Pointed>);
 
-/// How the units are picked: one tier, and no least size on the screen, the shapes alone.
+/// How the units are picked, as the mode's picking file gives it with its filters resolved
+/// against the match's tags: the tiers' filters, a unit in the tier of the first that selects it
+/// and one none selects in a last tier, and the least radius on the screen in pixels; one tier
+/// and no least size until the match's names come, or for a file that names a tag the match
+/// lacks (02-engine-core.md, The mode chooses its picking).
 #[derive(Resource, Debug, Default)]
 pub(crate) struct UnitPicking {
+    filters: Box<[Filter]>,
     least_radius_px: f32,
 }
 
@@ -69,6 +84,28 @@ type ShapedRoots<'w, 's> = Query<
     ),
 >;
 
+/// The living units the client holds: each one's stable id, its team, the player who controls
+/// it, and its type.
+type Living<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static StableId,
+        &'static Team,
+        Option<&'static Owner>,
+        &'static UnitType,
+    ),
+    (Without<Dead>, Allow<Unpredicted>),
+>;
+
+/// How the player regards each team: the side its units show as friends on, and the teams'
+/// relations on the match's entity.
+#[derive(SystemParam, Debug)]
+struct Regard<'w, 's> {
+    own: OwnPlayer<'w, 's>,
+    relations: Query<'w, 's, &'static Relations, Allow<Unpredicted>>,
+}
+
 /// The match's camera: its entity, its viewport and order, where it stands, and its projection.
 type MatchCamera<'w, 's> = Query<
     'w,
@@ -86,11 +123,32 @@ impl Plugin for UnitPickingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<UnderMouse>()
             .init_resource::<UnitPicking>()
-            .add_systems(PreUpdate, Self::pick.in_set(PickingSystems::Backend));
+            .add_systems(
+                PreUpdate,
+                (
+                    Self::resolve.run_if(resource_added::<MatchNames>),
+                    Self::pick.run_if(resource_exists::<TagBook>),
+                )
+                    .chain()
+                    .in_set(PickingSystems::Backend),
+            );
     }
 }
 
 impl UnitPickingPlugin {
+    /// Resolves the mode's picking file against the match's tags as they come; a file that names
+    /// a tag the match lacks is refused, logged, and picks as a mode of no file.
+    fn resolve(
+        data: Res<'_, ClientData>,
+        names: Res<'_, MatchNames>,
+        mut picking: ResMut<'_, UnitPicking>,
+    ) {
+        *picking = UnitPicking::resolve(&data.picking, names.tags()).unwrap_or_else(|problem| {
+            error!(path = %PickingFile::path(), error = %ErrorReport::of(&problem), "a client data file names what the match lacks");
+            UnitPicking::default()
+        });
+    }
+
     /// Sends, for each pointer whose ray of the match's camera meets a unit, its hits of each
     /// tier in a `PointerHits` of its own, of an `order` above the camera's and below its UI's, a
     /// higher tier above, and keeps the mouse's ranked units. Bevy's hits own their list, one for
@@ -102,9 +160,8 @@ impl UnitPickingPlugin {
     fn pick(
         rays: Res<'_, RayMap>,
         cameras: MatchCamera<'_, '_>,
-        roots: ShapedRoots<'_, '_>,
-        units: LivingUnits<'_, '_>,
-        picking: Res<'_, UnitPicking>,
+        (roots, units): (ShapedRoots<'_, '_>, Living<'_, '_>),
+        (picking, book, regard): (Res<'_, UnitPicking>, Res<'_, TagBook>, Regard<'_, '_>),
         mut under: ResMut<'_, UnderMouse>,
         mut sent: MessageWriter<'_, PointerHits>,
         mut targets: Local<'_, Vec<Target>>,
@@ -121,17 +178,19 @@ impl UnitPickingPlugin {
             return;
         }
         let scale = PixelScale::of(place.compute_transform(), projection, size.y);
+        let relations = regard.relations.single().ok();
+        let side = regard.own.side();
+        let relation = |team| Some(relations?.between(side?, team));
         targets.clear();
         targets.extend(
             roots
                 .iter()
                 .filter_map(|(root, &DrawingOf(unit), at, &shape)| {
-                    let (&id, &team, owner, _) = units.get(unit).ok()?;
-                    let unit = Pointed::new(id, team, owner);
+                    let (&id, &team, owner, &unit_type) = units.get(unit).ok()?;
                     Some(Target {
                         root,
-                        unit,
-                        tier: picking.tier(unit),
+                        unit: Pointed::new(id, team, owner),
+                        tier: picking.tier(relation(team), book.own(unit_type)),
                         base: at.translation(),
                         shape,
                     })
@@ -165,14 +224,33 @@ impl UnderMouse {
 }
 
 impl UnitPicking {
-    /// The tier of `unit`, 0 on top.
-    const fn tier(&self, _unit: Pointed) -> u32 {
-        0
+    /// The picking `file` gives, its filters resolved against `tags`; an error for a tag the
+    /// match lacks.
+    fn resolve(file: &PickingFile, tags: &TagNames) -> Result<Self, UnknownName> {
+        let filters = (file.tiers.iter())
+            .map(|filter| Filter::resolve(filter, tags))
+            .collect::<Result<_, _>>()?;
+        Ok(Self {
+            filters,
+            least_radius_px: file.least_radius_px.get(),
+        })
     }
 
-    /// How many tiers it ranks units in.
-    const fn tiers(&self) -> u32 {
-        1
+    /// The tier of a unit of type tags `tags` of a team the player regards with `relation`, 0 on
+    /// top: the first filter's that selects it, or the last tier; with no relation, before the
+    /// player has a side, a filter selects it only as it would for every relation.
+    fn tier(&self, relation: Option<Relation>, tags: TagSet) -> u32 {
+        let selects = |filter: &Filter| match relation {
+            Some(relation) => filter.selects(relation, tags),
+            None => Relation::ALL.iter().all(|&any| filter.selects(any, tags)),
+        };
+        let tier = (self.filters.iter().position(selects)).unwrap_or(self.filters.len());
+        u32::try_from(tier).expect("a file of few tiers")
+    }
+
+    /// How many tiers it ranks units in: one for each filter, and the last.
+    fn tiers(&self) -> u32 {
+        u32::try_from(self.filters.len() + 1).expect("a file of few tiers")
     }
 
     /// Writes to `out` each of `targets` that `ray` meets, each shape widened to the least radius

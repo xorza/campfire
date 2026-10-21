@@ -21,9 +21,7 @@ use campfire_sim::Capability;
 use campfire_stats::{StatsData, TypePoolsData};
 use campfire_store::internals::TestDir;
 use campfire_units::TypeTagsData;
-use campfire_values::{
-    FilterData, Number, Ranked, Relation, RelationSet, Scalar, Share, Stat, TextId,
-};
+use campfire_values::{Number, Ranked, Relation, RelationSet, Scalar, Share, Stat, TextId};
 
 use super::*;
 use crate::texture::samples::ktx2;
@@ -666,6 +664,11 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     assert_eq!(keys.press, press);
     let hud = Toml::parse::<HudFile>(&test_dir.read_text("one/game/client/hud.toml")).unwrap();
     assert_eq!(hud.bars, ShownBars::Selected);
+    let picking = test_dir.read_text("one/game/client/picking.toml");
+    assert_eq!(
+        picking,
+        "tiers = [\"all:!structure\"]\nleast_radius_px = 10.0\n"
+    );
     let colors = test_dir.read_text("one/game/client/team_colors.toml");
     let colors = Toml::parse::<TeamColors>(&colors).unwrap();
     assert_eq!(colors.colors(), [[255, 200, 0], [255, 0, 0]]);

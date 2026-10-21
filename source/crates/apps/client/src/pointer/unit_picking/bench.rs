@@ -78,6 +78,7 @@ pub(crate) fn picking(c: &mut Criterion) {
     let ray = Ray3d::new(eye.translation, Dir3::new(-eye.translation).unwrap());
     let picking = UnitPicking {
         least_radius_px: 10.0,
+        ..UnitPicking::default()
     };
     let mut hits = Vec::with_capacity(COUNT);
     group.bench_function("units", |b| {
