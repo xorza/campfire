@@ -83,8 +83,8 @@ pub enum ButtonDropCause {
     Science,
     /// It trains an object that does not walk, or variations one of which does not.
     NoWalker,
-    /// It builds an object of no body, as a small structure (12-base-defenses.md, A cylinder
-    /// structure builds as a circle).
+    /// It builds an object of no body, as a small structure (09-zero-hour.md, A cylinder structure
+    /// builds as a circle).
     NoBody,
     /// It trains at an object of no `ProductionUpdate`, or of a queue past 1 to 255.
     NoQueue,
@@ -136,7 +136,7 @@ impl ProductionImport {
     /// Converts the supply of `producer`, a unit type of `names`, its buttons converted: its
     /// node, its drop-off, its gather, the last of its command slots, and the units it frees and
     /// keeps as its production's, a building that spawns and trains nothing taking the production
-    /// of its `ProductionUpdate` (12-base-defenses.md, A spawner takes its production update); the
+    /// of its `ProductionUpdate` (09-zero-hour.md, A spawner takes its production update); the
     /// names of the objects it frees and keeps.
     fn supply_of(
         &mut self,
@@ -214,7 +214,7 @@ impl ProductionImport {
             return drop(ButtonDropCause::NoType);
         };
         // A train of variations makes them in its object's place, so they walk, and it need not
-        // (12-base-defenses.md, `BuildVariations` converts to a train's variants).
+        // (09-zero-hour.md, `BuildVariations` converts to a train's variants).
         let mut variations = Vec::with_capacity(build.variations.len());
         for name in &build.variations {
             let Some(variation) = rules.objects.object(name.as_bytes()) else {
@@ -330,10 +330,9 @@ impl ProductionImport {
         Some(made.name.clone())
     }
 
-    /// The objects `build`'s prerequisites require, each line the objects any one of which
-    /// passes it, as `ProductionPrerequisite::isSatisfied` reads a line (12-base-defenses.md, A
-    /// prerequisite line converts to a list); a cause for a line of a science, or of an object no
-    /// file defines.
+    /// The objects `build`'s prerequisites require, each line the objects any one of which passes
+    /// it, as `ProductionPrerequisite::isSatisfied` reads a line (09-zero-hour.md, A prerequisite
+    /// line converts to a list); a cause for a line of a science, or of an object no file defines.
     fn requires<'a>(
         rules: &'a ZeroHourRules,
         build: &IniBuild,

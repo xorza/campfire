@@ -97,8 +97,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     );
     // The package's own reader takes its units file: the tank, the wall and the rocks the map
     // places, America's start objects, the barracks, the ranger and the pathfinder their command
-    // sets make, and the shell the tank's cannon fires. Its units drive, by stats, orders and navigation, no faster
-    // than the tank's 30.5 m a second.
+    // sets make, and the shell the tank's cannon fires. Its units drive, by stats, orders and
+    // navigation, no faster than the tank's 30.5 m a second.
     let mode = PackageDir::new(test_dir.path("one/game"))
         .mode_packages(Some(&named))
         .unwrap();

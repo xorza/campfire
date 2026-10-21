@@ -194,8 +194,8 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     );
     assert_eq!(supply.gathers.len(), 1);
     // The jeep, of no locomotor, trains as one of its two variations, each a type of its own; the
-    // kite, one of whose variations flies, drops (12-base-defenses.md, `BuildVariations` converts
-    // to a train's variants).
+    // kite, one of whose variations flies, drops (09-zero-hour.md, `BuildVariations` converts to a
+    // train's variants).
     let MadeSection::Train(jeep) = &import.actions[&declared("train_jeep")].made else {
         panic!("the jeep's train");
     };
@@ -212,8 +212,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     };
     assert!(import.dropped.contains(&kite), "{:?}", import.dropped);
     // The site of a production update keeps 3 guards, each back 30,000 ms, 900 frames, after
-    // it dies, and trains nothing (12-base-defenses.md, A kept `SpawnBehavior` converts to
-    // spawns).
+    // it dies, and trains nothing (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns).
     let spawns = SpawnsData {
         unit_type: declared("guard"),
         count: NonZeroU8::new(3).unwrap(),

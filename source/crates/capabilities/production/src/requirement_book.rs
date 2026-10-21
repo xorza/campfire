@@ -5,10 +5,10 @@ use campfire_declarations::Book;
 use campfire_script::MatchNames;
 use campfire_values::{ActionId, ModifierId, UnitType};
 
-/// What each train and build with a `requires` needs its player to hold, by action: entries of
-/// unit types, of one of which it owns a living, complete unit, and player modifiers, one run of
-/// each after another, each entry a run of its types (12-base-defenses.md, A requirement may be
-/// any one of several types). Package data, not state.
+/// What each train and build with a `requires` needs its player to hold, by action: entries of unit
+/// types, of one of which it owns a living, complete unit, and player modifiers, one run of each
+/// after another, each entry a run of its types (04-capabilities/production.md, A requirement may
+/// be any one of several types). Package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 #[component(immutable)]
 pub struct RequirementBook {

@@ -13,7 +13,7 @@ use crate::requires_data::RequiresData;
 /// The section of an action of kind `train`: the unit type of its package it makes, what its
 /// player must hold for it to join a queue (04-capabilities/actions.md, Each kind owns its
 /// section), and the unit types of its package it makes in its type's place, one drawn for each
-/// unit, when it names some (12-base-defenses.md, A train may make one of several types).
+/// unit, when it names some (04-capabilities/production.md, A train may make one of several types).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TrainData {

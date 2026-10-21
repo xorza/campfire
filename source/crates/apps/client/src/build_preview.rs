@@ -52,8 +52,8 @@ use crate::view::unit_looks::UnitLooks;
 #[derive(Debug)]
 pub(crate) struct BuildPreviewPlugin;
 
-/// The root of the preview's drawing: the build it shows, its footprint's figure, the point it stands
-/// at, none while the cursor is off the ground, and whether the building may stand there.
+/// The root of the preview's drawing: the build it shows, its footprint's figure, the point it
+/// stands at, none while the cursor is off the ground, and whether the building may stand there.
 #[derive(Component, Debug)]
 struct Ghost {
     placing: Placing,
@@ -267,8 +267,8 @@ impl BuildPreviewPlugin {
         ghost.fit = fit;
     }
 
-    /// Gives the preview's footprint the tint of its fit, and its look the builder's team and, where
-    /// the building may not stand, the blocked tint.
+    /// Gives the preview's footprint the tint of its fit, and its look the builder's team and,
+    /// where the building may not stand, the blocked tint.
     fn tint(
         tints: Res<'_, Tints>,
         (index, builders): (

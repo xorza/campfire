@@ -15,8 +15,8 @@ pub struct RequiresData {
     pub modifiers: Vec<DeclaredName>,
 }
 
-/// An entry of a `requires`' `units`: a unit type's name, or a list of names any one of which
-/// holds it, as Zero Hour's prerequisite line of several objects (12-base-defenses.md, A
+/// An entry of a `requires`' `units`: a unit type's name, or a list of names any one of which holds
+/// it, as Zero Hour's prerequisite line of several objects (04-capabilities/production.md, A
 /// requirement may be any one of several types).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequiredUnit(Vec<DeclaredName>);

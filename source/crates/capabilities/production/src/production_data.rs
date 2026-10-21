@@ -13,7 +13,7 @@ use crate::frame_point::FramePoint;
 /// gatherer that leaves its exit starts to gather (04-capabilities/production.md, A producer may
 /// start its gatherers); the unit types of its package that leave its exit once, as its site
 /// completes (04-capabilities/production.md, A building may come with its units); and the spawns
-/// it keeps (12-base-defenses.md, A building may keep spawns).
+/// it keeps (04-capabilities/production.md, A building may keep spawns).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionData {

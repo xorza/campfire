@@ -18,10 +18,10 @@ use serde::{Deserialize, Serialize};
 use crate::producer_spec::{ProducerSpec, SpawnSpec};
 use crate::trains::Trains;
 
-/// A building's kept spawns (12-base-defenses.md, A building may keep spawns): the spawns that
-/// live, by stable id, and the tick each that died comes back at, earliest first. Its hook pushes
-/// its building into the index of the spawns due at each insert, a restore's too, and each change
-/// that leaves a return pushes it at its first. State of the server's.
+/// A building's kept spawns (04-capabilities/production.md, A building may keep spawns): the spawns
+/// that live, by stable id, and the tick each that died comes back at, earliest first. Its hook
+/// pushes its building into the index of the spawns due at each insert, a restore's too, and each
+/// change that leaves a return pushes it at its first. State of the server's.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_insert = KeptSpawns::pushed)]
 pub(crate) struct KeptSpawns {

@@ -13,7 +13,7 @@ const SHORT_OF_THE_DEFENSE: Num = Num::int(150);
 
 /// A base defense's defense on Tournament Desert (04-capabilities/combat.md, A shot streak
 /// gives a stage's modifier; 04-capabilities/control.md, An idle unit scans for a target, as its
-/// type declares; 12-base-defenses.md, A building may stand on a circle): player 1
+/// type declares; 04-capabilities/production.md, A building may stand on a circle): player 1
 /// builds a power plant, where the supply play places its own, and the defense, 216 m along −z
 /// from `Player_1_Start`, where the skirmish play places its barracks, clear of the cliffs, at its
 /// faction's `PlacementViewAngle`; and the bot, America, drives its dozer from its start to a
@@ -71,7 +71,7 @@ impl DefensePlay {
     };
 
     /// GLA's Stinger site, whose three kept Stinger soldiers kill the dozer with their missiles
-    /// (12-base-defenses.md, A building may keep spawns).
+    /// (04-capabilities/production.md, A building may keep spawns).
     pub(crate) const STINGER: Self = Self {
         against: AgainstAmerica::GLA,
         dozer: "glainfantryworker",

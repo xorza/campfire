@@ -129,7 +129,7 @@ impl IniSupply {
     }
 
     /// The spawns its object keeps: its first `SpawnBehavior` of no `OneShot` that names a
-    /// template (12-base-defenses.md, A kept `SpawnBehavior` converts to spawns).
+    /// template (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns).
     pub(crate) fn kept(&self) -> Option<&IniSpawn> {
         self.spawns
             .iter()

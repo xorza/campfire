@@ -21,7 +21,8 @@ pub struct ProducerSpec {
 }
 
 /// A producer's spawns as a match runs them: `count` units of `unit_type`, each that dies coming
-/// back `replace` ticks later, rounded up (12-base-defenses.md, A building may keep spawns).
+/// back `replace` ticks later, rounded up (04-capabilities/production.md, A building may keep
+/// spawns).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpawnSpec {
     pub unit_type: UnitType,

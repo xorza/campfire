@@ -35,7 +35,7 @@ use crate::train_spec::TrainSpec;
 use crate::trained_units::{Trained, TrainedUnits};
 
 /// The random stream a producer draws the variant of each train of variants from, once a tick
-/// (12-base-defenses.md, A train may make one of several types).
+/// (04-capabilities/production.md, A train may make one of several types).
 const VARIANT_STREAM: RngStream = RngStream::new("production.variant");
 
 /// Where a producer's trained units come out and where they go, on the ground plane: its exit

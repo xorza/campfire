@@ -11,6 +11,7 @@
 - **A producer may name its exit and rally.** A unit type's exit and default rally points lie in its own frame and turn with it; a trained unit spawns at the free cell nearest the exit, as a teleport finds its cell, so it stands outside every static body, and walks to its rally point, or gathers there when it is a node.
 - **No refund is lost.** A cancel whose refund would pass the largest amount a player holds is refused.
 - **A trained unit runs a hook.** A unit a train makes runs `on_unit_trained` with its producer, as Warcraft III fires `EVENT_PLAYER_UNIT_TRAIN_FINISH`, queued on the server as it spawns.
+- **A train may make one of several types.** A train's `variants` lists the unit types it makes in place of its own, one drawn for each unit from the producer's own random stream, as Zero Hour's `ThingFactory::newObject` draws a `BuildVariations` entry. Refused: the first variant alone, which drops two of the Technical's looks; variants of the look alone, as the chassis differ in their bodies, which the sim reads.
 
 ## Supply
 
@@ -20,6 +21,7 @@
 ## Requirements
 
 - **Requirements are checked at the start.** A train checks them as it joins its queue, a build as it starts, and a requirement lost later stops nothing; tech is requirements and player modifiers.
+- **A requirement may be any one of several types.** An entry of `requires.units` is a type or a list of types, and a list holds when the player holds any one of them, as Zero Hour's prerequisite line `Object = A B` (`UNIT_OR_WITH_PREV`) and StarCraft II's requirement nodes of "or". Refused: OpenRA's prerequisite tokens that buildings provide, which make every building of an alternative name a token it provides, a second name for one fact.
 
 ## Construction
 
@@ -30,14 +32,16 @@
 - **A site is not yet a building.** It gives no supply, meets no requirement, and its tag blocks its attacks, casts, uses and trains.
 - **A site keeps its build's time.** A site holds the time its build gives at its rank from its placement, so its growth and a script's read of its share look up no book, and a restore checks the time against the build.
 - **A building may come with its units.** A producer's `free` lists the unit types of its package that leave its exit once, on the server, as its site completes, as OpenRA's `FreeActor` gives a refinery its harvester and Zero Hour's `SpawnBehavior` of `OneShot` a supply center its gatherer ([Zero Hour supply](../../research/zero-hour-supply.md)). Refused: the mode script's `on_site_complete`, which can spawn a unit but not send it through an exit or order it.
+- **A building may keep spawns.** A producer's `spawns = { unit_type, count, replace_ms }` leave its exit as its site completes, each that dies comes back `replace_ms` later, and they die with it, as Zero Hour's `SpawnBehavior` of `SpawnedRequireSpawner` keeps the Stinger site's soldiers; a producer of no exit sends them from the free cell nearest its center. Refused: the mode script's `on_unit_died`, which every game would write again; `free` units, which leave once and are never replaced.
 - **A complete site runs a hook.** A site that completes runs `on_site_complete`, as Warcraft III fires `EVENT_PLAYER_UNIT_CONSTRUCT_FINISH`, queued on the server by stable id in its tick; a predicting client grows its sites alike and runs no hook.
 - **A build point its team sees.** A placement needs its point in a cell its builder's team saw in the last Vision stage, as Zero Hour's `isLocationLegalToBuild` refuses a point under shroud first, so a build into the fog finds out nothing of what stands there; the fog a restored match holds is filled again as its first tick starts, from the units and reveals the last stage saw.
 - **Tags block production.** A train starts only when its producer's tags do not block `produce`, as a cast starts only when they do not block `cast`; each kind of action names the one block that stops it, so a stun that a mode declares can stop a queue or leave it running.
 
 ## Placement
 
-- **A seen enemy blocks, a friendly or hidden one moves out.** A placement fails where its box overlaps a wall, a static body, or a walker of a team not friendly to the builder's that the builder's group sees. A refusal for a hidden walker would tell the builder it is there, so a hidden enemy is moved out as a friendly walker is, at the cost that a player may move a hidden enemy by building on it.
-- **A walker in the box goes to the nearest free cell,** as a teleport places a unit: collision would push a walker caught between the new box and another static body from one into the other every tick.
+- **A building may stand on a circle.** A build's body is a box or a circle, and its placement tests that shape against the walls, the map's bounds and the bodies, and its builders walk to the shape's nearest point, as Zero Hour's pathfinder gives a cylinder structure a circle of its radius (`Pathfinder::classifyObjectFootprint`). Refused: a circle's bounding box, which blocks the corners that the original leaves free and makes the tunnel network 50 m square.
+- **A seen enemy blocks, a friendly or hidden one moves out.** A placement fails where its body overlaps a wall, a static body, or a walker of a team not friendly to the builder's that the builder's group sees. A refusal for a hidden walker would tell the builder it is there, so a hidden enemy is moved out as a friendly walker is, at the cost that a player may move a hidden enemy by building on it.
+- **A walker in the box goes to the nearest free cell,** as a teleport places a unit: collision would push a walker caught between the new body and another static body from one into the other every tick.
 - **Near and away rules.** A build may need to stand near a unit, as a Protoss pylon's field, or away from one, as a town hall keeps from minerals.
 - **Production asks navigation through units.** A placement reads the walls from `units`' book of them, which navigation builds from its map section, and tests the static bodies through the unit grid; a trained unit's free cell comes from a one-shot system `units` declares and navigation registers. Refused: production depending on navigation for two reads, and the pathing grid's static index and ring search moved down into `units`, which would hold navigation's pathing types.
 

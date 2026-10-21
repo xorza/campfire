@@ -166,7 +166,7 @@ impl SupplyImport {
 
     /// The spawns `object`, a building that trains, keeps: its kept spawn's first template,
     /// which walks, typed in `names`, its number and its replace delay as the import converts a
-    /// time (12-base-defenses.md, A kept `SpawnBehavior` converts to spawns); none for no kept
+    /// time (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns); none for no kept
     /// spawn, and its spawn dropped for a number or a delay past what the engine holds.
     pub(crate) fn kept(
         &mut self,

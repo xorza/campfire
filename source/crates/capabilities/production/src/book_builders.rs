@@ -175,9 +175,9 @@ impl Production {
 }
 
 impl BuildBook {
-    /// The build of each action that constructs: its style, the body of its building, a type
-    /// of its package that stands, its life and refund at the start, and its placement rules; an
-    /// error for a name the match does not have, a building of no body (12-base-defenses.md, A
+    /// The build of each action that constructs: its style, the body of its building, a type of its
+    /// package that stands, its life and refund at the start, and its placement rules; an error for
+    /// a name the match does not have, a building of no body (04-capabilities/production.md, A
     /// building may stand on a circle), or a start of no life for a building that lives.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let tags = cx.fact::<UnitTypes>()?.tags();

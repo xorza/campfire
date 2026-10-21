@@ -41,12 +41,13 @@ type PlacedUnit<S> = (
 
 impl<S: TeamSight> Placement<'_, '_, S> {
     /// Whether `body`, the box or the circle of `spec`'s building, may stand at `position` for a
-    /// builder of `team`: it lies within the bounds, `team` saw its point in the last Vision
-    /// stage, as Zero Hour refuses a build point under shroud (04-capabilities/production.md, A
-    /// build point its team sees), and its inside shares no point with a wall of its layer, a
-    /// static body of its layer, or the body on its layer of a walker that is not of a team
-    /// friendly to `team`; and it meets its placement's rules. Each unit it tests is one `team` sees, as `SeenNear` finds
-    /// them. Touching is not overlap (12-base-defenses.md, A building may stand on a circle).
+    /// builder of `team`: it lies within the bounds, `team` saw its point in the last Vision stage,
+    /// as Zero Hour refuses a build point under shroud (04-capabilities/production.md, A build
+    /// point its team sees), and its inside shares no point with a wall of its layer, a static body
+    /// of its layer, or the body on its layer of a walker that is not of a team friendly to `team`;
+    /// and it meets its placement's rules. Each unit it tests is one `team` sees, as `SeenNear`
+    /// finds them. Touching is not overlap (04-capabilities/production.md, A building may stand on
+    /// a circle).
     pub fn passes(&mut self, team: Team, position: Vec3, body: Body, spec: BuildSpec<'_>) -> bool {
         let placed = Placed::new(position, body.shape());
         let bound = placed.shape.bound();
