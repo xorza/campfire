@@ -2,6 +2,39 @@
 
 The open steps, in the order they are done, and the foundations. The rules are in [AGENTS.md](AGENTS.md#workflow).
 
+## The issue log's network items
+
+The four open items of the issue log, each fixed at its cause. They go before the slice: a stack test then fails on the warnings it causes, the slice's among them. Each batch is one commit, ends with `cargo drive gate` passing, and stops for review.
+
+### Net 1. Each warning a stack test causes, at its cause (M)
+
+`net-interpolation`, `net-messages`, `net-replication`, `net-prediction`, `net`, `schedule`, their tests. First: batch Net 2 fails on each warning this batch leaves.
+
+- **One set of each frame phase.** Each typed system of frame interpolation joins its phase set alone, `FramePhaseSystems::Run`, which `FrameInterpolationPlugin` already puts in the stage's set of each schedule, so the hierarchy holds no redundant edge in `RunFixedMainLoop`, `FixedPostUpdate` or `PostUpdate`. Builds: one way to say a thing.
+- **A redundant edge fails every stack app's build.** `StrictSchedule` gains the hierarchy check alone, which the stepper gives each schedule of its apps beside the full strictness of `Update` and `FixedUpdate`, so the next redundant edge fails the build of every stack test, as one in `Update` does now. Builds: what can be forgotten is a test where one can see the breach.
+- **A warning a test provokes is a typed event.** The stack's warnings that a test causes on purpose become `LogEvent`s of their crates, as `net`'s are: a message no system read in its frame (`net-messages`) and a link both targets name (`net-replication`); a test takes each with `LogCheck::take`, which names what it expects. `net-messages` and `net-replication` gain `campfire-log`, a crate of the workspace, as a dependency. Builds: no data in strings.
+- **A test reads what it sends.** The wire-cost scenario and the replicon receiver's removal test read their messages with `ReceivedMessages`; `ProtocolClient` reads the session's offer and reports it in its state, which the server's stop test asserts; the test of an unread message's drop takes its event.
+- **A duplicate pre-spawn hash is a contract breach.** Prediction asserts as a `PreSpawned` enters a client's world that no living pre-spawned entity holds its hash, as the error rule asks of a caller's logic error, in place of `bevy_replicon`'s error log, which no typed event can take; its test becomes the assert's.
+- **Check:** each test that caused a warning takes it or no longer causes it; a test of `StrictSchedule`'s hierarchy check fails a schedule of a redundant edge; no golden moves.
+
+### Net 2. The stepper's log check (S)
+
+`net-stepper`, `net-harness`. After Net 1, whose warnings it would fail on.
+
+- **The stepper holds the process's log check.** `Stepper` takes `LogCheck::start()` as it builds its apps and holds it as its last field, so it drops after them and fails its test on each event at Warn or Error no test took, as `Match` and `InProcessMatch` do now; `InProcessMatch` drops its own, which the stepper's replaces. Builds: what can be forgotten is a type; one way to say a thing.
+- **Check:** every stack test passes under the check; a test of a stepper whose app logs a warning fails as it drops; no golden moves.
+
+### Net 3. A pending handshake's early datagrams (M)
+
+`net-udp`, `net-packets`, `net-harness`, 11-net-stack/udp.md. Independent of Net 1 and Net 2.
+
+- **A pending handshake holds its early datagrams.** A sealed datagram whose connection ID a pending handshake holds goes to that handshake, which keeps a bounded few and hands them to its packet session as it is established, the rest dropped; the stateless reset answers only an ID that no packet session and no handshake holds. RFC 9001 §5.7 lets a server store the 1-RTT packets that come before the handshake's end and use them after it, and RFC 9000 §5.2 resets only a packet no connection can claim. Refused: a reset for a pending ID, which ends the client's connection that the handshake is about to establish; a drop of every early datagram, which delays the session's first messages by a resend. Builds: a fact fixed at the handshake's start is the route's.
+- **Check:** a test of the emulated UDP link whose jitter brings the client's first sealed datagram before its last handshake packet: the connection is established, no reset is sent, and the early datagram's message arrives; `InProcessSetup` names its stepper's seed, and the harness's 1v1 through delayed links runs at seed 5, which fails today.
+
+## Foundations
+
+- **F1. A stack test runs with no log check.** The stepper builds its apps with no check of what they log, so a warning or an error that a change causes in a stack test passes unseen, and a test that causes one on purpose cannot take it. It holds the items Net interpolation, Net messages and Net stepper. Net 1 and Net 2 fix it.
+
 ## Slice: Zero Hour automatic attack
 
 A Zero Hour player's idle units and base defenses attack the enemies that come within their weapons' reach, with no order ([proposal](docs/design/12-zero-hour-auto-attack.md)). Each batch is one commit, ends with `cargo drive gate` passing, and stops for review.
