@@ -83,4 +83,7 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 310
 
 [base]
-standing = [7, 11]
+standing = [7, 10]
+
+[attack]
+standing = [5, 3]

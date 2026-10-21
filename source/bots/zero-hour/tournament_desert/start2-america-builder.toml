@@ -1,9 +1,10 @@
-# The builder bot of Tournament Desert's player 2, at `Player_2_Start` (1011, -2103), with the money of
-# a skirmish's 50,000: its dozer builds a power plant, a barracks, a supply center and a war factory
-# beside and behind its command center, away from player 1's way; the barracks trains infantry, the
-# factory vehicles, and the center a second dozer, after the last build, so no build goes to it. It
-# orders no attack and no move. Each slot is the train or the build its unit type's action of
-# that name holds. Play it with `--server-bot 1=<this file>`.
+# The builder of America at Tournament Desert's start 2, `Player_2_Start`. It starts standard, with
+# its command center and dozer, and the money of a skirmish's 50,000: its dozer builds a power
+# plant, a barracks, a supply center and a war factory beside and behind its command center, away
+# from player 1's way; the barracks trains infantry, the factory vehicles, and the center a second
+# dozer, after the last build, so no build goes to it. It orders no attack and no move. Each slot
+# is the train or the build its unit type's action of that name holds. Play it with
+# `--server-bot 1=<this file> --pick 1:faction=america --option start_money=50000`.
 
 # The dozer's builds, at America's angle of -135 degrees.
 [[order]]

@@ -18,7 +18,8 @@
 //! then its dozer builds a power plant, a supply center and a war factory, the factory trains
 //! three crusaders, and their shells destroy the bot's command center, in the ticks of the first
 //! shot, the first damage and the center's death, and the match goes on, as the bot's other
-//! buildings count for its victory. The bot plays the builder's orders, `bots/builder.toml`: it
+//! buildings count for its victory. The bot plays the builder's orders,
+//! `source/bots/zero-hour/tournament_desert/start2-america-builder.toml`: it
 //! builds its base, trains its units, each counted and pinned, and attacks nothing, its units no
 //! farther from its center than the pinned distance. In a third match, player 1 plays China: its
 //! dozer builds a power plant and a supply center, whose free truck gathers at the nearest dock,
@@ -32,8 +33,11 @@
 //! nothing, fires steered missiles at the bot's dozer, which drives within its reach, and kills
 //! it. In a sixth, two bots, China and America, start with their factions' bases, every base
 //! building whole and two of each base unit, no body on another or on a wall, and fight by the
-//! orders the check makes of the imported mode, which `bots/base_china.toml` and
-//! `bots/base_america.toml` keep, for 20 minutes, after which the buildings each holds are pinned.
+//! orders the check makes of the imported mode, which the sample bots
+//! `start1-china-base-attacker.toml` and `start2-america-base-attacker.toml` keep, for 20
+//! minutes, after which the buildings each holds are pinned. In a seventh, the attacker bot,
+//! `start1-america-attacker.toml`, builds its base and sends its army at the builder bot every
+//! minute, and the buildings each holds after 15 minutes are pinned.
 //! Every other map the game lists loads in the imported mode. It fails when `GENERALSZH_DATA`
 //! names no install, so a machine with no copy never passes as one that checked.
 //!
@@ -60,6 +64,7 @@ use crate::golden::{Golden, Measured};
 use crate::import_check::ImportCheck;
 use crate::pins::{Fingerprints, MAP};
 
+mod attack_play;
 mod base_play;
 mod command_line;
 mod defense_play;

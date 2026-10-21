@@ -20,6 +20,6 @@ The user starts the client as a spectator of Tournament Desert, where two bots, 
 
 The user. Last: it ends the slice. Its decisions are in [Sessions](docs/design/08-sessions.md), [Navigation](docs/design/04-capabilities/navigation.md), [Production](docs/design/04-capabilities/production.md) and [Zero Hour](docs/design/09-zero-hour.md).
 
-- **Check:** the user watches Tournament Desert's two bots fight from their bases in the client, with `bots/base_china.toml` and `bots/base_america.toml` of `checks/zero-hour-check`, and plays a match of their own on a base, with `--pick 0:start=base`.
+- **Check:** the user watches Tournament Desert's two bots fight from their bases in the client, with `source/bots/zero-hour/tournament_desert/start1-china-base-attacker.toml` and `start2-america-base-attacker.toml`, and plays a match of their own on a base, with `--pick 0:start=base`.
 
 ## Foundations

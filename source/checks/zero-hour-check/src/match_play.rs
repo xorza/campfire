@@ -10,7 +10,7 @@ use campfire_capabilities::{Directive, Match, Order};
 use campfire_common::{DeclaredName, Seat, Tick};
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
 use campfire_math::{Num, Vec3};
-use campfire_mode::{OptionPicks, OptionValue, SeatPick};
+use campfire_mode::{MatchEnd, OptionPicks, OptionValue, SeatPick};
 use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
 use campfire_players::PlayersWorld;
@@ -18,11 +18,11 @@ use campfire_production::Site;
 use campfire_protocol::{InputRules, SeatPlan, ServerInput};
 use campfire_runner::SessionWorld;
 use campfire_sim::{Position, StableId};
-use campfire_units::{BuildTarget, GroundPoint, Life, MapPoint, Units};
+use campfire_units::{BuildTarget, GroundPoint, Life, MapPoint, MoveStep, Units, UnitsWorld};
 use campfire_values::{ResourceId, UnitType};
 
 use crate::failure::CheckFailure;
-use crate::pins::HZ;
+use crate::pins::{BotMatchEnd, HZ};
 
 /// America's command center, the building a skirmish starts a player with.
 pub(crate) const CENTER: &str = "americacommandcenter";
@@ -213,6 +213,38 @@ impl MatchPlay {
         Ok(dozer)
     }
 
+    /// Runs ticks until the match ends or its tick reaches `limit`: the tick it ended and its
+    /// result, if it did, and the buildings, units that do not walk, each whole and alive, that
+    /// players 1 and 2 hold then.
+    pub(crate) fn fight(&mut self, limit: u64) -> BotMatchEnd {
+        let end = loop {
+            self.step();
+            let world = self.game();
+            let end = world
+                .match_entity()
+                .and_then(|entity| world.get::<MatchEnd>(entity).copied());
+            if end.is_some() || self.tick.get() >= limit {
+                break end;
+            }
+        };
+        let standing = [0, 1].map(|seat| {
+            MatchUnits::of(self.game())
+                .all()
+                .filter(|(_, unit)| {
+                    MatchUnits::owned_by(unit, seat)
+                        && !unit.contains::<MoveStep>()
+                        && !unit.contains::<Site>()
+                        && unit.get::<Life>().is_some_and(|life| !life.is_empty())
+                })
+                .count()
+        });
+        BotMatchEnd {
+            ended: end.map(|end| end.tick().get()),
+            result: end.map(MatchEnd::result),
+            standing,
+        }
+    }
+
     /// The farthest a unit of the first bot stood from its home, on the ground plane, in meters;
     /// none with no bot.
     pub(crate) fn bot_farthest(&self) -> Option<Num> {
@@ -365,6 +397,14 @@ impl MatchPlay {
     pub(crate) fn end(mut self) {
         self.fixed.end();
     }
+}
+
+/// The bot of the order script `text`, its names those of `packages`; a failure when it is no
+/// script or names what the mode lacks.
+pub(crate) fn bot_script(packages: &ModePackages, text: &str) -> Result<BotScript, CheckFailure> {
+    let script = OrderScript::parse(text).map_err(CheckFailure::BotOrders)?;
+    let books = packages.name_books();
+    BotScript::new(&script, &BotNames::new(&books)).map_err(CheckFailure::BotNames)
 }
 
 /// The slot of `action` among the actions of the type `unit` of `packages` in its slot kind

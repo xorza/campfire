@@ -29,6 +29,7 @@
 - **AI orders only its own unit,** checked as queued and applied when the call returns.
 - **A reset as a jungle monster's.** `order_reset` walks a unit to its spawn, taking no order on the way, and refills it as it arrives, as League of Legends' jungle monsters hard-reset.
 - **An avatar has no AI.** A player controls it, and a bot plays it through player inputs.
+- **A skirmish bot of rules, planned.** A bot that plays a whole match is engine code that data configures: it gathers, rebuilds its base from a build list, and sends its army when the army is ready, as Zero Hour's `AISkirmishPlayer` steers by `AIData.ini`'s build lists and gatherer counts and OpenRA's `ModularBot` by its YAML modules ([Test matches](../../research/test-matches.md)). Refused: order scripts at ticks alone, whose waves the defenses wear down as fast as they come, so no base falls; more start money, which leaves the bots unspent with no base fallen.
 
 ## Character
 

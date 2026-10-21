@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use campfire_actions::ActionTarget;
-use campfire_bots::{BotNames, BotScript, OrderScript};
+use campfire_bots::BotScript;
 use campfire_capabilities::Order;
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::Num;
@@ -64,7 +64,8 @@ const FACTORY_CHAIN: [PlannedBuilding; 3] = [
 
 /// The builder bot's orders, which the play's bot plays and a host gives a local server's bot
 /// (09-zero-hour.md, A bot that builds and does not fight).
-const BUILDER: &str = include_str!("../bots/builder.toml");
+pub(crate) const BUILDER: &str =
+    include_str!("../../../bots/zero-hour/tournament_desert/start2-america-builder.toml");
 
 /// The skirmish on Tournament Desert of `START_MONEY` against the builder bot (designs 18 and 19;
 /// 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
@@ -112,13 +113,7 @@ impl SkirmishPlay {
                 return None;
             }
         };
-        let script = OrderScript::parse(BUILDER).map_err(CheckFailure::BotOrders);
-        let bot = script.and_then(|script| {
-            let books = packages.name_books();
-            let names = BotNames::new(&books);
-            BotScript::new(&script, &names).map_err(CheckFailure::BotNames)
-        });
-        let bot = match bot {
+        let bot = match match_play::bot_script(&packages, BUILDER) {
             Ok(bot) => bot,
             Err(failure) => {
                 failures.push(failure);

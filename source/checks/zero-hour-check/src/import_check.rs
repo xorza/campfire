@@ -17,6 +17,7 @@ use campfire_package_disk::PackageDir;
 use campfire_production::{DropOffData, NodeData};
 use tracing::info;
 
+use crate::attack_play::AttackPlay;
 use crate::base_play::BasePlay;
 use crate::defense_play::DefensePlay;
 use crate::error::CheckError;
@@ -467,13 +468,29 @@ impl ImportCheck<'_> {
         if let Some(base) = BasePlay::run(played, rate, &mut self.failures)? {
             let expected = self.pinned(|golden| golden.base, base);
             self.failures
-                .extend(Differs::of(base, expected).map(CheckFailure::BaseEnd));
+                .extend(Differs::of(base, expected).map(CheckFailure::Base));
             self.measured.base = Some(base);
             info!(
                 ended = ?base.ended,
                 result = ?base.result,
                 standing = ?base.standing,
                 "two bots started with their bases, and fought"
+            );
+        }
+        let played = self
+            .game
+            .mode_packages(Some(self.map))
+            .map_err(CheckError::Load)?;
+        if let Some(attack) = AttackPlay::run(played, rate, &mut self.failures) {
+            let expected = self.pinned(|golden| golden.attack, attack);
+            self.failures
+                .extend(Differs::of(attack, expected).map(CheckFailure::Attack));
+            self.measured.attack = Some(attack);
+            info!(
+                ended = ?attack.ended,
+                result = ?attack.result,
+                standing = ?attack.standing,
+                "the attacker bot built its base and fought the builder bot"
             );
         }
         if let Some(drive) = StartDrive::run(self.packages, rate, &mut self.failures) {

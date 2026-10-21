@@ -1,8 +1,9 @@
-# The base bot of america at Tournament Desert's Player_2_Start, which the Zero Hour check makes from the
-# imported mode: `CAMPFIRE_BLESS=1 cargo drive run zero-hour` writes it again. Every 20 s each
-# producer of its base queues its next train; every 40 s its army moves to Player_1_Start, (1005, -584),
-# and attacks the nearest enemy 20 s later. Play it with `--server-bot 1=<this file>
-# --pick 1:faction=america --pick 1:start=base --option start_money=50000`.
+# The base attacker of America at Tournament Desert's start 2, `Player_2_Start`. It starts
+# with its faction's base and builds nothing: every 20 s each producer of its base queues its next
+# train, and every 40 s its army moves to start 1, (1005, -584), and attacks the nearest enemy
+# 20 s later. The Zero Hour check makes it from the imported mode: `CAMPFIRE_BLESS=1 cargo drive run
+# zero-hour` writes it again. Play it with `--server-bot 1=<this file> --pick 1:faction=america
+# --pick 1:start=base --option start_money=50000`.
 
 [[order]]
 tick = 600

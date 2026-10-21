@@ -3,27 +3,26 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 
 use campfire_actions::TypeSlotsData;
-use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::Match;
 use campfire_common::DeclaredName;
 use campfire_geometry::Placed;
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::Vec3;
 use campfire_mode::internals::MarkerOf;
-use campfire_mode::{ListEntry, MatchEnd, Mode, ModeParam, OptionPicks, OptionValue, SeatPick};
+use campfire_mode::{ListEntry, Mode, ModeParam, OptionPicks, OptionValue, SeatPick};
 use campfire_package::ModePackages;
 use campfire_production::Site;
 use campfire_protocol::{InputRules, SeatPlan};
 use campfire_sim::Position;
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
-use campfire_units::{Body, Life, MoveStep, Units, UnitsWorld, WallBook};
+use campfire_units::{Body, Life, MoveStep, Units, WallBook};
 use campfire_values::{Scalar, UnitType};
 
 use crate::error::CheckError;
 use crate::failure::CheckFailure;
-use crate::match_play::{MatchPlay, START_MONEY};
-use crate::pins::{BaseEnd, HZ};
+use crate::match_play::{self, MatchPlay, START_MONEY};
+use crate::pins::{BotMatchEnd, HZ};
 
 /// The ticks between a bot's rounds of trains: each producer queues its next train.
 const TRAIN_EVERY: u64 = HZ * 20;
@@ -31,8 +30,8 @@ const TRAIN_EVERY: u64 = HZ * 20;
 const MOVE_EVERY: u64 = HZ * 40;
 /// The ticks after each move that the army attacks the nearest enemy it sees.
 const ATTACK_AFTER: u64 = HZ * 20;
-/// The most ticks the bots' match runs, and the last of their orders: both spend their money
-/// within it.
+/// The most ticks the bots' match runs, and the last of their orders: their armies wear each other
+/// down to a stand within it.
 const BASE_LIMIT: u64 = HZ * 60 * 20;
 /// The most bytes a bot's file may hold.
 const MAX_SCRIPT: usize = 1 << 20;
@@ -43,8 +42,11 @@ const MAX_SCRIPT: usize = 1 << 20;
 struct BaseBot {
     seat: u32,
     faction: &'static str,
-    home: &'static str,
-    enemy: &'static str,
+    /// Its faction's name as a reader reads it.
+    title: &'static str,
+    /// Its start's number, `n` of `Player_<n>_Start`, and the other start's.
+    start: u32,
+    enemy: u32,
 }
 
 /// China at Tournament Desert's first start, America at its second.
@@ -52,14 +54,16 @@ const BOTS: [BaseBot; 2] = [
     BaseBot {
         seat: 0,
         faction: "china",
-        home: "Player_1_Start",
-        enemy: "Player_2_Start",
+        title: "China",
+        start: 1,
+        enemy: 2,
     },
     BaseBot {
         seat: 1,
         faction: "america",
-        home: "Player_2_Start",
-        enemy: "Player_1_Start",
+        title: "America",
+        start: 2,
+        enemy: 1,
     },
 ];
 
@@ -91,7 +95,7 @@ impl BasePlay {
         packages: ModePackages,
         rate: NonZeroU32,
         failures: &mut Vec<CheckFailure>,
-    ) -> Result<Option<BaseEnd>, CheckError> {
+    ) -> Result<Option<BotMatchEnd>, CheckError> {
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
         let picks = match OptionPicks::named(&packages.data().options, &[start_money]) {
             Ok(picks) => picks,
@@ -132,53 +136,29 @@ impl BasePlay {
         play: &mut MatchPlay,
         packages: &ModePackages,
         failures: &mut Vec<CheckFailure>,
-    ) -> Result<Option<BaseEnd>, BaseFault> {
+    ) -> Result<Option<BotMatchEnd>, BaseFault> {
         for bot in BOTS {
             let base = Base::of(packages, bot.faction)?;
             base.check(play.game(), bot.seat, failures)?;
-            let marker = |name| {
+            let marker = |start: u32| {
+                let name = format!("Player_{start}_Start");
                 let of = MarkerOf {
                     tag: "start",
                     param: "name",
-                    value: name,
+                    value: &name,
                 };
                 Mode::marker_point(play.game(), of).ok_or(CheckFailure::NoStarts)
             };
-            let (home, enemy) = (marker(bot.home)?, marker(bot.enemy)?);
+            let (home, enemy) = (marker(bot.start)?, marker(bot.enemy)?);
             let text = bot.script(packages, &base, enemy)?;
             bot.pin(&text, failures)?;
-            let script = OrderScript::parse(&text).map_err(CheckFailure::BotOrders)?;
-            let books = packages.name_books();
-            let script =
-                BotScript::new(&script, &BotNames::new(&books)).map_err(CheckFailure::BotNames)?;
-            play.drive_bot(bot.seat, script, home);
+            play.drive_bot(bot.seat, match_play::bot_script(packages, &text)?, home);
         }
         let overlaps = overlaps(play.game());
         if overlaps > 0 {
             failures.push(CheckFailure::BaseOverlaps(overlaps));
         }
-        let end = loop {
-            play.step();
-            let world = play.game();
-            let end = world
-                .match_entity()
-                .and_then(|entity| world.get::<MatchEnd>(entity).copied());
-            if end.is_some() || play.tick().get() >= BASE_LIMIT {
-                break end;
-            }
-        };
-        let mut standing = [0; 2];
-        for (bot, standing) in BOTS.iter().zip(&mut standing) {
-            let base = Base::of(packages, bot.faction)?;
-            for building in [&base.building].into_iter().chain(&base.buildings) {
-                *standing += Base::count(play.game(), building, bot.seat)?;
-            }
-        }
-        Ok(Some(BaseEnd {
-            ended: end.map(|end| end.tick().get()),
-            result: end.map(MatchEnd::result),
-            standing,
-        }))
+        Ok(Some(play.fight(BASE_LIMIT)))
     }
 }
 
@@ -275,10 +255,16 @@ impl Base {
 }
 
 impl BaseBot {
-    /// Its file, beside the check's manifest.
+    /// Its file among the sample bots, by its start, its faction and its role.
     fn path(self) -> PathBuf {
-        PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bots"))
-            .join(format!("base_{}.toml", self.faction))
+        PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../bots/zero-hour/tournament_desert"
+        ))
+        .join(format!(
+            "start{}-{}-base-attacker.toml",
+            self.start, self.faction
+        ))
     }
 
     /// Its orders, of `base` in `packages`, its army sent at `enemy`: every `TRAIN_EVERY` ticks,
@@ -356,14 +342,17 @@ impl BaseBot {
         }
         orders.sort_by_key(|&(tick, _)| tick);
         let mut text = format!(
-            "# The base bot of {faction} at Tournament Desert's {home}, which the Zero Hour check \
-             makes from the\n# imported mode: `CAMPFIRE_BLESS=1 cargo drive run zero-hour` \
-             writes it again. Every {train} s each\n# producer of its base queues its next train; \
-             every {every} s its army moves to {enemy}, ({x}, {z}),\n# and attacks the nearest \
-             enemy {attack} s later. Play it with `--server-bot {seat}=<this file>\n# --pick \
-             {seat}:faction={faction} --pick {seat}:start=base --option {START_MONEY}`.\n",
+            "# The base attacker of {title} at Tournament Desert's start {start}, \
+             `Player_{start}_Start`. It starts\n# with its faction's base and builds nothing: \
+             every {train} s each producer of its base queues its next\n# train, and every \
+             {every} s its army moves to start {enemy}, ({x}, {z}), and attacks the nearest \
+             enemy\n# {attack} s later. The Zero Hour check makes it from the imported mode: \
+             `CAMPFIRE_BLESS=1 cargo drive run\n# zero-hour` writes it again. Play it with \
+             `--server-bot {seat}=<this file> --pick {seat}:faction={faction}\n# --pick \
+             {seat}:start=base --option {START_MONEY}`.\n",
             faction = self.faction,
-            home = self.home,
+            title = self.title,
+            start = self.start,
             enemy = self.enemy,
             seat = self.seat,
             train = TRAIN_EVERY / HZ,

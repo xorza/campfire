@@ -105,12 +105,12 @@ pub(crate) struct BotBase {
     pub(crate) farthest_m: i64,
 }
 
-/// How the base play's match of two bots stood as it ended or its limit passed: the tick it ended
-/// and its result, if it did, and the buildings of its base each seat held (09-zero-hour.md,
-/// Bots that fight from a base).
+/// How a play's match of two bots stood as it ended or its limit passed: the tick it ended and its
+/// result, if it did, and the buildings each seat held, each whole and alive (09-zero-hour.md,
+/// Bots that fight from a base; 09-zero-hour.md, A bot that builds and attacks).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct BaseEnd {
+pub(crate) struct BotMatchEnd {
     pub(crate) ended: Option<u64>,
     pub(crate) result: Option<MatchResult>,
     pub(crate) standing: [usize; 2],

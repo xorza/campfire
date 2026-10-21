@@ -5,7 +5,7 @@ use campfire_orders::OrdersDirective;
 use derive_more::Display;
 
 use crate::pins::{
-    BaseEnd, BotBase, DefenseTicks, FactorySteps, FightSteps, Fingerprints, FoughtCounts,
+    BotBase, BotMatchEnd, DefenseTicks, FactorySteps, FightSteps, Fingerprints, FoughtCounts,
     LookCounts, MapCounts, MissileTicks, ProducedCounts, ProductionSteps, SuppliedCounts,
     SupplySteps, TerrainDrawn,
 };
@@ -64,11 +64,11 @@ pub(crate) enum CheckFailure {
     /// The mode takes no pick the play's host gives of its options.
     #[display("the mode takes no pick of {_0}")]
     Options(PickError),
-    /// The builder bot's orders file is no order script.
-    #[display("the builder bot's orders: {_0}")]
+    /// A bot's orders file is no order script.
+    #[display("a bot's orders: {_0}")]
     BotOrders(OrderScriptError),
-    /// The builder bot's orders name what the mode lacks.
-    #[display("the builder bot's orders: {_0}")]
+    /// A bot's orders name what the mode lacks.
+    #[display("a bot's orders: {_0}")]
     BotNames(BotScriptError),
     /// The bot's base differs from the pinned.
     #[display("the bot built {_0}")]
@@ -168,7 +168,10 @@ pub(crate) enum CheckFailure {
     BotFile(&'static str),
     /// The base play's match stood otherwise than the pinned at its end or its limit.
     #[display("the bases' bots ended as {_0}")]
-    BaseEnd(Box<Differs<BaseEnd>>),
+    Base(Box<Differs<BotMatchEnd>>),
+    /// The attack play's match stood otherwise than the pinned at its end or its limit.
+    #[display("the attacker and the builder ended as {_0}")]
+    Attack(Box<Differs<BotMatchEnd>>),
     /// A run that blesses failed before it measured every value the file pins, so it writes none.
     #[display("the run measured not every value it pins, so it writes no golden file")]
     Unmeasured,

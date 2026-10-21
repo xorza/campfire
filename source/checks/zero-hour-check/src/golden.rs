@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::CheckError;
 use crate::pins::{
-    BaseEnd, BotBase, DefenseTicks, Fingerprints, FoughtCounts, LookCounts, MapCounts,
+    BotBase, BotMatchEnd, DefenseTicks, Fingerprints, FoughtCounts, LookCounts, MapCounts,
     MissileTicks, ProducedCounts, SkirmishTicks, SuppliedCounts, SupplyTicks, TerrainCounts,
 };
 
@@ -17,7 +17,7 @@ use crate::pins::{
 /// gives: the fingerprints, a run on Linux and a run on macOS alike; Tournament Desert's counts;
 /// the import's looks, trains, builds, supply and weapons; the plays' ticks, the supply play's
 /// deliveries, the defense plays' hits and kills and the missile play's shot, hit and kill among
-/// them; the bot's base; and the end of the base play's match.
+/// them; the bot's base; and how the base play's and the attack play's matches stood.
 /// A run pins them, and a run that blesses writes them again (09-zero-hour.md, The check's
 /// measures are a golden file).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,7 +39,8 @@ pub(crate) struct Golden {
     pub(crate) stinger: DefenseTicks,
     pub(crate) missile: MissileTicks,
     pub(crate) bot: BotBase,
-    pub(crate) base: BaseEnd,
+    pub(crate) base: BotMatchEnd,
+    pub(crate) attack: BotMatchEnd,
 }
 
 /// What a run measured so far of `Golden`'s values, each none until its check or its play
@@ -61,7 +62,8 @@ pub(crate) struct Measured {
     pub(crate) stinger: Option<DefenseTicks>,
     pub(crate) missile: Option<MissileTicks>,
     pub(crate) bot: Option<BotBase>,
-    pub(crate) base: Option<BaseEnd>,
+    pub(crate) base: Option<BotMatchEnd>,
+    pub(crate) attack: Option<BotMatchEnd>,
 }
 
 impl Golden {
@@ -122,6 +124,7 @@ impl Measured {
             missile: self.missile?,
             bot: self.bot?,
             base: self.base?,
+            attack: self.attack?,
         })
     }
 }
