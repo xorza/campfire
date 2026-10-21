@@ -14,13 +14,12 @@ The user. Last: it ends the slice. Its decisions are in [Production](docs/design
 
 ## Slice: Test matches
 
-The user starts the client as a spectator of Tournament Desert, where two bots, China and America, each start with a base of every building its faction builds and two of each unit it trains, and send their armies at each other; and the user starts a match of their own on such a base ([proposal](docs/design/12-test-matches.md)). Each batch is one commit, ends with `cargo drive gate` passing, and stops for review.
+The user starts the client as a spectator of Tournament Desert, where two bots, China and America, each start with a base of every building its faction builds and two of each unit it trains, and send their armies at each other; and the user starts a match of their own on such a base. Each batch is one commit, ends with `cargo drive gate` passing, and stops for review.
 
-### 5. The fold and the play (S)
+### 1. The play (S)
 
-08-sessions.md, 04-capabilities/production.md, 06-script-api.md, 09. Last: it ends the slice.
+The user. Last: it ends the slice. Its decisions are in [Sessions](docs/design/08-sessions.md), [Navigation](docs/design/04-capabilities/navigation.md), [Production](docs/design/04-capabilities/production.md) and [Zero Hour](docs/design/09-zero-hour.md).
 
-- **The fold.** The decisions go to 08-sessions.md, whose "Singleplayer is a local server" gains the watcher, production.md, the mode's script API and 09, the facts stay in research/test-matches.md, and the proposal is deleted.
-- **Check:** the user watches Tournament Desert's two bots fight from their bases in the client, and plays a match of their own on a base.
+- **Check:** the user watches Tournament Desert's two bots fight from their bases in the client, with `bots/base_china.toml` and `bots/base_america.toml` of `checks/zero-hour-check`, and plays a match of their own on a base, with `--pick 0:start=base`.
 
 ## Foundations

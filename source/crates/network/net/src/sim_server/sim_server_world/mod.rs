@@ -147,7 +147,7 @@ impl SimServerWorld for World {
         let log = self.resource::<Session>().log();
         if log.result().is_none() {
             // Every seat a player controlled left, and no player holds a link; a session of bots
-            // alone runs on until its match ends or a stop (12-test-matches.md, A local session
+            // alone runs on until its match ends or a stop (08-sessions.md, A local session
             // may seat bots alone).
             let bots_alone = !log.header().terms.seats_a_player();
             if stop == StopRequest::NotAsked && (bots_alone || !Door::is_empty(self)) {

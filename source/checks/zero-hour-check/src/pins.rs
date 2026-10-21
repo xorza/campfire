@@ -106,7 +106,7 @@ pub(crate) struct BotBase {
 }
 
 /// How the base play's match of two bots stood as it ended or its limit passed: the tick it ended
-/// and its result, if it did, and the buildings of its base each seat held (12-test-matches.md,
+/// and its result, if it did, and the buildings of its base each seat held (09-zero-hour.md,
 /// Bots that fight from a base).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

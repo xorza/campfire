@@ -301,7 +301,8 @@ fn a_completed_site_frees_its_units_out_of_its_exit_in_their_order() {
             assert_eq!((grunts.len(), builders.len()), (0, 1));
         }
         // A depot spawned whole, not as a site, at (10, 0), frees them as it spawns, out of its
-        // exit at (13.5, 0.5) (12-test-matches.md, A building that spawns whole frees its units).
+        // exit at (13.5, 0.5) (04-capabilities/production.md, A building that spawns whole frees
+        // its units).
         shop.hall(&mut game, halves(20, 0));
         let grunts = Shop::spawned(&mut game, shop.grunt);
         let builders = Shop::spawned(&mut game, yard.builder);
@@ -323,7 +324,7 @@ fn a_completed_site_frees_its_units_out_of_its_exit_in_their_order() {
 fn a_depot_spawned_whole_keeps_its_spawns_and_a_restore_sends_none_again() {
     // A depot that keeps two grunts, spawned whole at (10, 0): both leave its exit at (13.5, 0.5)
     // as it spawns; a restore of the next tick holds those two, and sends none again
-    // (12-test-matches.md, A building that spawns whole frees its units).
+    // (04-capabilities/production.md, A building that spawns whole frees its units).
     let scene = || {
         let Building { mut game, shop, .. } = Building::new(Rules::of(Style::Alone));
         let spec = ProducerSpec {

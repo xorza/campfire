@@ -42,7 +42,7 @@ pub(crate) struct ProductionImport {
     pub(crate) supply: SupplyImport,
 }
 
-/// A faction's base, which a seat that starts with one gets beside its start (12-test-matches.md,
+/// A faction's base, which a seat that starts with one gets beside its start (09-zero-hour.md,
 /// A base start): each type its start builders build but its faction building, once each, in
 /// their command sets' order, and each type those buildings and its faction building train, once
 /// each, in that order.

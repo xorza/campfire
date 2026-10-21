@@ -27,7 +27,7 @@ use crate::zero_hour::map_import::SLOTS;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::skirmish_start::{FactionStart, SkirmishStart};
 
-/// How many of each unit type a seat that starts with a base gets (12-test-matches.md, A base
+/// How many of each unit type a seat that starts with a base gets (09-zero-hour.md, A base
 /// start).
 const BASE_COUNT: i64 = 2;
 
@@ -88,7 +88,7 @@ pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capabilit
         teams,
         max_move_speed,
         // A match start of eight seats that start with bases spawns some 40 units for each, at
-        // about 10 operations a unit (12-test-matches.md, A base start).
+        // about 10 operations a unit (09-zero-hour.md, A base start).
         script_limits: ScriptLimits {
             per_call: NonZeroU64::new(8000).expect("8000 is no zero"),
             player: 8000,
@@ -114,8 +114,8 @@ pub(crate) struct ModeImport<'a> {
 /// manifest names the teams, the rules package's mode script, its params of what each faction
 /// starts with and its choice of a faction, `start` (09-zero-hour.md, A skirmish starts with the
 /// faction's start objects; 09-zero-hour.md, Each player picks a faction), each faction's base
-/// and its choice of a start, standard or a base (12-test-matches.md, A seat picks its start;
-/// 12-test-matches.md, A base start), and the
+/// and its choice of a start, standard or a base (09-zero-hour.md, A seat picks its start;
+/// 09-zero-hour.md, A base start), and the
 /// option of the money it starts with, of `start_money`'s values (09-zero-hour.md, The import
 /// writes Zero Hour's money as an option); the armors, the weapons and the modifiers of their
 /// stages of `combat` (09-zero-hour.md) and the trains and builds of `production`

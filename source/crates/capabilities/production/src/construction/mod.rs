@@ -63,8 +63,8 @@ impl Construction {
 
     /// The spawn callback of production: a producer the spawner spawns whole, not as a site,
     /// sends its free units and its kept spawns at once, as a site does as it completes, and a
-    /// restore, which spawns nothing through the spawner, sends none again (12-test-matches.md,
-    /// A building that spawns whole frees its units).
+    /// restore, which spawns nothing through the spawner, sends none again
+    /// (04-capabilities/production.md, A building that spawns whole frees its units).
     pub(crate) fn spawned(world: &mut World, entity: Entity) {
         if !world.entity(entity).contains::<Site>() {
             Self::send(world, entity);

@@ -116,7 +116,7 @@ fn a_spectator_watches_every_unit_holds_what_spectators_may_and_only_one_finds_a
 #[test]
 fn a_watched_session_of_bots_alone_starts_as_its_watcher_joins_and_runs_on_until_a_stop() {
     // Two bots, one a side, each picking its hero in tick 0, and no player
-    // (12-test-matches.md, A local session may seat bots alone).
+    // (08-sessions.md, A local session may seat bots alone).
     const PICK: &str = "[[input]]\ntick = 0\nname = \"pick\"\nvalue = \"runner\"\n";
     let test_dir = TestDir::new();
     let mut local = InProcessMatch::new(InProcessSetup {

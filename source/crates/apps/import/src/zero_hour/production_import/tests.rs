@@ -14,7 +14,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
     // buttons, and gathers, which makes nothing; the worker the barracks again and the factory.
     // The center trains the dozer, the barracks the ranger and the dozer again, the factory the
     // tank: the base is the barracks and the factory, and the dozer, the ranger and the tank, in
-    // that order (12-test-matches.md, A base start).
+    // that order (09-zero-hour.md, A base start).
     let name = |text: &str| DeclaredName::new(text).unwrap();
     let train = |unit: &str| ImportedAction {
         keys: ActionKeys::new(ActionKind::Train, Targeting::None),

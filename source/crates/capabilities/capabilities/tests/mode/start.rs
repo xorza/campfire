@@ -276,8 +276,8 @@ fn take_input(ctx, player, name, value) {
 fn a_unit_spawns_at_the_room_nearest_a_point_clear_of_every_body() {
     // Crates of 2 by 2 m, a scout of 0.5 m that walks, and a wall of the square from (−7, −4) to
     // (−5, −2). A probe spawns a grunt, which has no body, where `room_near` finds room for a
-    // crate, or records `none` (12-test-matches.md, A script finds room near a point;
-    // 12-test-matches.md, Every body is tested for room).
+    // crate, or records `none` (04-capabilities/navigation.md, A script finds room near a point;
+    // 04-capabilities/navigation.md, Every body is tested for room).
     let script = r#"
 fn probe(ctx, x, z, gap, steps) {
     let at = ctx.room_near("crate", vector(x, 0, z), gap, steps);

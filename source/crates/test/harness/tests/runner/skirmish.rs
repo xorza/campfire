@@ -174,7 +174,7 @@ fn a_slot_starts_as_its_hosts_pick_and_one_of_no_pick_draws_its_faction_and_keep
 fn a_seat_that_picks_a_base_start_gets_its_factions_base_beside_its_start() {
     // Player 1 picked the start `base`: beside its center and dozer, its faction's base, a second
     // center and `base_count` dozers, 2; the bot of slot 2 picked none, and starts as standard
-    // (12-test-matches.md, A seat picks its start; 12-test-matches.md, A base start).
+    // (09-zero-hour.md, A seat picks its start; 09-zero-hour.md, A base start).
     let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Open];
     let mut picks = bases();
     picks.push("0:start=base".parse().unwrap());

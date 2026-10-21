@@ -38,7 +38,7 @@ const BASE_LIMIT: u64 = HZ * 60 * 20;
 const MAX_SCRIPT: usize = 1 << 20;
 
 /// A seat of the base play: it starts with its faction's base at its start, and its bot moves its
-/// army into the other start (12-test-matches.md, Bots that fight from a base).
+/// army into the other start (09-zero-hour.md, Bots that fight from a base).
 #[derive(Debug, Clone, Copy)]
 struct BaseBot {
     seat: u32,
@@ -73,8 +73,8 @@ struct Base {
     count: usize,
 }
 
-/// The base play on Tournament Desert of `START_MONEY` (12-test-matches.md, A base start;
-/// 12-test-matches.md, Bots that fight from a base): two bots, China and America, each start with
+/// The base play on Tournament Desert of `START_MONEY` (09-zero-hour.md, A base start;
+/// 09-zero-hour.md, Bots that fight from a base): two bots, China and America, each start with
 /// its faction's base, every base building whole and `base_count` of each base unit, no body on
 /// another or on a wall; then each trains its units and sends its army at the other until the
 /// match ends or `BASE_LIMIT` passes, and the play pins how it stood then. The check makes each

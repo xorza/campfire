@@ -79,7 +79,7 @@ pub struct LobbyOpening {
 
 /// Whom a lobby waits for before its match starts: every player seat taken, of a plan of one
 /// player seat at least; or, of a local watch, also its watcher, the client that hosts it, of a
-/// plan that may seat bots alone (12-test-matches.md, A local session may seat bots alone).
+/// plan that may seat bots alone (08-sessions.md, A local session may seat bots alone).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LobbyStart {
     Players,

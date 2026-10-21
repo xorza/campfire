@@ -93,8 +93,8 @@ impl NavigationColumn {
     /// Whether `ask`'s shape has room at its position, as `view` read the match: within the
     /// bounds, and grown by its gap, clear of the walls of its layer, of the living units of its
     /// layer that stand, and of `spawning`, the bodies the call already spawns; with no
-    /// navigation, of the bounds and `spawning` alone (12-test-matches.md, Every body is tested
-    /// for room).
+    /// navigation, of the bounds and `spawning` alone (04-capabilities/navigation.md, Every body
+    /// is tested for room).
     pub fn room_for(view: &View, ask: RoomAsk, spawning: &[IndexedBody]) -> bool {
         let RoomAsk {
             position,
@@ -133,9 +133,9 @@ impl NavigationColumn {
     /// The nearest point within `search`'s steps of its position, of the grid of its gap round
     /// the position, where its shape has room as `room_for` tests it, with that gap, against
     /// `view` and `spawning`; by distance, then by angle from `+x`, as a facing turns, each
-    /// compared exactly; none when no point has room (12-test-matches.md, A script finds room
-    /// near a point). The grid points are visited in bands of square distance, each twice the
-    /// last, so a search that ends near the position orders few.
+    /// compared exactly; none when no point has room (04-capabilities/navigation.md, A script
+    /// finds room near a point). The grid points are visited in bands of square distance, each
+    /// twice the last, so a search that ends near the position orders few.
     pub fn room_near(view: &View, search: RoomSearch, spawning: &[IndexedBody]) -> Option<Vec3> {
         let RoomSearch {
             position,

@@ -136,7 +136,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let navigation = data.section::<ModeNavigationData>().unwrap();
     assert_eq!(navigation.spawn_tags, all_declared(&["start"]));
     // Its base, as the dozer builds the barracks and the center and the barracks train, and two
-    // of each unit (12-test-matches.md, A base start).
+    // of each unit (09-zero-hour.md, A base start).
     let texts = |names: &[&str]| {
         ModeParam::List(
             names

@@ -94,7 +94,7 @@ pub struct LocalServerSetup {
     /// The bots it plays; one in seat 0 while its client plays leaves no seat to it, which the
     /// lobby refuses.
     pub bots: Vec<SeatScript>,
-    /// Whether its client plays seat 0, or watches with no seat (12-test-matches.md, A local
+    /// Whether its client plays seat 0, or watches with no seat (08-sessions.md, A local
     /// watcher takes no seat and sees every unit).
     pub role: JoinRole,
     /// The values the player picks of the mode's options, the others their defaults.
