@@ -33,8 +33,8 @@ pub enum WeaponDrop {
     /// It aims within a `ScatterRadius`, or a `ScatterRadiusVsInfantry` at infantry, with no
     /// projectile, which alone flies to a point it scatters to.
     Scatter,
-    /// Its radius spares the units of its own unit's template or the airborne, `NOT_SIMILAR` or
-    /// `NOT_AIRBORNE`, or damages a set of relations no filter names.
+    /// Its radius spares the airborne, `NOT_AIRBORNE`, or damages a set of relations no filter
+    /// names.
     Affects,
     /// Its shell detonates on shrubbery, projectiles or missiles, which are no units of the
     /// engine's.
@@ -52,9 +52,11 @@ pub enum WeaponDrop {
     PreAttack,
     /// It keeps a `MinimumAttackRange` not within its `AttackRange`.
     MinRange,
-    /// Its `DelayBetweenShots` is a range the game draws from.
+    /// Its `DelayBetweenShots` is a range the game draws from, and its clip holds more than one
+    /// shot.
     RandomDelay,
-    /// Its `DelayBetweenShots` is no frame, a period the engine refuses.
+    /// Its period is no frame, which the engine refuses: its `DelayBetweenShots`, or the
+    /// `ClipReloadTime` of a clip of one shot.
     NoDelay,
     /// Its `DamageType` takes no life: a status, a subdual, or the kill of a pilot or a garrison.
     NoLife,

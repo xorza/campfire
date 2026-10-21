@@ -375,10 +375,15 @@ impl ImportedWeapon {
         if weapon.pre_attack_ms > 0 {
             return Err(WeaponDrop::PreAttack);
         }
-        let ShotDelay::Fixed(delay) = weapon.delay else {
-            return Err(WeaponDrop::RandomDelay);
+        // A clip of one shot reloads after each shot from the shot, so its delay never counts, and
+        // its reload is its period (12-base-defenses.md, A clip of one shot is a period).
+        let one_shot = weapon.clip_size == 1;
+        let period = match weapon.delay {
+            _ if one_shot => weapon.clip_reload_ms,
+            ShotDelay::Fixed(delay) => delay,
+            ShotDelay::Random => return Err(WeaponDrop::RandomDelay),
         };
-        let period_ms = match weapon_drop::game_ms(delay)? {
+        let period_ms = match weapon_drop::game_ms(period)? {
             0 => return Err(WeaponDrop::NoDelay),
             ms => ms,
         };
@@ -403,7 +408,7 @@ impl ImportedWeapon {
         };
         let clip = match weapon.clip_size {
             ..0 => return Err(WeaponDrop::BadNumber),
-            0 => None,
+            0 | 1 => None,
             size => Some(ClipData {
                 shots: Self::own(i64::from(size)),
                 reload_ms: ms(weapon_drop::game_ms(weapon.clip_reload_ms)?)?,
@@ -561,12 +566,14 @@ impl ImportedWeapon {
         Ranked::One(Number::from(value))
     }
 
-    /// The relations of `affects`, as a splash's filter names them, each player a team of its
-    /// own: of `ALLIES`, `ENEMIES` and `NEUTRALS` all, enemies and neutrals, or one alone; none
-    /// for another set, and for a radius that spares the units of its unit's template or the
-    /// airborne.
+    /// The relations of `affects`, a projectile's splash, as a splash's filter names them, each
+    /// player a team of its own: of `ALLIES`, `ENEMIES` and `NEUTRALS` all, enemies and neutrals,
+    /// or one alone; none for another set, and for a radius that spares the airborne. `NOT_SIMILAR`
+    /// changes nothing: a projectile is its blast's source, so it spares only allied projectiles of
+    /// its type, which take no damage (12-base-defenses.md, `NOT_SIMILAR` of a projectile's blast
+    /// converts to nothing).
     const fn relations(affects: RadiusAffects) -> Option<RelationSet> {
-        if affects.not_similar || affects.not_airborne {
+        if affects.not_airborne {
             return None;
         }
         match (affects.allies, affects.enemies, affects.neutrals) {

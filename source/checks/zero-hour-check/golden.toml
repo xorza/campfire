@@ -3,7 +3,7 @@
 drive_ticks = 1717
 
 [fingerprints]
-game = "9f783e5aaa7be85bfe20fa91fe872f1285090ec5585a4e2fb580f3b95e182879"
+game = "f178d2a3eff685a762e82d56453243580b670407298f4fdf729e67227d42b6c2"
 rules = "67c543837b0ffc42e8fba5f40a74cb7904b0b6295215aa8e9996dd095ecc7712"
 
 [map]
@@ -38,8 +38,8 @@ gathers = 12
 dropped = [0, 0, 5, 6, 0]
 
 [fought]
-weapons = 53
-dropped = [0, 0, 8, 0, 1, 0, 1, 0, 8, 9, 0, 6, 2, 12, 1, 0, 0, 11, 0, 0, 6, 4, 0, 2]
+weapons = 57
+dropped = [0, 0, 8, 0, 2, 0, 1, 0, 8, 9, 0, 1, 2, 12, 1, 0, 0, 14, 0, 0, 1, 6, 0, 2]
 armors = 53
 kinds = 38
 unliving = 38

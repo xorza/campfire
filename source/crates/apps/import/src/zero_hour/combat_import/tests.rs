@@ -49,7 +49,8 @@ const LOCOMOTORS: &str = "Locomotor MissileLocomotor\n  Speed = 225\n  Accelerat
 /// The weapons of the missiles: a Tank Hunter's of a radius of 5 and a minimum range of 5; a
 /// Scud's of an outer ring of 100 dealing 50 and a minimum range of 200; a torch that sprays a
 /// stream; a poisoner whose missile leaves a poison field; a buggy's that scatters 10 m; one of
-/// each missile that drops; and one whose minimum range is its range.
+/// each missile that drops; one whose minimum range is its range; and clips of one shot, of no
+/// delay, of a random delay, and of no reload.
 const MISSILE_WEAPONS: &str = "Weapon TankHunter\n  PrimaryDamage = 40\n  \
     PrimaryDamageRadius = 5\n  AttackRange = 175\n  MinimumAttackRange = 5\n  \
     DelayBetweenShots = 1000\n  ProjectileObject = Missile\nEnd\n\
@@ -75,7 +76,13 @@ const MISSILE_WEAPONS: &str = "Weapon TankHunter\n  PrimaryDamage = 40\n  \
     Weapon Walker\n  PrimaryDamage = 10\n  AttackRange = 75\n  DelayBetweenShots = 100\n  \
     ProjectileObject = Walker\nEnd\n\
     Weapon Close\n  PrimaryDamage = 10\n  AttackRange = 50\n  MinimumAttackRange = 50\n  \
-    DelayBetweenShots = 100\nEnd\n";
+    DelayBetweenShots = 100\nEnd\n\
+    Weapon OneShot\n  PrimaryDamage = 10\n  AttackRange = 75\n  DelayBetweenShots = 0\n  \
+    ClipSize = 1\n  ClipReloadTime = 2000\nEnd\n\
+    Weapon RandomShot\n  PrimaryDamage = 10\n  AttackRange = 75\n  \
+    DelayBetweenShots = Min:200 Max:400\n  ClipSize = 1\n  ClipReloadTime = 1000\nEnd\n\
+    Weapon NoReload\n  PrimaryDamage = 10\n  AttackRange = 75\n  DelayBetweenShots = 100\n  \
+    ClipSize = 1\nEnd\n";
 
 /// The rules a weapon of the fixture converts by: `objects` and `locomotors`.
 const fn rules<'a>(objects: &'a ObjectIni, locomotors: &'a LocomotorIni) -> WeaponRules<'a> {
@@ -164,12 +171,16 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
     assert_eq!(weapon("Launcher"), Err(WeaponDrop::NoFlight));
     assert_eq!(weapon("Phantom"), Err(WeaponDrop::NoFlight));
     // A radius or a scatter of no projectile, which alone ends where it is dealt or aims at its
-    // scattered point; a second radius of no projectile; a radius that spares its own kind; a shell
-    // that detonates on shrubbery.
+    // scattered point; a second radius of no projectile; a shell that detonates on shrubbery. A
+    // shell's radius that spares its own kind spares only shells, which take no damage, so it
+    // splashes the enemies its mask names.
     assert_eq!(weapon("Flamer"), Err(WeaponDrop::Radius));
     assert_eq!(weapon("Shotgun"), Err(WeaponDrop::Radius));
     assert_eq!(weapon("Gatling"), Err(WeaponDrop::Scatter));
-    assert_eq!(weapon("Lobber"), Err(WeaponDrop::Affects));
+    assert_eq!(
+        weapon("Lobber").map(|lobber| lobber.attack.splash),
+        Ok(SplashData::new(Num::int(10), RelationSet::Hostiles, true))
+    );
     assert_eq!(weapon("Popper"), Err(WeaponDrop::Collides));
     assert_eq!(weapon("Knife"), Err(WeaponDrop::PreAttack));
     // The mortar keeps its minimum range of 50 within its 300.
@@ -323,8 +334,16 @@ fn a_missile_converts_to_a_steered_projectile_with_its_rings_and_minimum_or_drop
         ("Flasher", WeaponDrop::GarrisonKill),
         ("Walker", WeaponDrop::NoFlight),
         ("Close", WeaponDrop::MinRange),
+        ("NoReload", WeaponDrop::NoDelay),
     ] {
         assert_eq!(dropped(name), Some(cause), "{name}");
+    }
+    // A clip of one shot fires each reload, its delay never counting: 2,000 ms, 60 frames, and
+    // 1,000 ms, 30, of no clip.
+    for (name, period) in [("OneShot", 2000), ("RandomShot", 1000)] {
+        let attack = of(name).unwrap().weapon.attack;
+        let rate = WeaponValue::Own(ImportedWeapon::own(period));
+        assert_eq!((attack.rate, attack.clip), (rate, None), "{name}");
     }
 }
 
@@ -396,8 +415,8 @@ fn a_pitch_bound_reads_within_a_quarter_turn_and_a_radius_its_relations() {
         assert_eq!(pitch(bound), Err(WeaponDrop::BadNumber), "{bound}");
     }
     // Each player a team of its own: all three relations are all, enemies and neutrals the
-    // engine's enemies, and one alone its own set; two others, none, or a radius that
-    // spares its own kind or the airborne, none.
+    // engine's enemies, and one alone its own set; two others, none, or a radius that spares
+    // the airborne, none; one that spares a projectile's own kind, its relations.
     let affects = |allies, enemies, neutrals| RadiusAffects {
         allies,
         enemies,
@@ -434,7 +453,7 @@ fn a_pitch_bound_reads_within_a_quarter_turn_and_a_radius_its_relations() {
             None,
             None,
             None,
-            None,
+            Some(RelationSet::All),
             None,
         ]
     );

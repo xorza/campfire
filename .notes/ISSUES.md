@@ -7,7 +7,6 @@ The issue log: every open problem of the project, under the step it waits for. T
 ## Research
 
 - **Combat.** A splash's outer ring deals its own fixed amount, where its inner ring deals the weapon's damage, which a stat may give, so a stat that raises a weapon's damage leaves its outer ring as it is; Zero Hour's weapon bonus scales both (`WeaponTemplate::getSecondaryDamage`).
-- **Import.** The Stinger soldier's and the Stinger site's weapons drop by `NoDelay`: their `DelayBetweenShots` of 0 and `ClipSize` of 1 fire once each `ClipReloadTime`, and the import refuses the period of no frame.
-- **Import.** The Tomahawk's and the Scud launcher's explosive weapons drop by `Affects`: their `RadiusDamageAffects` of `NOT_SIMILAR` spares the units of the launcher's own template, which no splash filter names.
+- **Import.** The Tomahawk's and the Scud launcher's explosive weapons drop by `PreAttack`: each waits a `PreAttackDelay` before it fires.
 
 ## Ready
