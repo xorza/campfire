@@ -35,7 +35,7 @@ dropped = [0, 22, 31, 6, 0, 0, 0]
 nodes = 4
 drop_offs = 15
 gathers = 12
-dropped = [0, 0, 5, 6, 0]
+dropped = [0, 0, 5, 6, 0, 0]
 
 [fought]
 weapons = 57

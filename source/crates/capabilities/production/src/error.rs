@@ -41,6 +41,9 @@ pub enum ProductionDataError {
     /// A producer's free unit of a type that does not walk out of its exit.
     #[error("a free unit's type does not walk")]
     FreeStands,
+    /// A producer's kept spawn of a type of no life, which would never die to come back.
+    #[error("a kept spawn's type has no life")]
+    SpawnUnliving,
     /// A build whose unit type has no body, or a circle of no radius.
     #[error("its building has no body")]
     NoBody,

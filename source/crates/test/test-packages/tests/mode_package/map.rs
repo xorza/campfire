@@ -793,6 +793,23 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
             )
         },
     },
+    // A kept spawn's type lives, so its units die to come back.
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            "[units.tower]\n",
+            "[units.yard]\nproduction = { queue = 1, spawns = { unit_type = \"imp\", count = 2, replace_ms = 1000 } }\n\n[units.imp]\nstats = { move_speed = { base = \"3\" } }\n\n[units.tower]\n",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| {
+            rule_at(
+                problem,
+                &unit_type("yard"),
+                &ProductionDataError::SpawnUnliving,
+            )
+        },
+    },
     Flaw {
         file: UNITS,
         edit: Edit::Replace(

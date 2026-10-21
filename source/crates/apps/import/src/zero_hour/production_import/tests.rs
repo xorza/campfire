@@ -72,7 +72,12 @@ const SUPPLY: &str = "Object Center\n\
     Object Tunnel\n Behavior = SpawnBehavior M1\n  SpawnNumber = 1\n\
        SpawnTemplateName = Guard\n  OneShot = Yes\n End\n\
     End\n\
-    Object Guard\n Locomotor = SET_NORMAL TankTreads\nEnd\n\
+    Object Guard\n Locomotor = SET_NORMAL TankTreads\n KindOf = INFANTRY\n\
+     Body = ActiveBody M1\n  MaxHealth = 100\n  InitialHealth = 100\n End\nEnd\n\
+    Object Haunt\n Behavior = ProductionUpdate M1\n End\n\
+     Behavior = SpawnBehavior M2\n  SpawnNumber = 1\n  SpawnTemplateName = Wisp\n End\n\
+    End\n\
+    Object Wisp\n Locomotor = SET_NORMAL TankTreads\nEnd\n\
     Object Site\n Behavior = ProductionUpdate M1\n End\n\
      Behavior = SpawnBehavior M2\n  SpawnNumber = 3\n  SpawnReplaceDelay = 30000\n\
        SpawnTemplateName = Guard\n End\n\
@@ -129,6 +134,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         "Burrow",
         "Shelter",
         "Crowd",
+        "Haunt",
     ] {
         let object = rules.objects.object(placed.as_bytes()).unwrap();
         names.unit_type(object, &rules.locomotors).unwrap();
@@ -227,9 +233,9 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         (&None, &vec![declared("guard"), declared("guard")])
     );
     // The dock of no box, the helicopter, which flies, the guard of a tunnel and of a shelter,
-    // of no production, once for its cause, and the guard a crowd keeps none of are dropped, in
-    // the order the types are visited; the Helix, of no box, is no gatherer, so nothing of it is
-    // dropped.
+    // of no production, once for its cause, the guard a crowd keeps none of, and the wisp a haunt
+    // keeps, of no life, are dropped, in the order the types are visited; the Helix, of no box,
+    // is no gatherer, so nothing of it is dropped.
     let dropped: Vec<(&str, SupplyDropCause)> = supply
         .dropped
         .iter()
@@ -240,6 +246,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         [
             ("Guard", SupplyDropCause::BadNumber),
             ("EmptyDock", SupplyDropCause::NoBoxes),
+            ("Wisp", SupplyDropCause::Unliving),
             ("Heli", SupplyDropCause::NoWalker),
             ("Guard", SupplyDropCause::NoExit),
         ]

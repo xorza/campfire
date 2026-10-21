@@ -73,6 +73,8 @@ pub enum SupplyDropCause {
     NoExit,
     /// A spawned unit that no file defines, or that gives no unit type.
     NoObject,
+    /// A kept spawn of no life, which never dies to come back.
+    Unliving,
 }
 
 /// How near a builder comes to its building's box, and a gatherer to its dock's, 10 m, the
@@ -167,7 +169,8 @@ impl SupplyImport {
     /// The spawns `object`, a building that trains, keeps: its kept spawn's first template,
     /// which walks, typed in `names`, its number and its replace delay as the import converts a
     /// time (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns); none for no kept
-    /// spawn, and its spawn dropped for a number or a delay past what the engine holds.
+    /// spawn, and its spawn dropped for a number or a delay past what the engine holds, or for a
+    /// spawn of no life.
     pub(crate) fn kept(
         &mut self,
         rules: &ZeroHourRules,
@@ -187,6 +190,10 @@ impl SupplyImport {
             self.drop(spawned, SupplyDropCause::NoObject);
             return None;
         };
+        if typed.imported.life().is_none() {
+            self.drop(spawned, SupplyDropCause::Unliving);
+            return None;
+        }
         Some(KeptUnits {
             spawns: SpawnsData {
                 unit_type: typed.name,

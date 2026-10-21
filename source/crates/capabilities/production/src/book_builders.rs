@@ -182,8 +182,6 @@ impl BuildBook {
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let tags = cx.fact::<UnitTypes>()?.tags();
         let bodies = cx.book::<ByType<BodyForm>>()?;
-        let life = cx.fact_if::<LifePool>()?.and_then(|life| life.0);
-        let pools = cx.fact_if::<PoolNames>()?;
         let mut book = Self::default();
         for action in LoadedAction::all(cx)? {
             let Some(data) = action.section::<BuildData>() else {
@@ -216,13 +214,7 @@ impl BuildBook {
             let form = bodies.get(unit_type).copied();
             let form = form.filter(|form| form.circle_radius() != Some(Num::ZERO));
             let form = form.ok_or_else(|| action.broken(ProductionDataError::NoBody))?;
-            let held = cx.type_of(unit_type).data.section::<TypePoolsData>();
-            let alive = held.is_some_and(|held| {
-                held.0.iter().any(|name| {
-                    let pool = pools.and_then(|pools| pools.0.named(name.as_str()));
-                    pool.is_some() && pool == life
-                })
-            });
+            let alive = lives(cx, unit_type)?;
             let start_life = data.start_life;
             let starts = start_life.is_some_and(|share| !share.is_zero());
             if (alive && !starts) || start_life.is_some_and(Share::is_zero) {
@@ -408,7 +400,8 @@ impl ProducerSpec {
     /// The production of each unit type that stands and produces; an error for a producer that
     /// starts its gatherers in a match without navigation, which walks them, for a free or a kept
     /// spawn's unit type its package does not have, or one that does not walk out of its exit,
-    /// and for a spawns' time too large to count in ticks.
+    /// for a kept spawn of no life, which would never die, and for a spawns' time too large to
+    /// count in ticks.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
         let mut book = ByTypeBuilder::default();
         for unit in cx.standing() {
@@ -438,8 +431,12 @@ impl ProducerSpec {
             };
             let spawns = data.spawns.as_ref().map(|spawns| {
                 let replace = cx.rate().ticks(spawns.replace_ms.into());
+                let spawned = leaver(&spawns.unit_type)?;
+                if !lives(cx, spawned)? {
+                    return Err(broken(ProductionDataError::SpawnUnliving));
+                }
                 Ok::<_, BookError>(SpawnSpec {
-                    unit_type: leaver(&spawns.unit_type)?,
+                    unit_type: spawned,
                     count: spawns.count,
                     replace: replace
                         .ok_or_else(|| BookError::rule(unit.package, at(), TimeTooLarge))?,
@@ -496,4 +493,17 @@ impl Gatherer {
         }
         Ok(book.build())
     }
+}
+
+/// Whether `unit_type` of the match `cx` loads has the life pool, so its units live and die.
+fn lives(cx: &BookCx<'_>, unit_type: UnitType) -> Result<bool, BookError> {
+    let life = cx.fact_if::<LifePool>()?.and_then(|life| life.0);
+    let pools = cx.fact_if::<PoolNames>()?;
+    let held = cx.type_of(unit_type).data.section::<TypePoolsData>();
+    Ok(held.is_some_and(|held| {
+        held.0.iter().any(|name| {
+            let pool = pools.and_then(|pools| pools.0.named(name.as_str()));
+            pool.is_some() && pool == life
+        })
+    }))
 }
