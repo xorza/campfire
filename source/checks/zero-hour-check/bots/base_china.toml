@@ -1,0 +1,4075 @@
+# The base bot of china at Tournament Desert's Player_1_Start, which the Zero Hour check makes from the
+# imported mode: `CAMPFIRE_BLESS=1 cargo drive run zero-hour` writes it again. Every 20 s each
+# producer of its base queues its next train; every 40 s its army moves to Player_2_Start, (1011, -2103),
+# and attacks the nearest enemy 20 s later. Play it with `--server-bot 0=<this file>
+# --pick 0:faction=china --pick 0:start=base --option start_money=50000`.
+
+[[order]]
+tick = 600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankbattlemaster", target = "none" }
+
+[[order]]
+tick = 1200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 1200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankoverlord", target = "none" }
+
+[[order]]
+tick = 1200
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1200
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1200
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1200
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1200
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1200
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1200
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1200
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1200
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1200
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1200
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1200
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 1800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 1800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicletroopcrawler", target = "none" }
+
+[[order]]
+tick = 1800
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 1800
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 1800
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 1800
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 1800
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 1800
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 1800
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 1800
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 1800
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 1800
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 1800
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 1800
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 2400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 2400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehiclelisteningoutpost", target = "none" }
+
+[[order]]
+tick = 2400
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 2400
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 2400
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 2400
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 2400
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 2400
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 2400
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 2400
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 2400
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 2400
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 2400
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 2400
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3000
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 3000
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankgattling", target = "none" }
+
+[[order]]
+tick = 3000
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3000
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3000
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3000
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3000
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3000
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3000
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3000
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3000
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3000
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3000
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3000
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 3600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 3600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankdragon", target = "none" }
+
+[[order]]
+tick = 3600
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3600
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3600
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3600
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3600
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3600
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3600
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3600
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3600
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3600
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3600
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 3600
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 4200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicleinfernocannon", target = "none" }
+
+[[order]]
+tick = 4200
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4200
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4200
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4200
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4200
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4200
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4200
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4200
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4200
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4200
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4200
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4200
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 4800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 4800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankecm", target = "none" }
+
+[[order]]
+tick = 4800
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4800
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4800
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4800
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4800
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4800
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4800
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4800
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4800
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4800
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4800
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 4800
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 5400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 5400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankbattlemaster", target = "none" }
+
+[[order]]
+tick = 5400
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 5400
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 5400
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 5400
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 5400
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 5400
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 5400
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 5400
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 5400
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 5400
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 5400
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 5400
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6000
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 6000
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankoverlord", target = "none" }
+
+[[order]]
+tick = 6000
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6000
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6000
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6000
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6000
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6000
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6000
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6000
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6000
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6000
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6000
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6000
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 6600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 6600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicletroopcrawler", target = "none" }
+
+[[order]]
+tick = 6600
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6600
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6600
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6600
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6600
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6600
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6600
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6600
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6600
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6600
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6600
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 6600
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 7200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehiclelisteningoutpost", target = "none" }
+
+[[order]]
+tick = 7200
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7200
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7200
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7200
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7200
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7200
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7200
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7200
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7200
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7200
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7200
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7200
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 7800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 7800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankgattling", target = "none" }
+
+[[order]]
+tick = 7800
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7800
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7800
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7800
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7800
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7800
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7800
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7800
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7800
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7800
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7800
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 7800
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 8400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 8400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankdragon", target = "none" }
+
+[[order]]
+tick = 8400
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 8400
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 8400
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 8400
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 8400
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 8400
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 8400
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 8400
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 8400
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 8400
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 8400
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 8400
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9000
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 9000
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicleinfernocannon", target = "none" }
+
+[[order]]
+tick = 9000
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9000
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9000
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9000
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9000
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9000
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9000
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9000
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9000
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9000
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9000
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9000
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 9600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 9600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankecm", target = "none" }
+
+[[order]]
+tick = 9600
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9600
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9600
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9600
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9600
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9600
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9600
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9600
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9600
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9600
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9600
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 9600
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 10200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankbattlemaster", target = "none" }
+
+[[order]]
+tick = 10200
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10200
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10200
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10200
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10200
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10200
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10200
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10200
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10200
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10200
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10200
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10200
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 10800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 10800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankoverlord", target = "none" }
+
+[[order]]
+tick = 10800
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10800
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10800
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10800
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10800
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10800
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10800
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10800
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10800
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10800
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10800
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 10800
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 11400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 11400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicletroopcrawler", target = "none" }
+
+[[order]]
+tick = 11400
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 11400
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 11400
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 11400
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 11400
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 11400
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 11400
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 11400
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 11400
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 11400
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 11400
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 11400
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12000
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 12000
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehiclelisteningoutpost", target = "none" }
+
+[[order]]
+tick = 12000
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12000
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12000
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12000
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12000
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12000
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12000
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12000
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12000
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12000
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12000
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12000
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 12600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 12600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankgattling", target = "none" }
+
+[[order]]
+tick = 12600
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12600
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12600
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12600
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12600
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12600
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12600
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12600
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12600
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12600
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12600
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 12600
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 13200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankdragon", target = "none" }
+
+[[order]]
+tick = 13200
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13200
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13200
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13200
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13200
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13200
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13200
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13200
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13200
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13200
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13200
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13200
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 13800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 13800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicleinfernocannon", target = "none" }
+
+[[order]]
+tick = 13800
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13800
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13800
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13800
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13800
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13800
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13800
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13800
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13800
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13800
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13800
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 13800
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 14400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 14400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankecm", target = "none" }
+
+[[order]]
+tick = 14400
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 14400
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 14400
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 14400
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 14400
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 14400
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 14400
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 14400
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 14400
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 14400
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 14400
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 14400
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15000
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 15000
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankbattlemaster", target = "none" }
+
+[[order]]
+tick = 15000
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15000
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15000
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15000
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15000
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15000
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15000
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15000
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15000
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15000
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15000
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15000
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 15600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 15600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankoverlord", target = "none" }
+
+[[order]]
+tick = 15600
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15600
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15600
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15600
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15600
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15600
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15600
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15600
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15600
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15600
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15600
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 15600
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 16200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicletroopcrawler", target = "none" }
+
+[[order]]
+tick = 16200
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16200
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16200
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16200
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16200
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16200
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16200
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16200
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16200
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16200
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16200
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16200
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 16800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 16800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehiclelisteningoutpost", target = "none" }
+
+[[order]]
+tick = 16800
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16800
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16800
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16800
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16800
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16800
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16800
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16800
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16800
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16800
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16800
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 16800
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 17400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 17400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankgattling", target = "none" }
+
+[[order]]
+tick = 17400
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 17400
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 17400
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 17400
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 17400
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 17400
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 17400
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 17400
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 17400
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 17400
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 17400
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 17400
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18000
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 18000
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankdragon", target = "none" }
+
+[[order]]
+tick = 18000
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18000
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18000
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18000
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18000
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18000
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18000
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18000
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18000
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18000
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18000
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18000
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 18600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 18600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicleinfernocannon", target = "none" }
+
+[[order]]
+tick = 18600
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18600
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18600
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18600
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18600
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18600
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18600
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18600
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18600
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18600
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18600
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 18600
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 19200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankecm", target = "none" }
+
+[[order]]
+tick = 19200
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19200
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19200
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19200
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19200
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19200
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19200
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19200
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19200
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19200
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19200
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19200
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 19800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 19800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankbattlemaster", target = "none" }
+
+[[order]]
+tick = 19800
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19800
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19800
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19800
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19800
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19800
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19800
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19800
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19800
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19800
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19800
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 19800
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 20400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 20400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankoverlord", target = "none" }
+
+[[order]]
+tick = 20400
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 20400
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 20400
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 20400
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 20400
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 20400
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 20400
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 20400
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 20400
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 20400
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 20400
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 20400
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21000
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 21000
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicletroopcrawler", target = "none" }
+
+[[order]]
+tick = 21000
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21000
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21000
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21000
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21000
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21000
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21000
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21000
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21000
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21000
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21000
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21000
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 21600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 21600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehiclelisteningoutpost", target = "none" }
+
+[[order]]
+tick = 21600
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21600
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21600
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21600
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21600
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21600
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21600
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21600
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21600
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21600
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21600
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 21600
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 22200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankgattling", target = "none" }
+
+[[order]]
+tick = 22200
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22200
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22200
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22200
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22200
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22200
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22200
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22200
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22200
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22200
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22200
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22200
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 22800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 22800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankdragon", target = "none" }
+
+[[order]]
+tick = 22800
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22800
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22800
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22800
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22800
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22800
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22800
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22800
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22800
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22800
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22800
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 22800
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 23400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 23400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicleinfernocannon", target = "none" }
+
+[[order]]
+tick = 23400
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 23400
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 23400
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 23400
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 23400
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 23400
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 23400
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 23400
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 23400
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 23400
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 23400
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 23400
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24000
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 24000
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankecm", target = "none" }
+
+[[order]]
+tick = 24000
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24000
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24000
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24000
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24000
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24000
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24000
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24000
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24000
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24000
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24000
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24000
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 24600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 24600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankbattlemaster", target = "none" }
+
+[[order]]
+tick = 24600
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24600
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24600
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24600
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24600
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24600
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24600
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24600
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24600
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24600
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24600
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 24600
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 25200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankoverlord", target = "none" }
+
+[[order]]
+tick = 25200
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25200
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25200
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25200
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25200
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25200
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25200
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25200
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25200
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25200
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25200
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25200
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 25800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 25800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicletroopcrawler", target = "none" }
+
+[[order]]
+tick = 25800
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25800
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25800
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25800
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25800
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25800
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25800
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25800
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25800
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25800
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25800
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 25800
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 26400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 26400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehiclelisteningoutpost", target = "none" }
+
+[[order]]
+tick = 26400
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 26400
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 26400
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 26400
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 26400
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 26400
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 26400
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 26400
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 26400
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 26400
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 26400
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 26400
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27000
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 27000
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankgattling", target = "none" }
+
+[[order]]
+tick = 27000
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27000
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27000
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27000
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27000
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27000
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27000
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27000
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27000
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27000
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27000
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27000
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 27600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 27600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankdragon", target = "none" }
+
+[[order]]
+tick = 27600
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27600
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27600
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27600
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27600
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27600
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27600
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27600
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27600
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27600
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27600
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 27600
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 28200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicleinfernocannon", target = "none" }
+
+[[order]]
+tick = 28200
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28200
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28200
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28200
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28200
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28200
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28200
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28200
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28200
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28200
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28200
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28200
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 28800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 28800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankecm", target = "none" }
+
+[[order]]
+tick = 28800
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28800
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28800
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28800
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28800
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28800
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28800
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28800
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28800
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28800
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28800
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 28800
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 29400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 29400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankbattlemaster", target = "none" }
+
+[[order]]
+tick = 29400
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 29400
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 29400
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 29400
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 29400
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 29400
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 29400
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 29400
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 29400
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 29400
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 29400
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 29400
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30000
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 30000
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankoverlord", target = "none" }
+
+[[order]]
+tick = 30000
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30000
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30000
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30000
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30000
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30000
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30000
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30000
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30000
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30000
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30000
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30000
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 30600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 30600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicletroopcrawler", target = "none" }
+
+[[order]]
+tick = 30600
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30600
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30600
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30600
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30600
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30600
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30600
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30600
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30600
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30600
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30600
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 30600
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 31200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehiclelisteningoutpost", target = "none" }
+
+[[order]]
+tick = 31200
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31200
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31200
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31200
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31200
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31200
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31200
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31200
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31200
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31200
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31200
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31200
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 31800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 31800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankgattling", target = "none" }
+
+[[order]]
+tick = 31800
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31800
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31800
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31800
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31800
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31800
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31800
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31800
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31800
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31800
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31800
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 31800
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 32400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 32400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankdragon", target = "none" }
+
+[[order]]
+tick = 32400
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 32400
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 32400
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 32400
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 32400
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 32400
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 32400
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 32400
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 32400
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 32400
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 32400
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 32400
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33000
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 33000
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicleinfernocannon", target = "none" }
+
+[[order]]
+tick = 33000
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33000
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33000
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33000
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33000
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33000
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33000
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33000
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33000
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33000
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33000
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33000
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 33600
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryblacklotus", target = "none" }
+
+[[order]]
+tick = 33600
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankecm", target = "none" }
+
+[[order]]
+tick = 33600
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33600
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33600
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33600
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33600
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33600
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33600
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33600
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33600
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33600
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33600
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 33600
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34200
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryredguard", target = "none" }
+
+[[order]]
+tick = 34200
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankbattlemaster", target = "none" }
+
+[[order]]
+tick = 34200
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34200
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34200
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34200
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34200
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34200
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34200
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34200
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34200
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34200
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34200
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34200
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 34800
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantrytankhunter", target = "none" }
+
+[[order]]
+tick = 34800
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinatankoverlord", target = "none" }
+
+[[order]]
+tick = 34800
+units = "chinainfantryredguard"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34800
+units = "chinainfantrytankhunter"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34800
+units = "chinainfantryhacker"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34800
+units = "chinainfantryblacklotus"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34800
+units = "chinatankbattlemaster"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34800
+units = "chinatankoverlord"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34800
+units = "chinavehicletroopcrawler"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34800
+units = "chinavehiclelisteningoutpost"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34800
+units = "chinatankgattling"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34800
+units = "chinatankdragon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34800
+units = "chinavehicleinfernocannon"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 34800
+units = "chinatankecm"
+directive.orders.move.to = [1011, -2103]
+
+[[order]]
+tick = 35400
+units = "chinabarracks"
+directive.orders.slot = { slot = "train_chinainfantryhacker", target = "none" }
+
+[[order]]
+tick = 35400
+units = "chinawarfactory"
+directive.orders.slot = { slot = "train_chinavehicletroopcrawler", target = "none" }
+
+[[order]]
+tick = 35400
+units = "chinainfantryredguard"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 35400
+units = "chinainfantrytankhunter"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 35400
+units = "chinainfantryhacker"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 35400
+units = "chinainfantryblacklotus"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 35400
+units = "chinatankbattlemaster"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 35400
+units = "chinatankoverlord"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 35400
+units = "chinavehicletroopcrawler"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 35400
+units = "chinavehiclelisteningoutpost"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 35400
+units = "chinatankgattling"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 35400
+units = "chinatankdragon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 35400
+units = "chinavehicleinfernocannon"
+directive.orders.attack.target = "enemies"
+
+[[order]]
+tick = 35400
+units = "chinatankecm"
+directive.orders.attack.target = "enemies"

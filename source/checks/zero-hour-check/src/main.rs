@@ -30,7 +30,11 @@
 //! soldiers kill it. In a fifth, player 1 plays China against
 //! America's bot: its dozer builds a barracks, which trains a Tank Hunter, and the hunter, ordered
 //! nothing, fires steered missiles at the bot's dozer, which drives within its reach, and kills
-//! it. Every other map the game lists loads in the imported mode. It fails when `GENERALSZH_DATA`
+//! it. In a sixth, two bots, China and America, start with their factions' bases, every base
+//! building whole and two of each base unit, no body on another or on a wall, and fight by the
+//! orders the check makes of the imported mode, which `bots/base_china.toml` and
+//! `bots/base_america.toml` keep, for 20 minutes, after which the buildings each holds are pinned.
+//! Every other map the game lists loads in the imported mode. It fails when `GENERALSZH_DATA`
 //! names no install, so a machine with no copy never passes as one that checked.
 //!
 //! Run it with `cargo drive run zero-hour [out]`, which builds it with the `release-dev` profile;
@@ -56,6 +60,7 @@ use crate::golden::{Golden, Measured};
 use crate::import_check::ImportCheck;
 use crate::pins::{Fingerprints, MAP};
 
+mod base_play;
 mod command_line;
 mod defense_play;
 mod error;

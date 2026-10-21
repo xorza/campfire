@@ -148,12 +148,14 @@ fn a_slot_starts_as_its_hosts_pick_and_one_of_no_pick_draws_its_faction_and_keep
     let outpost: SeatPick = "0:faction=outpost".parse().unwrap();
     let fixed = unpicked(plan).seat_picked(&[outpost]).start();
     let world = fixed.game();
+    // Each seat's row holds its faction, then its start, which none picked.
     let chosen = world.resource::<Choices>().offers();
-    assert_eq!(chosen[0], Some(Offer::new(1)));
+    let faction = |seat: usize| chosen[2 * seat];
+    assert_eq!(chosen[..2], [Some(Offer::new(1)), None]);
     assert_eq!(owned(world, "center", 0).len(), 1);
     assert!(owned(world, "dozer", 0).is_empty());
     for seat in [1, 2] {
-        let base = match chosen[seat] {
+        let base = match faction(seat) {
             Some(offer) if offer == Offer::new(0) => true,
             Some(offer) if offer == Offer::new(1) => false,
             other => panic!("slot {seat} drew {other:?}"),
@@ -166,6 +168,26 @@ fn a_slot_starts_as_its_hosts_pick_and_one_of_no_pick_draws_its_faction_and_keep
             "slot {seat}"
         );
     }
+}
+
+#[test]
+fn a_seat_that_picks_a_base_start_gets_its_factions_base_beside_its_start() {
+    // Player 1 picked the start `base`: beside its center and dozer, its faction's base, a second
+    // center and `base_count` dozers, 2; the bot of slot 2 picked none, and starts as standard
+    // (12-test-matches.md, A seat picks its start; 12-test-matches.md, A base start).
+    let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Open];
+    let mut picks = bases();
+    picks.push("0:start=base".parse().unwrap());
+    let fixed = unpicked(plan).seat_picked(&picks).start();
+    let world = fixed.game();
+    let counts = |seat| {
+        [
+            owned(world, "center", seat).len(),
+            owned(world, "dozer", seat).len(),
+        ]
+    };
+    assert_eq!(counts(0), [2, 3]);
+    assert_eq!(counts(1), [1, 1]);
 }
 
 #[test]

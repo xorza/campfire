@@ -27,6 +27,10 @@ use crate::zero_hour::map_import::SLOTS;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::skirmish_start::{FactionStart, SkirmishStart};
 
+/// How many of each unit type a seat that starts with a base gets (12-test-matches.md, A base
+/// start).
+const BASE_COUNT: i64 = 2;
+
 /// Zero Hour's rules package as the importer ships it, `source/packages/zero-hour/`: each file but
 /// its index, by its path, which the import writes beside the imported package.
 pub(crate) const RULES_FILES: [(&str, &[u8]); 3] = [
@@ -83,11 +87,13 @@ pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capabilit
             .expect("a range of one rate holds it"),
         teams,
         max_move_speed,
+        // A match start of eight seats that start with bases spawns some 40 units for each, at
+        // about 10 operations a unit (12-test-matches.md, A base start).
         script_limits: ScriptLimits {
-            per_call: NonZeroU64::new(1000).expect("1000 is no zero"),
-            player: 1000,
-            think: 1000,
-            mode: 1000,
+            per_call: NonZeroU64::new(8000).expect("8000 is no zero"),
+            player: 8000,
+            think: 8000,
+            mode: 8000,
         },
         dependencies: BTreeMap::from([(package("zero-hour"), dependency)]),
     }
@@ -107,7 +113,9 @@ pub(crate) struct ModeImport<'a> {
 /// data (03-game-scripting.md, Overrides by load order): its name and its teams' names, as its
 /// manifest names the teams, the rules package's mode script, its params of what each faction
 /// starts with and its choice of a faction, `start` (09-zero-hour.md, A skirmish starts with the
-/// faction's start objects; 09-zero-hour.md, Each player picks a faction), and the
+/// faction's start objects; 09-zero-hour.md, Each player picks a faction), each faction's base
+/// and its choice of a start, standard or a base (12-test-matches.md, A seat picks its start;
+/// 12-test-matches.md, A base start), and the
 /// option of the money it starts with, of `start_money`'s values (09-zero-hour.md, The import
 /// writes Zero Hour's money as an option); the armors, the weapons and the modifiers of their
 /// stages of `combat` (09-zero-hour.md) and the trains and builds of `production`
@@ -134,27 +142,43 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .collect();
     let param =
         |name: &str, faction: &FactionStart| declared(&format!("{name}_{}", faction.name.as_str()));
+    let list = |names: &[DeclaredName]| {
+        ModeParam::List(
+            names
+                .iter()
+                .map(|name| ListEntry::Text(name.to_string()))
+                .collect(),
+        )
+    };
     let params = start.factions.iter().flat_map(|faction| {
-        let units = faction
-            .units
-            .iter()
-            .map(|unit| ListEntry::Text(unit.to_string()));
+        let base = production.base(&faction.building, &faction.units);
         [
             (
                 param("start_building", faction),
                 ModeParam::Text(faction.building.to_string()),
             ),
-            (
-                param("start_units", faction),
-                ModeParam::List(units.collect()),
-            ),
+            (param("start_units", faction), list(&faction.units)),
             (
                 param("start_offset", faction),
                 ModeParam::Value(Scalar::Decimal(faction.offset)),
             ),
+            (param("base_buildings", faction), list(&base.buildings)),
+            (param("base_units", faction), list(&base.units)),
         ]
     });
-    let params = params.collect();
+    let base_count = (
+        declared("base_count"),
+        ModeParam::Value(Scalar::Int(BASE_COUNT)),
+    );
+    let params = params.chain([base_count]).collect();
+    let start_choice = ChoiceData {
+        name: text("choice-start"),
+        offers: Offers::Values,
+        unique: false,
+        count: NonZeroU8::MIN,
+        slot: None,
+        values: ["standard", "base"].map(declared).into(),
+    };
     let faction = ChoiceData {
         name: text("choice-faction"),
         offers: Offers::Values,
@@ -193,7 +217,10 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         relations: Some(relations.collect()),
         params: Some(params),
         options: Some(BTreeMap::from([(declared("start_money"), money)])),
-        choices: Some(BTreeMap::from([(declared("faction"), faction)])),
+        choices: Some(BTreeMap::from([
+            (declared("faction"), faction),
+            (declared("start"), start_choice),
+        ])),
         ..ModePatch::default()
     });
     if !combat.armors.is_empty() {
@@ -234,7 +261,8 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
 /// The imported package's text in its own language: the names its mode data gives, and each of
 /// `texts`, an action's name by its message.
 pub(crate) fn mode_text(texts: &BTreeMap<String, String>) -> String {
-    let mut text = String::from("mode-name = Zero Hour\nchoice-faction = Faction\n");
+    let mut text =
+        String::from("mode-name = Zero Hour\nchoice-faction = Faction\nchoice-start = Start\n");
     for player in 1..=SLOTS {
         writeln!(text, "team-player-{player} = Player {player}")
             .expect("text writes into a string");

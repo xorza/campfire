@@ -42,6 +42,16 @@ pub(crate) struct ProductionImport {
     pub(crate) supply: SupplyImport,
 }
 
+/// A faction's base, which a seat that starts with one gets beside its start (12-test-matches.md,
+/// A base start): each type its start builders build but its faction building, once each, in
+/// their command sets' order, and each type those buildings and its faction building train, once
+/// each, in that order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FactionBase {
+    pub(crate) buildings: Vec<DeclaredName>,
+    pub(crate) units: Vec<DeclaredName>,
+}
+
 /// A train or a build as the mode's data writes it, `[actions.<id>]`: the pipeline's keys it
 /// gives, and its kind's section.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,6 +115,48 @@ enum Making {
 const FRAMES: f32 = 30.0;
 
 impl ProductionImport {
+    /// The base of a faction whose start is the building `building` and the units `builders`,
+    /// from the command sets it converted.
+    pub(crate) fn base(&self, building: &DeclaredName, builders: &[DeclaredName]) -> FactionBase {
+        let mut buildings: Vec<DeclaredName> = Vec::new();
+        for builder in builders {
+            for made in self.made(builder, ActionKind::Build) {
+                if made != building && !buildings.contains(made) {
+                    buildings.push(made.clone());
+                }
+            }
+        }
+        let mut units: Vec<DeclaredName> = Vec::new();
+        for producer in [building].into_iter().chain(&buildings) {
+            for made in self.made(producer, ActionKind::Train) {
+                if !units.contains(made) {
+                    units.push(made.clone());
+                }
+            }
+        }
+        FactionBase { buildings, units }
+    }
+
+    /// The unit types the actions of `kind` of `producer`'s command set make, in its order.
+    fn made<'a>(
+        &'a self,
+        producer: &DeclaredName,
+        kind: ActionKind,
+    ) -> impl Iterator<Item = &'a DeclaredName> {
+        let commands = self
+            .commands
+            .get(&ImportName::of(producer.as_str().as_bytes()));
+        commands
+            .into_iter()
+            .flatten()
+            .filter_map(|id| self.actions.get(id))
+            .filter_map(move |action| match (&action.made, kind) {
+                (MadeSection::Train(train), ActionKind::Train) => Some(&train.unit_type),
+                (MadeSection::Build(build), ActionKind::Build) => Some(&build.unit_type),
+                _ => None,
+            })
+    }
+
     /// The trains, builds and supply of `rules`, from the unit types `names` holds, each type a
     /// converted button makes, a building frees, or its object's prerequisites name, named there,
     /// and its own command set's buttons and supply converted in turn.

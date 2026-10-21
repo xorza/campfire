@@ -9,6 +9,78 @@ use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::supply_import::SupplyDropCause;
 
 #[test]
+fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction_building() {
+    // The dozer builds the center, which the start already holds, the barracks twice, by two
+    // buttons, and gathers, which makes nothing; the worker the barracks again and the factory.
+    // The center trains the dozer, the barracks the ranger and the dozer again, the factory the
+    // tank: the base is the barracks and the factory, and the dozer, the ranger and the tank, in
+    // that order (12-test-matches.md, A base start).
+    let name = |text: &str| DeclaredName::new(text).unwrap();
+    let train = |unit: &str| ImportedAction {
+        keys: ActionKeys::new(ActionKind::Train, Targeting::None),
+        made: MadeSection::Train(TrainData {
+            unit_type: name(unit),
+            requires: None,
+            variants: Vec::new(),
+        }),
+    };
+    let build = |unit: &str| ImportedAction {
+        keys: ActionKeys::new(ActionKind::Build, Targeting::Point),
+        made: MadeSection::Build(BuildData {
+            unit_type: name(unit),
+            requires: None,
+            construct: ConstructData::Builder,
+            start: BuildStart::Order,
+            start_life: None,
+            cancel_refund: None,
+            placement: None,
+        }),
+    };
+    let mut import = ProductionImport::default();
+    for (id, action) in [
+        ("build_center", build("center")),
+        ("build_barracks", build("barracks")),
+        ("raise_barracks", build("barracks")),
+        ("build_factory", build("factory")),
+        ("train_dozer", train("dozer")),
+        ("train_ranger", train("ranger")),
+        ("train_tank", train("tank")),
+    ] {
+        import.actions.insert(name(id), action);
+    }
+    for (producer, ids) in [
+        (
+            "dozer",
+            &["build_center", "build_barracks", "gather", "raise_barracks"][..],
+        ),
+        ("worker", &["build_barracks", "build_factory"]),
+        ("center", &["train_dozer"]),
+        ("barracks", &["train_ranger", "train_dozer"]),
+        ("factory", &["train_tank"]),
+    ] {
+        let ids = ids.iter().map(|&id| name(id)).collect();
+        import
+            .commands
+            .insert(ImportName::of(producer.as_bytes()), ids);
+    }
+    let base = import.base(&name("center"), &[name("dozer"), name("worker")]);
+    let names = |names: &[&str]| names.iter().map(|&text| name(text)).collect::<Vec<_>>();
+    assert_eq!(
+        base,
+        FactionBase {
+            buildings: names(&["barracks", "factory"]),
+            units: names(&["dozer", "ranger", "tank"]),
+        }
+    );
+    // A start of no builder has no base buildings, and its faction building's trains alone.
+    let alone = import.base(&name("center"), &[]);
+    assert_eq!(
+        (alone.buildings, alone.units),
+        (Vec::new(), names(&["dozer"]))
+    );
+}
+
+#[test]
 fn a_sites_start_is_the_least_share_of_billionths_that_gives_one_life() {
     // 1 of 5,000 is 0.0002 exactly; of 1,200, 0.000833333… up to 833,334 billionths, which
     // gives 1.0000008; of 180, 5,555,555.5… up to 5,555,556; a life of 1 or less starts

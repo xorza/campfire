@@ -158,7 +158,8 @@ impl Play<'_> {
     /// fight.
     fn steps(&self, play: &mut MatchPlay, bot: BotScript) -> Result<SkirmishSteps, CheckFailure> {
         play.step();
-        play.drive_bot(1, bot)?;
+        let home = play.center(1)?;
+        play.drive_bot(1, bot, home);
         let [center] = play.owned(CENTER, 0)?[..] else {
             return Err(CheckFailure::ProductionStart);
         };

@@ -135,9 +135,32 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let one = |value: i64| Ranked::One(Number::from(value));
     let navigation = data.section::<ModeNavigationData>().unwrap();
     assert_eq!(navigation.spawn_tags, all_declared(&["start"]));
+    // Its base, as the dozer builds the barracks and the center and the barracks train, and two
+    // of each unit (12-test-matches.md, A base start).
+    let texts = |names: &[&str]| {
+        ModeParam::List(
+            names
+                .iter()
+                .map(|&name| ListEntry::Text(name.to_owned()))
+                .collect(),
+        )
+    };
     assert_eq!(
         data.params,
         BTreeMap::from([
+            (
+                declared("base_buildings_america"),
+                texts(&["americabarracks"])
+            ),
+            (declared("base_count"), ModeParam::Value(Scalar::Int(2))),
+            (
+                declared("base_units_america"),
+                texts(&[
+                    "americavehicledozer",
+                    "americainfantryranger",
+                    "americainfantrypathfinder"
+                ])
+            ),
             (
                 declared("start_building_america"),
                 ModeParam::Text("americacommandcenter".to_owned())
@@ -152,19 +175,23 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             ),
         ])
     );
+    let choice = |name: &str, values: &[&str]| ChoiceData {
+        name: TextId::new(name).unwrap(),
+        offers: Offers::Values,
+        unique: false,
+        count: NonZeroU8::MIN,
+        slot: None,
+        values: all_declared(values),
+    };
     assert_eq!(
         data.choices,
-        BTreeMap::from([(
-            declared("faction"),
-            ChoiceData {
-                name: TextId::new("choice-faction").unwrap(),
-                offers: Offers::Values,
-                unique: false,
-                count: NonZeroU8::MIN,
-                slot: None,
-                values: all_declared(&["america"]),
-            }
-        )])
+        BTreeMap::from([
+            (declared("faction"), choice("choice-faction", &["america"])),
+            (
+                declared("start"),
+                choice("choice-start", &["standard", "base"])
+            ),
+        ])
     );
     let money = [5000, 10000, 20000].map(Scalar::Int).into();
     assert_eq!(
@@ -525,7 +552,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // lacks, so their objects' names.
     assert_eq!(
         test_dir.read_text("one/game/locale/en.ftl"),
-        "mode-name = Zero Hour\nchoice-faction = Faction\nteam-player-1 = Player 1\nteam-player-2 = Player 2\n\
+        "mode-name = Zero Hour\nchoice-faction = Faction\nchoice-start = Start\nteam-player-1 = Player 1\nteam-player-2 = Player 2\n\
          team-player-3 = Player 3\nteam-player-4 = Player 4\nteam-player-5 = Player 5\n\
          team-player-6 = Player 6\nteam-player-7 = Player 7\nteam-player-8 = Player 8\n\
          team-neutral = Neutral\n\

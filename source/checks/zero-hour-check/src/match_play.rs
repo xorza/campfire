@@ -1,4 +1,5 @@
 use campfire_actions::TypeSlotsData;
+use std::mem;
 use std::num::NonZeroU32;
 
 use campfire_bots::{
@@ -62,19 +63,18 @@ pub(crate) struct BuildingDozer {
 }
 
 /// A match a play of the check drives a tick at a time, as player 1, the tick it runs next, and
-/// the bot it drives, if one. A part of the imported mode a play reads and does not find is a
-/// failure of the import.
+/// the bots it drives. A part of the imported mode a play reads and does not find is a failure of
+/// the import.
 #[derive(Debug)]
 pub(crate) struct MatchPlay {
     fixed: FixedMatch,
     tick: Tick,
-    bot: Option<MatchBot>,
+    bots: Vec<MatchBot>,
 }
 
 /// A bot a play drives by the step a server's bot driver takes: its seat, its script, the view of
 /// the match its step reads, as the driver's does, and the step's buffers, the payloads a step
-/// gives, the point its command center stands at, and the farthest any of its units stood from
-/// there.
+/// gives, its home, and the farthest any of its units stood from there.
 #[derive(Debug)]
 struct MatchBot {
     seat: u32,
@@ -156,19 +156,14 @@ impl MatchPlay {
         Self {
             fixed,
             tick: Tick::new(0),
-            bot: None,
+            bots: Vec::new(),
         }
     }
 
     /// Drives player `seat` by `script` from the tick it runs next, as a server drives its bot,
-    /// and keeps the farthest its units stand from its command center; a failure when the player
-    /// has no one center.
-    pub(crate) fn drive_bot(&mut self, seat: u32, script: BotScript) -> Result<(), CheckFailure> {
-        let [center] = self.owned(CENTER, seat)?[..] else {
-            return Err(CheckFailure::FightStart);
-        };
-        let home = MatchUnits::of(self.game()).position(center);
-        self.bot = Some(MatchBot {
+    /// beside the bots it drives already, and keeps the farthest its units stand from `home`.
+    pub(crate) fn drive_bot(&mut self, seat: u32, script: BotScript, home: Vec3) {
+        self.bots.push(MatchBot {
             seat,
             script,
             view: HeldBotView::new(self.fixed.game_mut()),
@@ -177,7 +172,15 @@ impl MatchPlay {
             home,
             farthest: Num::ZERO,
         });
-        Ok(())
+    }
+
+    /// Where America's command center of player `seat` stands; a failure when the player has no
+    /// one center.
+    pub(crate) fn center(&self, seat: u32) -> Result<Vec3, CheckFailure> {
+        let [center] = self.owned(CENTER, seat)?[..] else {
+            return Err(CheckFailure::FightStart);
+        };
+        Ok(MatchUnits::of(self.game()).position(center))
     }
 
     /// Drives the bot, player 2, by one order in the tick it runs next, of `packages`: its dozer
@@ -202,17 +205,18 @@ impl MatchPlay {
         let books = packages.name_books();
         let bot =
             BotScript::new(&script, &BotNames::new(&books)).map_err(CheckFailure::BotNames)?;
-        self.drive_bot(1, bot)?;
+        let home = self.center(1)?;
+        self.drive_bot(1, bot, home);
         let [dozer] = self.owned(DOZER, 1)?[..] else {
             return Err(CheckFailure::FightStart);
         };
         Ok(dozer)
     }
 
-    /// The farthest a unit of the bot stood from its command center, on the ground plane, in
-    /// meters; none with no bot.
+    /// The farthest a unit of the first bot stood from its home, on the ground plane, in meters;
+    /// none with no bot.
     pub(crate) fn bot_farthest(&self) -> Option<Num> {
-        self.bot.as_ref().map(|bot| bot.farthest)
+        self.bots.first().map(|bot| bot.farthest)
     }
 
     /// The tick it runs next: how many ticks it ran.
@@ -224,15 +228,16 @@ impl MatchPlay {
         self.fixed.game()
     }
 
-    /// Logs the bot's orders its script has due, then runs the tick, and moves on to the next.
+    /// Logs each bot's orders its script has due, then runs the tick, and moves on to the next.
     pub(crate) fn step(&mut self) {
-        if let Some(mut bot) = self.bot.take() {
-            self.serve_bot(&mut bot);
-            self.bot = Some(bot);
+        let mut bots = mem::take(&mut self.bots);
+        for bot in &mut bots {
+            self.serve_bot(bot);
         }
+        self.bots = bots;
         self.fixed.game_mut().run_tick_alone();
         self.tick = Tick::new(self.tick.get() + 1);
-        if let Some(bot) = &mut self.bot {
+        for bot in &mut self.bots {
             let units = MatchUnits::of(self.fixed.game());
             let seat = bot.seat;
             for (_, unit) in units

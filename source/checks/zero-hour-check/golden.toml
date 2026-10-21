@@ -3,8 +3,8 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "fa62d5e96d9640c29122cee8d16a7c6eeddbc23452408055e9d296542b41d446"
-rules = "5c8ed8d75504b9f4a11074a6d1e067c209f1ec8d3dda98c1c7022e12bdc635f8"
+game = "58d797a074076f5bc229bc1f02a1135954561b3af452e0bfdea57f4f064fc358"
+rules = "8990d94af12647868bd13d0cf65d663446a198e5b62836449772a6dbe03b5331"
 
 [map]
 heights = [270, 340]
@@ -81,3 +81,6 @@ death = 1336
 [bot]
 built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 310
+
+[base]
+standing = [7, 11]

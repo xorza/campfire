@@ -17,6 +17,7 @@ use campfire_package_disk::PackageDir;
 use campfire_production::{DropOffData, NodeData};
 use tracing::info;
 
+use crate::base_play::BasePlay;
 use crate::defense_play::DefensePlay;
 use crate::error::CheckError;
 use crate::failure::{CheckFailure, Differs};
@@ -457,6 +458,22 @@ impl ImportCheck<'_> {
                 hit = missile.hit,
                 death = missile.death,
                 "player 1's Tank Hunter, ordered nothing, killed the bot's dozer with its missiles"
+            );
+        }
+        let played = self
+            .game
+            .mode_packages(Some(self.map))
+            .map_err(CheckError::Load)?;
+        if let Some(base) = BasePlay::run(played, rate, &mut self.failures)? {
+            let expected = self.pinned(|golden| golden.base, base);
+            self.failures
+                .extend(Differs::of(base, expected).map(CheckFailure::BaseEnd));
+            self.measured.base = Some(base);
+            info!(
+                ended = ?base.ended,
+                result = ?base.result,
+                standing = ?base.standing,
+                "two bots started with their bases, and fought"
             );
         }
         if let Some(drive) = StartDrive::run(self.packages, rate, &mut self.failures) {

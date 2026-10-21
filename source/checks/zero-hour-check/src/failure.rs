@@ -5,9 +5,9 @@ use campfire_orders::OrdersDirective;
 use derive_more::Display;
 
 use crate::pins::{
-    BotBase, DefenseTicks, FactorySteps, FightSteps, Fingerprints, FoughtCounts, LookCounts,
-    MapCounts, MissileTicks, ProducedCounts, ProductionSteps, SuppliedCounts, SupplySteps,
-    TerrainDrawn,
+    BaseEnd, BotBase, DefenseTicks, FactorySteps, FightSteps, Fingerprints, FoughtCounts,
+    LookCounts, MapCounts, MissileTicks, ProducedCounts, ProductionSteps, SuppliedCounts,
+    SupplySteps, TerrainDrawn,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -144,6 +144,31 @@ pub(crate) enum CheckFailure {
     /// The dozer took other ticks to the other start than the pinned.
     #[display("the dozer took ticks to the other start: {_0}")]
     DriveTicks(Box<Differs<u64>>),
+    /// The imported mode lacks a faction's base, its params, or an army in it.
+    #[display("the imported mode has no base of {_0}")]
+    NoBase(&'static str),
+    /// The imported mode has no unit type of this name, which its base names.
+    #[display("the imported mode has no unit type {_0}, which a base names")]
+    BaseType(String),
+    /// A seat of the base play holds none of a base building whole.
+    #[display("player {} holds no {unit}", seat + 1)]
+    BaseBuilding { seat: u32, unit: String },
+    /// A seat of the base play holds fewer of a base unit than its base's count.
+    #[display("player {} holds {held} of {unit}", seat + 1)]
+    BaseUnit {
+        seat: u32,
+        unit: String,
+        held: usize,
+    },
+    /// Bodies of the base play's seats overlap a wall, or a body, this many times.
+    #[display("the bases' bodies overlap {_0} times")]
+    BaseOverlaps(usize),
+    /// A base bot's file holds other than the orders the check makes of the imported mode.
+    #[display("the base bot of {_0} differs from its file")]
+    BotFile(&'static str),
+    /// The base play's match stood otherwise than the pinned at its end or its limit.
+    #[display("the bases' bots ended as {_0}")]
+    BaseEnd(Box<Differs<BaseEnd>>),
     /// A run that blesses failed before it measured every value the file pins, so it writes none.
     #[display("the run measured not every value it pins, so it writes no golden file")]
     Unmeasured,

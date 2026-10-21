@@ -5,9 +5,12 @@
 // pathfind cell, 10, as clear of each body, as the building may cover the rally; a unit with no
 // room within 20 cells is left out. A player's faction is the one its host picked, or one
 // drawn of the mode's factions, as the original draws a slot's Random, which then counts as its
-// pick. A slot no player or bot held as the match started, and a player whose start the map
-// lacks, start with no unit. Every player starts with the skirmish's money, `start_money`, as
-// the game gives each its starting cash.
+// pick. A seat whose host picked the start `base` also gets its faction's base: each of its base
+// buildings, whole, at the room nearest its start within 40 cells, and `base_count` of each of
+// its base units at the room nearest its rally within 40, each left out with no room. A slot no
+// player or bot held as the match started, and a player whose start the map lacks, start with
+// no unit. Every player starts with the skirmish's money, `start_money`, as the game gives each
+// its starting cash.
 fn on_match_start(ctx) {
     let factions = ctx.offers("faction");
     for player in ctx.players {
@@ -38,11 +41,28 @@ fn on_match_start(ctx) {
             rallies[0].position
         };
         for unit in ctx.params[`start_units_${faction}`] {
-            let at = ctx.room_near(unit, rally, 10, 20);
-            if at != () {
-                ctx.spawn_unit(unit, team, at, player);
+            spawn_near(ctx, player, unit, rally, 20);
+        }
+        let start = ctx.chosen(player, "start");
+        if !start.is_empty() && start[0] == "base" {
+            for building in ctx.params[`base_buildings_${faction}`] {
+                spawn_near(ctx, player, building, at, 40);
+            }
+            for unit in ctx.params[`base_units_${faction}`] {
+                for i in 0..ctx.params.base_count {
+                    spawn_near(ctx, player, unit, rally, 40);
+                }
             }
         }
+    }
+}
+
+// A unit of `unit_type` of `player` at the room nearest `point` within `steps` pathfind cells, a
+// cell clear of each body; none with no room.
+fn spawn_near(ctx, player, unit_type, point, steps) {
+    let at = ctx.room_near(unit_type, point, 10, steps);
+    if at != () {
+        ctx.spawn_unit(unit_type, player.team, at, player);
     }
 }
 

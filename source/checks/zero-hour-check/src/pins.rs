@@ -105,6 +105,17 @@ pub(crate) struct BotBase {
     pub(crate) farthest_m: i64,
 }
 
+/// How the base play's match of two bots stood as it ended or its limit passed: the tick it ended
+/// and its result, if it did, and the buildings of its base each seat held (12-test-matches.md,
+/// Bots that fight from a base).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BaseEnd {
+    pub(crate) ended: Option<u64>,
+    pub(crate) result: Option<MatchResult>,
+    pub(crate) standing: [usize; 2],
+}
+
 /// The fight's steps: the ticks from the first train to the last crusader trained, and from the
 /// attack's order to the first shell's launch, to the first damage to the bot's command center,
 /// and to its death; player 1's money as the attack is ordered; and how the match ended by then,

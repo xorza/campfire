@@ -165,7 +165,7 @@ fn a_name_is_a_fluent_value_that_gives_it_back() {
     assert_eq!(
         mode_text(&texts),
         format!(
-            "mode-name = Zero Hour\nchoice-faction = Faction\n{teams}team-neutral = Neutral\n\
+            "mode-name = Zero Hour\nchoice-faction = Faction\nchoice-start = Start\n{teams}team-neutral = Neutral\n\
                  action-train-a = A & {{\"{{\"}}B{{\"}}\"}}\n"
         )
     );

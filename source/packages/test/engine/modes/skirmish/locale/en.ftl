@@ -1,5 +1,6 @@
 mode-name = Skirmish
 choice-faction = Faction
+choice-start = Start
 team-player-1 = Player 1
 team-player-2 = Player 2
 team-player-3 = Player 3
