@@ -1,0 +1,21 @@
+# Zero Hour base defenses
+
+Why the import drops the base defenses and the ground units around them, and how the original builds, requires, spawns and varies them, read on 21 October 2026: Zero Hour from GeneralsX's `GeneralsMD` source at `0e79905d1` and the INI files of the install `GENERALSZH_DATA` names; the import's counts from the Zero Hour check of the same day.
+
+## What the import drops
+
+- **Four builds by `NoBox`.** The import builds only an object whose body is a box, as the engine's build places a box (`production/src/book_builders.rs`, `placement.rs`, `construction/build_view.rs`, the client's `build_preview.rs`). The four dropped are cylinders: `AmericaPatriotBattery` of radius 12, height 14; `GLATunnelNetwork` of radius 25, height 20; `GLAStingerSite` of radius 36, height 9; `GLADemoTrap` of radius 4, `GeometryIsSmall = Yes`, which gets no body at all.
+- **One build by `EitherOr`.** `AmericaStrategyCenter` requires `Object = AmericaWarFactory AmericaAirfield`, a line of two objects; the Tomahawk requires `AmericaWarFactory` and `AmericaStrategyCenter`, so its train converts but its requirement never holds.
+- **Seven trains by `Science`.** The Pathfinder, the stealth fighter, the Paladin, the nuke launcher, the hijacker, the Marauder and the Scud launcher (`Science = SCIENCE_ScudLauncher`) need a general's science.
+- **The Technical by `NoWalker`.** `GLAVehicleTechnical` holds no locomotor and no weapon: it names `BuildVariations = GLAVehicleTechnicalChassisOne GLAVehicleTechnicalChassisTwo GLAVehicleTechnicalChassisThree`. Chassis One is an object of its own; Two and Three are reskins of it, each its own model and box, 36 × 18, 32 × 16 and 28 × 18 units, with Chassis One's locomotor and weapons.
+- **Weapons by `NoDelay`, six.** `StingerMissileWeapon` and its kin, and `GLAJarmenKellVehiclePilotSniperRifle`: a `DelayBetweenShots` of 0 and a `ClipSize` of 1, reloading in 2,000 and 30,000 ms.
+- **Weapons by `Affects`, six.** `TomahawkMissileWeapon`, `SCUDLauncherGunExplosive` and its Demolition copy, `InfernoCannonGun` and `RaptorJetMissileWeapon` name `NOT_SIMILAR` in `RadiusDamageAffects`; `NukeCannonNeutronWeapon` names it with `NOT_AIRBORNE` and `SUICIDE`.
+
+## The original's rules
+
+- **A cylinder's footprint.** The pathfinder classifies a structure's footprint by its geometry, a cylinder as a circle of its radius (`Pathfinder::classifyObjectFootprint`); a structure of `GeometryIsSmall = Yes` takes none.
+- **A prerequisite line is an "or".** Each name after the first on one `Object =` line sets `UNIT_OR_WITH_PREV`, and `ProductionPrerequisite::isSatisfied` passes the line when the player owns any one of them.
+- **A clip of one shot reloads after each shot.** `Weapon::privateFireWeapon` decrements the clip as it fires and, at 0, reloads it, from the shot's frame, for `ClipReloadTime`; `DelayBetweenShots` counts only while shots remain in the clip, so a clip of one never uses it.
+- **`NOT_SIMILAR` spares allied kin.** `WeaponTemplate::dealDamageInternal` skips a victim whose template is equivalent to the source's and who is the source's ally: "a group of terrorists blowing themselves up"; an enemy of the same template takes the damage. `NOT_AIRBORNE` skips a victim significantly above the terrain unless it is the primary target.
+- **`SpawnBehavior` keeps its spawns.** It keeps `SpawnNumber` units of `SpawnTemplateName`, all made as soon as it can; when one dies it makes another `SpawnReplaceDelay` later (`SpawnBehavior::onSpawnDeath`); with `SpawnedRequireSpawner` its spawns die with it; with `OneShot` it spawns once and stops, the form the import already reads as a building's free units. The Stinger site keeps 3 `GLAInfantryStingerSoldier`, replacing each after 30,000 ms, through `SpawnPointProductionExitUpdate`'s bones on its roof, and its `HiveStructureBody` passes damage to its spawns while they live; the tunnel network keeps 2 `GLAInfantryTunnelDefender`, replacing each after 9,999 ms; an angry mob keeps its members.
+- **A build variation is drawn at creation.** `ThingFactory::newObject` replaces a template of `BuildVariations` by one of them, drawn by `GameLogicRandomValue`, for every object it creates.
