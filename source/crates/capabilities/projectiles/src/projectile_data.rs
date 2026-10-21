@@ -30,13 +30,13 @@ pub struct ProjectileData {
     pub steer: Option<SteerData>,
 }
 
-/// A projectile's `steer` (12-missiles.md, A steered flight): it leaves at `launch_speed` m/s,
-/// gains `acceleration` m/s each second up to its projectile's speed, flies straight for
-/// `straight` meters, then turns toward its target by at most `turn_rate` degrees a second; it
-/// flies straight at its target within `lock` meters on the ground, or at its point within
-/// `point_lock`, `lock` when it has none; it holds `cruise`'s height
-/// over its target until within its dive; it ends as `fuel_ms` runs out; and, unless it
-/// `tracks` its target, it flies to the point where its target stood as it launched.
+/// A projectile's `steer` (04-capabilities/actions.md, A projectile may be steered): it leaves at
+/// `launch_speed` m/s, gains `acceleration` m/s each second up to its projectile's speed, flies
+/// straight for `straight` meters, then turns toward its target by at most `turn_rate` degrees a
+/// second; it flies straight at its target within `lock` meters on the ground, or at its point
+/// within `point_lock`, `lock` when it has none; it holds `cruise`'s height over its target until
+/// within its dive; it ends as `fuel_ms` runs out; and, unless it `tracks` its target, it flies to
+/// the point where its target stood as it launched.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SteerData {
     pub(crate) launch_speed: Option<Num>,
@@ -50,9 +50,9 @@ pub struct SteerData {
     pub(crate) tracks: bool,
 }
 
-/// A steered projectile's `cruise` (12-missiles.md, A cruise height): the height in meters over
-/// the ground under its target it holds, until it comes within `dive` meters of its target on the
-/// ground.
+/// A steered projectile's `cruise` (04-capabilities/actions.md, A steered projectile may cruise):
+/// the height in meters over the ground under its target it holds, until it comes within `dive`
+/// meters of its target on the ground.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CruiseData {

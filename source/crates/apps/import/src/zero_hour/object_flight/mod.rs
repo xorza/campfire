@@ -1,5 +1,5 @@
 //! How the import flies a projectile object a weapon fires (09-zero-hour.md, The import converts
-//! shells, splash, scatter, pitch, turrets and slow weapons; 12-missiles.md, A missile converts to
+//! shells, splash, scatter, pitch, turrets and slow weapons; 09-zero-hour.md, A missile converts to
 //! a steered projectile).
 
 use campfire_projectiles::{CruiseData, CurveData, ProjectileData, ProjectileHits, SteerData};
@@ -41,7 +41,7 @@ impl<'l> ObjectFlight<'l> {
     /// The projectile `weapon` fires, of `object`, which flies so, twice its geometry's radius
     /// wide, detonating on what its `ProjectileCollidesWith` names: a shell at its `WeaponSpeed`
     /// on the curve of its behavior; a missile steered by its behavior and its locomotor
-    /// (12-missiles.md, A missile converts to a steered projectile).
+    /// (09-zero-hour.md, A missile converts to a steered projectile).
     /// Why the import drops the weapon, for a mask of what the engine's units are not, a missile
     /// of what the engine's steer does not hold, a number past what the engine holds, or a
     /// projectile the engine's type refuses.

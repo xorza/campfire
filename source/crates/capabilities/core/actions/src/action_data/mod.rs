@@ -43,7 +43,8 @@ pub struct ActionData {
     pub script: Option<PackagePath>,
     pub targeting: Targeting,
     pub range: Option<Ranked<RangeField>>,
-    /// The meters nearer than which it takes no target (12-missiles.md, A minimum range).
+    /// The meters nearer than which it takes no target (04-capabilities/actions.md, An action may
+    /// keep a minimum range).
     pub min_range: Option<Ranked<Number>>,
     pub cooldown_ms: Option<Ranked<Number>>,
     /// In each pool of the caster it names, and each resource of the caster's player.

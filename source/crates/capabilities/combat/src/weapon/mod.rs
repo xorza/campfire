@@ -36,8 +36,8 @@ pub struct Splash {
     pub(crate) outer: Option<OuterRing>,
 }
 
-/// A splash's outer ring (12-missiles.md, A second ring of splash): its radius, past
-/// its splash's, and its amount at each rank.
+/// A splash's outer ring (04-capabilities/combat.md, A splash may have an outer ring): its radius,
+/// past its splash's, and its amount at each rank.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OuterRing {
     pub(crate) radius: Num,

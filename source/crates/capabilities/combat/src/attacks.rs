@@ -83,8 +83,8 @@ impl Attacks {
     /// ends, to each living unit of the relations its splash affects, to its source when it spares
     /// none, whose volume lies within its radius of the end's point in space, by stable id, then
     /// its outer ring's amount to each such unit beyond its radius and within the ring's, by stable
-    /// id (04-capabilities/combat.md, An attack may splash; 12-missiles.md, A second ring of
-    /// splash).
+    /// id (04-capabilities/combat.md, An attack may splash; 04-capabilities/combat.md, A splash may
+    /// have an outer ring).
     pub(super) fn take_hits(
         (tick, weapons): (Res<'_, SimTick>, Res<'_, ByAction<Weapon>>),
         (deliveries, mut queue): (Res<'_, DeliveryQueue>, ResMut<'_, PassQueue>),

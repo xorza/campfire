@@ -20,7 +20,7 @@ impl Destinations {
     /// unit whose target is gone, dead, no longer an enemy or one no weapon of it selects drops it
     /// and stops, and so does one, that walks or stands, whose scan gave it a target out of that
     /// reach, which it does not chase (04-capabilities/control.md, A scanned target holds only in
-    /// reach; 12-missiles.md, A minimum range).
+    /// reach; 04-capabilities/actions.md, An action may keep a minimum range).
     pub(super) fn chase(
         book: Res<'_, ActionBook>,
         targets: Targets<'_, '_>,

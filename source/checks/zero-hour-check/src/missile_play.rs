@@ -26,10 +26,10 @@ const TANK_HUNTER: &str = "chinainfantrytankhunter";
 /// missiles reach.
 const SHORT_OF_THE_HUNTER: Num = Num::int(120);
 
-/// A Tank Hunter's missiles on Tournament Desert (12-missiles.md, A missile converts to a steered
+/// A Tank Hunter's missiles on Tournament Desert (09-zero-hour.md, A missile converts to a steered
 /// projectile): player 1, China, builds a barracks and trains a Tank Hunter, and the bot, America,
-/// drives its dozer from its start to a point within the hunter's reach, where the hunter,
-/// ordered nothing, fires steered missiles at it, and kills it.
+/// drives its dozer from its start to a point within the hunter's reach, where the hunter, ordered
+/// nothing, fires steered missiles at it, and kills it.
 #[derive(Debug)]
 pub(crate) struct MissilePlay;
 

@@ -27,11 +27,11 @@ pub struct ProjectileSpec {
     pub(crate) steer: Option<SteerSpec>,
 }
 
-/// A steer as a match runs it (12-missiles.md, A steered flight): its launch speed a tick, the
-/// speed it gains each tick, its turn a tick as the sine and the cosine of its angle, none for a
-/// turn of half a turn or more, which turns it any way, its straight run, its lock at a unit and
-/// at a point and its cruise in meters, its fuel in ticks, rounded up, and whether it tracks its
-/// target.
+/// A steer as a match runs it (04-capabilities/actions.md, A projectile may be steered): its launch
+/// speed a tick, the speed it gains each tick, its turn a tick as the sine and the cosine of its
+/// angle, none for a turn of half a turn or more, which turns it any way, its straight run, its
+/// lock at a unit and at a point and its cruise in meters, its fuel in ticks, rounded up, and
+/// whether it tracks its target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SteerSpec {
     pub(crate) launch: Num,

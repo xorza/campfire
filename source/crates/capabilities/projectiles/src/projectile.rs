@@ -89,7 +89,8 @@ impl Flight {
 
     /// The flight `aim` launches of a type of `spec` that flies at an aim, over the ground of
     /// `map`: steered toward the unit it aims at, when its type tracks one, or to its point,
-    /// leaving toward it (12-missiles.md, It leaves toward its target); or on its curve.
+    /// leaving toward it (04-capabilities/actions.md, A steered flight leaves toward its target);
+    /// or on its curve.
     pub(crate) fn aimed(aim: LaunchAim, spec: &ProjectileSpec, map: &MapBook) -> Self {
         let Some(steer) = spec.steer else {
             return Self::curve(aim, spec, map);

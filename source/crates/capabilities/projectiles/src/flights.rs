@@ -380,17 +380,17 @@ impl TickFlights<'_> {
         true
     }
 
-    /// Flies `aloft` a step of its steer (12-missiles.md, A steered flight). It ends with no hit
-    /// when the unit it tracks lives no more or a teleport lost it, and where it stands as its
-    /// fuel runs out. Its speed gains its acceleration up to its type's speed. Within its lock of
-    /// its goal on the ground, its tracked unit's center, or within its point's lock of its point,
-    /// it steps straight at it;
-    /// else it turns toward its goal, raised to its cruise height over the goal's ground until
-    /// its dive, by at most its turn, none within its straight run, and steps along its heading.
-    /// It ends where it leaves the world's bound, or meets the ground of a planar map. At its
-    /// point, its sphere of half its width meets the volumes of the living units its type's
-    /// `hits` selects, and of the unit it tracks, never its source's: the one of the lowest
-    /// stable id is its hit, and it ends there; one that tracks no unit ends at its point.
+    /// Flies `aloft` a step of its steer (04-capabilities/actions.md, A projectile may be steered).
+    /// It ends with no hit when the unit it tracks lives no more or a teleport lost it, and where
+    /// it stands as its fuel runs out. Its speed gains its acceleration up to its type's speed.
+    /// Within its lock of its goal on the ground, its tracked unit's center, or within its point's
+    /// lock of its point, it steps straight at it; else it turns toward its goal, raised to its
+    /// cruise height over the goal's ground until its dive, by at most its turn, none within its
+    /// straight run, and steps along its heading. It ends where it leaves the world's bound, or
+    /// meets the ground of a planar map. At its point, its sphere of half its width meets the
+    /// volumes of the living units its type's `hits` selects, and of the unit it tracks, never its
+    /// source's: the one of the lowest stable id is its hit, and it ends there; one that tracks no
+    /// unit ends at its point.
     fn steered(
         &mut self,
         targets: &Targets<'_, '_>,

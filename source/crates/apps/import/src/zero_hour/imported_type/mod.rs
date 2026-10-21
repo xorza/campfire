@@ -27,14 +27,14 @@ use crate::zero_hour::weapon_drop;
 /// geometry, else a circle of its radius, of its geometry's height (04-capabilities/00-overview.md,
 /// A body has a height); the life of an active or a structure body, with its `combat` section of
 /// the armor of its starting armor set; the tags of its kinds, of victory for a structure that
-/// counts for one, and of a structure, a wall and infantry, which a projectile's hits and a
-/// scatter name; the turn rate of the turret of its AI module, which turns its weapons; and, of a life, its
+/// counts for one, and of a structure, a wall and infantry, which a projectile's hits and a scatter
+/// name; the turn rate of the turret of its AI module, which turns its weapons; and, of a life, its
 /// `BuildCost` in money as the cost a kill's bounty takes its share of. Every other object has none
 /// of these. What every type shares, a death that despawns and a turret's tolerance and slot kind,
 /// is Zero Hour's rules data, `[defaults]`, which lies under each type's own (03-game-scripting.md,
 /// Defaults under each unit type). A fired projectile's type is a projectile alone
 /// (09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and slow weapons;
-/// 12-missiles.md, A missile converts to a steered projectile).
+/// 09-zero-hour.md, A missile converts to a steered projectile).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedType {
     pools: Option<TypePoolsData>,

@@ -15,11 +15,11 @@ use crate::projectile_spec::ProjectileSpec;
 pub struct Launching;
 
 impl Launching {
-    /// Makes each of the tick's shots a launch: homing on its target from where its attacker
-    /// stood, or for a type that flies a curve or is steered, from its attacker's center to its
-    /// target's, none when its target no longer lives, or to the point it scattered to
-    /// (04-capabilities/actions.md, A projectile may fly a curve; 12-missiles.md, A steered
-    /// flight).
+    /// Makes each of the tick's shots a launch: homing on its target from where its attacker stood,
+    /// or for a type that flies a curve or is steered, from its attacker's center to its target's,
+    /// none when its target no longer lives, or to the point it scattered to
+    /// (04-capabilities/actions.md, A projectile may fly a curve; 04-capabilities/actions.md, A
+    /// projectile may be steered).
     pub(super) fn take_shots(
         (mut shots, mut launches): (ResMut<'_, Shots>, ResMut<'_, Launches>),
         specs: Res<'_, ByType<ProjectileSpec>>,

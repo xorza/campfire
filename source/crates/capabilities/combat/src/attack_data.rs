@@ -237,8 +237,8 @@ pub struct SplashData {
     pub(crate) outer: Option<OuterData>,
 }
 
-/// A splash's `outer` ring (12-missiles.md, A second ring of splash): its radius in
-/// meters, past its splash's, and the amount it deals at each rank, at least 0.
+/// A splash's `outer` ring (04-capabilities/combat.md, A splash may have an outer ring): its radius
+/// in meters, past its splash's, and the amount it deals at each rank, at least 0.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OuterData {

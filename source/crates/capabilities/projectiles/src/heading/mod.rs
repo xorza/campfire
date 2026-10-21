@@ -3,7 +3,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// The way a steered projectile flies, a unit vector in space, as `Vec3::normalized` rounds it
-/// (12-missiles.md, One state for its motion).
+/// (04-capabilities/actions.md, One state for a steered flight's motion).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct Heading(Vec3);
