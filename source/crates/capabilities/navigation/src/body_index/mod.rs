@@ -155,7 +155,7 @@ impl IndexedBody {
     }
 
     /// Whether the insides of the body and of `other` share a point: touching is not overlap.
-    pub fn overlaps(&self, other: Placed) -> bool {
+    pub(crate) fn overlaps(&self, other: Placed) -> bool {
         Placed::new(self.position, self.shape).overlaps(other)
     }
 
