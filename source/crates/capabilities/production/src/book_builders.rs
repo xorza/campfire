@@ -91,15 +91,23 @@ impl Production {
                     if action.targeting != Targeting::None {
                         return fail(ProductionDataError::TrainAims);
                     }
-                    let trained = source.units.get(&train.unit_type);
-                    if trained.is_some_and(UnitTypeData::delivers) {
-                        return fail(ProductionDataError::Trained);
-                    }
-                    let walks = |unit: &&UnitTypeData| {
+                    // A train of variants makes them, and never its own type.
+                    let made = if train.variants.is_empty() {
+                        std::slice::from_ref(&train.unit_type)
+                    } else {
+                        train.variants.as_slice()
+                    };
+                    let trained = made.iter().filter_map(|name| source.units.get(name));
+                    let walks = |unit: &UnitTypeData| {
                         unit.section::<StatsData>().is_some_and(StatsData::walks)
                     };
-                    if trained.is_some_and(|unit| !walks(&unit)) {
-                        return fail(ProductionDataError::TrainStands);
+                    for unit in trained {
+                        if unit.delivers() {
+                            return fail(ProductionDataError::Trained);
+                        }
+                        if !walks(unit) {
+                            return fail(ProductionDataError::TrainStands);
+                        }
                     }
                 }
                 let build = action.section::<BuildData>();
@@ -241,7 +249,8 @@ impl BuildBook {
 }
 
 impl TrainSpec {
-    /// What each train makes: a unit type of its package; an error for one it does not have.
+    /// What each train makes: a unit type of its package, and its variants; an error for one it
+    /// does not have.
     pub fn book(cx: &BookCx<'_>) -> Result<ByAction<Self>, BookError> {
         let mut book = ByActionBuilder::default();
         for action in LoadedAction::all(cx)? {
@@ -249,11 +258,19 @@ impl TrainSpec {
                 continue;
             };
             let scope = TypeScope::of_package(action.package);
-            let unit_type = cx.unit_type(scope, data.unit_type.as_str());
-            let unit_type = unit_type.ok_or_else(|| {
-                action.unknown(UnknownName::new(UnitType::NAMES, &data.unit_type))
-            })?;
-            book.set(action.action, Self { unit_type });
+            let resolve = |name: &DeclaredName| {
+                let unit_type = cx.unit_type(scope, name.as_str());
+                unit_type.ok_or_else(|| action.unknown(UnknownName::new(UnitType::NAMES, name)))
+            };
+            let spec = Self {
+                unit_type: resolve(&data.unit_type)?,
+                variants: data
+                    .variants
+                    .iter()
+                    .map(resolve)
+                    .collect::<Result<_, _>>()?,
+            };
+            book.set(action.action, spec);
         }
         Ok(book.build())
     }

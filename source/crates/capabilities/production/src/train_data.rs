@@ -10,15 +10,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::requires_data::RequiresData;
 
-/// The section of an action of kind `train`: the unit type of its package it makes, and what its
+/// The section of an action of kind `train`: the unit type of its package it makes, what its
 /// player must hold for it to join a queue (04-capabilities/actions.md, Each kind owns its
-/// section).
+/// section), and the unit types of its package it makes in its type's place, one drawn for each
+/// unit, when it names some (12-base-defenses.md, A train may make one of several types).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TrainData {
     pub unit_type: DeclaredName,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requires: Option<RequiresData>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variants: Vec<DeclaredName>,
 }
 
 impl KindSection for TrainData {

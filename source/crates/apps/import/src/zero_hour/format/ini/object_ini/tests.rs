@@ -486,6 +486,7 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
                 starts_gatherers: false,
             }),
             placement_angle: Some(Num::int(-135)),
+            variations: Vec::new(),
         }
     );
     // The barracks' queue of 5, and its points, of a `QueueProductionExitUpdate`, which names them

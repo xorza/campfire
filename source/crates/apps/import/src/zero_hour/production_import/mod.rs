@@ -81,7 +81,7 @@ pub enum ButtonDropCause {
     NoObject,
     /// Its object's prerequisites need a science.
     Science,
-    /// It trains an object that does not walk.
+    /// It trains an object that does not walk, or variations one of which does not.
     NoWalker,
     /// It builds an object of no body, as a small structure (12-base-defenses.md, A cylinder
     /// structure builds as a circle).
@@ -213,8 +213,25 @@ impl ProductionImport {
         let Ok(imported) = ImportedType::of(made, &rules.locomotors) else {
             return drop(ButtonDropCause::NoType);
         };
+        // A train of variations makes them in its object's place, so they walk, and it need not
+        // (12-base-defenses.md, `BuildVariations` converts to a train's variants).
+        let mut variations = Vec::with_capacity(build.variations.len());
+        for name in &build.variations {
+            let Some(variation) = rules.objects.object(name.as_bytes()) else {
+                return drop(ButtonDropCause::NoObject);
+            };
+            variations.push(variation);
+        }
+        let walks = |object: &IniObject| {
+            ImportedType::of(object, &rules.locomotors).is_ok_and(|imported| imported.walks())
+        };
+        let trained_walk = if variations.is_empty() {
+            imported.walks()
+        } else {
+            variations.iter().all(|&variation| walks(variation))
+        };
         match making {
-            Making::Train if !imported.walks() => return drop(ButtonDropCause::NoWalker),
+            Making::Train if !trained_walk => return drop(ButtonDropCause::NoWalker),
             Making::Build if !imported.has_body() => return drop(ButtonDropCause::NoBody),
             _ => {}
         }
@@ -239,6 +256,13 @@ impl ProductionImport {
             }
             units.push(RequiredUnit::any_of(any).expect("a prerequisite line names an object"));
         }
+        let mut variants = Vec::with_capacity(variations.len());
+        for variation in variations {
+            let Ok(typed) = names.unit_type(variation, &rules.locomotors) else {
+                return drop(ButtonDropCause::NoType);
+            };
+            variants.push(typed.name);
+        }
         let Ok(typed) = names.unit_type(made, &rules.locomotors) else {
             return drop(ButtonDropCause::NoType);
         };
@@ -260,6 +284,7 @@ impl ProductionImport {
             Making::Train => MadeSection::Train(TrainData {
                 unit_type: typed.name,
                 requires,
+                variants,
             }),
             Making::Build => MadeSection::Build(BuildData {
                 start_life: typed.imported.life().map(Self::one_life),

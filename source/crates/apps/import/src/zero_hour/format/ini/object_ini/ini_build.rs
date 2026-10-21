@@ -19,6 +19,8 @@ pub(crate) struct IniBuild {
     /// Its `PlacementViewAngle` in degrees, the angle the cursor's building shows at as a player
     /// places it, none when it gives none; a value that is not a number is refused.
     pub(crate) placement_angle: Option<Num>,
+    /// Its `BuildVariations`, the objects made in its place, one drawn for each, its last line's.
+    pub(crate) variations: Vec<String>,
 }
 
 /// A line of an object's `Prerequisites`: objects any one of which meets it, or a science.
@@ -61,6 +63,11 @@ impl IniBuild {
             }
             "buildtime" => self.time = at.real()?,
             "commandset" => self.command_set = Some(at.value()?.to_owned()),
+            // `parseAsciiStringVector` takes each name of the line, in place of the last line's.
+            "buildvariations" => {
+                at.value()?;
+                self.variations = at.tokens[1..].iter().map(|&name| name.to_owned()).collect();
+            }
             "placementviewangle" => {
                 let angle = game_float::to_num(at.real()?)
                     .map_err(|_| IniError::Range { line: at.number })?;
@@ -133,8 +140,8 @@ impl IniBuild {
 }
 
 impl Default for IniBuild {
-    /// As `ThingTemplate` starts: free, a second to build, of no command set, prerequisite or
-    /// production module.
+    /// As `ThingTemplate` starts: free, a second to build, of no command set, prerequisite,
+    /// production module or variation.
     fn default() -> Self {
         Self {
             cost: 0,
@@ -144,6 +151,7 @@ impl Default for IniBuild {
             queue: None,
             exit: None,
             placement_angle: None,
+            variations: Vec::new(),
         }
     }
 }

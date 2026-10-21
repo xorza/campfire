@@ -6,15 +6,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 A player builds a Patriot battery, a tunnel network and a Stinger site and sees each fire at an enemy that comes near, the site's three Stinger soldiers with missiles, each soldier back 30 s after it dies, and the tunnel's two defenders once; and trains Technicals, each of one of three chassis, and Inferno cannons, and sees them fire, and Tomahawks after a Strategy Center ([proposal](docs/design/12-base-defenses.md)). The Scud launcher, which needs a science, the demo trap, which has no body, the weapons of `NOT_AIRBORNE`, and the Tomahawk's weapon, which waits a `PreAttackDelay`, stay dropped. Each batch is one commit, ends with `cargo drive gate` passing, and stops for review.
 
-### 5. A train's variants (S)
-
-`production`, `import`, 04-capabilities/production.md, 09. First of what is left; last of the engine's changes.
-
-- **The variants.** `TrainData` (`production/src/train_data.rs:18`) gains `variants`, unit types of its package that stand in for its own; `Trains::finish_trains` (`production/src/trains.rs:199`) draws one for each unit from the producer's random stream, and the supply and the holdings count the train's type until it spawns. Builds: a name is resolved once.
-- **The import.** A train of a type of `BuildVariations` (`apps/import/src/zero_hour/production_import/mod.rs:204`) makes its variations, each typed from its own object with its own look; the Technical's `NoWalker` goes.
-- **Check:** tests of a train of three variants: a drawn type each time from a pinned seed, the same draw on a replay, and the cost and supply of the train's own type; the import of a fixture's variations; the Zero Hour check's count of trains.
-
-### 6. The fold and the play (S)
+### 1. The fold and the play (S)
 
 04-capabilities/production.md, combat.md, 09. Last: it ends the slice.
 

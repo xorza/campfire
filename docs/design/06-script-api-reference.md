@@ -422,6 +422,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `streak` | combat | since 1.0 |
 | `unit_type` | production | since 1.0 |
 | `requires` | production | since 1.0 |
+| `variants` | production | since 1.0 |
 | `construct` | production | since 1.0 |
 | `start` | production | since 1.0 |
 | `start_life` | production | since 1.0 |

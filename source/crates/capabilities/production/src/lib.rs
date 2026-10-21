@@ -348,6 +348,7 @@ pub mod internals {
     use campfire_actions::{
         ActionData, ActionKind, ActionRange, ActionTarget, Actions, Aim, ByAction, ProgressDues,
     };
+    use campfire_common::DeclaredName;
     use campfire_common::Ticks;
     use campfire_declarations::ByTypeBuilder;
     use campfire_declarations::internals::BookLoad;
@@ -393,13 +394,28 @@ pub mod internals {
             time: Ticks,
             resource_cost: Option<ResourceAmount>,
         ) -> ActionId {
+            Self::add_varied_train(world, unit_type, &[], time, resource_cost)
+        }
+
+        /// Adds a train of `unit_type` as `add_train` does, which makes `variants` in its type's
+        /// place, one drawn for each unit.
+        pub fn add_varied_train(
+            world: &mut World,
+            unit_type: UnitType,
+            variants: &[UnitType],
+            time: Ticks,
+            resource_cost: Option<ResourceAmount>,
+        ) -> ActionId {
             let action = TestAction {
                 resource_cost,
                 ..TestAction::new(ActionKind::Train, Aim::None, ActionRange::Global, time)
             };
             let id = Actions::add(world, "train", action);
             if world.contains_resource::<ByAction<TrainSpec>>() {
-                let spec = TrainSpec { unit_type };
+                let spec = TrainSpec {
+                    unit_type,
+                    variants: variants.into(),
+                };
                 ByAction::<TrainSpec>::amend(world, |_, book| book.set(id, spec));
             }
             id
@@ -418,11 +434,15 @@ pub mod internals {
             };
             let scope = TypeScope::of_package(package);
             let names = world.resource::<MatchNames>();
-            let unit_type = names.named((scope, train.unit_type.as_str()));
-            let unit_type = unit_type.expect("a test's train makes a type of its package");
-            ByAction::<TrainSpec>::amend(world, |_, book| {
-                book.set(action, TrainSpec { unit_type });
-            });
+            let named = |name: &DeclaredName| {
+                let unit_type = names.named((scope, name.as_str()));
+                unit_type.expect("a test's train makes a type of its package")
+            };
+            let spec = TrainSpec {
+                unit_type: named(&train.unit_type),
+                variants: train.variants.iter().map(named).collect(),
+            };
+            ByAction::<TrainSpec>::amend(world, |_, book| book.set(action, spec));
         }
 
         /// Adds `build`, aimed at a point, no pool and no cooldown, to the match's action book

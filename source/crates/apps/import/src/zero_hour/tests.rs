@@ -209,6 +209,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         let train = TrainData {
             unit_type: declared(unit_type),
             requires,
+            variants: Vec::new(),
         };
         ActionData::of(Targeting::None, train)
     };

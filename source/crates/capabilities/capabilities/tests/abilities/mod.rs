@@ -148,6 +148,7 @@ fn a_kinds_section_names_the_first_pipeline_field_it_misuses() {
     let train = TrainData {
         unit_type: DeclaredName::new("grunt").unwrap(),
         requires: None,
+        variants: Vec::new(),
     };
     let of = |action: &ActionData, section: Arc<dyn KindSection>| ActionData {
         section,

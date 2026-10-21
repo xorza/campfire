@@ -80,6 +80,12 @@ const SUPPLY: &str = "Object Center\n\
     Object Shelter\n Behavior = SpawnBehavior M1\n  SpawnNumber = 2\n\
        SpawnTemplateName = Guard\n End\n\
     End\n\
+    Object Jeep\n BuildCost = 500\n BuildTime = 5.0\n\
+     BuildVariations = JeepOne JeepTwo\nEnd\n\
+    Object JeepOne\n Locomotor = SET_NORMAL TankTreads\nEnd\n\
+    ObjectReskin JeepTwo JeepOne\nEnd\n\
+    Object Kite\n BuildVariations = JeepOne KiteOne\nEnd\n\
+    Object KiteOne\n Locomotor = SET_NORMAL JetWings\nEnd\n\
     Object Burrow\n Behavior = ProductionUpdate M1\n End\n\
      Behavior = SpawnBehavior M2\n  SpawnNumber = 2\n  SpawnTemplateName = Guard\n\
        OneShot = Yes\n End\n\
@@ -89,10 +95,13 @@ const SUPPLY: &str = "Object Center\n\
     End\n\
     Object Helix\n Locomotor = SET_NORMAL JetWings\n Behavior = ChinookAIUpdate M1\n End\nEnd\n";
 
-const SETS: &str = "CommandSet CenterSet\n 1 = Command_Truck\nEnd\n\
+const SETS: &str = "CommandSet CenterSet\n 1 = Command_Truck\n 2 = Command_Jeep\n\
+                      3 = Command_Kite\nEnd\n\
                     CommandSet HelipadSet\n 1 = Command_Heli\nEnd\n";
 
 const BUTTONS: &str = "CommandButton Command_Truck\n Command = UNIT_BUILD\n Object = Truck\nEnd\n\
+                       CommandButton Command_Jeep\n Command = UNIT_BUILD\n Object = Jeep\nEnd\n\
+                       CommandButton Command_Kite\n Command = UNIT_BUILD\n Object = Kite\nEnd\n\
                        CommandButton Command_Heli\n Command = UNIT_BUILD\n Object = Heli\nEnd\n";
 
 #[test]
@@ -184,6 +193,24 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         keys.table(&gather)
     );
     assert_eq!(supply.gathers.len(), 1);
+    // The jeep, of no locomotor, trains as one of its two variations, each a type of its own; the
+    // kite, one of whose variations flies, drops (12-base-defenses.md, `BuildVariations` converts
+    // to a train's variants).
+    let MadeSection::Train(jeep) = &import.actions[&declared("train_jeep")].made else {
+        panic!("the jeep's train");
+    };
+    assert_eq!(
+        (&jeep.unit_type, &jeep.variants),
+        (
+            &declared("jeep"),
+            &vec![declared("jeepone"), declared("jeeptwo")]
+        )
+    );
+    let kite = DroppedButton {
+        button: "Command_Kite".to_owned(),
+        cause: ButtonDropCause::NoWalker,
+    };
+    assert!(import.dropped.contains(&kite), "{:?}", import.dropped);
     // The site of a production update keeps 3 guards, each back 30,000 ms, 900 frames, after
     // it dies, and trains nothing (12-base-defenses.md, A kept `SpawnBehavior` converts to
     // spawns).
