@@ -132,7 +132,7 @@ fn a_shells_end_follows_its_target_by_follow_a_tick_past_a_tenth_of_a_square_met
     };
     let end = |game: &mut Match| match state(game) {
         FlightState::Curve { end, .. } => end,
-        FlightState::Flown { .. } => panic!("a curve's state"),
+        FlightState::Flown { .. } | FlightState::Steered { .. } => panic!("a curve's state"),
     };
     let (mut game, target) = run(30, Num::int(2));
     game.step();

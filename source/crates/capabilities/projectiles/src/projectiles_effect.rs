@@ -9,7 +9,7 @@ use campfire_units::MapBook;
 use campfire_values::UnitType;
 
 use crate::Projectiles;
-use crate::projectile::{CurveAim, Flight};
+use crate::projectile::{Flight, LaunchAim};
 use crate::projectile_spec::ProjectileSpec;
 
 /// A projectile a call queued: `id`, the id the call took for it, of `by`, of `unit_type`, from
@@ -34,8 +34,8 @@ impl Effect for ProjectilesEffect {
     const KIND: EffectKind = EffectKind::Change;
 
     /// Applies the effect: a launch this tick, its own cast, from the point of the map's bounds
-    /// nearest where it says, homing on its unit, on a curve to its unit's center for a type
-    /// that flies one, or along its direction. A direction of no length, or a curve's unit that
+    /// nearest where it says, homing on its unit, on a curve or steered to its unit's center for
+    /// a type that flies one, or along its direction. A direction of no length, or a curve's unit that
     /// is gone, launches nothing.
     fn apply(self, world: &mut World, _: &mut Frame) {
         let from = world.resource::<MapBook>().bounds.clamp(self.from);
@@ -44,17 +44,22 @@ impl Effect for ProjectilesEffect {
             .get(self.unit_type)
             .expect("a delivery's projectile type has a spec");
         let flight = match self.toward {
-            Toward::Unit(target) if spec.flight() == ProjectileFlight::Curve => {
+            Toward::Unit(target)
+                if matches!(
+                    spec.flight(),
+                    ProjectileFlight::Curve | ProjectileFlight::Steered
+                ) =>
+            {
                 let Some(to) = Projectiles::center(world, target) else {
                     return;
                 };
                 let map = world.resource::<MapBook>();
-                let aim = CurveAim {
+                let aim = LaunchAim {
                     from: map.point(from),
                     to,
                     aimed: Some(target),
                 };
-                Flight::curve(aim, spec, map)
+                Flight::aimed(aim, spec, map)
             }
             Toward::Unit(target) => Flight::homing(target),
             Toward::Direction(direction) => {

@@ -546,6 +546,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `hits` | projectiles | since 1.0 |
 | `gravity` | projectiles | planned |
 | `curve` | projectiles | since 1.0 |
+| `steer` | projectiles | since 1.0 |
 
 ### A unit type's `area`
 

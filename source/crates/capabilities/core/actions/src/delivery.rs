@@ -31,17 +31,18 @@ impl DeliveryShape {
 }
 
 /// How a projectile type flies: along a line, which a script launches along a direction, or at a
-/// unit, homing on it or on a curve to it.
+/// unit, homing on it, on a curve to it or steered toward it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectileFlight {
     Line,
     Homing,
     Curve,
+    Steered,
 }
 
 impl ProjectileFlight {
     /// Whether a script launches it at a unit, not along a direction.
     pub const fn is_at_unit(self) -> bool {
-        matches!(self, Self::Homing | Self::Curve)
+        matches!(self, Self::Homing | Self::Curve | Self::Steered)
     }
 }

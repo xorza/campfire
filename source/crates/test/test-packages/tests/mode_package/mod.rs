@@ -198,7 +198,8 @@ fn a_choice_of_values_lists_fewer_than_a_seat_picks_none() {
 }
 
 #[test]
-fn a_weapon_or_an_action_at_a_unit_or_a_point_may_fly_a_curve_and_one_along_a_direction_not() {
+fn a_weapon_or_an_action_at_a_unit_or_a_point_may_fly_a_curve_or_steer_and_one_along_a_direction_not()
+ {
     // The tower's weapon flies a curve, 5 m/s, slower than the cap: a curve chases no one, and
     // its end follows its target.
     let curve = r#"{ first = ["0.3", "4"], second = ["0.7", "4"], follow = "2", life_ms = 3000 }"#;
@@ -221,6 +222,22 @@ fn a_weapon_or_an_action_at_a_unit_or_a_point_may_fly_a_curve_and_one_along_a_di
         )
     };
     assert!(along(&error.problem), "{error:?}");
+    // The tower's weapon may be steered, and the husk's wraps may not.
+    let steer = r#"steer = { launch_speed = "2", acceleration = "10", turn_rate = "90", lock = "3", fuel_ms = 3000 }"#;
+    let missile = format!(r#"{{ speed = "5", {steer} }}"#);
+    let edit = Edit::Set("units.tower_bolt.projectile", &missile);
+    assert!(load(&edited([(UNITS, edit)])).is_ok());
+    let wraps = format!(r#"{{ speed = "20", width = "1.6", {steer} }}"#);
+    let edit = Edit::Set("units.grasping_wraps.projectile", &wraps);
+    let error = load(&edited([(HUSK, edit)])).unwrap_err();
+    let steered = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "grasping_wraps"),
+            &ProjectileDeliveryError::Steered,
+        )
+    };
+    assert!(steered(&error.problem), "{error:?}");
     // A curve takes nothing of a line's or a homing flight's, and its points lie on the way.
     for (projectile, message) in [
         (format!(r#"{{ speed = "5", homing = true, curve = {curve} }}"#), "a curve takes no"),

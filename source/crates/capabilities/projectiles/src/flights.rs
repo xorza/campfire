@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use campfire_actions::{Reached, Targets};
 use campfire_common::StableNumber;
 use campfire_deliveries::{AttackShot, Delivered, DeliveredPayload, Delivering, DeliveryQueue};
-use campfire_geometry::{BodyGrid, Placed, Shape, Volume};
+use campfire_geometry::{BodyGrid, Metric, Placed, Shape, Volume};
 use campfire_math::{Num, Vec3};
 use campfire_script::Filters;
 use campfire_sim::{Position, StableId};
@@ -35,6 +35,14 @@ pub(crate) struct CurveFlight {
     from: Vec3,
     aimed: Option<StableId>,
     points: u32,
+}
+
+/// A steered flight as its step reads it: the unit it tracks, if one, and the point in space it
+/// flies to when it tracks none.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SteeredFlight {
+    tracks: Option<StableId>,
+    to: Vec3,
 }
 
 /// A curve projectile's sphere where it stands: of radius `half` at the point in space `point`,
@@ -95,10 +103,14 @@ impl TickFlights<'_> {
     /// hits each unit its type's `hits` selects whose body comes within half its width of this
     /// tick's path, in the order of the point of the path nearest each, then by stable id, each
     /// unit once, and once a cast for a type that says so; it ends at its first hit when its type
-    /// stops on one, and at the end of its range. One on a curve flies as `curve` says.
+    /// stops on one, and at the end of its range. One on a curve flies as `curve` says, and a
+    /// steered one as `steered` says.
     pub(crate) fn fly(&mut self, targets: &Targets<'_, '_>, aloft: Aloft<'_>) -> bool {
         match aloft.projectile.flight() {
             Flight::Homing { target } => self.is_homing(targets, aloft, target),
+            Flight::Steered { tracks, to, .. } => {
+                self.steered(targets, aloft, SteeredFlight { tracks, to })
+            }
             Flight::Curve {
                 from,
                 aimed,
@@ -366,6 +378,125 @@ impl TickFlights<'_> {
         self.reach(fired, Reached::Hit(met), hit);
         self.reach(fired, Reached::End, hit);
         true
+    }
+
+    /// Flies `aloft` a step of its steer (12-missiles.md, A steered flight). It ends with no hit
+    /// when the unit it tracks lives no more or a teleport lost it, and where it stands as its
+    /// fuel runs out. Its speed gains its acceleration up to its type's speed. Within its lock of
+    /// its goal on the ground, its tracked unit's center or its point, it steps straight at it;
+    /// else it turns toward its goal, raised to its cruise height over the goal's ground until
+    /// its dive, by at most its turn, none within its straight run, and steps along its heading.
+    /// It ends where it leaves the world's bound, or meets the ground of a planar map. At its
+    /// point, its sphere of half its width meets the volumes of the living units its type's
+    /// `hits` selects, and of the unit it tracks, never its source's: the one of the lowest
+    /// stable id is its hit, and it ends there; one that tracks no unit ends at its point.
+    fn steered(
+        &mut self,
+        targets: &Targets<'_, '_>,
+        aloft: Aloft<'_>,
+        SteeredFlight { tracks, to }: SteeredFlight,
+    ) -> bool {
+        let Aloft {
+            id,
+            team,
+            spec,
+            position,
+            projectile,
+            state,
+        } = aloft;
+        let fired = Fired { projectile, team };
+        let FlightState::Steered {
+            flown,
+            steps,
+            speed,
+            heading,
+            lost,
+        } = *state
+        else {
+            panic!("a steered flight's state is a steered one's");
+        };
+        let steer = spec.steer.expect("a steered type has a steer");
+        let map = targets.map();
+        let hit = |position, distance, direction| Hit {
+            delivery: Some(id.into()),
+            target: tracks.map(StableNumber::from),
+            position,
+            distance,
+            direction,
+        };
+        let goal = match tracks {
+            Some(target) => targets
+                .volume_of(target)
+                .filter(|_| !lost)
+                .map(|volume| volume.center()),
+            None => Some(to),
+        };
+        let Some(goal) = goal.filter(|_| u64::from(steps) < steer.fuel.get()) else {
+            self.reach(fired, Reached::End, hit(position.get(), flown, None));
+            return true;
+        };
+        let here = map.point(position.get());
+        let speed = (speed + steer.acceleration).min(spec.speed);
+        let (point, heading) = if here.within_ground(goal, steer.lock) {
+            (
+                here.step_toward(goal, speed),
+                heading.turned(goal - here, None),
+            )
+        } else {
+            let aim = match steer.cruise {
+                Some(cruise) if !here.within_ground(goal, cruise.dive) => {
+                    map.point(Vec3::new(goal.x, cruise.height, goal.z))
+                }
+                _ => goal,
+            };
+            let heading = if flown < steer.straight {
+                heading
+            } else {
+                heading.turned(aim - here, steer.turn)
+            };
+            (here + heading.get() * speed, heading)
+        };
+        let moved = map.position(point);
+        let grounded = map.metric() == Metric::Planar && moved.y < Num::ZERO;
+        if !moved.within_bound() || grounded {
+            let stands = if grounded {
+                Vec3::new(moved.x, Num::ZERO, moved.z)
+            } else {
+                position.get()
+            };
+            self.reach(fired, Reached::End, hit(stands, flown, None));
+            return true;
+        }
+        let step = point - here;
+        let flown = flown + step.length();
+        *position = Position::from(moved);
+        *state = FlightState::Steered {
+            flown,
+            steps: steps + 1,
+            speed,
+            heading,
+            lost,
+        };
+        let sphere = Sphere {
+            point,
+            half: spec.half_width.get(),
+            team,
+            source: projectile.source(),
+            aimed: tracks,
+            hits: &spec.hits,
+        };
+        let direction = step.normalized();
+        if let Some(met) = self.met(targets, sphere) {
+            let hit = hit(moved, flown, direction);
+            self.reach(fired, Reached::Hit(met), hit);
+            self.reach(fired, Reached::End, hit);
+            return true;
+        }
+        if tracks.is_none() && point == to {
+            self.reach(fired, Reached::End, hit(moved, flown, direction));
+            return true;
+        }
+        false
     }
 
     /// The unit of the lowest stable id whose volume `sphere` meets, touching included: a living

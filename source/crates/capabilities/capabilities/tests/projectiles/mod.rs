@@ -41,12 +41,12 @@ fn shooter(bolt: UnitType) -> Armed {
 }
 
 /// 100 health; never attacks; stays when it dies.
-fn target() -> Armed {
+pub(super) fn target() -> Armed {
     Armed::unarmed(Num::int(100)).on_death(OnDeath::Stay)
 }
 
 /// A match with combat and projectiles.
-fn volley_match() -> Match {
+pub(super) fn volley_match() -> Match {
     volley_match_of(&[
         Capability::Stats,
         Capability::Combat,
@@ -575,3 +575,4 @@ fn a_line_that_reaches_the_bounds_ends_on_their_edge_and_its_sight_stays_within_
 
 mod curves;
 mod deliveries;
+mod steered;

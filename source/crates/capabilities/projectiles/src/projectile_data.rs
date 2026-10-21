@@ -12,8 +12,8 @@ use crate::error::ProjectileDataError;
 
 /// A unit type's `projectile` section, which makes its units projectiles: they fly `speed`
 /// meters a second, `width` meters wide, for `range` meters or their action's range, homing on
-/// a unit, along a line or on a `curve`, and hit what `hits` says, the units of `enemies` by
-/// default.
+/// a unit, along a line, on a `curve` or steered as `steer` says, at most `speed`, and hit what
+/// `hits` says, the units of `enemies` by default.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectileData {
     pub speed: Num,
@@ -27,7 +27,40 @@ pub struct ProjectileData {
     pub hits: ProjectileHits,
     pub gravity: Option<Num>,
     pub curve: Option<CurveData>,
+    pub steer: Option<SteerData>,
 }
+
+/// A projectile's `steer` (12-missiles.md, A steered flight): it leaves at `launch_speed` m/s,
+/// gains `acceleration` m/s each second up to its projectile's speed, flies straight for
+/// `straight` meters, then turns toward its target by at most `turn_rate` degrees a second; it
+/// flies straight at its target within `lock` meters on the ground; it holds `cruise`'s height
+/// over its target until within its dive; it ends as `fuel_ms` runs out; and, unless it
+/// `tracks` its target, it flies to the point where its target stood as it launched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SteerData {
+    pub(crate) launch_speed: Option<Num>,
+    pub(crate) acceleration: Num,
+    pub(crate) turn_rate: Num,
+    pub(crate) straight: Num,
+    pub(crate) lock: Num,
+    pub(crate) fuel_ms: u32,
+    pub(crate) cruise: Option<CruiseData>,
+    pub(crate) tracks: bool,
+}
+
+/// A steered projectile's `cruise` (12-missiles.md, A cruise height): the height in meters over
+/// the ground under its target it holds, until it comes within `dive` meters of its target on the
+/// ground.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CruiseData {
+    pub(crate) height: Num,
+    pub(crate) dive: Num,
+}
+
+/// A steer as `SteerData::builder` gathers it, which `build` checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SteerDataBuilder(SteerData);
 
 /// A projectile's `curve`, a cubic Bézier curve from its launch to its target
 /// (04-capabilities/actions.md, A projectile may fly a curve): its inner points at `first`'s and
@@ -71,6 +104,7 @@ impl ProjectileData {
             hits: ProjectileHits::enemies(),
             gravity: None,
             curve: None,
+            steer: None,
         })
     }
 }
@@ -124,9 +158,16 @@ impl ProjectileDataBuilder {
         self
     }
 
+    #[must_use]
+    pub const fn steer(mut self, steer: SteerData) -> Self {
+        self.0.steer = Some(steer);
+        self
+    }
+
     /// The projectile; an error for a speed that is not positive, a width or a range that is
     /// negative, a width whose half, the radius of the circle it flies as, is past `MAX_BOUND`,
-    /// or a curve with what only a line or a homing flight takes.
+    /// a curve with what only a line or a homing flight takes, or a steer beside what another
+    /// flight takes or leaving faster than the projectile's speed.
     pub fn build(self) -> Result<ProjectileData, ProjectileDataError> {
         let data = self.0;
         if data.speed <= Num::ZERO {
@@ -148,6 +189,14 @@ impl ProjectileDataBuilder {
             || data.once_per_cast;
         if data.curve.is_some() && of_a_line {
             return Err(ProjectileDataError::CurveOfLine);
+        }
+        if let Some(steer) = data.steer {
+            if of_a_line || data.curve.is_some() {
+                return Err(ProjectileDataError::SteerOfLine);
+            }
+            if steer.launch_speed.is_some_and(|launch| launch > data.speed) {
+                return Err(ProjectileDataError::SteerLaunch);
+            }
         }
         Ok(data)
     }
@@ -171,6 +220,7 @@ impl<'de> Deserialize<'de> for ProjectileData {
             hits: Option<ProjectileHits>,
             gravity: Option<Num>,
             curve: Option<CurveData>,
+            steer: Option<SteerData>,
         }
         let fields = Fields::deserialize(deserializer)?;
         let mut builder = Self::builder(fields.speed)
@@ -189,6 +239,9 @@ impl<'de> Deserialize<'de> for ProjectileData {
         }
         if let Some(curve) = fields.curve {
             builder = builder.curve(curve);
+        }
+        if let Some(steer) = fields.steer {
+            builder = builder.steer(steer);
         }
         builder.build().map_err(D::Error::custom)
     }
@@ -223,6 +276,9 @@ impl Serialize for ProjectileData {
         if let Some(curve) = &self.curve {
             map.serialize_entry("curve", curve)?;
         }
+        if let Some(steer) = &self.steer {
+            map.serialize_entry("steer", steer)?;
+        }
         map.end()
     }
 }
@@ -230,10 +286,11 @@ impl Serialize for ProjectileData {
 impl ProjectileData {
     /// How it flies.
     pub const fn flight(&self) -> ProjectileFlight {
-        match (self.homing, self.curve) {
-            (true, _) => ProjectileFlight::Homing,
-            (false, Some(_)) => ProjectileFlight::Curve,
-            (false, None) => ProjectileFlight::Line,
+        match (self.homing, self.curve, self.steer) {
+            (true, ..) => ProjectileFlight::Homing,
+            (false, Some(_), _) => ProjectileFlight::Curve,
+            (false, None, Some(_)) => ProjectileFlight::Steered,
+            (false, None, None) => ProjectileFlight::Line,
         }
     }
 }
@@ -299,6 +356,155 @@ impl Serialize for CurveData {
         }
         if let Some(life_ms) = self.life_ms {
             map.serialize_entry("life_ms", &life_ms)?;
+        }
+        map.end()
+    }
+}
+
+impl SteerData {
+    /// A steer that turns by at most `turn_rate` degrees a second and flies for `fuel_ms`, leaving
+    /// at its projectile's speed, straight at once, with no lock and no cruise, and tracking its
+    /// target, until a setter gives it more.
+    pub const fn builder(turn_rate: Num, fuel_ms: u32) -> SteerDataBuilder {
+        SteerDataBuilder(Self {
+            launch_speed: None,
+            acceleration: Num::ZERO,
+            turn_rate,
+            straight: Num::ZERO,
+            lock: Num::ZERO,
+            fuel_ms,
+            cruise: None,
+            tracks: true,
+        })
+    }
+}
+
+impl SteerDataBuilder {
+    #[must_use]
+    pub const fn launch_speed(mut self, launch_speed: Num) -> Self {
+        self.0.launch_speed = Some(launch_speed);
+        self
+    }
+
+    #[must_use]
+    pub const fn acceleration(mut self, acceleration: Num) -> Self {
+        self.0.acceleration = acceleration;
+        self
+    }
+
+    #[must_use]
+    pub const fn straight(mut self, straight: Num) -> Self {
+        self.0.straight = straight;
+        self
+    }
+
+    #[must_use]
+    pub const fn lock(mut self, lock: Num) -> Self {
+        self.0.lock = lock;
+        self
+    }
+
+    #[must_use]
+    pub const fn cruise(mut self, cruise: CruiseData) -> Self {
+        self.0.cruise = Some(cruise);
+        self
+    }
+
+    #[must_use]
+    pub const fn tracks(mut self, tracks: bool) -> Self {
+        self.0.tracks = tracks;
+        self
+    }
+
+    /// The steer; an error for a fuel of 0, a turn rate below 0, or a launch speed, an
+    /// acceleration, a straight run, a lock or a cruise's height or dive below 0 or past
+    /// `MAX_BOUND`.
+    pub fn build(self) -> Result<SteerData, ProjectileDataError> {
+        let steer = self.0;
+        if steer.fuel_ms == 0 {
+            return Err(ProjectileDataError::SteerFuel);
+        }
+        let holds = |value: Num| (Num::ZERO..=MAX_BOUND).contains(&value);
+        let numbers = [
+            steer.launch_speed.unwrap_or(Num::ZERO),
+            steer.acceleration,
+            steer.straight,
+            steer.lock,
+        ];
+        let cruise = steer
+            .cruise
+            .map_or([Num::ZERO; 2], |cruise| [cruise.height, cruise.dive]);
+        if steer.turn_rate < Num::ZERO || !numbers.into_iter().chain(cruise).all(holds) {
+            return Err(ProjectileDataError::SteerNumber);
+        }
+        Ok(steer)
+    }
+}
+
+impl CruiseData {
+    /// A cruise `height` meters over its target's ground until within `dive` meters of it.
+    pub const fn new(height: Num, dive: Num) -> Self {
+        Self { height, dive }
+    }
+}
+
+/// Data is untrusted, so a steer `SteerData::builder` refuses fails to read.
+impl<'de> Deserialize<'de> for SteerData {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Debug, Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            launch_speed: Option<Num>,
+            #[serde(default)]
+            acceleration: Num,
+            turn_rate: Num,
+            #[serde(default)]
+            straight: Num,
+            #[serde(default)]
+            lock: Num,
+            fuel_ms: u32,
+            cruise: Option<CruiseData>,
+            tracks: Option<bool>,
+        }
+        let fields = Fields::deserialize(deserializer)?;
+        let mut builder = Self::builder(fields.turn_rate, fields.fuel_ms)
+            .acceleration(fields.acceleration)
+            .straight(fields.straight)
+            .lock(fields.lock)
+            .tracks(fields.tracks.unwrap_or(true));
+        if let Some(launch) = fields.launch_speed {
+            builder = builder.launch_speed(launch);
+        }
+        if let Some(cruise) = fields.cruise {
+            builder = builder.cruise(cruise);
+        }
+        builder.build().map_err(D::Error::custom)
+    }
+}
+
+/// As data writes it, what `Deserialize` reads: each field that is not its default.
+impl Serialize for SteerData {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(launch) = self.launch_speed {
+            map.serialize_entry("launch_speed", &launch)?;
+        }
+        if self.acceleration != Num::ZERO {
+            map.serialize_entry("acceleration", &self.acceleration)?;
+        }
+        map.serialize_entry("turn_rate", &self.turn_rate)?;
+        if self.straight != Num::ZERO {
+            map.serialize_entry("straight", &self.straight)?;
+        }
+        if self.lock != Num::ZERO {
+            map.serialize_entry("lock", &self.lock)?;
+        }
+        map.serialize_entry("fuel_ms", &self.fuel_ms)?;
+        if let Some(cruise) = &self.cruise {
+            map.serialize_entry("cruise", cruise)?;
+        }
+        if !self.tracks {
+            map.serialize_entry("tracks", &false)?;
         }
         map.end()
     }
@@ -444,12 +650,43 @@ mod tests {
                 "speed = 20\nrange = -1",
                 "a projectile's range is not negative",
             ),
+            // A steer takes nothing of another flight, leaves no faster than its speed, flies for
+            // some time, turns by a rate not negative, and holds its other numbers within 2,048.
+            (
+                "speed = 20\nhoming = true\nsteer = { turn_rate = 90, fuel_ms = 1000 }",
+                "a steer takes no `homing`",
+            ),
+            (
+                "speed = 20\nsteer = { launch_speed = 21, turn_rate = 90, fuel_ms = 1000 }",
+                "a steer leaves no faster than its projectile's speed",
+            ),
+            (
+                "speed = 20\nsteer = { turn_rate = 90, fuel_ms = 0 }",
+                "a steer's `fuel_ms` is positive",
+            ),
+            (
+                "speed = 20\nsteer = { turn_rate = -1, fuel_ms = 1000 }",
+                "a steer's turn rate is not negative",
+            ),
+            (
+                "speed = 20\nsteer = { turn_rate = 90, fuel_ms = 1000, lock = 2049 }",
+                "a steer's turn rate is not negative",
+            ),
         ] {
             assert!(refusal(text).starts_with(message), "{text}");
         }
         // A projectile writes each field but its defaults, and reads back what it wrote: a line of
-        // its speed alone, one of every field a line takes, and a curve that hits nothing.
+        // its speed alone, one of every field a line takes, a curve that hits nothing, and a steer
+        // of every field and of the fewest, which tracks its target and leaves at its speed.
+        let steered = read("speed = 20\nsteer = { turn_rate = 9000, fuel_ms = 1 }").unwrap();
+        let steer = SteerData::builder(Num::int(9000), 1).build().unwrap();
+        assert_eq!(
+            (steered.steer, steered.flight()),
+            (Some(steer), ProjectileFlight::Steered)
+        );
         for text in [
+            "speed = 20\n\n[steer]\nlaunch_speed = 15\nacceleration = 675\nturn_rate = 100\nstraight = 3\nlock = 75\nfuel_ms = 1800\ntracks = false\n\n[steer.cruise]\nheight = 120\ndive = 100\n",
+            "speed = 20\n\n[steer]\nturn_rate = 100\nfuel_ms = 1800\n",
             "speed = \"0.5\"\n",
             "speed = 20\nwidth = 2\nrange = 9\nhoming = true\nstop_on_hit = true\nonce_per_cast = true\nhits = [\"enemies:structure\", \"all:wall\"]\n",
             "speed = 20\nhits = \"none\"\n\n[curve]\nfirst = [\"0.5\", 10]\nsecond = [1, -2]\nfollow = 3\nlife_ms = 900\n",

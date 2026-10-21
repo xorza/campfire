@@ -101,8 +101,11 @@ impl Projectiles {
                     ProjectileDeliveryError::Homing
                 } else if projectile.curve.is_some() && (along || count.get() > 1) {
                     ProjectileDeliveryError::Curve
+                } else if projectile.steer.is_some() && (along || count.get() > 1) {
+                    ProjectileDeliveryError::Steered
                 } else if projectile.hits == ProjectileHits::Nothing
                     && projectile.curve.is_none()
+                    && projectile.steer.is_none()
                     && (hooks_hit || !action.on_hit.is_empty())
                 {
                     ProjectileDeliveryError::NoHit

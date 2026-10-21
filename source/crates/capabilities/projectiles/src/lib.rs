@@ -30,6 +30,7 @@ mod error;
 mod flight_state;
 mod flights;
 mod flying;
+mod heading;
 mod launches;
 mod launching;
 mod projectile;
@@ -45,13 +46,15 @@ pub use crate::error::{
 };
 pub use crate::flight_state::FlightState;
 pub use crate::flying::Flying;
+pub use crate::heading::Heading;
 pub use crate::launches::{Launch, LaunchPayload, Launches};
 pub use crate::launching::Launching;
 pub use crate::projectile::{Flight, Payload, Projectile};
 
-use crate::projectile::CurveAim;
+use crate::projectile::LaunchAim;
 pub use crate::projectile_data::{
-    CurveData, ProjectileData, ProjectileDataBuilder, ProjectileHits,
+    CruiseData, CurveData, ProjectileData, ProjectileDataBuilder, ProjectileHits, SteerData,
+    SteerDataBuilder,
 };
 pub use crate::projectile_spec::ProjectileSpec;
 pub use crate::projectiles_api::ProjectilesApi;
@@ -132,8 +135,9 @@ impl Projectiles {
         EngineTag::new(2, "projectile", TagProperties::NONE.with_named_only());
 
     /// Launches the fan of `launcher`, which aimed at `target` from `from`: a homing projectile
-    /// at a unit for a homing type; a curve from its caster's center to its unit's center or to
-    /// its point for a curve type; or the fan's projectiles along lines spread evenly over its
+    /// at a unit for a homing type; a curve or a steered projectile from its caster's center to
+    /// its unit's center or to its point for a curve or a steered type; or the fan's projectiles
+    /// along lines spread evenly over its
     /// spread around the aim, which for an action aimed at a point end there at the latest;
     /// nothing for no target, a unit that is gone, or an aim of no direction.
     fn deliver(world: &mut World, launcher: Launcher, from: Vec3, target: ActionTarget) {
@@ -160,7 +164,10 @@ impl Projectiles {
             Self::push(world, by, unit_type, from, None, [homing]);
             return;
         }
-        if spec.flight() == ProjectileFlight::Curve {
+        if matches!(
+            spec.flight(),
+            ProjectileFlight::Curve | ProjectileFlight::Steered
+        ) {
             let map = world.resource::<MapBook>();
             let to = match target {
                 ActionTarget::Unit(unit) => Self::center(world, unit),
@@ -173,14 +180,14 @@ impl Projectiles {
             let body = world
                 .entity_of(by.source)
                 .and_then(|source| world.get::<Body>(source));
-            let aim = CurveAim {
+            let aim = LaunchAim {
                 from: Body::center(body, from, map),
                 to,
                 aimed: target.unit(),
             };
             let launch = map.position(aim.from);
-            let curve = Flight::curve(aim, spec, map);
-            Self::push(world, by, unit_type, launch, None, [curve]);
+            let flight = Flight::aimed(aim, spec, map);
+            Self::push(world, by, unit_type, launch, None, [flight]);
             return;
         }
         let Some(at) = target.position(world) else {
@@ -291,7 +298,7 @@ pub mod internals {
 
     use crate::Projectiles;
     use crate::launches::{Launch, LaunchPayload, Launches};
-    use crate::projectile::{Flight, Payload, Projectile};
+    use crate::projectile::{Flight, LaunchAim, Payload, Projectile};
     use crate::projectile_data::ProjectileData;
     use crate::projectile_spec::ProjectileSpec;
 
@@ -329,6 +336,47 @@ pub mod internals {
                 from: Vec3::ZERO,
                 unit_type,
                 flight: Flight::line(Vec3::ZERO, direction, reach, None),
+                payload: LaunchPayload::Attack(ShotDamage {
+                    action: ActionId::new(0),
+                    rank: Rank::FIRST,
+                    amount: Num::int(10),
+                    kind: DamageKind::new(0),
+                    roll: Num::ZERO,
+                }),
+            });
+        }
+
+        /// Launches a projectile of the steered type `unit_type` from `source` at `from`, a point
+        /// in space, at the unit `target`'s center, carrying 10 damage, from the next tick; none
+        /// for a target that is gone.
+        pub fn fire_steered(
+            world: &mut World,
+            source: StableId,
+            unit_type: UnitType,
+            from: Vec3,
+            target: StableId,
+        ) {
+            let Some(to) = Self::center(world, target) else {
+                return;
+            };
+            let spec = world
+                .resource::<ByType<ProjectileSpec>>()
+                .get(unit_type)
+                .unwrap();
+            let map = world.resource::<MapBook>();
+            let aim = LaunchAim {
+                from,
+                to,
+                aimed: Some(target),
+            };
+            let flight = Flight::aimed(aim, spec, map);
+            let launch = map.position(from);
+            world.resource_mut::<Launches>().push(Launch {
+                id: None,
+                source,
+                from: launch,
+                unit_type,
+                flight,
                 payload: LaunchPayload::Attack(ShotDamage {
                     action: ActionId::new(0),
                     rank: Rank::FIRST,

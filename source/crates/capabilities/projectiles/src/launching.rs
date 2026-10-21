@@ -2,13 +2,12 @@ use bevy_ecs::system::{Query, Res, ResMut};
 use campfire_actions::{ActionTarget, ProjectileFlight, Shots, Targets};
 use campfire_declarations::ByType;
 use campfire_deliveries::{DeliverySpawner, NewDelivery};
-use campfire_math::Vec3;
 use campfire_sim::{EntityIndex, StableId};
 use campfire_units::Body;
 
 use crate::flight_state::FlightState;
 use crate::launches::{Launch, LaunchPayload, Launches};
-use crate::projectile::{CurveAim, Flight, Payload, Projectile};
+use crate::projectile::{Flight, LaunchAim, Payload, Projectile};
 use crate::projectile_spec::ProjectileSpec;
 
 /// The tick's shots and launches, which spawn as projectiles.
@@ -17,9 +16,10 @@ pub struct Launching;
 
 impl Launching {
     /// Makes each of the tick's shots a launch: homing on its target from where its attacker
-    /// stood, or for a type that flies a curve, on a curve from its attacker's center to its
+    /// stood, or for a type that flies a curve or is steered, from its attacker's center to its
     /// target's, none when its target no longer lives, or to the point it scattered to
-    /// (04-capabilities/actions.md, A projectile may fly a curve).
+    /// (04-capabilities/actions.md, A projectile may fly a curve; 12-missiles.md, A steered
+    /// flight).
     pub(super) fn take_shots(
         (mut shots, mut launches): (ResMut<'_, Shots>, ResMut<'_, Launches>),
         specs: Res<'_, ByType<ProjectileSpec>>,
@@ -32,30 +32,35 @@ impl Launching {
                 .get(shot.unit_type)
                 .expect("a shot's projectile type has a spec");
             let map = targets.map();
-            let curve = |to: Vec3, aimed: Option<StableId>| {
+            // A curve and a steered projectile launch from their attacker's center to their
+            // target's or their point.
+            let aim = || {
+                let (to, aimed) = match shot.target {
+                    ActionTarget::Unit(target) => {
+                        (targets.volume_of(target)?.center(), Some(target))
+                    }
+                    ActionTarget::Point(at) => (map.point(at), None),
+                    ActionTarget::None => panic!("a shot aims at a unit or a point"),
+                };
                 let body = index
                     .get(shot.source)
                     .and_then(|source| bodies.get(source).ok());
                 let from = Body::center(body, shot.from, map);
-                Flight::curve(CurveAim { from, to, aimed }, spec, map)
+                Some(LaunchAim { from, to, aimed })
             };
-            let flight = match (spec.flight(), shot.target) {
-                (ProjectileFlight::Curve, ActionTarget::Unit(target)) => {
-                    let Some(volume) = targets.volume_of(target) else {
+            let (flight, from) = match spec.flight() {
+                ProjectileFlight::Homing | ProjectileFlight::Line => {
+                    let ActionTarget::Unit(target) = shot.target else {
+                        panic!("a homing shot aims at a unit");
+                    };
+                    (Flight::homing(target), shot.from)
+                }
+                ProjectileFlight::Curve | ProjectileFlight::Steered => {
+                    let Some(aim) = aim() else {
                         continue;
                     };
-                    curve(volume.center(), Some(target))
+                    (Flight::aimed(aim, spec, map), map.position(aim.from))
                 }
-                (ProjectileFlight::Curve, ActionTarget::Point(at)) => curve(map.point(at), None),
-                (ProjectileFlight::Homing | ProjectileFlight::Line, ActionTarget::Unit(target)) => {
-                    Flight::homing(target)
-                }
-                _ => panic!("a curve's shot aims at a unit or a point, a homing one at a unit"),
-            };
-            // A curve launches from its first point, its attacker's center.
-            let from = match flight {
-                Flight::Curve { from, .. } => map.position(from),
-                Flight::Homing { .. } | Flight::Line { .. } => shot.from,
             };
             launches.push(Launch {
                 id: None,
@@ -73,7 +78,11 @@ impl Launching {
     /// and player, with its type's tags. A cast's projectiles share the id of its first as their
     /// group: a cast is one source's, and the stable sort keeps its launches together. A launch
     /// whose source is gone launches nothing.
-    pub(super) fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launches>) {
+    pub(super) fn launch(
+        mut spawner: DeliverySpawner<'_, '_>,
+        mut launches: ResMut<'_, Launches>,
+        specs: Res<'_, ByType<ProjectileSpec>>,
+    ) {
         launches.sort_by_source();
         let mut group: Option<(u32, StableId)> = None;
         for &Launch {
@@ -117,7 +126,8 @@ impl Launching {
                 };
                 let projectile = Projectile::new(source, flight, payload)
                     .expect("a launch flies a range and carries what holds");
-                (projectile, FlightState::of(flight))
+                let spec = specs.get(unit_type).expect("a launch's type has a spec");
+                (projectile, FlightState::of(flight, spec))
             });
         }
         launches.clear();

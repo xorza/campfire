@@ -43,6 +43,18 @@ pub enum ProjectileDataError {
     CurveFollow,
     #[error("a curve's `life_ms` is positive")]
     CurveLife,
+    /// A steer beside what another flight takes: a steered projectile ends at its target, at its
+    /// first hit and as its fuel runs out, and falls by no gravity.
+    #[error(
+        "a steer takes no `homing`, `curve`, `gravity`, `range`, `stop_on_hit` or `once_per_cast`"
+    )]
+    SteerOfLine,
+    #[error("a steer leaves no faster than its projectile's speed")]
+    SteerLaunch,
+    #[error("a steer's `fuel_ms` is positive")]
+    SteerFuel,
+    #[error("a steer's turn rate is not negative, and its other numbers are from 0 to 2,048")]
+    SteerNumber,
 }
 
 /// Why an action's projectile delivery breaks a rule of the projectiles. Packages are untrusted,
@@ -61,6 +73,9 @@ pub enum ProjectileDeliveryError {
     /// Its projectile flies a curve, and it aims along a direction, or launches more than one.
     #[error("a curve flies one at a time, at a unit or a point")]
     Curve,
+    /// Its projectile is steered, and it aims along a direction, or launches more than one.
+    #[error("a steered projectile flies one at a time, at a unit or a point")]
+    Steered,
     /// It has an `on_hit` list or hook, and its projectile hits nothing.
     #[error("an `on_hit`, and its projectile hits nothing")]
     NoHit,

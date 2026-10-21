@@ -14,6 +14,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::curve::{Curve, MAX_POINTS};
+use crate::heading::Heading;
 use crate::projectile_spec::ProjectileSpec;
 
 /// A projectile unit in flight: whose it is, how it flies, at its type's speed, and what it
@@ -29,10 +30,11 @@ pub struct Projectile {
 
 /// How a projectile flies: homing on a unit; along a line from `from`, where it launched, a
 /// unit vector on the ground or in space, for `range` meters, with the unit its action aimed at,
-/// if one; or on a curve from `from` to `to`, points in space, in `points` points, with the unit
-/// it aimed at, if one, which its end follows. Each step of a line ends at its place along the
-/// line from `from`, and each point of a curve is the curve's value, rounded once, so no rounding
-/// gathers over its steps.
+/// if one; on a curve from `from` to `to`, points in space, in `points` points, with the unit
+/// it aimed at, if one, which its end follows; or steered from its first `heading` toward the
+/// unit it `tracks`, or to `to`, a point in space, when it tracks none. Each step of a line ends
+/// at its place along the line from `from`, and each point of a curve is the curve's value,
+/// rounded once, so no rounding gathers over its steps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Flight {
     Homing {
@@ -50,12 +52,17 @@ pub enum Flight {
         aimed: Option<StableId>,
         points: u32,
     },
+    Steered {
+        tracks: Option<StableId>,
+        to: Vec3,
+        heading: Heading,
+    },
 }
 
-/// Where a curve launches: its first and its last control point, points in space, and the unit
-/// it aims at, if one.
+/// Where a curve or a steered projectile launches: from its source's center to its target's or
+/// its point, points in space, and the unit it aims at, if one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CurveAim {
+pub(crate) struct LaunchAim {
     pub(crate) from: Vec3,
     pub(crate) to: Vec3,
     pub(crate) aimed: Option<StableId>,
@@ -68,8 +75,8 @@ impl Flight {
 
     /// The curve of `spec`, whose type flies one, as `aim` launches it over the ground of `map`:
     /// its count of points at the type's speed, ⌈length ÷ speed⌉.
-    pub(crate) fn curve(aim: CurveAim, spec: &ProjectileSpec, map: &MapBook) -> Self {
-        let CurveAim { from, to, aimed } = aim;
+    fn curve(aim: LaunchAim, spec: &ProjectileSpec, map: &MapBook) -> Self {
+        let LaunchAim { from, to, aimed } = aim;
         let shape = spec.curve.expect("a curve's type has a curve");
         let curve = Curve::new(from, to, &shape, map.highest_along(from, to));
         Self::Curve {
@@ -80,12 +87,28 @@ impl Flight {
         }
     }
 
+    /// The flight `aim` launches of a type of `spec` that flies at an aim, over the ground of
+    /// `map`: steered toward the unit it aims at, when its type tracks one, or to its point,
+    /// leaving toward it (12-missiles.md, It leaves toward its target); or on its curve.
+    pub(crate) fn aimed(aim: LaunchAim, spec: &ProjectileSpec, map: &MapBook) -> Self {
+        let Some(steer) = spec.steer else {
+            return Self::curve(aim, spec, map);
+        };
+        let LaunchAim { from, to, aimed } = aim;
+        Self::Steered {
+            tracks: aimed.filter(|_| steer.tracks),
+            to,
+            heading: Heading::toward(from, to),
+        }
+    }
+
     /// How it flies, as its type does.
     pub(crate) const fn kind(self) -> ProjectileFlight {
         match self {
             Self::Homing { .. } => ProjectileFlight::Homing,
             Self::Line { .. } => ProjectileFlight::Line,
             Self::Curve { .. } => ProjectileFlight::Curve,
+            Self::Steered { .. } => ProjectileFlight::Steered,
         }
     }
 
@@ -124,7 +147,7 @@ impl Projectile {
     /// an attack's amount is not negative, and its roll is at least 0 and less than 1.
     pub fn new(source: StableId, flight: Flight, payload: Payload) -> Option<Self> {
         let flies = match flight {
-            Flight::Homing { .. } => true,
+            Flight::Homing { .. } | Flight::Steered { .. } => true,
             Flight::Line { range, .. } => range >= Num::ZERO,
             Flight::Curve { points, .. } => (1..=MAX_POINTS).contains(&points),
         };
@@ -153,9 +176,18 @@ impl Projectile {
         self.payload
     }
 
-    /// Whether it homes on `id`.
+    /// Whether it homes on `id`, or is steered tracking it.
     pub(crate) const fn homes_on(&self, id: StableId) -> bool {
-        matches!(self.flight, Flight::Homing { target } if target.get() == id.get())
+        match self.flight {
+            Flight::Homing { target }
+            | Flight::Steered {
+                tracks: Some(target),
+                ..
+            } => target.get() == id.get(),
+            Flight::Steered { tracks: None, .. } | Flight::Line { .. } | Flight::Curve { .. } => {
+                false
+            }
+        }
     }
 }
 
@@ -178,6 +210,7 @@ impl SimComponent for Projectile {
         let origin = match self.flight {
             Flight::Line { from, .. } => within(from),
             Flight::Curve { from, to, .. } => within(from) && within(to),
+            Flight::Steered { to, .. } => within(to),
             Flight::Homing { .. } => true,
         };
         let carries = match self.payload {

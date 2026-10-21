@@ -4,16 +4,16 @@ use campfire_actions::ProjectileFlight;
 use campfire_common::Ticks;
 use campfire_declarations::PerType;
 use campfire_geometry::Radius;
-use campfire_math::{Num, Rounding};
+use campfire_math::{Num, Rounding, SinCos};
 use campfire_script::{Filters, TagNames, UnknownName};
 use campfire_sim::MatchRate;
 
-use crate::projectile_data::{CurveData, ProjectileData, ProjectileHits};
+use crate::projectile_data::{CruiseData, CurveData, ProjectileData, ProjectileHits};
 
 /// A projectile type as a match runs it: its speed a tick, half its width, the radius of the
 /// circle it flies as, its range if it has its own, whether it homes, stops at its first hit, or
-/// hits a unit once a cast, the units it hits, by no filter when it hits nothing, and its curve,
-/// if it flies one.
+/// hits a unit once a cast, the units it hits, by no filter when it hits nothing, and its curve or
+/// its steer, if it flies one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectileSpec {
     pub(crate) speed: Num,
@@ -24,6 +24,23 @@ pub struct ProjectileSpec {
     pub(crate) once_per_cast: bool,
     pub(crate) hits: Filters,
     pub(crate) curve: Option<CurveSpec>,
+    pub(crate) steer: Option<SteerSpec>,
+}
+
+/// A steer as a match runs it (12-missiles.md, A steered flight): its launch speed a tick, the
+/// speed it gains each tick, its turn a tick as the sine and the cosine of its angle, none for a
+/// turn of half a turn or more, which turns it any way, its straight run, its lock and its cruise
+/// in meters, its fuel in ticks, rounded up, and whether it tracks its target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SteerSpec {
+    pub(crate) launch: Num,
+    pub(crate) acceleration: Num,
+    pub(crate) turn: Option<SinCos>,
+    pub(crate) straight: Num,
+    pub(crate) lock: Num,
+    pub(crate) fuel: Ticks,
+    pub(crate) cruise: Option<CruiseData>,
+    pub(crate) tracks: bool,
 }
 
 /// A curve as a match runs it: its inner points, `[fraction, height]` each, how far its end
@@ -62,6 +79,28 @@ impl ProjectileSpec {
                     .expect("a life of 32 bits of milliseconds counts in ticks")
             }),
         });
+        let hz = NonZeroI64::from(rate.hz()).get();
+        let steer = data.steer.map(|steer| {
+            let degrees = steer
+                .turn_rate
+                .checked_div_int(hz, Rounding::NearestEven)
+                .expect("a turn rate over a tick rate fits");
+            SteerSpec {
+                launch: per_tick(steer.launch_speed.unwrap_or(data.speed)),
+                acceleration: steer
+                    .acceleration
+                    .checked_div_int(hz * hz, Rounding::NearestEven)
+                    .expect("an acceleration over a tick rate squared fits"),
+                turn: (degrees < Num::int(180)).then(|| SinCos::of_degrees(degrees)),
+                straight: steer.straight,
+                lock: steer.lock,
+                fuel: rate
+                    .duration(steer.fuel_ms.into())
+                    .expect("a fuel of 32 bits of milliseconds counts in ticks"),
+                cruise: steer.cruise,
+                tracks: steer.tracks,
+            }
+        });
         Ok(Self {
             speed: per_tick(data.speed),
             half_width: Radius::new(data.width / 2)
@@ -72,15 +111,17 @@ impl ProjectileSpec {
             once_per_cast: data.once_per_cast,
             hits,
             curve,
+            steer,
         })
     }
 
     /// How it flies.
     pub const fn flight(&self) -> ProjectileFlight {
-        match (self.homing, self.curve) {
-            (true, _) => ProjectileFlight::Homing,
-            (false, Some(_)) => ProjectileFlight::Curve,
-            (false, None) => ProjectileFlight::Line,
+        match (self.homing, self.curve, self.steer) {
+            (true, ..) => ProjectileFlight::Homing,
+            (false, Some(_), _) => ProjectileFlight::Curve,
+            (false, None, Some(_)) => ProjectileFlight::Steered,
+            (false, None, None) => ProjectileFlight::Line,
         }
     }
 }
