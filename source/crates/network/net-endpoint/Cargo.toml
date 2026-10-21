@@ -33,7 +33,6 @@ campfire-net-endpoint = { workspace = true, features = ["internals"] }
 campfire-net-emulator = { workspace = true, features = ["internals"] }
 
 bevy_time.workspace = true
-bytes = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true

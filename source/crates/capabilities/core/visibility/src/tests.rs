@@ -164,8 +164,14 @@ fn each_flaw_of_a_modes_visibility_fails_its_read_with_its_own_error() {
         assert_eq!(read(table), Err(error.to_string()), "{table}");
     }
     // A value of another type than the setting takes.
-    assert!(read(r#"spectators = ["all"]"#).is_err());
-    assert!(read(r#"inventory = "allies""#).is_err());
+    assert_eq!(
+        read(r#"spectators = ["all"]"#),
+        Err("invalid type: sequence, expected a string".to_owned())
+    );
+    assert_eq!(
+        read(r#"inventory = "allies""#),
+        Err("invalid type: string \"allies\", expected a sequence".to_owned())
+    );
 }
 
 #[test]

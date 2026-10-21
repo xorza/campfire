@@ -33,6 +33,7 @@ use crate::scenario::outcome::ScenarioOutcome;
 use crate::scenario::replication_workload::ReplicationWorkload;
 use campfire_log::internals::{LogCheck, Scoped};
 use campfire_net_stepper::ClientKind;
+use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::internals::input_timeline_is_synced;
@@ -98,9 +99,9 @@ impl Scenario {
                 }
             }
         }
-        stepper.run_for(self.faulty);
+        stepper.run_for(self.faulty, StepOrder::ClientsFirst);
         self.stop_workload(&mut stepper);
-        stepper.run_for(self.drain);
+        stepper.run_for(self.drain, StepOrder::ClientsFirst);
         self.check(&mut stepper)
     }
 
@@ -116,8 +117,7 @@ impl Scenario {
             app.world_mut().entity_mut(entity).insert(log());
             let client_of = stepper.client_of_entity(client);
             stepper
-                .server_app_mut()
-                .world_mut()
+                .server_world_mut()
                 .entity_mut(client_of)
                 .insert(log());
         }
@@ -138,15 +138,14 @@ impl Scenario {
     fn stop_workload(&self, stepper: &mut Stepper<FullStack>) {
         for client in 0..self.clients {
             let entity = stepper.client_entity(client);
-            let world = stepper.client_app_mut(client).world_mut();
+            let world = stepper.client_world_mut(client);
             world.get_mut::<MessageLog>(entity).unwrap().sending = false;
             let client_of = stepper.client_of_entity(client);
-            let server = stepper.server_app_mut().world_mut();
+            let server = stepper.server_world_mut();
             server.get_mut::<MessageLog>(client_of).unwrap().sending = false;
         }
         stepper
-            .server_app_mut()
-            .world_mut()
+            .server_world_mut()
             .resource_mut::<ReplicationWorkload>()
             .running = false;
     }
@@ -156,31 +155,29 @@ impl Scenario {
         self.check_backlogs(stepper, &mut failures);
         let mut digest = DefaultHasher::new();
         let mut dropped = 0;
-        let server_state = ReplicationWorkload::server_state(stepper.server_app_mut().world_mut());
+        let server_state = ReplicationWorkload::server_state(stepper.server_world_mut());
         hash_state(&server_state, &mut digest);
         for client in 0..self.clients {
             let label = format!("client {client}");
             if !stepper.client(client).contains::<Connected>() {
                 failures.push(format!("{label} is not connected after the heal"));
             }
-            if !input_timeline_is_synced(stepper.client_app(client).world()) {
+            if !input_timeline_is_synced(stepper.client_world(client)) {
                 failures.push(format!("{label} is not synced after the heal"));
             }
-            let client_world = stepper.client_app(client).world();
+            let client_world = stepper.client_world(client);
             let client_log = client_world
                 .get::<MessageLog>(stepper.client_entity(client))
                 .unwrap();
             let server_log = stepper
-                .server_app()
-                .world()
+                .server_world()
                 .get::<MessageLog>(stepper.client_of_entity(client))
                 .unwrap();
             client_log.check_sent_to(server_log, &mut failures, &format!("{label} to server"));
             server_log.check_sent_to(client_log, &mut failures, &format!("server to {label}"));
             client_log.received.hash(&mut digest);
             server_log.received.hash(&mut digest);
-            let client_state =
-                ReplicationWorkload::client_state(stepper.client_app_mut(client).world_mut());
+            let client_state = ReplicationWorkload::client_state(stepper.client_world_mut(client));
             if client_state != server_state {
                 failures.push(format!(
                     "{label} replicated {client_state:?}, the server holds {server_state:?}"

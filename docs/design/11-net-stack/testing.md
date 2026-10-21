@@ -58,6 +58,11 @@ How the stack is tested over an emulated network; the clocks are in [Time](time.
   the packet session and the UDP protocol no code of connection uses; a harness crate at the top
   with each crate's tests in a `tests/stack/` binary, whose dev-dependency cycle builds for `tests/`
   only, never for a `#[cfg(test)]` module, and puts the whole stack in every layer's tests.
+- **A stepper's worlds are its methods,** and a wait for a change to reach a client is
+  `PROPAGATION_FRAMES`, never a bare count.
+- **One replicon app for registry tests.** `net-replication::internals` gives the bare replicon app
+  and the diff fixtures, generic over the component, which the layers above take. Refused: a shared
+  manual clock or base app, as each hand-made app runs one system with the plugins its test needs.
 - **Each layer's `internals` gives its stack on the one below,** with its test protocol;
   `net-stack`'s `internals` gives the full stack.
 - **A protocol's test runs on the plain host of `net-packets::internals`,** which drives an endpoint

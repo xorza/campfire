@@ -9,40 +9,39 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, CombatRefusal, RecentAttackers};
-use campfire_common::{Seat, Tick};
+use campfire_common::{ErrorReport, Seat, Tick};
+use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
 use campfire_deliveries::Deliveries;
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
-use campfire_mode::Mode;
 use campfire_navigation::OnPath;
-use campfire_script::MatchNames;
 use campfire_script::{
-    ApiError, CapabilityRefusal, NumError, ScriptLimits, ScriptList, ScriptPools, ScriptValue,
-    Unit, View,
+    ApiError, CapabilityRefusal, FailureKind, Filter, MatchNames, NumError, ScriptList,
+    ScriptValue, Unit, View,
 };
-use campfire_script::{FailureKind, Filter};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, Restoring, SimComponent, SimTick, SimWorld,
     SnapshotError, StableId,
 };
 use campfire_stats::{Level, StatRule, Stats, StatsRefusal};
+use campfire_units::internals::Spawn;
 use campfire_units::*;
 use campfire_values::{
     Block, Named, PackageIndex, Param, PathId, Scalar, Stat, Tag, Team, TeamSet, TypeScope,
     UnitTags, UnitType,
 };
 
+use crate::arm;
+
 /// A match of stats, combat and vision, with no grid, so the teams that see each unit are the
 /// `SeenBy` a test sets, its own team's else; with the stat book a weapon reads, and its types:
 /// `melee`, of 10 life that stays when it dies, with a weapon of 2 m; `unit`, of no section; and
 /// `bare`, of 1 life and no slot.
 fn units_match() -> Match {
-    let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptPools { limits, players: 1 };
     let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
-    let mut game = Match::server(&declared, scripts);
+    let mut game = Match::builder(&declared).build();
     Units::name_kinds(&mut game, &[], &["health", "mana"], &[]);
     Combat::load_weapon_stats(&mut game);
     let core = UnitTypeCore::default();
@@ -61,28 +60,26 @@ fn melee(
     team: Team,
     parts: impl Bundle<Effect: NoBundleEffect>,
 ) -> StableId {
-    Mode::spawn_named(game, "melee", position, team, parts)
+    Spawn::named(game, "melee", position)
+        .team(team)
+        .parts(parts)
+        .place(game)
 }
 
 /// A unit of the type `name` of `team` at `position`.
 fn spawn_named(game: &mut Match, name: &str, position: impl Into<Vec3>, team: Team) -> StableId {
-    Mode::spawn_named(game, name, position, team, ())
-}
-
-/// Gives `unit_type` the combat of a `melee` unit.
-fn arm(game: &mut Match, unit_type: UnitType) {
-    Armed::sparring().give(game, unit_type);
+    Spawn::named(game, name, position).team(team).place(game)
 }
 
 #[test]
 fn queries_select_living_units_by_filter_and_exact_distance() {
     let mut game = units_match();
     let creep = Units::tagged_type(&mut game, &["creep"], &[]);
-    arm(&mut game, creep);
+    arm(&mut game, creep, Armed::sparring());
     let of = melee(&mut game, (0, 0, 0), Team::new(1), ());
     // Up at y = 9, 3 m away on the ground plane: the nearest.
     let high = melee(&mut game, (0, 9, 3), Team::new(0), ());
-    let east = Mode::spawn(&mut game, creep, (4, 0, 0), Team::new(0), ());
+    let east = Spawn::of(creep, (4, 0, 0)).place(&mut game);
     let west = melee(&mut game, (-4, 0, 0), Team::new(0), ());
     let edge = melee(&mut game, (0, 0, 5), Team::new(0), ());
     let far = melee(&mut game, (6, 0, 0), Team::new(0), ());
@@ -411,19 +408,15 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let window = ("help_window_ms", Scalar::Int(2000));
     let range = ("aggro_range", Scalar::Decimal(Num::int(7)));
     let hero = Units::tagged_type(&mut game, &["avatar"], &[window, range]);
-    arm(&mut game, hero);
+    arm(&mut game, hero, Armed::sparring());
     // On a path, but the scene has no `navigation`, which binds `unit.path`.
     let owner = Owner::new(Seat::new(2));
     let path = OnPath::new(PathId::new(0));
     let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
     let spawn = SpawnPoint::new(Vec3::from((5, 0, -5)));
-    let of = Mode::spawn(
-        &mut game,
-        hero,
-        (0, 0, 0),
-        Team::new(0),
-        (owner, path, body, spawn),
-    );
+    let of = Spawn::of(hero, (0, 0, 0))
+        .parts((owner, path, body, spawn))
+        .place(&mut game);
     let near = melee(&mut game, (3, 0, 4), Team::new(1), ());
     let recent = melee(&mut game, (9, 0, 0), Team::new(1), ());
     let fallen = melee(&mut game, (9, 0, 1), Team::new(1), Dead);
@@ -450,7 +443,12 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     assert!(value(&mut game, "of.is_alive").as_bool().unwrap());
     assert_eq!(value(&mut game, "of.owner.seat").as_int(), Some(2));
     // A match with no `navigation` binds no `unit.path`.
-    assert!(read(&mut game, "of.path").is_err());
+    let unbound = read(&mut game, "of.path").unwrap_err();
+    let unbound = ErrorReport::of(&unbound).to_string();
+    assert!(
+        unbound.contains("Unknown property 'path' - a getter is not registered for type 'Unit'"),
+        "{unbound}"
+    );
     // A unit's own team sees it.
     assert!(value(&mut game, "of.can_see(of)").as_bool().unwrap());
     // Its body's radius, 0.75 m; a unit with no body has none.
@@ -599,7 +597,9 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
 
 #[test]
 fn a_unit_type_name_is_one_types_only_in_its_scope() {
-    let mut game = Match::unscripted(&[Capability::Stats, Capability::Combat]);
+    let mut game = Match::builder(&[Capability::Stats, Capability::Combat])
+        .role(Role::Rules)
+        .build();
     let data = UnitTypeCore::default();
     let mut load = |scope, name| Units::load_type(&mut game, scope, name, &data);
     let first = load(TypeScope::Mode, "grunt");
@@ -682,13 +682,13 @@ fn a_unit_holds_its_types_tags_on_every_path_in_a_match_without_stats() {
     // A match of the core alone, a unit of a type tagged `creep`: spawned, restored, and given its
     // state alone, as a client's replication gives it, it holds its type's tag each way.
     let start = || {
-        let mut game = Match::test(&[], Match::TEST_RATE, None);
+        let mut game = Match::builder(&[]).role(Role::Rules).build();
         let creep = Units::tagged_type(&mut game, &["creep"], &[]);
         let hero = Units::tagged_type(&mut game, &["avatar"], &[]);
         (game, creep, hero)
     };
     let (mut game, creep, hero) = start();
-    let spawned = Mode::spawn(&mut game, creep, (0, 0, 0), Team::new(0), ());
+    let spawned = Spawn::of(creep, (0, 0, 0)).place(&mut game);
     let own = game.resource::<TagBook>().own(creep);
     assert_eq!(own.iter().count(), 1);
     let tags = |game: &Match, id| {
@@ -747,7 +747,6 @@ fn a_spawn_gives_its_declared_parts_in_one_move() {
 }
 
 mod entity_kinds;
-mod status_tags;
 mod tag_book;
 mod unit_grid;
 mod unit_types;
@@ -758,13 +757,9 @@ fn a_timed_life_ends_with_the_tick_before_its_end_also_after_a_restore() {
     // index of the lives that end gives the unit due at tick 2 alone.
     let lived = |restore: bool| {
         let mut game = units_match();
-        let id = Mode::spawn_named(
-            &mut game,
-            "unit",
-            (0, 0, 0),
-            Team::new(0),
-            Lifespan::until(Tick::new(3)),
-        );
+        let id = Spawn::named(&game, "unit", (0, 0, 0))
+            .parts(Lifespan::until(Tick::new(3)))
+            .place(&mut game);
         game.step();
         if restore {
             // A restore's write of the unit pushes it as a spawn's does.

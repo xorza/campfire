@@ -68,7 +68,13 @@ impl DeError for TomlError {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::error::TomlError;
+    use crate::error::{BinaryError, TomlError};
+
+    impl BinaryError {
+        /// The error of bytes of a value whose type's own check refuses it, as its `Deserialize`
+        /// makes one: postcard keeps no message of it.
+        pub const REFUSED: Self = Self::Malformed(postcard::Error::SerdeDeCustom);
+    }
 
     impl TomlError {
         /// What is wrong, without the place.

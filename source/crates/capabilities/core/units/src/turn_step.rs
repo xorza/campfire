@@ -62,7 +62,7 @@ impl PerType for TurnStep {
 
 #[cfg(test)]
 mod tests {
-    use campfire_codec::Binary;
+    use campfire_codec::{Binary, BinaryError};
 
     use super::*;
 
@@ -71,7 +71,10 @@ mod tests {
         assert_eq!(TurnStep::new(-Num::EPSILON), None);
         assert_eq!(TurnStep::new(Num::ZERO).map(TurnStep::get), Some(Num::ZERO));
         let negative = Binary::encode(&-Num::EPSILON);
-        assert!(Binary::decode::<TurnStep>(&negative).is_err());
+        assert_eq!(
+            Binary::decode::<TurnStep>(&negative).err(),
+            Some(BinaryError::REFUSED)
+        );
         let three = Binary::encode(&Num::int(3));
         assert_eq!(
             Binary::decode::<TurnStep>(&three).ok(),

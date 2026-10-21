@@ -1,4 +1,5 @@
 use super::*;
+use campfire_net_replication::internals::shared_replicon_app;
 
 use crate::app_interpolation_ext::AppInterpolationExt;
 
@@ -9,8 +10,6 @@ use crate::interpolation_rule::InterpolationRule;
 
 use crate::frame_interpolate::FrameInterpolate;
 use crate::frame_interpolation_history::FrameInterpolationHistory;
-use bevy_replicon::prelude::RepliconSharedPlugin;
-use bevy_state::app::StatesPlugin;
 use campfire_net_replication::ConfirmedHistory;
 use core::time::Duration;
 
@@ -427,16 +426,12 @@ fn frame_interpolation_reuses_no_history_interpolation_rule() {
 
 #[test]
 fn a_frame_interpolation_takes_a_history_only_rule() {
-    let mut app = App::new();
+    let mut app = shared_replicon_app();
     app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs(1)));
     app.world_mut()
         .resource_mut::<Time<Fixed>>()
         .accumulate_overstep(Duration::from_millis(250));
-    app.add_plugins((
-        StatesPlugin,
-        RepliconSharedPlugin::default(),
-        InterpolationMarkerPlugin,
-    ));
+    app.add_plugins(InterpolationMarkerPlugin);
     app.register_component::<FrameA>().replicate();
     app.add_plugins((InterpolationRegistryPlugin, FrameInterpolationPlugin));
     app.register_interpolation_rule::<FrameA, ()>(InterpolationRule::new(

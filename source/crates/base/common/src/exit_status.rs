@@ -12,8 +12,8 @@ pub enum ExitStatus {
     /// A write or a sync of a server's storage failed, so it keeps no record past it: sysexits'
     /// `EX_IOERR`. The host's supervisor starts the server again, which restores the session.
     Storage,
-    /// A stop's signal ended it, as `store::StopSignals` catches one: 130, `128 + SIGINT`, as a
-    /// shell gives an interrupted job.
+    /// A stop's signal ended it, as `store::StopSignals` catches one, whose second signal ends
+    /// the process with this code too: 130, `128 + SIGINT`, as a shell gives an interrupted job.
     Interrupted,
 }
 
@@ -37,8 +37,6 @@ impl From<ExitStatus> for ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use campfire_store::StopSignals;
-
     use super::*;
 
     #[test]
@@ -51,8 +49,5 @@ mod tests {
             ExitStatus::Interrupted,
         ];
         assert_eq!(all.map(ExitStatus::code), [0, 1, 2, 74, 130]);
-        // A second signal ends the process from the signal's handler, below `common`, with the
-        // code the binary gives on the first.
-        assert_eq!(ExitStatus::Interrupted.code(), StopSignals::EXIT_CODE);
     }
 }

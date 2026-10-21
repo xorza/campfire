@@ -7,8 +7,8 @@ mod replication;
 mod writer;
 
 use bevy::prelude::Entity;
-use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_measure::AllocAudit;
+use campfire_net_replication::internals::ClientCopies;
 use campfire_net_stack::internals::FullStack;
 use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
@@ -35,13 +35,7 @@ const LINK: u64 = 3;
 fn replicate_to_client(stepper: &mut Stepper<FullStack>, server_entity: Entity) -> Entity {
     for _ in 0..8 {
         stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
-        let mapped = stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied();
+        let mapped = stepper.client_copy(0, server_entity);
         if let Some(client_entity) = mapped {
             return client_entity;
         }

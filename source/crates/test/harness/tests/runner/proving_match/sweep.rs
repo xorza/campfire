@@ -142,49 +142,47 @@ fn a_snapshot_restores_and_a_flawed_one_never_panics() {
 /// on a drawn entity when none holds one: each restores or is refused, and what restores plays on
 /// with no panic, its first tick with every unit's every slot ordered, so its actions and their
 /// effects compute on the drawn value. A byte flip seldom makes a value that decodes, so this
-/// reaches the checks the flips do not. Each state type draws from a seed of its own, so a case
-/// repeats whichever thread runs it.
+/// reaches the checks the flips do not. Each draw takes a seed of its own, so a case repeats
+/// whichever thread runs it.
 #[test]
 fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
     let base = Base::new();
     let names = base.target().state_names();
+    // Each draw of each state type is a job of its own, so every core takes a share however few
+    // the types are.
     let cases = Parallel::map_init(
-        names.len(),
+        names.len() * DRAWS,
         || (base.target(), Vec::new()),
-        |(target, flawed), index| {
-            let mut draws = draws(7, index);
-            (0..DRAWS)
-                .map(|_| {
-                    target.restore_in_place(&base.snapshot).unwrap();
-                    if !target.scramble_state(names[index], &mut draws) {
-                        return Case::Skipped;
-                    }
-                    flawed.clear();
-                    target.snapshot(flawed);
-                    if target.restore_in_place(flawed).is_err() {
-                        return Case::Refused;
-                    }
-                    let orders = every_slot_orders(target);
-                    let inputs: Vec<(Seat, &[u8])> = orders
-                        .iter()
-                        .map(|(slot, payload)| (*slot, payload.as_slice()))
-                        .collect();
-                    target.step_with(&inputs);
-                    for _ in 1..WINDOW {
-                        target.step();
-                    }
-                    Case::Restored
-                })
-                .collect::<Vec<_>>()
+        |(target, flawed), job| {
+            let mut draws = draws(7, job);
+            target.restore_in_place(&base.snapshot).unwrap();
+            if !target.scramble_state(names[job / DRAWS], &mut draws) {
+                return Case::Skipped;
+            }
+            flawed.clear();
+            target.snapshot(flawed);
+            if target.restore_in_place(flawed).is_err() {
+                return Case::Refused;
+            }
+            let orders = every_slot_orders(target);
+            let inputs: Vec<(Seat, &[u8])> = orders
+                .iter()
+                .map(|(slot, payload)| (*slot, payload.as_slice()))
+                .collect();
+            target.step_with(&inputs);
+            for _ in 1..WINDOW {
+                target.step();
+            }
+            Case::Restored
         },
     );
     // Every state type is drawn, those the match holds nowhere among them.
-    let undrawn: Vec<&str> = (names.iter().zip(&cases))
+    let undrawn: Vec<&str> = (names.iter().zip(cases.chunks(DRAWS)))
         .filter(|(_, cases)| cases.iter().all(|&case| case == Case::Skipped))
         .map(|(&name, _)| name)
         .collect();
     assert_eq!(undrawn, Vec::<&str>::new());
-    Cases::of(cases.into_iter().flatten()).assert_both();
+    Cases::of(cases).assert_both();
 }
 
 /// For each player, an order of each slot of each living unit it controls, at a living unit of

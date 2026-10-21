@@ -4,17 +4,14 @@ use std::sync::Arc;
 use bevy::app::{App, Plugin};
 use bevy::ecs::resource::Resource;
 use campfire_client_files::{
-    CameraFile, ClientObjects, ClientUnits, HudFile, KeysFile, MapConditions, MapLights,
-    TeamColors, TerrainFile,
+    CameraFile, ClientFile, ClientObjects, ClientUnits, HudFile, KeysFile, MapConditions,
+    MapLights, TeamColors, TerrainFile,
 };
-use campfire_codec::{Binary, Toml};
-use campfire_common::ErrorReport;
-use campfire_common::MapName;
+use campfire_common::{ErrorReport, MapName};
 use campfire_geometry::Metric;
 use campfire_package::{ContentError, ModePackages, PackageReader};
 use campfire_units::HeightGrid;
 use campfire_values::{PackageIndex, PackagePath};
-use serde::de::DeserializeOwned;
 use tracing::error;
 
 use crate::client_packages::ClientPackages;
@@ -70,7 +67,7 @@ impl Plugin for ClientFilesPlugin {
         app.insert_resource(ClientData::read(&self.packages));
         app.insert_resource(ClientPackages::of(&self.packages));
         let mode = &self.packages.mode().package.files;
-        let input = ClientData::toml::<KeysFile>(mode, &KeysFile::path()).unwrap_or_default();
+        let input = ClientData::file::<KeysFile>(mode, &KeysFile::path()).unwrap_or_default();
         app.insert_resource(InputMap::new(input));
     }
 }
@@ -103,8 +100,7 @@ impl ClientData {
     fn read_map(&mut self, mode: &PackageReader, map: &MapName, grid: Option<HeightGrid>) {
         let terrain = TerrainFile::path(map);
         self.terrain = grid.as_ref().and_then(|grid| {
-            let bytes = Self::read_file(mode, &terrain)?;
-            let file = Self::logged(&terrain, Binary::decode::<TerrainFile>(&bytes))?;
+            let file = Self::file::<TerrainFile>(mode, &terrain)?;
             let fits = file.quads().fits(grid.columns(), grid.rows());
             if !fits {
                 error!(path = %terrain, "a map's terrain is not the shape of its heights");
@@ -113,13 +109,13 @@ impl ClientData {
         });
         let quads = self.terrain.as_ref().map(TerrainFile::quads);
         self.heights = grid.map(|grid| GroundHeights::of(grid, quads));
-        self.camera = Self::toml(mode, &CameraFile::path());
-        self.hud = Self::toml(mode, &HudFile::path()).unwrap_or_default();
-        self.team_colors = Self::toml(mode, &TeamColors::path()).unwrap_or_default();
-        self.lights = Self::toml(mode, &MapLights::path(map));
-        self.objects = Self::toml(mode, &ClientObjects::path(map)).unwrap_or_default();
+        self.camera = Self::file(mode, &CameraFile::path());
+        self.hud = Self::file(mode, &HudFile::path()).unwrap_or_default();
+        self.team_colors = Self::file(mode, &TeamColors::path()).unwrap_or_default();
+        self.lights = Self::file(mode, &MapLights::path(map));
+        self.objects = Self::file(mode, &ClientObjects::path(map)).unwrap_or_default();
         // The map's conditions are fixed for the match, so each look takes its variant once.
-        let conditions = Self::toml::<MapConditions>(mode, &MapConditions::path(map))
+        let conditions = Self::file::<MapConditions>(mode, &MapConditions::path(map))
             .unwrap_or_default()
             .conditions;
         for package in &mut self.packages {
@@ -136,7 +132,7 @@ impl ClientData {
             self.packages.len(),
             "packages read in their places' order"
         );
-        let units = Self::toml::<ClientUnits>(files, &ClientUnits::path());
+        let units = Self::file::<ClientUnits>(files, &ClientUnits::path());
         self.packages.push(PackageClient {
             units: units.unwrap_or_default(),
         });
@@ -157,15 +153,11 @@ impl ClientData {
         }
     }
 
-    /// The TOML file at `path`; none for a file the package lacks, and none, logged, for one that
-    /// does not read.
-    fn toml<T: DeserializeOwned>(files: &PackageReader, path: &PackagePath) -> Option<T> {
-        let text = Self::text(path, Self::read_file(files, path)?)?;
-        Self::logged(path, Toml::parse(&text))
-    }
-
-    fn text(path: &PackagePath, bytes: Vec<u8>) -> Option<String> {
-        Self::logged(path, String::from_utf8(bytes))
+    /// The client file at `path`; none for a file the package lacks, and none, logged, for one
+    /// that does not read.
+    fn file<T: ClientFile>(files: &PackageReader, path: &PackagePath) -> Option<T> {
+        let bytes = Self::read_file(files, path)?;
+        Self::logged(path, T::decode(&bytes))
     }
 
     /// `result`'s value; none, logged with `path`, for its error.

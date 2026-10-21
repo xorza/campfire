@@ -6,13 +6,13 @@ use super::*;
 /// weapon, of the slot kind 0, turns with a turret of 180° a second and 2° of tolerance when the
 /// turret's slot is `slot`; the target 5 m along −z, 90° from its facing of 0°.
 fn turret_fight(game: &mut Match, slot: u8) -> [StableId; 2] {
-    let [gunner, target] = arm(game, [combatant(100, 8, 2, 5, 30), dummy()]);
+    let [gunner, target] = load_types(game, [combatant(100, 8, 2, 5, 30), dummy()]);
     let rate = *game.resource::<MatchRate>();
     let slot_kind = DeclaredName::new("weapon").unwrap();
     let data = TurretData::new(Num::int(180), Num::int(2), slot_kind).unwrap();
     Units::give_type(game, gunner, Turret::of(&data, SlotKind::new(slot), rate));
-    let gunner = Mode::spawn(game, gunner, (0, 0, 0), Team::new(0), ());
-    let target = Mode::spawn(game, target, (0, 0, -5), Team::new(1), ());
+    let gunner = Spawn::of(gunner, (0, 0, 0)).place(game);
+    let target = Spawn::of(target, (0, 0, -5)).team(Team::new(1)).place(game);
     Combat::attack(game, gunner, target);
     [gunner, target]
 }

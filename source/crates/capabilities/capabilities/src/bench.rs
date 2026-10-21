@@ -7,6 +7,7 @@ use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, SlotKind, TimedSlots};
 use campfire_common::{Seat, Ticks};
+use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
 use campfire_math::{Num, Vec3};
 use campfire_measure::{Kind, Scale};
@@ -53,7 +54,9 @@ fn gather(c: &mut Criterion) {
 fn two_fields() -> Match {
     // A match without navigation runs no gather, as only navigation tests a box for room. It
     // installs at its first tick, after the scene's books load.
-    let mut world = Match::unscripted(&[Capability::Production, Capability::Navigation]);
+    let mut world = Match::builder(&[Capability::Production, Capability::Navigation])
+        .role(Role::Rules)
+        .build();
 
     let gold = ResourceId::new(0);
     Players::start_without_mode(&mut world, [Team::new(0)], 1);

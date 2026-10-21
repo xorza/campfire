@@ -8,25 +8,20 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
 use campfire_common::{Seat, Tick, Ticks};
+use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
 use campfire_declarations::{ByType, PerType};
 use campfire_math::{Num, Vec3};
-use campfire_mode::Mode;
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_production::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent, SimTick, SimWorld, StableId, Unpredicted};
+use campfire_units::internals::Spawn;
 use campfire_units::{
     BodyForm, Dead, Destination, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner, StatusTags,
     UnitTypeCore, Units,
 };
 use campfire_values::{ActionId, Rank, ResourceId, Team, TypeScope, UnitType};
-use serde::Serialize;
-
-/// The point `(x, z)` in halves of a meter.
-fn halves(x: i64, z: i64) -> Vec3 {
-    Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z)
-}
 
 /// A match of production alone, for a shop.
 fn shop_match() -> Match {
@@ -50,7 +45,7 @@ fn ordering_match() -> Match {
 
 /// A match of `declared`, with production among them.
 fn shop_match_of(declared: &[Capability]) -> Match {
-    Match::unscripted(declared)
+    Match::builder(declared).role(Role::Rules).build()
 }
 
 /// A shop's match: a grunt type to train, a circle of 0.5 m that walks 1 m a tick; a producer
@@ -200,7 +195,7 @@ impl Shop {
             .unwrap()
             .at(Num::ZERO);
         let parts = (Owner::new(Seat::new(0)), body);
-        Mode::spawn(game, self.depot, position, Team::new(0), parts)
+        Spawn::of(self.depot, position).parts(parts).place(game)
     }
 }
 
@@ -353,7 +348,9 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     // A predicting client queues the train as the server does, but pays nothing and spawns
     // nothing: its player's resources and the unit trained are the server's, whose word comes
     // back. Its player keeps all 5 gold, and its queue the train, done.
-    let mut client = Match::predicting(&[Capability::Production]);
+    let mut client = Match::builder(&[Capability::Production])
+        .role(Role::Client)
+        .build();
     let shop = Shop::place(&mut client);
     Players::spawn(&mut client, 1, 1);
     client
@@ -439,46 +436,6 @@ fn a_producer_whose_tags_block_production_neither_pays_nor_queues() {
 }
 
 #[test]
-fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid_runs() {
-    #[derive(Debug, Serialize)]
-    struct Fields {
-        entries: Vec<Queued>,
-        head_done: Option<Tick>,
-        paid: Vec<ResourceAmount>,
-    }
-    let decode = |entries: Vec<Queued>, head_done: Option<u64>, paid: Vec<ResourceAmount>| {
-        let head_done = head_done.map(Tick::new);
-        let fields = Fields {
-            entries,
-            head_done,
-            paid,
-        };
-        Binary::decode::<TrainQueue>(&Binary::encode(&fields))
-    };
-    let gold = ResourceId::new(0);
-    let five = ResourceAmount {
-        resource: gold,
-        amount: 5,
-    };
-    let queued = Queued {
-        action: ActionId::new(0),
-        rank: Rank::FIRST,
-        time: Ticks::new(30),
-        paid: 1,
-    };
-    // Pushed at tick 5, a train of 30 ticks, which paid 5 gold, is done at tick 35.
-    let mut queue = TrainQueue::default();
-    queue.push(queued, &[five], Tick::new(5), &mut QueueDues::loose());
-    assert_eq!(decode(vec![queued], Some(35), vec![five]), Ok(queue));
-    assert_eq!(decode(vec![], None, vec![]), Ok(TrainQueue::default()));
-    assert!(decode(vec![], Some(35), vec![]).is_err());
-    assert!(decode(vec![queued], None, vec![five]).is_err());
-    // A paid run longer or shorter than the entries say.
-    assert!(decode(vec![queued], Some(35), vec![]).is_err());
-    assert!(decode(vec![queued], Some(35), vec![five, five]).is_err());
-}
-
-#[test]
 fn a_train_queue_is_state_and_restores() {
     // A queue of two trains, the first ordered at tick 0 to be done at tick 3.
     let mut game = shop_match();
@@ -512,7 +469,7 @@ fn a_train_queue_is_state_and_restores() {
             paid: 0,
         };
         queue.push(queued, &[], Tick::new(pushed), &mut QueueDues::loose());
-        Match::decodes(&queue) && queue.check(&restored, entity)
+        Binary::decodes_again(&queue) && queue.check(&restored, entity)
     };
     assert!(check(0, Tick::LIMIT.get()));
     assert!(!check(1, Tick::LIMIT.get()) && !check(0, Tick::LIMIT.get() + 1));
@@ -525,7 +482,6 @@ fn a_train_queue_is_state_and_restores() {
 }
 
 mod construction;
-mod gatherer;
 mod gathering;
 mod orders;
 mod supply;

@@ -3,8 +3,8 @@ use std::path::Path;
 
 use bevy_math::UVec2;
 use campfire_client_files::{
-    CameraFile, ClientObjects, ClientUnits, HudFile, KeysFile, MapConditions, MapLights, ShownBars,
-    TeamColors, TerrainFile,
+    CameraFile, ClientFile, ClientObjects, ClientUnits, HudFile, KeysFile, MapConditions,
+    MapLights, ShownBars, TeamColors, TerrainFile,
 };
 use campfire_codec::Toml;
 use campfire_common::{MapName, PackageFingerprint};
@@ -141,20 +141,19 @@ impl ZeroHour {
         let mut writer = PackageWriter::create(&out.join(Self::GAME))?;
         let game = ZeroHourRules::read(self)?;
         let camera = camera_import::camera_file(&game.game_data).ok_or(ZeroHourError::Camera)?;
-        let text = Toml::write(&camera);
-        writer.write(CameraFile::path(), text.as_bytes())?;
+        writer.write(CameraFile::path(), &camera.encode())?;
         let keys = press_import::keys_file(&game.mouse);
-        writer.write(KeysFile::path(), Toml::write(&keys).as_bytes())?;
+        writer.write(KeysFile::path(), &keys.encode())?;
         // The game draws a bar only over a unit selected or under the cursor
         // (`Drawable::drawHealthBar`).
         let hud = HudFile {
             bars: ShownBars::Selected,
         };
-        writer.write(HudFile::path(), Toml::write(&hud).as_bytes())?;
+        writer.write(HudFile::path(), &hud.encode())?;
         // The players' colors, each team's by its index (02-engine-core.md, Team colors in the
         // one material).
         if let Some(colors) = TeamColors::new(game.multiplayer.colors().to_vec()) {
-            writer.write(TeamColors::path(), Toml::write(&colors).as_bytes())?;
+            writer.write(TeamColors::path(), &colors.encode())?;
         }
         let mut models = ModelWriter::new(ModelAssets::new(&self.install)?, &mut writer);
         let mut object_names = ImportNames::default();
@@ -204,9 +203,9 @@ impl ZeroHour {
             writer.write(map_data, imported.map.as_bytes())?;
             writer.write(HeightGrid::path(&name), &imported.heights)?;
             writer.write(TerrainFile::path(&name), &imported.terrain)?;
-            writer.write(MapConditions::path(&name), imported.conditions.as_bytes())?;
-            writer.write(MapLights::path(&name), imported.lights.as_bytes())?;
-            writer.write(ClientObjects::path(&name), imported.objects.as_bytes())?;
+            writer.write(MapConditions::path(&name), &imported.conditions)?;
+            writer.write(MapLights::path(&name), &imported.lights)?;
+            writer.write(ClientObjects::path(&name), &imported.objects)?;
             if imported.untextured > 0 {
                 losses.push(ImportLoss::UntexturedCells {
                     map: name.clone(),

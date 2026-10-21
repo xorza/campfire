@@ -445,8 +445,7 @@ fn messages_cross_both_ways_for_each_client_kind() {
         stepper.frame_step(2);
         let received = core::mem::take(
             &mut stepper
-                .server_app_mut()
-                .world_mut()
+                .server_world_mut()
                 .resource_mut::<ReceivedMessages<StringMessage>>()
                 .0,
         );
@@ -470,8 +469,7 @@ fn messages_cross_both_ways_for_each_client_kind() {
         stepper.frame_step(2);
         let received = core::mem::take(
             &mut stepper
-                .server_app_mut()
-                .world_mut()
+                .server_world_mut()
                 .resource_mut::<ReceivedMessages<StringMessage>>()
                 .0,
         );
@@ -486,15 +484,10 @@ fn messages_cross_both_ways_for_each_client_kind() {
                     .unwrap();
             },
         );
-        stepper
-            .server_app_mut()
-            .world_mut()
-            .run_system(system)
-            .unwrap();
+        stepper.server_world_mut().run_system(system).unwrap();
         stepper.frame_step(2);
         let received = &stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .resource::<ReceivedMessages<StringMessage>>()
             .0;
         assert_eq!(received, &[(client, world)], "{kind:?}");
@@ -511,10 +504,10 @@ fn only_a_client_maps_the_entities_a_message_names() {
     for kind in KINDS {
         let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_clients(vec![kind]));
         let (client, server) = (stepper.client_entity(0), stepper.client_of_entity(0));
-        let replicated = stepper.server_app_mut().world_mut().spawn(Replicated).id();
-        let server_only_systems = stepper.server_app_mut().world_mut().spawn_empty().id();
-        let unmapped = stepper.server_app_mut().world_mut().spawn_empty().id();
-        let mut spawn = || stepper.client_app_mut(0).world_mut().spawn_empty().id();
+        let replicated = stepper.server_world_mut().spawn(Replicated).id();
+        let server_only_systems = stepper.server_world_mut().spawn_empty().id();
+        let unmapped = stepper.server_world_mut().spawn_empty().id();
+        let mut spawn = || stepper.client_world_mut(0).spawn_empty().id();
         let (copy, stale, client_only) = (spawn(), spawn(), spawn());
         ReceivedMessages::<EntityMessage>::collect_in(stepper.server_app_mut());
         ReceivedMessages::<EntityMessage>::collect_in(stepper.client_app_mut(0));
@@ -549,7 +542,7 @@ fn only_a_client_maps_the_entities_a_message_names() {
             entities.sort();
             entities
         };
-        let server_world = stepper.server_app().world();
+        let server_world = stepper.server_world();
         assert_eq!(
             read(&server_world.resource::<ReceivedMessages<EntityMessage>>().0),
             sorted(server_reads),
@@ -568,15 +561,10 @@ fn only_a_client_maps_the_entities_a_message_names() {
                 }
             },
         );
-        stepper
-            .server_app_mut()
-            .world_mut()
-            .run_system(system)
-            .unwrap();
+        stepper.server_world_mut().run_system(system).unwrap();
         stepper.frame_step(2);
         let received = &stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .resource::<ReceivedMessages<EntityMessage>>()
             .0;
         assert_eq!(read(received), sorted(client_reads), "{kind:?}");
@@ -613,7 +601,7 @@ fn events_reach_the_server_for_each_client_kind() {
             .unwrap()
             .trigger::<Channel1>(hello.clone());
         stepper.frame_step(2);
-        let received = &stepper.server_app().world().resource::<ReceivedEvents>().0;
+        let received = &stepper.server_world().resource::<ReceivedEvents>().0;
         assert_eq!(received, &[(server, hello)], "{kind:?}");
     }
 }

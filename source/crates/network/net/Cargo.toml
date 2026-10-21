@@ -22,6 +22,7 @@ internals = [
     "campfire-net-channels/internals",
     "campfire-net-emulator/internals",
     "campfire-net-endpoint/internals",
+    "campfire-net-interpolation/internals",
     "campfire-net-messages/internals",
     "campfire-net-packets/internals",
     "campfire-net-payload/internals",
@@ -65,6 +66,7 @@ campfire-net-connection.workspace = true
 campfire-net-core.workspace = true
 campfire-net-emulator.workspace = true
 campfire-net-endpoint.workspace = true
+campfire-net-interpolation.workspace = true
 campfire-net-link.workspace = true
 campfire-net-messages.workspace = true
 campfire-net-packets.workspace = true
@@ -100,7 +102,7 @@ thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
-campfire-math = { workspace = true, features = ["internals"] }
+campfire-harness.workspace = true
 campfire-net = { workspace = true, features = ["internals"] }
 campfire-orders = { workspace = true, features = ["internals"] }
 campfire-progression = { workspace = true, features = ["internals"] }

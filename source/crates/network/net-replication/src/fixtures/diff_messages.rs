@@ -13,19 +13,13 @@ use crate::fixtures::protocol::CompRepliconDiff;
 
 /// Replicon's wire form of a diffed component's update, for tests that write it by hand.
 #[derive(Debug, Serialize)]
-enum ComponentDelta<'a> {
-    Snapshot {
-        index: DiffIndex,
-        component: &'a CompRepliconDiff,
-    },
-    Diffs {
-        index: DiffIndex,
-        diffs: &'a [u32],
-    },
+enum ComponentDelta<'a, C> {
+    Snapshot { index: DiffIndex, component: &'a C },
+    Diffs { index: DiffIndex, diffs: &'a [u32] },
 }
 
 /// A whole `component` at diff `index`.
-pub fn diff_snapshot(index: u16, component: &CompRepliconDiff) -> Bytes {
+pub fn diff_snapshot<C: Serialize>(index: u16, component: &C) -> Bytes {
     encode(&ComponentDelta::Snapshot {
         index: DiffIndex::new(index),
         component,
@@ -34,13 +28,13 @@ pub fn diff_snapshot(index: u16, component: &CompRepliconDiff) -> Bytes {
 
 /// The `diffs` that end at diff `index`.
 pub fn diff_message(index: u16, diffs: &[u32]) -> Bytes {
-    encode(&ComponentDelta::Diffs {
+    encode::<CompRepliconDiff>(&ComponentDelta::Diffs {
         index: DiffIndex::new(index),
         diffs,
     })
 }
 
-fn encode(delta: &ComponentDelta<'_>) -> Bytes {
+fn encode<C: Serialize>(delta: &ComponentDelta<'_, C>) -> Bytes {
     let mut message = Vec::new();
     ComponentCodec::write(delta, &mut message);
     message.into()

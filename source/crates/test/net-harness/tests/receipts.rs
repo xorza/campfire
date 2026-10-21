@@ -81,7 +81,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     }
 
     // A crash after the journal's last sync: the log the journal rebuilds holds each slot's
-    // chain past the seq its receipt names, under the delegation it names.
+    // chain to the seq its receipt names, its one order's, under the delegation it names.
     local.stop_server();
     let stopped = ServerDir::open(&test_dir.path("data")).unwrap();
     let restored = SessionDir::find(&stopped)
@@ -94,7 +94,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
         let Some(Controller::Player { chain, .. }) = restored.log.controller(receipt.seat) else {
             panic!("seat {} has no player", receipt.seat.get());
         };
-        assert!(chain.next_seq() > receipt.seq, "{receipt:?}");
+        assert_eq!(chain.next_seq(), receipt.seq + 1, "{receipt:?}");
         let (_, delegation) = restored
             .log
             .header()
@@ -180,7 +180,7 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
         let state = local.client(0).world().resource::<JoinState>();
         state.receipt().map(|kept| kept.receipt.seq)
     };
-    assert!(receipt(&local).is_none_or(|seq| seq < last));
+    assert_eq!(receipt(&local), None);
     let left = |local: &InProcessMatch| local.client(0).world().resource::<JoinState>().is_left();
     local
         .client_mut(0)
@@ -189,7 +189,7 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
     local.give_receipts();
     local.step();
     assert!(left(&local));
-    assert!(receipt(&local).is_none_or(|seq| seq < last));
+    assert_eq!(receipt(&local), None);
     let took_leave = |local: &InProcessMatch| {
         local
             .server_inputs()

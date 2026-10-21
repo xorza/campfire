@@ -81,16 +81,4 @@ impl<'p> MatchRecord<'p> {
         });
         self.trail.assert_same(&trails.into_iter().collect());
     }
-
-    /// Asserts that `log`, the match's published log, replays from its file, checkpoints and
-    /// result included, to the hash of every tick recorded, and ends where the match ended.
-    pub fn assert_replays(&self, log: &SessionLog) {
-        let mut file = Vec::new();
-        log.encode(&mut file);
-        let published = SessionLog::decode(&file).expect("a log decodes from its file");
-        let mut replay = Replay::of(published, self.packages).expect("the log's match starts");
-        let replayed =
-            HashTrail::of_replay(&mut replay).expect("the log replays to what it records");
-        self.trail.assert_same(&replayed);
-    }
 }

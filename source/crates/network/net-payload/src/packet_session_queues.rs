@@ -161,10 +161,21 @@ impl PacketSessionQueues {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use bytes::BytesMut;
+
     use crate::mtu::DEFAULT_MTU;
     use crate::packet_number::PacketNumber;
     use crate::packet_session_queues::{OpenedPayload, OutgoingPayload, PacketSessionQueues};
     use crate::receive_payload::ReceivePayload;
+
+    impl OutgoingPayload {
+        /// A payload's buffer of `data` after its headroom, as the frame writes one.
+        pub fn buffer(data: &[u8]) -> BytesMut {
+            let mut payload = BytesMut::zeroed(Self::HEADROOM);
+            payload.extend_from_slice(data);
+            payload
+        }
+    }
 
     impl PacketSessionQueues {
         /// Queues of a packet session that takes every payload: no budget limit, and the largest
@@ -185,7 +196,7 @@ pub(crate) mod internals {
                 self.push_opened(OpenedPayload {
                     number: PacketNumber(number),
                     kind: send.kind,
-                    payload: ReceivePayload::Mutable(bytes::BytesMut::from(send.data())),
+                    payload: ReceivePayload::Mutable(BytesMut::from(send.data())),
                 });
             }
             looped
@@ -197,13 +208,6 @@ pub(crate) mod internals {
 mod tests {
     use super::*;
 
-    /// A payload of `data` after its headroom.
-    fn payload(data: &[u8]) -> BytesMut {
-        let mut payload = BytesMut::zeroed(OutgoingPayload::HEADROOM);
-        payload.extend_from_slice(data);
-        payload
-    }
-
     /// A send takes its data and the packet's overhead off the room: with a room of 50 and an
     /// overhead of 12, the budget is 38; 4 bytes take 16, leaving 34 and a budget of 22; 30 bytes
     /// take 42, leaving none.
@@ -213,9 +217,9 @@ mod tests {
         queues.set_room(50, 12);
         assert_eq!(queues.budget(), 38);
         let kind = PayloadKind::new(1);
-        queues.send(PayloadToken(1), kind, payload(b"abcd"));
+        queues.send(PayloadToken(1), kind, OutgoingPayload::buffer(b"abcd"));
         assert_eq!(queues.budget(), 22);
-        queues.send(PayloadToken(2), kind, payload(&[0; 30]));
+        queues.send(PayloadToken(2), kind, OutgoingPayload::buffer(&[0; 30]));
         assert_eq!(queues.budget(), 0);
         let sends: Vec<_> = queues.take_sends().collect();
         assert_eq!(sends[0].data(), b"abcd");
@@ -232,7 +236,11 @@ mod tests {
         let mut queues = PacketSessionQueues::default();
         queues.set_room(100, 10);
         queues.set_max_payload(1000);
-        queues.send(PayloadToken(1), PayloadKind::new(0), payload(b""));
+        queues.send(
+            PayloadToken(1),
+            PayloadKind::new(0),
+            OutgoingPayload::buffer(b""),
+        );
         queues.accept(PacketNumber(3));
         queues.push_opened(OpenedPayload {
             number: PacketNumber(4),

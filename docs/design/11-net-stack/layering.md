@@ -47,9 +47,9 @@ The kinds of crate, problem, IO, glue and test support, and their rules are the 
 
 - **A stack crate depends on Campfire's base crates, never on `sim` or a capability,** so the
   stack serves any app of the engine and no match's type crosses into it.
-- **A crate's dev-dependencies are itself with `internals` and crates it already depends on;** a
-  glue crate adds the engine and, through `internals`, the stepper. Refused: a problem crate's test
-  that runs an app, which puts the engine and the glue under it.
+- **A crate's dev-dependencies keep the workspace's rule** (02-engine-core.md, A dev-dependency
+  adds only test support to its crate's build; A problem crate's test runs no app): a glue crate's
+  test build holds the engine, and the stepper through `internals`.
 
 ## Planned
 

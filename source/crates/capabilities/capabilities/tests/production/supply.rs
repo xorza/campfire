@@ -66,7 +66,9 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
     // The depot dies: a cap of 4 below the 6 used kills nothing, and stops trains; a depot no
     // player owns gives nothing.
     game.insert_parts(first_depot, Dead);
-    Mode::spawn(&mut game, depot, (0, 0, 0), Team::new(1), ());
+    Spawn::of(depot, (0, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     step(&mut game, 0, 2, (6, 4), 4);
     assert!(
         Shop::spawned(&mut game, shop.grunt)

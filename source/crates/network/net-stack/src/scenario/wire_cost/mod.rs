@@ -15,6 +15,7 @@ use campfire_net_messages::internals::StringMessage;
 use campfire_net_packets::EmulatedWires;
 use campfire_net_stepper::AppId;
 use campfire_net_stepper::ClientKind;
+use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::LinkEstimator;
@@ -129,6 +130,7 @@ impl WireCase {
         let mut setup = StepperSetup::with_clients(vec![self.kind]);
         setup.tick_rate = TICK_RATE;
         setup.frame_interval = TICK;
+        setup.server_frame_interval = TICK;
         setup.link = self.link.clone();
         let mut stepper = Stepper::new(FullStack, setup);
         stepper.set_frame_interval(AppId::Client(0), self.client_frame);
@@ -150,9 +152,9 @@ impl WireCase {
         if self.senders == Senders::Both {
             stepper.client_mut(0).insert(Traffic);
         }
-        stepper.run_for(WARMUP);
+        stepper.run_for(WARMUP, StepOrder::ClientsFirst);
         let before = read(&stepper);
-        stepper.run_for(WINDOW);
+        stepper.run_for(WINDOW, StepOrder::ClientsFirst);
         read(&stepper) - before
     }
 }

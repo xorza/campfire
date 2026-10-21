@@ -1,11 +1,10 @@
 use crate::correction_ease::CorrectionEase;
 use campfire_net_interpolation::FrameInterpolationPlugin;
 use campfire_net_interpolation::InterpolationRegistryPlugin;
+use campfire_net_replication::internals::shared_replicon_app;
 
 use bevy_curve::{Curve, Ease, FunctionCurve, Interval};
 use bevy_ecs::system::RunSystemOnce;
-use bevy_replicon::prelude::*;
-use bevy_state::app::StatesPlugin;
 use campfire_net_interpolation::AppInterpolationExt;
 use campfire_net_interpolation::InterpolationFns;
 use campfire_net_interpolation::InterpolationMarkerPlugin;
@@ -43,15 +42,8 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
 fn app_with_replication_markers() -> App {
-    let mut app = App::new();
-    app.add_plugins((
-        StatesPlugin,
-        RepliconSharedPlugin {
-            auth_method: AuthMethod::None,
-        },
-        PredictionMarkerPlugin,
-        InterpolationMarkerPlugin,
-    ));
+    let mut app = shared_replicon_app();
+    app.add_plugins((PredictionMarkerPlugin, InterpolationMarkerPlugin));
     // The correction systems stamp each error with the visual clock,
     // so a bounded curve can advance along its window.
     app.insert_resource(Time::<Virtual>::default());
@@ -254,8 +246,10 @@ fn an_entity_correction_policy_overrides_the_global_one() {
         .unwrap()
         .error
         .0;
-    assert!(fast < 0.3, "override should decay faster, got {fast}");
-    assert!(slow > 0.55, "global schedule unchanged, got {slow}");
+    // Half of the error is left after each period: 0.5^(125 / 50) ≈ 0.177 of it on the override's,
+    // and 0.5^(125 / 200) ≈ 0.648 on the default's, as the ease computes them.
+    assert_eq!(fast, 0.5_f32.powf(0.125 / 0.05));
+    assert_eq!(slow, 0.5_f32.powf(0.125 / 0.2));
 }
 
 /// A bounded curve can be the correction policy too, not just a switch
@@ -570,7 +564,7 @@ fn history<C: Component + Clone>(tick: NetTick, value: C) -> PredictionHistory<C
 }
 
 fn set_correction_sampling_time(stepper: &mut Stepper<PredictionStack>) {
-    let world = stepper.client_app_mut(0).world_mut();
+    let world = stepper.client_world_mut(0);
     world.trigger(SetTickRate(TickRate::try_from(1).unwrap()));
     world
         .resource_mut::<Time<Fixed>>()
@@ -581,8 +575,7 @@ fn set_correction_sampling_time(stepper: &mut Stepper<PredictionStack>) {
 /// was recorded instead of part-way through its decay.
 fn freeze_correction(stepper: &mut Stepper<PredictionStack>, entity: Entity) {
     stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .entity_mut(entity)
         .insert(CorrectionPolicy::new(1.0, Duration::from_secs(3600)));
 }
@@ -591,10 +584,7 @@ fn freeze_correction(stepper: &mut Stepper<PredictionStack>, entity: Entity) {
 /// value this frame renders, the creation system records the correction from it,
 /// and the apply adds it.
 fn finish_frame_with_correction(stepper: &mut Stepper<PredictionStack>) {
-    stepper
-        .client_app_mut(0)
-        .world_mut()
-        .run_schedule(PostUpdate);
+    stepper.client_world_mut(0).run_schedule(PostUpdate);
 }
 
 /// After a rollback, frame interpolation reads a predicted component from the prediction history
@@ -610,8 +600,7 @@ fn frame_interpolation_reads_the_replayed_prediction_history() {
     let current_tick = stepper.client_tick(0);
     let rollback_tick = current_tick - 1;
     let entity = stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .spawn((
             Predicted,
             CompPredictionOnly(100.0),
@@ -624,12 +613,9 @@ fn frame_interpolation_reads_the_replayed_prediction_history() {
         .id();
 
     trigger_state_rollback(&mut stepper, rollback_tick);
-    stepper
-        .client_app_mut(0)
-        .world_mut()
-        .run_schedule(PreUpdate);
+    stepper.client_world_mut(0).run_schedule(PreUpdate);
 
-    let world = stepper.client_app_mut(0).world_mut();
+    let world = stepper.client_world_mut(0);
     let mut sources = QueryBuilder::<FilteredEntityRef<'_, '_>>::new(world)
         .data::<&PredictionHistory<CompPredictionOnly>>()
         .build();
@@ -654,8 +640,7 @@ fn post_rollback_correction_uses_the_frame_interpolated_value() {
     let current_tick = stepper.client_tick(0);
     let rollback_tick = current_tick - 1;
     let entity = stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .spawn((
             Predicted,
             CompCorrectionBundleA(1.0),
@@ -669,23 +654,15 @@ fn post_rollback_correction_uses_the_frame_interpolated_value() {
     freeze_correction(&mut stepper, entity);
     // The history's slots went on with it, so the rollback and the corrections it records
     // write them in place and move the entity to no other table.
-    stepper.client_app_mut(0).world_mut().flush();
-    let table = stepper
-        .client_app(0)
-        .world()
-        .entity(entity)
-        .archetype()
-        .id();
+    stepper.client_world_mut(0).flush();
+    let table = stepper.client_world(0).entity(entity).archetype().id();
 
     trigger_state_rollback(&mut stepper, rollback_tick);
-    stepper
-        .client_app_mut(0)
-        .world_mut()
-        .run_schedule(PreUpdate);
+    stepper.client_world_mut(0).run_schedule(PreUpdate);
     // The replay restored the simulated values; the frame history was repaired
     // so the frame interpolator can sample them.
     {
-        let world = stepper.client_app(0).world();
+        let world = stepper.client_world(0);
         assert_eq!(world.resource::<Time<Fixed>>().overstep_fraction(), 0.5);
         assert_eq!(
             world.get::<CompCorrectionBundleA>(entity),
@@ -699,7 +676,7 @@ fn post_rollback_correction_uses_the_frame_interpolated_value() {
 
     finish_frame_with_correction(&mut stepper);
 
-    let world = stepper.client_app(0).world();
+    let world = stepper.client_world(0);
     assert_eq!(world.entity(entity).archetype().id(), table);
     // The correction is the jump from the pre-rollback render to the value the
     // frame renders, so live plus error holds the render where it was.
@@ -763,8 +740,7 @@ fn a_bundle_after_a_rollback_samples_a_member_with_no_previous_visual() {
     let current_tick = stepper.client_tick(0);
     let rollback_tick = current_tick - 1;
     let entity = stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .spawn((
             Predicted,
             CompMixedCorrectionBundleA(1.0),
@@ -778,13 +754,10 @@ fn a_bundle_after_a_rollback_samples_a_member_with_no_previous_visual() {
     freeze_correction(&mut stepper, entity);
 
     trigger_state_rollback(&mut stepper, rollback_tick);
-    stepper
-        .client_app_mut(0)
-        .world_mut()
-        .run_schedule(PreUpdate);
+    stepper.client_world_mut(0).run_schedule(PreUpdate);
     finish_frame_with_correction(&mut stepper);
 
-    let world = stepper.client_app(0).world();
+    let world = stepper.client_world(0);
     // The corrected member holds its render; the uncorrected member is left to
     // the destination timeline's own value.
     assert_eq!(

@@ -1,8 +1,7 @@
 use campfire_actions::ShotDamage;
 use campfire_combat::{SCATTER_STREAM, SplashData};
 use campfire_math::SinCos;
-use campfire_units::MapSpace;
-use campfire_units::{CellSplit, Ground, HeightGrid};
+use campfire_units::{CellSplit, Ground, HeightGrid, MapSpace};
 use campfire_values::{ActionId, DamageKind, Rank, RelationSet};
 
 use super::*;
@@ -78,8 +77,10 @@ fn a_shell_stands_at_a_point_of_its_curve_each_tick_and_hits_its_target_at_the_l
     // so its points are ⌈10.54 ÷ 4⌉ = 3: the origin, the curve at t = ½, (4, 3, 0), and the end.
     let mut game = volley_match();
     let volley = Shelling::place(&mut game, &shell(120, Num::ZERO, 0, None), Num::ZERO);
-    let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-    let target = Mode::spawn(&mut game, volley.flat, (8, 0, 0), Team::new(1), ());
+    let shooter = Spawn::of(volley.shooter, (0, 0, 0)).place(&mut game);
+    let target = Spawn::of(volley.flat, (8, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Combat::attack(&mut game, shooter, target);
     // It fires in tick 2 and spawns at its first point; in tick 3 it stands there, and in tick 4
     // at the next, 5 m flown.
@@ -118,8 +119,10 @@ fn a_shells_end_follows_its_target_by_follow_a_tick_past_a_tenth_of_a_square_met
     let run = |follow: i64, moved: Num| {
         let mut game = volley_match();
         let volley = Shelling::place(&mut game, &shell(120, Num::ZERO, follow, None), Num::ZERO);
-        let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-        let target = Mode::spawn(&mut game, volley.flat, (8, 0, 0), Team::new(1), ());
+        let shooter = Spawn::of(volley.shooter, (0, 0, 0)).place(&mut game);
+        let target = Spawn::of(volley.flat, (8, 0, 0))
+            .team(Team::new(1))
+            .place(&mut game);
         Combat::attack(&mut game, shooter, target);
         for _ in 0..3 {
             game.step();
@@ -187,17 +190,15 @@ fn a_shells_sphere_meets_the_lowest_id_it_selects_on_its_way_and_never_its_sourc
     // lies 0.5 m from each, on the plane of their tops, and meets both. The lower id takes it.
     let mut game = volley_match();
     let volley = fixture(&mut game, &both);
-    let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-    let target = Mode::spawn(&mut game, volley.tall, (8, 0, 0), Team::new(1), ());
+    let shooter = Spawn::of(volley.shooter, (0, 0, 0)).place(&mut game);
+    let target = Spawn::of(volley.tall, (8, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     let half = Num::HALF * 3;
     let [first, second] = [-half, half].map(|z| {
-        Mode::spawn(
-            &mut game,
-            volley.tower,
-            (Num::int(4), Num::ZERO, z),
-            Team::new(1),
-            (),
-        )
+        Spawn::of(volley.tower, (Num::int(4), Num::ZERO, z))
+            .team(Team::new(1))
+            .place(&mut game)
     });
     Combat::attack(&mut game, shooter, target);
     for _ in 0..5 {
@@ -212,15 +213,11 @@ fn a_shells_sphere_meets_the_lowest_id_it_selects_on_its_way_and_never_its_sourc
     let friendly_fire = |data: &ProjectileData| {
         let mut game = volley_match();
         let volley = fixture(&mut game, data);
-        let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-        let target = Mode::spawn(&mut game, volley.tall, (8, 0, 0), Team::new(1), ());
-        let friend = Mode::spawn(
-            &mut game,
-            volley.tall,
-            (half, Num::ZERO, Num::ZERO),
-            Team::new(0),
-            (),
-        );
+        let shooter = Spawn::of(volley.shooter, (0, 0, 0)).place(&mut game);
+        let target = Spawn::of(volley.tall, (8, 0, 0))
+            .team(Team::new(1))
+            .place(&mut game);
+        let friend = Spawn::of(volley.tall, (half, Num::ZERO, Num::ZERO)).place(&mut game);
         Combat::attack(&mut game, shooter, target);
         for _ in 0..6 {
             game.step();
@@ -245,8 +242,10 @@ fn a_shell_rises_over_the_highest_ground_on_its_way_and_ends_as_its_life_passes(
     let ground = Ground::new(grid, CellSplit::ZeroTwo, None).unwrap();
     MapBook::amend(&mut game, |_, map| map.space = MapSpace::Planar(ground));
     let volley = Shelling::place(&mut game, &shell(180, Num::ZERO, 0, None), Num::ZERO);
-    let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-    let target = Mode::spawn(&mut game, volley.flat, (8, 0, 0), Team::new(1), ());
+    let shooter = Spawn::of(volley.shooter, (0, 0, 0)).place(&mut game);
+    let target = Spawn::of(volley.flat, (8, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Combat::attack(&mut game, shooter, target);
     for _ in 0..4 {
         game.step();
@@ -269,8 +268,10 @@ fn a_shell_rises_over_the_highest_ground_on_its_way_and_ends_as_its_life_passes(
     // tick 4, the second since its launch, it ends there.
     let mut game = volley_match();
     let volley = Shelling::place(&mut game, &shell(120, Num::ZERO, 0, Some(50)), Num::ZERO);
-    let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-    let target = Mode::spawn(&mut game, volley.flat, (8, 0, 0), Team::new(1), ());
+    let shooter = Spawn::of(volley.shooter, (0, 0, 0)).place(&mut game);
+    let target = Spawn::of(volley.flat, (8, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Combat::attack(&mut game, shooter, target);
     for _ in 0..4 {
         game.step();
@@ -285,8 +286,10 @@ fn a_shell_rises_over_the_highest_ground_on_its_way_and_ends_as_its_life_passes(
 fn a_restored_curve_holds_its_points_and_its_state_within_them() {
     let mut game = volley_match();
     let volley = Shelling::place(&mut game, &shell(120, Num::ZERO, 0, None), Num::ZERO);
-    let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-    let target = Mode::spawn(&mut game, volley.flat, (8, 0, 0), Team::new(1), ());
+    let shooter = Spawn::of(volley.shooter, (0, 0, 0)).place(&mut game);
+    let target = Spawn::of(volley.flat, (8, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Combat::attack(&mut game, shooter, target);
     for _ in 0..4 {
         game.step();
@@ -343,7 +346,8 @@ fn a_restored_curve_holds_its_points_and_its_state_within_them() {
         steps: 0,
         end: to,
     };
-    assert!(Binary::decode::<FlightState>(&Binary::encode(&negative)).is_err());
+    let decoded = Binary::decode::<FlightState>(&Binary::encode(&negative));
+    assert_eq!(decoded.err(), Some(BinaryError::REFUSED));
 }
 
 /// A match of a shelling, a shooter of the weapon `arm` makes at the origin of team 0 attacking a
@@ -360,8 +364,10 @@ impl Shot {
         let mut game = volley_match();
         let mut volley = Shelling::place(&mut game, &shell(120, Num::ZERO, 0, None), Num::ZERO);
         volley.shooter = arm(shooter(volley.shell)).load(&mut game);
-        let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-        let target = Mode::spawn(&mut game, volley.flat, (8, 0, 0), Team::new(1), ());
+        let shooter = Spawn::of(volley.shooter, (0, 0, 0)).place(&mut game);
+        let target = Spawn::of(volley.flat, (8, 0, 0))
+            .team(Team::new(1))
+            .place(&mut game);
         place(&mut game, volley);
         Combat::attack(&mut game, shooter, target);
         Self {
@@ -398,13 +404,11 @@ fn a_shells_splash_damages_the_units_of_its_relations_within_its_radius_once_eac
                 (at(Num::int(8), Num::int(3) + Num::EPSILON), 1),
                 (at(Num::int(8), -Num::int(2) - half), 0),
             ] {
-                near.push(Mode::spawn(
-                    game,
-                    volley.flat,
-                    position,
-                    Team::new(team),
-                    (),
-                ));
+                near.push(
+                    Spawn::of(volley.flat, position)
+                        .team(Team::new(team))
+                        .place(game),
+                );
             }
         },
     );

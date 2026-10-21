@@ -31,6 +31,8 @@ zeroize = { workspace = true, features = ["alloc"] }
 # The tests compute each hash by hand, BLAKE3 of its exact bytes, as the protocol spells them.
 blake3 = { workspace = true, features = ["std"] }
 campfire-protocol = { workspace = true, features = ["internals"] }
+# A long sweep runs on every core.
+campfire-threads = { workspace = true, features = ["internals"] }
 # A test reads and writes the pinned log files.
 campfire-store = { workspace = true, features = ["internals"] }
 

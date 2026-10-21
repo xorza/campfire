@@ -4,14 +4,14 @@ use super::*;
 /// its hit flying at `speed` m/s, and of a target.
 fn slow_types(game: &mut Match, speed: i64) -> [UnitType; 2] {
     let gunner = combatant(100, 8, 2, 5, 30).slow(Num::int(speed));
-    arm(game, [gunner, dummy()])
+    load_types(game, [gunner, dummy()])
 }
 
 /// The gunner at the origin attacking the target 6 m along `x`.
 fn slow_fight(game: &mut Match, speed: i64) -> [StableId; 2] {
     let [gunner, target] = slow_types(game, speed);
-    let gunner = Mode::spawn(game, gunner, (0, 0, 0), Team::new(0), ());
-    let target = Mode::spawn(game, target, (6, 0, 0), Team::new(1), ());
+    let gunner = Spawn::of(gunner, (0, 0, 0)).place(game);
+    let target = Spawn::of(target, (6, 0, 0)).team(Team::new(1)).place(game);
     Combat::attack(game, gunner, target);
     [gunner, target]
 }

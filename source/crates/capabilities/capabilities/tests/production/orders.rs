@@ -1,3 +1,4 @@
+use crate::halves;
 use campfire_declarations::ByTypeBuilder;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
@@ -122,14 +123,10 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         .at(Num::ZERO);
     game.insert_parts(producer, body);
     let half = BodyForm::circle(Num::HALF).unwrap();
-    let flag = Navigation::spawn_unit(
-        &mut game,
-        halves(0, 12),
-        Team::new(1),
-        None,
-        None,
-        Some(half),
-    );
+    let flag = Navigation::walker_at(&mut game, halves(0, 12))
+        .team(Team::new(1))
+        .body(half)
+        .place(&mut game);
     let rally = |target| ProductionDirective::Rally {
         target: Some(target),
     };
@@ -187,14 +184,9 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     // not see is ignored: the dead flag stays its rally, and the grunt spawns at its producer.
     // Once team 1 sees it, the rally takes it, as the living flag's did.
     Vision::fog_grid(&mut game, 2);
-    let watch = Navigation::spawn_unit(
-        &mut game,
-        halves(0, 12),
-        Team::new(0),
-        None,
-        None,
-        Some(half),
-    );
+    let watch = Navigation::walker_at(&mut game, halves(0, 12))
+        .body(half)
+        .place(&mut game);
     let team0 = TeamSet::of(Team::new(0));
     for (at, (seers, place)) in [
         (team0, halves(0, 0)),
@@ -255,8 +247,10 @@ fn a_predicting_clients_train_reads_only_what_it_holds() {
         let queue = TrainQueue::default();
         shop.producer(game, producer, 0, Team::new(0), Some(player), train, queue);
         let form = BodyForm::circle(Num::HALF).unwrap();
-        let flag =
-            Navigation::spawn_unit(game, halves(0, 12), Team::new(1), None, None, Some(form));
+        let flag = Navigation::walker_at(game, halves(0, 12))
+            .team(Team::new(1))
+            .body(form)
+            .place(game);
         game.insert_parts(flag, Unpredicted);
         let rally = ProductionDirective::Rally {
             target: Some(RallyTarget::Unit(flag)),

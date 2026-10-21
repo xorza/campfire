@@ -64,7 +64,7 @@ impl PerType for MoveStep {
 
 #[cfg(test)]
 mod tests {
-    use campfire_codec::Binary;
+    use campfire_codec::{Binary, BinaryError};
 
     use super::*;
 
@@ -73,7 +73,10 @@ mod tests {
         assert_eq!(MoveStep::new(-Num::EPSILON), None);
         assert_eq!(MoveStep::new(Num::ZERO).map(MoveStep::get), Some(Num::ZERO));
         let negative = Binary::encode(&-Num::EPSILON);
-        assert!(Binary::decode::<MoveStep>(&negative).is_err());
+        assert_eq!(
+            Binary::decode::<MoveStep>(&negative).err(),
+            Some(BinaryError::REFUSED)
+        );
         let one = Binary::encode(&Num::ONE);
         assert_eq!(
             Binary::decode::<MoveStep>(&one).ok(),

@@ -5,18 +5,18 @@ use std::sync::Arc;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
-use campfire_codec::Toml;
+use campfire_codec::Binary;
 use campfire_common::{DeclaredName, Tick, Ticks};
+use campfire_declarations::Role;
 use campfire_declarations::Scratch;
 use campfire_declarations::internals::BookLoad;
 use campfire_math::{Num, Vec3};
-use campfire_mode::Mode;
-use campfire_script::{ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, IdAllocator, Position, SimComponent, SimWorld, StableId, Unpredicted,
 };
 use campfire_stats::*;
+use campfire_units::internals::Spawn;
 use campfire_units::{
     Body, BodyUnit, Dead, DeliveryEntity, Life, MoveStep, PoolId, TagBook, TagData, TurnStep,
     UnitTypeCore, Units,
@@ -106,7 +106,9 @@ fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
 /// A match with the stats capability, and combat, whose life a pool may be, a unit type for each
 /// of `types`, the mode's, and a book of their stats, with a move speed cap of 6.
 fn stat_match(types: &[StatsData]) -> Match {
-    let mut game = Match::unscripted(&[Capability::Stats, Capability::Combat]);
+    let mut game = Match::builder(&[Capability::Stats, Capability::Combat])
+        .role(Role::Rules)
+        .build();
     let mut book = StatBook::new(&rules(), Num::int(6));
     for data in types {
         let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
@@ -137,7 +139,7 @@ fn unit(game: &mut Match, unit_type: u16) -> Entity {
     }
     Units::give_type(game, unit_type, MoveStep::new(Num::ZERO).unwrap());
     Units::give_type(game, unit_type, TurnStep::new(Num::ZERO).unwrap());
-    let id = Mode::spawn(game, unit_type, Vec3::ZERO, Team::new(0), ());
+    let id = Spawn::of(unit_type, Vec3::ZERO).place(game);
     game.unit_entity(id)
 }
 
@@ -595,7 +597,7 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
     let check = |change: fn(&mut ModifierClock)| {
         let mut clocks = made.clone();
         change(clocks.clock_mut(0));
-        Match::decodes(&clocks) && clocks.check(&game, unit)
+        Binary::decodes_again(&clocks) && clocks.check(&game, unit)
     };
     let limit = |clock: &mut ModifierClock| {
         let interval = clock.interval.as_mut().unwrap();
@@ -615,9 +617,7 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
 
 #[test]
 fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
-    let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptPools { limits, players: 1 };
-    let mut game = Match::server(&[Capability::Stats], scripts);
+    let mut game = Match::builder(&[Capability::Stats]).build();
     // Before any system builds its queries, as a predicting client registers it, so that a unit
     // it holds can be marked below.
     Unpredicted::register(&mut game);
@@ -657,8 +657,9 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     };
     Stats::load_modifier(&mut game, PackageIndex::MODE, "ward", &ward, None);
     let at = |x: i64| Vec3::new(Num::int(x), Num::ZERO, Num::ZERO);
-    let spawn =
-        |game: &mut Match, x: i64, team: u8| Mode::spawn(game, plain, at(x), Team::new(team), ());
+    let spawn = |game: &mut Match, x: i64, team: u8| {
+        Spawn::of(plain, at(x)).team(Team::new(team)).place(game)
+    };
     // The carrier at 0; an ally at 2, on the edge, and one at 3; an enemy at 1.
     let carrier = spawn(&mut game, 0, 0);
     let near = spawn(&mut game, 2, 0);
@@ -749,9 +750,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
 
 #[test]
 fn a_modifier_another_capability_holds_lasts_only_its_tick() {
-    let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptPools { limits, players: 1 };
-    let mut game = Match::server(&[Capability::Stats], scripts);
+    let mut game = Match::builder(&[Capability::Stats]).build();
     let book = StatBook::new(&rules(), Num::int(6));
     book.load_into(&mut game);
     Stats::load_modifier(
@@ -762,7 +761,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
         None,
     );
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    let id = Mode::spawn(&mut game, plain, Vec3::ZERO, Team::new(0), ());
+    let id = Spawn::of(plain, Vec3::ZERO).place(&mut game);
     let unit = game.unit_entity(id);
     let inspired = game
         .resource::<ModifierBook>()
@@ -792,9 +791,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
 
 #[test]
 fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
-    let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptPools { limits, players: 1 };
-    let mut game = Match::server(&[Capability::Stats], scripts);
+    let mut game = Match::builder(&[Capability::Stats]).build();
     let book = StatBook::new(&rules(), Num::int(6));
     book.load_into(&mut game);
     Stats::load_modifier(
@@ -805,8 +802,8 @@ fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
         None,
     );
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    let id = Mode::spawn(&mut game, plain, Vec3::ZERO, Team::new(0), ());
-    let gone = Mode::spawn(&mut game, plain, Vec3::ZERO, Team::new(0), ());
+    let id = Spawn::of(plain, Vec3::ZERO).place(&mut game);
+    let gone = Spawn::of(plain, Vec3::ZERO).place(&mut game);
     let unit = game.unit_entity(id);
     let inspired = game
         .resource::<ModifierBook>()
@@ -946,11 +943,6 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     game.step();
     let speed_of = |game: &Match| game.get::<UnitStats>(late).unwrap().values()[speed.index()];
     assert_eq!(speed_of(&game), Num::int(4));
-}
-
-#[test]
-fn a_modifiers_default_is_what_an_empty_table_reads() {
-    assert_eq!(Toml::parse::<ModifierData>(""), Ok(ModifierData::default()));
 }
 
 mod modifier_book;

@@ -1,3 +1,4 @@
+use crate::halves;
 use campfire_codec::Toml;
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_navigation::{Navigation, Walker};
@@ -72,6 +73,24 @@ struct Yard {
     builder: UnitType,
 }
 
+/// A construction scene: an ordering match with the shop's and the yard's types loaded, by
+/// `rules`.
+#[derive(Debug)]
+struct Building {
+    game: Match,
+    shop: Shop,
+    yard: Yard,
+}
+
+impl Building {
+    fn new(rules: Rules<'_>) -> Self {
+        let mut game = ordering_match();
+        let shop = Shop::place(&mut game);
+        let yard = Yard::place(&mut game, shop, rules);
+        Self { game, shop, yard }
+    }
+}
+
 impl Yard {
     /// A match of production and its orders over 1 m cells from (−20, −20) to (20, 20), with its
     /// `walls`, for walkers of a half meter. Its depot is a box of 4 by 2 m of 100 life; its build,
@@ -139,7 +158,10 @@ impl Yard {
         let build = self.build;
         let slots = TimedSlots::new(ActionSlots::new([(build, SlotKind::new(0), Rank::new(1))]));
         let parts = (Owner::new(Seat::new(owner)), slots);
-        Mode::spawn(game, self.builder, position, team, parts)
+        Spawn::of(self.builder, position)
+            .team(team)
+            .parts(parts)
+            .place(game)
     }
 }
 
@@ -151,9 +173,11 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
     // site at 10 of its 100 life, and ends the order: an `alone` site grows by itself. Its gain
     // is 90 over 4 ticks: 22.5 in each Mode stage, 32.5, 55, 77.5 and 100, which completes it in
     // tick 10.
-    let mut game = ordering_match();
-    let shop = Shop::place(&mut game);
-    let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(Rules::of(Style::Alone));
     let builder = yard.builder(&mut game, halves(-20, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     for _ in 1..7 {
@@ -222,9 +246,11 @@ fn a_completed_site_frees_its_units_out_of_its_exit_in_their_order() {
     // a builder spawns both in that tick, the grunt first, of its team and player, in the cell of
     // its exit at (3.5, 0.5), as a trained unit comes out; one that frees nothing spawns none.
     for frees in [false, true] {
-        let mut game = ordering_match();
-        let shop = Shop::place(&mut game);
-        let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+        let Building {
+            mut game,
+            shop,
+            yard,
+        } = Building::new(Rules::of(Style::Alone));
         let free: Box<[UnitType]> = if frees {
             Box::new([shop.grunt, yard.builder])
         } else {
@@ -356,9 +382,11 @@ fn each_style_grows_its_site_at_the_rate_of_its_builders_by_tick() {
         ),
     ];
     for (style, progress) in cases {
-        let mut game = ordering_match();
-        let shop = Shop::place(&mut game);
-        let yard = Yard::place(&mut game, shop, Rules::of(style));
+        let Building {
+            mut game,
+            shop,
+            yard,
+        } = Building::new(Rules::of(style));
         let first = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
         let second = yard.builder(&mut game, halves(6, 0), Team::new(0), 0);
         Production::build_at(&mut game, first, 0, 0);
@@ -388,9 +416,11 @@ fn a_build_at_a_site_its_player_does_not_see_does_nothing() {
     // With a vision grid, the second builder's order to the site the first placed in tick 0 is
     // ignored while no team sees the site, and joins it once team 0 does.
     let rates = [Num::ONE, Num::ONE];
-    let mut game = ordering_match();
-    let shop = Shop::place(&mut game);
-    let yard = Yard::place(&mut game, shop, Rules::of(Style::Builders(&rates)));
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(Rules::of(Style::Builders(&rates)));
     let first = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     let second = yard.builder(&mut game, halves(6, 0), Team::new(0), 0);
     Production::build_at(&mut game, first, 0, 0);
@@ -439,9 +469,11 @@ fn a_builder_that_leaves_stops_its_site_and_one_that_comes_back_goes_on() {
     // ordered back, toward the open cell (−2.5, −0.5) by the box's nearest point, which is on the
     // box; it comes into range as tick 4's move ends, so that tick's Mode stage counts it: 2, 3,
     // then 4, which completes the site in tick 6.
-    let mut game = ordering_match();
-    let shop = Shop::place(&mut game);
-    let yard = Yard::place(&mut game, shop, Rules::of(Style::Builder));
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(Rules::of(Style::Builder));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
@@ -470,9 +502,11 @@ fn a_builder_that_leaves_stops_its_site_and_one_that_comes_back_goes_on() {
 fn a_sites_life_ends_its_gain_above_its_start_less_the_damage_it_took() {
     // An `alone` site starts at 10 of 100 and gains 90 over 4 ticks: 32.5 after tick 0, 55 after
     // tick 1, when it takes 30, to 25; 47.5, then 70 as it completes in tick 3: 10 + 90 − 30.
-    let mut game = ordering_match();
-    let shop = Shop::place(&mut game);
-    let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(Rules::of(Style::Alone));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
@@ -492,9 +526,11 @@ fn a_sites_life_ends_its_gain_above_its_start_less_the_damage_it_took() {
 fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing() {
     // The build paid 15 of 100 gold. Player 1's cancel does nothing; player 0's gives back 0.5 of
     // 15, 7.5 rounded down to 7, and despawns the site.
-    let mut game = ordering_match();
-    let shop = Shop::place(&mut game);
-    let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(Rules::of(Style::Alone));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
@@ -508,9 +544,11 @@ fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing(
 
     // A site that dies stops, gives nothing back, and takes no cancel: it stands, dead, with no
     // refund.
-    let mut game = ordering_match();
-    let shop = Shop::place(&mut game);
-    let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(Rules::of(Style::Alone));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
@@ -562,7 +600,10 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
             Rules::of(Style::Alone),
             Some(|game: &mut Match| {
                 let body = BodyForm::circle(Num::ONE).unwrap();
-                Navigation::spawn_unit(game, halves(2, 0), Team::new(2), None, None, Some(body));
+                Navigation::walker_at(game, halves(2, 0))
+                    .team(Team::new(2))
+                    .body(body)
+                    .place(game);
             }),
             0,
         ),
@@ -595,9 +636,11 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         ),
     ];
     for (case, rules, add, x) in cases {
-        let mut game = ordering_match();
-        let shop = Shop::place(&mut game);
-        let yard = Yard::place(&mut game, shop, rules);
+        let Building {
+            mut game,
+            shop,
+            yard,
+        } = Building::new(rules);
         if let Some(add) = add {
             add(&mut game);
         }
@@ -616,9 +659,11 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         assert_eq!(Production::order_of(&game, builder), None, "{case}");
     }
     // The control: the plain yard.
-    let mut game = ordering_match();
-    let shop = Shop::place(&mut game);
-    let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(Rules::of(Style::Alone));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     assert_eq!((shop.depots(&mut game).len(), shop.gold(&game)), (1, 85));
@@ -640,18 +685,16 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         ("away, seen", away(), seen, 0),
         ("away, hidden", away(), hidden, 1),
     ] {
-        let mut game = ordering_match();
-        let shop = Shop::place(&mut game);
-        let yard = Yard::place(&mut game, shop, rules);
+        let Building {
+            mut game,
+            shop,
+            yard,
+        } = Building::new(rules);
         let form = BodyForm::circle(Num::HALF).unwrap();
-        let enemy = Navigation::spawn_unit(
-            &mut game,
-            halves(0, 6),
-            Team::new(1),
-            None,
-            None,
-            Some(form),
-        );
+        let enemy = Navigation::walker_at(&mut game, halves(0, 6))
+            .team(Team::new(1))
+            .body(form)
+            .place(&mut game);
         game.insert_parts(enemy, SeenBy::new(seers));
         let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
         Production::build_at(&mut game, builder, 0, 0);
@@ -665,9 +708,11 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
     // (−0.5, −0.5), both in the box from (−2, −1) to (2, 1). The build passes, and each goes to
     // the nearest cell a walker of a half meter stands in, its center 0.5 m from the box: (0.5,
     // 1.5) and (−0.5, −1.5), a meter off each.
-    let mut game = ordering_match();
-    let shop = Shop::place(&mut game);
-    let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(Rules::of(Style::Alone));
     let hidden = Production::yard_walker(
         &mut game,
         halves(1, 1),
@@ -684,7 +729,7 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
     // On a predicting client, an enemy walker in the box that it holds as the server sent it
     // refuses, though no team's vision sees it, which passes on the server, as the hidden enemy
     // above: the client holds what its team sees, where the server last had it.
-    let mut game = Match::predicting(&ORDERING);
+    let mut game = Match::builder(&ORDERING).role(Role::Client).build();
     let shop = Shop::place(&mut game);
     let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
     let seen = Some(TeamSet::NONE);
@@ -698,7 +743,7 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
     // With no enemy in its box, the client's build starts, as the server's above places its
     // depot, and pays and spawns nothing, though the test's world holds a spawner: the site and
     // the gold are the server's. Its order ends, so it starts once; the server's comes back.
-    let mut game = Match::predicting(&ORDERING);
+    let mut game = Match::builder(&ORDERING).role(Role::Client).build();
     let shop = Shop::place(&mut game);
     let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
@@ -739,9 +784,11 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
 fn two_builders_that_arrive_at_one_place_in_one_tick_place_one_site() {
     // Both in range of the origin, ordered in one tick: the lower stable id's build starts, and
     // the other's placement meets its site, which ends its order with nothing paid.
-    let mut game = ordering_match();
-    let shop = Shop::place(&mut game);
-    let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(Rules::of(Style::Alone));
     let first = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     let second = yard.builder(&mut game, halves(6, 0), Team::new(0), 0);
     Production::give_orders(
@@ -773,8 +820,10 @@ fn a_predicting_clients_build_reads_only_what_it_holds() {
         let enemy = Production::yard_walker(game, halves(1, 1), Team::new(1), None);
         game.insert_parts(enemy, Unpredicted);
         let form = BodyForm::circle(Num::HALF).unwrap();
-        let post =
-            Navigation::spawn_unit(game, halves(10, 0), Team::new(2), None, None, Some(form));
+        let post = Navigation::walker_at(game, halves(10, 0))
+            .team(Team::new(2))
+            .body(form)
+            .place(game);
         game.insert_parts(post, Unpredicted);
         let builder = yard.builder(game, halves(-8, 0), Team::new(0), 0);
         Production::build_at(game, builder, 0, 0);
@@ -792,7 +841,9 @@ fn a_predicting_clients_build_reads_only_what_it_holds() {
             StatusTags::from([Production::CONSTRUCTING]),
             Owner::new(Seat::new(0)),
         );
-        let depot = Mode::spawn(game, shop.depot, halves(0, 12), Team::new(0), parts);
+        let depot = Spawn::of(shop.depot, halves(0, 12))
+            .parts(parts)
+            .place(game);
         game.part_mut::<Life>(depot).take(Num::int(90));
     });
 }

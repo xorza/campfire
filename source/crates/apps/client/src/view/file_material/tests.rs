@@ -1,20 +1,14 @@
-use bevy::DefaultPlugins;
-use bevy::app::{App, PluginGroup};
 use bevy::asset::{AssetId, Assets, uuid::Uuid};
 use bevy::color::{Color, LinearRgba};
-use bevy::log::LogPlugin;
 use bevy::pbr::Material;
-use bevy::render::RenderPlugin;
 use bevy::render::render_resource::Face;
-use bevy::render::settings::WgpuSettings;
 use bevy::shader::{Shader, ShaderCache, ShaderCacheError, ShaderCacheSource, ShaderDefVal};
-use bevy::window::{ExitCondition, WindowPlugin};
-use bevy::winit::WinitPlugin;
 use naga::Module;
 use naga::front::wgsl;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
 use super::*;
+use crate::test_app;
 
 #[test]
 fn extras_give_their_phase_blend_depth_write_test_and_bias_over_the_gltf_material() {
@@ -175,27 +169,7 @@ impl Shaders {
     const LOAD_FRAMES: usize = 1000;
 
     fn new() -> Self {
-        let mut app = App::new();
-        let render = RenderPlugin {
-            render_creation: WgpuSettings {
-                backends: None,
-                ..WgpuSettings::default()
-            }
-            .into(),
-            ..RenderPlugin::default()
-        };
-        let window = WindowPlugin {
-            primary_window: None,
-            exit_condition: ExitCondition::DontExit,
-            ..WindowPlugin::default()
-        };
-        app.add_plugins(
-            DefaultPlugins
-                .set(render)
-                .set(window)
-                .disable::<WinitPlugin>()
-                .disable::<LogPlugin>(),
-        );
+        let mut app = test_app::headless();
         app.finish();
         app.cleanup();
         let cache = ShaderCache::new((), |(), source, _| {

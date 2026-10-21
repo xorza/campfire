@@ -21,8 +21,8 @@ impl TransportStack {
 }
 
 impl Stack for TransportStack {
-    fn add_client(&self, app: &mut App, tick_rate: TickRate) {
-        ConnectionStack.add_client(app, tick_rate);
+    fn add_client(&self, app: &mut App, client: usize, tick_rate: TickRate) {
+        ConnectionStack.add_client(app, client, tick_rate);
         Self::add_layer(app);
     }
 

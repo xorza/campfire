@@ -34,15 +34,16 @@ fn on_input(ctx, player, name, value) {
     ctx.respawn(ctx.all_units_tagged(value)[0], 100);
 }
 "#;
-    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    // An assist counts within 1000 ms of the death, 10 ticks.
+    let mut set = mode_packages(script);
+    let life = "life = \"health\"\n";
+    set.data = replaced(&set.data, life, &format!("{life}assist_window_ms = 1000\n"));
+    let mut game = started(&set, ScriptLimits::ROOMY).unwrap();
     // Units: the tower 0 of a, the neutral grunt 1 at (0, 0), a's grunts 2 and 3, b's grunt 4. The
     // neutral grunt stands at (3, 0) when b's grunt strikes it for its 10 health, in tick 0; a's
     // grunt 2 struck it in the same tick, within the window of 10 ticks.
     let victim = Mode::entity_by_id(&game, 1);
     *game.get_mut::<Position>(victim).unwrap() = Position::from((3, 0, 0));
-    CombatBook::amend(&mut game, |_, book| {
-        book.set_assist_window(Some(Ticks::new(10)));
-    });
     let ids: Vec<_> = game
         .resource::<EntityIndex>()
         .iter()
@@ -259,7 +260,7 @@ fn a_bounty_share_is_0_or_more_and_of_a_mode_of_a_bounty() {
     let start = |share: &str| {
         let script =
             format!("fn on_match_start(ctx) {{ ctx.set_bounty_share(ctx.players[0], {share}); }}");
-        start_match(&script, ScriptLimits::ROOMY, &mode_files())
+        started(&mode_packages(&script), ScriptLimits::ROOMY)
             .unwrap_err()
             .kind()
     };

@@ -1,9 +1,10 @@
 use super::*;
 use crate::fixtures::replication_stack::ReplicationStack;
+use crate::fixtures::steps::ClientCopies;
+use crate::fixtures::steps::PROPAGATION_FRAMES;
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::VisibilityFilter;
 use bevy_replicon::server::visibility::client_visibility::ClientVisibility;
-use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_connection::{ClientOf, Connected};
 use campfire_net_stepper::Stepper;
@@ -204,40 +205,31 @@ fn a_new_client_receives_only_the_entities_in_its_rooms() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let room_a = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .resource_mut::<RoomAllocator>()
         .allocate();
     let room_b = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .resource_mut::<RoomAllocator>()
         .allocate();
 
     // client 0 shares room A with the entity
     let client_of_0_entity = stepper.client_of_entity(0);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(client_of_0_entity)
         .insert(Rooms::single(room_a));
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             Replicate::to_clients(NetworkTarget::All),
             Rooms::single(room_a),
         ))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
+        .client_copy(0, server_entity)
         .expect("entity is not present in room-sharing client entity map");
 
     // second client connects; it joins room B as its link connects, before the link is
@@ -255,7 +247,7 @@ fn a_new_client_receives_only_the_entities_in_its_rooms() {
     );
     stepper.add_remote_client();
     stepper.init();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert_eq!(
         stepper.client_of(1).get::<Rooms>(),
         Some(&Rooms::single(room_b))
@@ -263,14 +255,7 @@ fn a_new_client_receives_only_the_entities_in_its_rooms() {
 
     // make sure the entity is not replicated to the newly connected client
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_none(),
+        stepper.client_copy(1, server_entity).is_none(),
         "entity is present in new client entity map despite rooms mismatch"
     );
 }

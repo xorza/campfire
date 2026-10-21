@@ -365,7 +365,8 @@ pub(crate) mod internals {
     use bevy_ecs::schedule::InternedSystemSet;
     use bevy_ecs::world::World;
     use campfire_declarations::{
-        BuiltBooks, CapabilitySet, InstallFacts, MatchFacts, Sections, SourceKind, SourcePackage,
+        BuiltBooks, CapabilitySet, InstallFacts, MatchFacts, Role, Sections, SourceKind,
+        SourcePackage,
     };
     use campfire_geometry::Bounds;
     use campfire_math::Num;
@@ -602,7 +603,7 @@ pub(crate) mod internals {
         pub fn sync_held(declared: &[Capability], ticks: u64, scene: impl Fn(&mut Match)) {
             let set = Self::capability_set(declared).expect("a test declares a valid set");
             let mut worlds = [(); 2].map(|()| {
-                let mut game = Match::predicting(declared);
+                let mut game = Match::builder(declared).role(Role::Client).build();
                 scene(&mut game);
                 let holds = ClientHolds::of(&mut game, set);
                 (game, holds)

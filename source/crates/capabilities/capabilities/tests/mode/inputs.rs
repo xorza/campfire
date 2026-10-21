@@ -14,8 +14,8 @@ use super::*;
 #[test]
 fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
-    let [strike, blink] =
-        ["strike", "blink"].map(|name| Actions::named(&game, PackageIndex::MODE, name).unwrap());
+    let [strike, blink] = [(HERO_X_PACKAGE, "strike"), (SPELLS, "blink")]
+        .map(|(package, name)| Actions::named(&game, package, name).unwrap());
     let spells = ModeInput {
         name: "spells",
         value: InputValue::StringList(vec!["blink"]),
@@ -77,10 +77,15 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     );
     // A host's pick of a seat's choice of values is the seat's choice as the match starts, before
     // any input: player 1's faction China, offer 1.
-    let mut files = mode_files();
+    let set = mode_packages(SCRIPT);
+    let data = set.mode_data();
     let china = "1:faction=china".parse().unwrap();
-    files.picks.seats = SeatPicks::named(&files.data.choices, 3, &[china]).unwrap();
-    let picked = start_match(SCRIPT, ScriptLimits::ROOMY, &files).unwrap();
+    let picks = HostPicks {
+        seats: SeatPicks::named(&data.choices, 3, &[china]).unwrap(),
+        ..HostPicks::defaults(&data, 3)
+    };
+    let mut picked = installed_picked(&set, ScriptLimits::ROOMY, picks);
+    Mode::start_held(&mut picked).unwrap();
     let rows: Vec<_> = picked.resource::<Choices>().offers().chunks(5).collect();
     assert_eq!(
         rows,
@@ -160,9 +165,14 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     );
     assert_eq!(resource("gems").map(ResourceId::index), Some(1));
     // A host's pick of the option's other value is the param in place of its default: 8 + 3.
-    let mut files = mode_files();
-    files.picks.options = OptionPicks::checked(&files.data.options, &[0]).unwrap();
-    let mut picked = start_match(SCRIPT, ScriptLimits::ROOMY, &files).unwrap();
+    let set = mode_packages(SCRIPT);
+    let data = set.mode_data();
+    let picks = HostPicks {
+        options: OptionPicks::checked(&data.options, &[0]).unwrap(),
+        ..HostPicks::defaults(&data, 3)
+    };
+    let mut picked = installed_picked(&set, ScriptLimits::ROOMY, picks);
+    Mode::start_held(&mut picked).unwrap();
     Mode::tick_inputs(&mut picked, &[(1, input("gold", "gold"))]);
     let resources = picked.player_resources(Seat::new(1)).unwrap();
     assert_eq!(resources.amount(resource("gold").unwrap()), 8 + 3);
@@ -244,8 +254,8 @@ fn take_input(ctx, player, name, value) {
 }
 "#;
     let mut game = picking_match(script, ScriptLimits::ROOMY);
-    let [strike, blink] =
-        ["strike", "blink"].map(|name| Actions::named(&game, PackageIndex::MODE, name).unwrap());
+    let [strike, blink] = [(HERO_X_PACKAGE, "strike"), (SPELLS, "blink")]
+        .map(|(package, name)| Actions::named(&game, package, name).unwrap());
     let probe = |value| input("probe", value);
     let read = |game: &Match| ["kind", "seen", "team"].map(|name| Mode::field(game, name));
     let text = |text: &str| StateValue::Text(text.into());
@@ -335,13 +345,15 @@ fn take_input(ctx, player, name, value) {
     ctx.grant(id, "spell", if value == "two" { ["blink", "blink"] } else { ["blink"] });
 }
 "#;
+    let mut set = mode_packages(&format!("{script}{PICKING}"));
+    let hero_y = &mut set.avatars[1].data;
+    let tracks = "tracks = [\"level\", \"valor\"]\n";
+    let carries = format!("{tracks}inventory = {{ slots = 255, kind = \"spell\" }}\n");
+    *hero_y = replaced(hero_y, tracks, &carries);
+    set.capabilities.push(Capability::Items);
+    let mut game = started(&set, ScriptLimits::ROOMY).unwrap();
     let spell = SlotKind::new(1);
-    let carry = |types: &mut [TestType]| {
-        types[2].inventory = Some((Inventory::new(NonZeroU8::MAX), UseGroup::new(spell)));
-    };
-    let script = format!("{script}{PICKING}");
-    let mut game = start_match_setup(&script, ScriptLimits::ROOMY, &mode_files(), carry).unwrap();
-    let blink = Actions::named(&game, PackageIndex::MODE, "blink").unwrap();
+    let blink = Actions::named(&game, SPELLS, "blink").unwrap();
     let owned = |game: &mut Match| {
         let mut owned = game.query::<(&Owner, &ActionSlots)>();
         let slots = owned.iter(game).map(|(_, slots)| slots.clone());
@@ -392,7 +404,7 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     let position = Vec3::ZERO;
     let [_, grunt_1, second] = [(0, grunt), (1, grunt), (0, hero_type)].map(|(slot, unit_type)| {
         let owner = Owner::new(Seat::new(slot));
-        Mode::spawn(&mut game, unit_type, position, Team::new(0), owner)
+        Spawn::of(unit_type, position).parts(owner).place(&mut game)
     });
     let mut players = HeldPlayerUnits::new(&mut game);
     let avatar = |players: &mut HeldPlayerUnits, slot| {
@@ -482,7 +494,7 @@ fn take_input(ctx, player, name, value) {
 }
 "#;
     let script = format!("{script}{PICKING}");
-    let mut game = installed_match(&script, ScriptLimits::ROOMY, &mode_files(), |_| {});
+    let mut game = installed(&mode_packages(&script), ScriptLimits::ROOMY);
     let players = Mode::seats(&game);
     let mut holders = vec![SeatHolder::Held; players];
     holders[1] = SeatHolder::Open;
@@ -493,7 +505,9 @@ fn take_input(ctx, player, name, value) {
     assert_eq!(Mode::field(&game, "kind"), StateValue::Text(seats.into()));
     let grunt = |game: &mut Match, slot| {
         let owner = Owner::new(Seat::new(slot));
-        Mode::spawn_named(game, "grunt", Vec3::ZERO, Team::new(0), owner)
+        Spawn::named(game, "grunt", Vec3::ZERO)
+            .parts(owner)
+            .place(game)
     };
     let [first, second, others] = [0, 0, 1].map(|slot| grunt(&mut game, slot));
     Mode::tick_inputs(&mut game, &[(0, input("probe", "count"))]);

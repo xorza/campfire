@@ -1,7 +1,5 @@
 //! A mode that runs a rules package's script as its own, with no capability.
 
-use std::num::NonZeroU32;
-
 use campfire_capabilities::Match;
 use campfire_harness::FixedSession;
 use campfire_package::ModePackages;
@@ -16,8 +14,7 @@ fn a_mode_runs_the_script_its_rules_package_holds() {
     let packages = TestMode::Ruled.packages();
     // The rules package's script ends the match as it starts, its first team the winner.
     let mut target = MatchBuild::test_target(&packages, 1);
-    let mut fixed =
-        FixedSession::new(TestMode::Ruled.packages(), NonZeroU32::new(30).unwrap(), 1).start();
+    let mut fixed = FixedSession::new(TestMode::Ruled.packages(), 1).start();
     fixed.game_mut().run_tick_alone();
     assert_eq!(fixed.end().outcome, Outcome::Won { team: 0 });
     // A match of no capability restores, its checks reading no book of one.
@@ -28,8 +25,7 @@ fn a_mode_runs_the_script_its_rules_package_holds() {
 
     // The same match with its result replaced by an aborted one: a host may not abort a match
     // the mode ended.
-    let mut fixed =
-        FixedSession::new(TestMode::Ruled.packages(), NonZeroU32::new(30).unwrap(), 1).start();
+    let mut fixed = FixedSession::new(TestMode::Ruled.packages(), 1).start();
     fixed.game_mut().run_tick_alone();
     let game = fixed.game_mut();
     let aborted = SessionResult {

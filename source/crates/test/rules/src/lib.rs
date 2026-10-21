@@ -12,6 +12,8 @@ mod citations;
 #[cfg(test)]
 mod cycles;
 #[cfg(test)]
+mod dev_dependencies;
+#[cfg(test)]
 mod errors;
 #[cfg(test)]
 mod gated_items;
@@ -29,6 +31,10 @@ mod source_file;
 mod source_files;
 #[cfg(test)]
 mod suffixes;
+#[cfg(test)]
+mod test_homes;
+#[cfg(test)]
+mod test_modules;
 #[cfg(test)]
 mod type_names;
 #[cfg(test)]

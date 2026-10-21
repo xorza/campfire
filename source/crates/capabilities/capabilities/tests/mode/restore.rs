@@ -2,6 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
 use campfire_actions::internals::LooseDues;
 use campfire_actions::{ActionProgress, SlotCharges, SlotTimes, TimedSlots};
+use campfire_codec::Binary;
 use campfire_common::Tick;
 use campfire_deliveries::DashDelivering;
 use campfire_navigation::{Party, PartyKey, RouteAsk};
@@ -27,7 +28,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let strike = game
         .resource::<ActionBook>()
         .names()
-        .named((PackageIndex::MODE, "strike"));
+        .named((HERO_X_PACKAGE, "strike"));
     let strike = ActionSlots::new([(strike.unwrap(), SlotKind::new(0), Rank::new(1))]);
     game.entity_mut(grunt).insert(TimedSlots::new(strike));
     // Teams a, b and neutral are 0 to 2, players 0 to 2: the grunt, which no player owns, may be
@@ -111,7 +112,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(!UnitState::<AudienceTeam>::new(int()).check(&game, grunt));
     // Actions: one the book holds, at a rank it has or 0, and an order of a slot it has.
     let book = game.resource::<ActionBook>();
-    let strike = book.names().named((PackageIndex::MODE, "strike")).unwrap();
+    let strike = book.names().named((HERO_X_PACKAGE, "strike")).unwrap();
     let slots = |action, rank| ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]);
     assert!(slots(strike, 0).check(&game, grunt) && slots(strike, 1).check(&game, grunt));
     assert!(!slots(strike, u8::MAX).check(&game, grunt));
@@ -348,7 +349,7 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
             let strike = world
                 .resource::<ActionBook>()
                 .names()
-                .named((PackageIndex::MODE, "strike"))
+                .named((HERO_X_PACKAGE, "strike"))
                 .unwrap();
             let slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]);
             let unit = first::<UnitType>(world);
@@ -392,16 +393,16 @@ fn a_restore_keeps_each_time_within_the_limit() {
     let unit = *game.get::<StableId>(grunt).unwrap();
     let past = Tick::new(Tick::LIMIT.get() + 1);
     for (at, holds) in [(Tick::LIMIT, true), (past, false)] {
-        assert_eq!(Match::decodes(&NextThink::new(at)), holds, "{at}");
-        assert_eq!(Match::decodes(&Respawn { at }), holds, "{at}");
+        assert_eq!(Binary::decodes_again(&NextThink::new(at)), holds, "{at}");
+        assert_eq!(Binary::decodes_again(&Respawn { at }), holds, "{at}");
         assert_eq!(
-            Match::decodes(&MatchEnd::new(at, MatchResult::Draw)),
+            Binary::decodes_again(&MatchEnd::new(at, MatchResult::Draw)),
             holds,
             "{at}"
         );
         let mut attackers = RecentAttackers::default();
         attackers.record(unit, at, game.resource::<EntityIndex>());
-        assert_eq!(Match::decodes(&attackers), holds, "{at}");
+        assert_eq!(Binary::decodes_again(&attackers), holds, "{at}");
         let mut route = game.get::<Route>(grunt).unwrap().clone();
         let goal = game.get::<Position>(grunt).unwrap().get();
         let ask = RouteAsk {
@@ -410,7 +411,7 @@ fn a_restore_keeps_each_time_within_the_limit() {
             party: None,
         };
         route.ask_unreported(ask);
-        assert_eq!(Match::decodes(&route), holds, "{at}");
+        assert_eq!(Binary::decodes_again(&route), holds, "{at}");
     }
 }
 
@@ -418,10 +419,15 @@ fn a_restore_keeps_each_time_within_the_limit() {
 /// match's own through, and refuse one the book lacks or of another shape.
 #[test]
 fn a_restore_check_refuses_modifiers_the_book_lacks() {
-    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
-    // A modifier of the book, with a value for its one change and no state, as the fighter's is;
-    // not one the book lacks, nor one of other state or another count of changes.
-    let fighter = Mode::stat_grunt(&mut game, Team::new(0), &[("armor", Num::int(1))]);
+    // A modifier of the book, with a value for its one change and no state, as the fighter's
+    // passive is; not one the book lacks, nor one of other state or another count of changes.
+    let mut set = mode_packages(SCRIPT);
+    set.data
+        .push_str("\n[modifiers.fortify]\nstats = { armor = 1 }\n");
+    set.units.push_str(&stat_type("fighter", &[]));
+    set.units.push_str("passive = \"fortify\"\n");
+    let mut game = started(&set, ScriptLimits::ROOMY).unwrap();
+    let fighter = spawn_of(&mut game, "fighter", Team::new(0));
     let fighter = Mode::entity_by_id(&game, fighter.get());
     let modifiers = game.get::<Modifiers>(fighter).unwrap();
     assert!(modifiers.check(&game, fighter));
@@ -491,7 +497,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     for (case, (application, holds)) in cases.into_iter().enumerate() {
         let modifiers = modifiers_of(application);
         assert_eq!(
-            Match::decodes(&modifiers) && modifiers.check(&game, fighter),
+            Binary::decodes_again(&modifiers) && modifiers.check(&game, fighter),
             holds,
             "case {case}"
         );
@@ -594,7 +600,7 @@ fn a_place_past_the_world_bound_fails_its_types_check() {
     let strike = game
         .resource::<ActionBook>()
         .names()
-        .named((PackageIndex::MODE, "strike"))
+        .named((HERO_X_PACKAGE, "strike"))
         .unwrap();
     for (point, holds) in [(at, true), (past, false)] {
         let destination = Destination::to(Some(point));

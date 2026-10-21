@@ -107,3 +107,29 @@ impl Book for TrackBook {
         names.set_table(Arc::clone(self.names()));
     }
 }
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_common::DeclaredName;
+    use campfire_math::Num;
+
+    use crate::track_book::TrackBook;
+    use crate::track_data::{Thresholds, TrackData};
+
+    impl TrackBook {
+        /// The tests' tracks: `level`, its units' level, of levels 2 at 100 and 3 at 300, and
+        /// `valor`, of level 2 at 50.
+        pub fn sample() -> Self {
+            let data = |levels: &[i64], level| TrackData {
+                levels: Thresholds::new(levels.iter().map(|&value| Num::int(value))).unwrap(),
+                level,
+            };
+            let tracks = [
+                ("level", data(&[100, 300], true)),
+                ("valor", data(&[50], false)),
+            ]
+            .map(|(name, data)| (DeclaredName::new(name).unwrap(), data));
+            Self::new(&tracks.into()).unwrap()
+        }
+    }
+}

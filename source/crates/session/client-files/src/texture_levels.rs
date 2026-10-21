@@ -191,10 +191,16 @@ mod tests {
         // sizes, its index and its texels, is refused or reads levels that hold their bytes.
         let numbered = |level: u32| [u8::try_from(level).unwrap(); 4];
         let bytes = TextureLevels::ktx2(UVec2::new(8, 4), 4, numbered);
-        assert!(TextureLevels::of_ktx2(&bytes, 3).is_ok());
+        TextureLevels::of_ktx2(&bytes, 3).unwrap();
         for at in 0..bytes.len() {
-            assert!(
-                TextureLevels::of_ktx2(&bytes[..at], 3).is_err(),
+            let short = if at < IDENTIFIER.len() {
+                TextureLevelsError::NotKtx2
+            } else {
+                TextureLevelsError::Short
+            };
+            assert_eq!(
+                TextureLevels::of_ktx2(&bytes[..at], 3).err(),
+                Some(short),
                 "truncated to {at} bytes"
             );
             for flip in [0x01, 0x80, 0xFF] {

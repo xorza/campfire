@@ -39,31 +39,28 @@ fn server_key() -> XOnlyPublicKey {
 const LIFETIME: u64 = 86_400;
 
 impl FixedSession {
-    /// A session of `packages` at `tick_hz` for `players` players, with roomy input limits.
-    pub fn new(packages: ModePackages, tick_hz: NonZeroU32, players: u32) -> Self {
-        Self::with_rules(packages, tick_hz, players, InputRules::ROOMY)
+    /// A session of `packages` at its manifest's default rate for `players` players, with roomy
+    /// input limits.
+    pub fn new(packages: ModePackages, players: u32) -> Self {
+        Self::with_rules(packages, players, InputRules::ROOMY)
     }
 
-    /// A session of `packages` at `tick_hz` for `players` players, its inputs within `rules`.
-    pub fn with_rules(
-        packages: ModePackages,
-        tick_hz: NonZeroU32,
-        players: u32,
-        rules: InputRules,
-    ) -> Self {
+    /// A session of `packages` at its manifest's default rate for `players` players, its inputs
+    /// within `rules`.
+    pub fn with_rules(packages: ModePackages, players: u32, rules: InputRules) -> Self {
         let players = usize::try_from(players).expect("players fit usize");
         let plan = iter::repeat_n(SeatPlan::Player, players);
-        Self::planned(packages, tick_hz, rules, plan)
+        Self::planned(packages, rules, plan)
     }
 
-    /// A session of `packages` at `tick_hz`, its inputs within `rules`, its seats as `plan` opens
-    /// them.
+    /// A session of `packages` at its manifest's default rate, its inputs within `rules`, its
+    /// seats as `plan` opens them.
     pub fn planned(
         packages: ModePackages,
-        tick_hz: NonZeroU32,
         rules: InputRules,
         plan: impl IntoIterator<Item = SeatPlan>,
     ) -> Self {
+        let tick_hz = packages.manifest().tick_hz.default();
         let session_rules = SessionRules::of(&packages);
         let visibility = session_rules.visibility().settings();
         let seats: Vec<SeatPlan> = plan.into_iter().collect();
@@ -84,6 +81,15 @@ impl FixedSession {
             terms,
             chain: SEED_CHAIN,
         }
+    }
+
+    /// The session at `tick_hz` ticks a second, a rate its mode runs at.
+    #[must_use]
+    pub fn rate(mut self, tick_hz: NonZeroU32) -> Self {
+        self.terms.tick_hz = tick_hz;
+        let rules = SessionRules::of(&self.packages);
+        rules.check(&self.terms).expect("a rate the mode runs at");
+        self
     }
 
     /// The session on a seed chain of `segments` segments, for a match that checkpoints up to

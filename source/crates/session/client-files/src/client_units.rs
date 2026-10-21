@@ -6,6 +6,7 @@ use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::client_file::{ClientFile, ClientFormat};
 use crate::client_path;
 
 /// A package's `client/units.toml`: how each unit type looks, `[units.<type>]`, and each look
@@ -188,6 +189,10 @@ impl<'de> Deserialize<'de> for ModelScale {
     }
 }
 
+impl ClientFile for ClientUnits {
+    const FORMAT: ClientFormat = ClientFormat::Toml;
+}
+
 #[cfg(test)]
 mod tests {
     use campfire_codec::Toml;
@@ -244,37 +249,32 @@ mod tests {
         );
         // A scale of 0, below 0 or not finite; a path that leaves the package, a name that is no
         // declared name, an unknown field.
+        let refusal = |text: &str| {
+            let refused = Toml::parse::<ClientUnits>(text).unwrap_err();
+            refused.message().to_owned()
+        };
         for scale in ["0.0", "-0.0", "-1.0", "nan", "inf"] {
             let text = format!("[units.a]\nmodels = [{{ model = \"a.glb\", scale = {scale} }}]");
-            assert!(Toml::parse::<ClientUnits>(&text).is_err(), "{scale}");
+            assert_eq!(
+                refusal(&text),
+                "a model's scale is positive and finite",
+                "{scale}"
+            );
         }
         // A top not finite; a top below the origin reads.
-        for (top, reads) in [("nan", false), ("-inf", false), ("-0.5", true)] {
-            let text = format!("[units.a]\nmodels = [{{ model = \"a.glb\", top = {top} }}]");
-            assert_eq!(Toml::parse::<ClientUnits>(&text).is_ok(), reads, "{top}");
+        let top = |top: &str| format!("[units.a]\nmodels = [{{ model = \"a.glb\", top = {top} }}]");
+        for wrong in ["nan", "-inf"] {
+            assert_eq!(refusal(&top(wrong)), "a model's top is finite", "{wrong}");
         }
-        assert!(
-            Toml::parse::<ClientUnits>(
-                r#"[units.a]
-models = [{ model = "../x.glb" }]"#
-            )
-            .is_err()
+        Toml::parse::<ClientUnits>(&top("-0.5")).unwrap();
+        assert_eq!(
+            refusal("[units.a]\nmodels = [{ model = \"../x.glb\" }]"),
+            "\"../x.glb\": no path in the package"
         );
-        assert!(
-            Toml::parse::<ClientUnits>(
-                "[units.A]
-models = []"
-            )
-            .is_err()
-        );
-        assert!(
-            Toml::parse::<ClientUnits>(
-                r#"[units.a]
-models = []
-model = "x""#
-            )
-            .is_err()
-        );
+        let name = refusal("[units.A]\nmodels = []");
+        assert!(name.starts_with("\"A\" is not a name"), "{name}");
+        let field = refusal("[units.a]\nmodels = []\nmodel = \"x\"");
+        assert!(field.starts_with("unknown field `model`"), "{field}");
     }
 
     #[test]

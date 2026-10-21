@@ -59,10 +59,7 @@ fn stopping_the_server_unlinks_it() {
 
     let mut stepper = Stepper::new(TransportStack, StepperSetup::single());
     let server = stepper.server_entity();
-    stepper
-        .server_app_mut()
-        .world_mut()
-        .trigger(Stop::from(server));
+    stepper.server_world_mut().trigger(Stop::from(server));
     stepper.step(10, stepper.frame_interval(), StepOrder::ServerFirst);
 
     let server = stepper.server();

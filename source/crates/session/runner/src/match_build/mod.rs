@@ -85,49 +85,16 @@ impl MatchBuild {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_capabilities::{Match, MatchKind, Release};
+    use campfire_capabilities::Match;
     use campfire_common::SegmentSeed;
     use campfire_log::internals::LogCheck;
     use campfire_mode::HostPicks;
     use campfire_package::ModePackages;
-    use campfire_players::Players;
     use campfire_sim::MatchRate;
-    use campfire_vision::VisionBook;
 
     use crate::match_build::MatchBuild;
 
-    /// What an arena's match is built of: its packages, its tick rate, its players, and its map's
-    /// vision, the one book a test gives in place of the packages'.
-    #[derive(Debug)]
-    pub struct ArenaSetup<'a> {
-        pub packages: &'a ModePackages,
-        pub tick_rate: MatchRate,
-        pub players: u32,
-        pub vision: VisionBook,
-    }
-
     impl MatchBuild {
-        /// The match of `arena`'s packages at its rate, for its players, with every book in place
-        /// but the map's vision, which is its own, and no mode installed, as an arena holds it; it
-        /// starts with the match's entity alone, spawns the mode's unit types as the mode does
-        /// for a test to spawn, and fails its test on any warning it logs.
-        pub fn arena(arena: ArenaSetup<'_>) -> Match {
-            let ArenaSetup {
-                packages,
-                tick_rate: rate,
-                players,
-                vision,
-            } = arena;
-            let log = LogCheck::start();
-            let spec = Self::spec(packages, SegmentSeed::ZERO, rate, players);
-            let mut books = packages.books(rate);
-            books.replace(vision);
-            let mut game = Match::new(spec, books, MatchKind::Rules).with_log(log);
-            Release::compile(&mut game, &packages.scripts());
-            Players::start_without_mode(&mut game, [], 0);
-            game
-        }
-
         /// The restore target `restore_target` builds at the mode's default rate, of the options'
         /// defaults, which fails its test on any warning it logs.
         pub fn test_target(packages: &ModePackages, players: u32) -> Match {

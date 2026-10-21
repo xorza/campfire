@@ -250,7 +250,41 @@ impl ClientModule {
 
 #[cfg(test)]
 mod tests {
+    use bevy::ecs::schedule::Schedules;
+    use campfire_test_packages::TestMode;
+
     use super::*;
+    use crate::test_app;
+
+    #[test]
+    fn every_module_s_systems_take_no_conflicting_access() {
+        // Bevy checks that a system's queries do not conflict as it initializes the system: each
+        // schedule of a window's end with every module, its window's headless, initialized.
+        let mut app = test_app::headless();
+        test_app::add_match(&mut app);
+        let packages = Arc::new(TestMode::Lane.packages());
+        let pace = Arc::new(Pace::default());
+        let cx = WindowCx {
+            packages: &packages,
+            local: Some(&pace),
+        };
+        for module in ClientModule::ALL {
+            if module != ClientModule::Window {
+                module.add(&mut app, &cx);
+            }
+        }
+        app.finish();
+        app.cleanup();
+        let world = app.world_mut();
+        let labels: Vec<_> = (world.resource::<Schedules>().iter())
+            .map(|(_, schedule)| schedule.label())
+            .collect();
+        for label in labels {
+            world.schedule_scope(label, |world, schedule| {
+                schedule.initialize(world).unwrap();
+            });
+        }
+    }
 
     #[test]
     fn a_window_adds_the_modules_whose_capabilities_its_mode_holds() {

@@ -187,7 +187,7 @@ mod ecs {
 
 #[cfg(test)]
 mod tests {
-    use campfire_codec::Binary;
+    use campfire_codec::{Binary, BinaryError};
 
     use super::*;
 
@@ -214,7 +214,10 @@ mod tests {
         assert_eq!(relations.pairs.len(), 1);
         // A snapshot that holds a default pair fails to decode.
         let bytes = Binary::encode(&vec![(a, b, Relation::Hostile, VisionShare::Shared)]);
-        assert!(Binary::decode::<Relations>(&bytes).is_err());
+        assert_eq!(
+            Binary::decode::<Relations>(&bytes).err(),
+            Some(BinaryError::REFUSED)
+        );
         let bytes = Binary::encode(&relations);
         assert_eq!(Binary::decode::<Relations>(&bytes).ok(), Some(relations));
     }

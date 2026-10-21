@@ -16,6 +16,8 @@ pub(crate) struct AppSchedule {
     pub(crate) next_frame: Duration,
     /// The stepper time before which the app runs no frame.
     pub(crate) stalled_until: Duration,
+    /// The wall time of its slowest frame since `Stepper::take_slowest_frame` last read it.
+    pub(crate) slowest: Duration,
 }
 
 impl AppSchedule {
@@ -33,7 +35,14 @@ impl AppSchedule {
             local: now,
             next_frame: now + frame_interval,
             stalled_until: now,
+            slowest: Duration::ZERO,
         }
+    }
+
+    /// The time at which its next frame runs: when it is due and no stall holds it, and never
+    /// before `now`.
+    pub(crate) fn frame_at(&self, now: Duration) -> Duration {
+        self.next_frame.max(self.stalled_until).max(now)
     }
 
     /// Records a frame of the app at stepper time `now`: its next one comes an interval later.

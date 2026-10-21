@@ -7,13 +7,14 @@ use campfire_common::{DeclaredName, Seat, Tick};
 use campfire_geometry::internals::{Density, KernelScene};
 use campfire_items::{Inventory, ItemsDirective};
 use campfire_math::Num;
-use campfire_mode::{InputValue, Mode, ModeInput};
+use campfire_mode::{InputValue, ModeInput};
 use campfire_navigation::PathWalker;
 use campfire_orders::OrdersDirective;
 use campfire_progression::ProgressionDirective;
 use campfire_protocol::{InputRules, SeatPlan, ServerInput};
 use campfire_sim::{Position, StableId};
 use campfire_test_packages::TestMode;
+use campfire_units::internals::Spawn;
 use campfire_units::{Dead, GroundPoint, Life};
 use campfire_values::{ItemId, Names, Team};
 
@@ -310,7 +311,7 @@ impl Moba3v3 {
         let items: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
         let item = |name: &str| items.named(name).expect("an item of the 3v3");
         let script = Self::script(&item);
-        let session = FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan);
+        let session = FixedSession::planned(packages, InputRules::ROOMY, plan).rate(TICK_HZ);
         ScriptedMode::new(session, script)
     }
 
@@ -321,7 +322,9 @@ impl Moba3v3 {
         for unit in 0..KernelScene::UNITS {
             let position = scene.point(Density::Crowded.span());
             let team = Team::new(u8::from(unit % 4 >= 2));
-            Mode::spawn_typed(world, CREEPS[unit % 2], position, team, ());
+            Spawn::named(world, CREEPS[unit % 2], position)
+                .team(team)
+                .place(world);
         }
     }
 }

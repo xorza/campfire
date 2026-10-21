@@ -34,22 +34,14 @@ fn a_walker_routes_round_a_box_and_never_stands_inside_it() {
     Navigation::load_open_pathing(&mut game, HALF, [-8, -8], [8, 8], [ground(HALF)]);
     let turn = Num::int(30);
     let body = boxed(4, 1).at(turn);
-    Navigation::spawn_turned(
-        &mut game,
-        (0, 0, 0),
-        turn,
-        Team::new(0),
-        None,
-        None,
-        Some(boxed(4, 1)),
-    );
-    let walker = Navigation::body(
-        &mut game,
-        (-6, 0, 0),
-        Some(Vec3::from((6, 0, 0))),
-        Some(QUARTER),
-        HALF,
-    );
+    Navigation::walker_at(&mut game, (0, 0, 0))
+        .angle(turn)
+        .body(boxed(4, 1))
+        .place(&mut game);
+    let walker = Navigation::walker_at(&mut game, (-6, 0, 0))
+        .circle(HALF)
+        .walks(QUARTER, Some(Vec3::from((6, 0, 0))))
+        .place(&mut game);
     let mut widest = Num::ZERO;
     for _ in 0..200 {
         game.step();
@@ -61,8 +53,15 @@ fn a_walker_routes_round_a_box_and_never_stands_inside_it() {
         widest = widest.max(position.z.max(-position.z));
     }
     assert_eq!(game.part::<Position>(walker).get(), Vec3::from((6, 0, 0)));
-    // The box reaches 1.43 m off the line along z; the walker went at least that far round it.
-    assert!(widest > Num::int(1), "{widest:?}");
+    // The box's half sides of 2 and 0.5 m, turned 30°, reach 2 · sin 30° + 0.5 · cos 30° =
+    // 1.433 m off the line along z, so the walker's center keeps 1.933 m off it as it passes;
+    // the route goes through the centers of the half-meter cells, the first clear one 2.25 m off
+    // the line, which the walker turns back from before it reaches it.
+    let clear = Num::int(1) + Num::int(1) / Num::int(2) * Num::from_bits(14_529_495) + HALF;
+    assert!(
+        widest >= clear && widest <= Num::int(9) / Num::int(4),
+        "{widest:?}"
+    );
 }
 
 #[test]
@@ -80,15 +79,14 @@ fn a_walker_routes_round_a_box_wider_than_a_map_and_collides_with_it() {
         vec![ground(HALF)],
     );
     let bridge = boxed(1117, 100);
-    Navigation::body_on(&mut game, (0, 0, 0), None, None, bridge);
+    Navigation::walker_at(&mut game, (0, 0, 0))
+        .body(bridge)
+        .place(&mut game);
     let bridge = bridge.at(Num::ZERO);
-    let walker = Navigation::body(
-        &mut game,
-        (540, 0, -56),
-        Some(Vec3::from((540, 0, 56))),
-        Some(Num::ONE),
-        HALF,
-    );
+    let walker = Navigation::walker_at(&mut game, (540, 0, -56))
+        .circle(HALF)
+        .walks(Num::ONE, Some(Vec3::from((540, 0, 56))))
+        .place(&mut game);
     let mut farthest = Num::ZERO;
     for _ in 0..200 {
         game.step();
@@ -103,16 +101,16 @@ fn a_walker_routes_round_a_box_wider_than_a_map_and_collides_with_it() {
         game.part::<Position>(walker).get(),
         Vec3::from((540, 0, 56))
     );
-    assert!(farthest > Num::int(559), "{farthest:?}");
+    // The box's end lies at x = 558.5 and the walker's radius is 0.5 m, so its center keeps to
+    // x ≥ 559 round it, and the route runs through the centers of meter cells: the first clear one
+    // spans x from 559 to 560, its center at 559.5.
+    assert_eq!(farthest, Num::int(1119) / Num::int(2));
     // A walker of 1 m that stands half a meter into its long edge at z = 50, far from its ends:
     // the Collide stage moves it out to touch, to z = 51, and a bit past, the push's slack.
-    let pushed = Navigation::body(
-        &mut game,
-        quarters(-1600, 198),
-        None,
-        Some(QUARTER),
-        Num::ONE,
-    );
+    let pushed = Navigation::walker_at(&mut game, quarters(-1600, 198))
+        .circle(Num::ONE)
+        .walks(QUARTER, None)
+        .place(&mut game);
     game.step();
     assert_eq!(
         game.part::<Position>(pushed).get(),
@@ -126,8 +124,13 @@ fn collision_pushes_a_walker_out_of_a_box_to_touch_it() {
     // meter into its edge at x = 2: the Collide stage moves it out to touch, to x = 3, and a bit
     // past, the push's slack, and leaves the box where it stands.
     let mut game = walk_match();
-    let building = Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(4, 2));
-    let walker = Navigation::body(&mut game, quarters(10, 0), None, Some(QUARTER), Num::ONE);
+    let building = Navigation::walker_at(&mut game, (0, 0, 0))
+        .body(boxed(4, 2))
+        .place(&mut game);
+    let walker = Navigation::walker_at(&mut game, quarters(10, 0))
+        .circle(Num::ONE)
+        .walks(QUARTER, None)
+        .place(&mut game);
     game.step();
     assert_eq!(game.part::<Position>(walker).get(), past((3, 0, 0), [1, 0]));
     assert_eq!(game.part::<Position>(building).get(), Vec3::from((0, 0, 0)));
@@ -142,15 +145,25 @@ fn a_box_that_spawns_over_a_walker_moves_it_to_the_nearest_open_cell() {
     // collision.
     let mut game = walk_match();
     Navigation::load_open_pathing(&mut game, HALF, [-4, -4], [4, 4], [ground(QUARTER)]);
-    let walker = Navigation::body(&mut game, quarters(1, 1), None, Some(QUARTER), QUARTER);
+    let walker = Navigation::walker_at(&mut game, quarters(1, 1))
+        .circle(QUARTER)
+        .walks(QUARTER, None)
+        .place(&mut game);
     game.step();
-    Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(2, 2));
+    Navigation::walker_at(&mut game, (0, 0, 0))
+        .body(boxed(2, 2))
+        .place(&mut game);
     assert_eq!(game.part::<Position>(walker).get(), quarters(5, 1));
     // With no pathing grid, the box pushes it out through its nearest edge, x = 1, to touch, and
     // a bit past.
     let mut bare = walk_match();
-    let walker = Navigation::body(&mut bare, quarters(1, 0), None, Some(QUARTER), QUARTER);
-    Navigation::body_on(&mut bare, (0, 0, 0), None, None, boxed(2, 2));
+    let walker = Navigation::walker_at(&mut bare, quarters(1, 0))
+        .circle(QUARTER)
+        .walks(QUARTER, None)
+        .place(&mut bare);
+    Navigation::walker_at(&mut bare, (0, 0, 0))
+        .body(boxed(2, 2))
+        .place(&mut bare);
     let touching = quarters(5, 0);
     let past_it = Vec3::new(touching.x + Num::EPSILON, touching.y, touching.z);
     assert_eq!(bare.part::<Position>(walker).get(), past_it);
@@ -162,8 +175,13 @@ fn a_dash_at_a_box_ends_touching_it() {
     // at its nearest point, (-1, 0), each tick, through -4, -3 and -2, to -1.5, where the
     // bodies touch, in tick 3, and the dash ends.
     let mut game = walk_match();
-    let building = Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(2, 2));
-    let dasher = Navigation::body(&mut game, (-5, 0, 0), None, Some(QUARTER), HALF);
+    let building = Navigation::walker_at(&mut game, (0, 0, 0))
+        .body(boxed(2, 2))
+        .place(&mut game);
+    let dasher = Navigation::walker_at(&mut game, (-5, 0, 0))
+        .circle(HALF)
+        .walks(QUARTER, None)
+        .place(&mut game);
     game.insert_parts(
         dasher,
         ForcedMove::Dash {
@@ -186,64 +204,6 @@ fn a_dash_at_a_box_ends_touching_it() {
         ]
     );
     assert!(game.try_part::<ForcedMove>(dasher).is_none());
-}
-
-#[test]
-fn a_placed_box_lies_within_the_bounds_and_may_overlap_the_walls_and_the_bodies_that_stand() {
-    // Boxes of 2 by 2 m, a tower of 0.9 m at (5, 2), and a building from (6, 0) to (8, 1), in the
-    // corridor from (0, 0) to (10, 4). A box at (3, 2) clears the tower; one at (4.2, 2) overlaps
-    // it, and loads, as the bodies block alike (04-capabilities/navigation.md, Placed obstacles may
-    // overlap). One at (7, 1.5) overlaps the building's wall, and loads too, as one at (7, 2.5)
-    // does. One at (9.5, 2) reaches past the bounds, and is refused. Two side by side at (1, 2) and
-    // (3, 2) touch, and two at (1, 2) and (2.5, 2) overlap: both load.
-    let point = MapPoint::ground;
-    let rules = ModeNavigationData::default();
-    let body_of = |unit_type: &str| match unit_type {
-        "crate" => BodyForm::box_sized([Num::int(2), Num::int(2)]),
-        other => corridor_body(other),
-    };
-    let check = |boxes: &[(Num, Num)], walled: bool| {
-        let mut map = corridor(&[(5, 2)], (8, 3));
-        map.section_mut::<MapPathsData>().unwrap().0.clear();
-        map.markers.clear();
-        if walled {
-            let corner = |x, z| point(x, z);
-            map = map.with(MapNavigationData {
-                cell: Num::HALF,
-                walls: vec![WallData {
-                    layer: None,
-                    points: vec![corner(6, 0), corner(8, 0), corner(8, 1), corner(6, 1)],
-                }],
-            });
-        }
-        let placed = boxes.iter().map(|&(x, z)| PlacedUnitData {
-            position: MapPoint::Ground([x, z]),
-            ..PlacedUnitData::new("crate", "west", point(0, 0))
-        });
-        map.units.extend(placed);
-        check_walkable(&map, &[ground(Num::HALF)], &rules, body_of)
-    };
-    let blocked = |unit| {
-        Err(MapProblem::BoxOutside {
-            unit,
-            unit_type: DeclaredName::new("crate").unwrap(),
-        })
-    };
-    let num = |text: &str| text.parse::<Num>().unwrap();
-    // The tower and the creep come first among the placed units, at 0 and 1.
-    assert_eq!(check(&[(num("3"), num("2"))], false), Ok(()));
-    assert_eq!(check(&[(num("4.2"), num("2"))], false), Ok(()));
-    assert_eq!(check(&[(num("7"), num("1.5"))], true), Ok(()));
-    assert_eq!(check(&[(num("7"), num("2.5"))], true), Ok(()));
-    assert_eq!(check(&[(num("9.5"), num("2"))], false), blocked(2));
-    assert_eq!(
-        check(&[(num("1"), num("2")), (num("3"), num("2"))], false),
-        Ok(())
-    );
-    assert_eq!(
-        check(&[(num("1"), num("2")), (num("2.5"), num("2"))], false),
-        Ok(())
-    );
 }
 
 /// `at`, in meters, moved by `bits` along x and z.

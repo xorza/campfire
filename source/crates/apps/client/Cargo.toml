@@ -14,7 +14,6 @@ campfire-areas.workspace = true
 campfire-bots.workspace = true
 campfire-capabilities.workspace = true
 campfire-client-files.workspace = true
-campfire-codec.workspace = true
 campfire-combat.workspace = true
 campfire-common.workspace = true
 campfire-declarations.workspace = true
@@ -96,6 +95,7 @@ unic-langid.workspace = true
 [dev-dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-net = { workspace = true, features = ["internals"] }
 campfire-production = { workspace = true, features = ["internals"] }
 campfire-script = { workspace = true, features = ["internals"] }

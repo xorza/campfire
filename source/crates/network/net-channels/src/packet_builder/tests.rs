@@ -605,7 +605,10 @@ fn a_rolled_back_append_seals_with_the_kept_compression() -> Result<(), PacketEr
     };
 
     let packets = build_staged_packets(&mut PacketBuilder::default(), &staged, compression)?;
-    assert!(packets.len() > 1);
+    // LZ4's output for these bytes: each packet's body grew past what compressed into its bound,
+    // and was rolled back to the last append that did.
+    let lengths: Vec<usize> = packets.iter().map(Packet::len).collect();
+    assert_eq!(lengths, [167, 167, 167, 245]);
     let mut received = Vec::new();
     for packet in packets {
         assert!(packet.len() <= DEFAULT_MAX_PAYLOAD);
@@ -635,7 +638,11 @@ fn an_uncompressed_packet_needs_no_staging() -> Result<(), PacketError> {
     }
     let mut builder = PacketBuilder::default();
     let packets = build_staged_packets(&mut builder, &staged, CompressionSetup::DISABLED)?;
-    assert!(packets.len() > 1);
+    // Each message of 64 bytes takes 66 and a packet's header 7, so 17 fit the payload's 1,166
+    // bytes, 7 + 17 · 66 = 1,129, and an 18th would pass it: 64 = 3 · 17 + 13, the last packet
+    // 7 + 13 · 66 = 865.
+    let lengths: Vec<usize> = packets.iter().map(Packet::len).collect();
+    assert_eq!(lengths, [1129, 1129, 1129, 865]);
     assert_eq!(builder.staging.capacity(), 0);
     Ok(())
 }

@@ -5,10 +5,12 @@ use campfire_math::TickRate;
 /// The plugins and the per-link components of one layer's stack, which a `Stepper` runs on each
 /// side (11-net-stack/testing.md, Each layer's `internals` gives its stack on the one below).
 ///
-/// Each layer's `internals` gives its stack on the one below it, with its test protocol.
-pub trait Stack: Copy + Send + Sync + 'static {
-    /// Adds the plugins of a client to `app`.
-    fn add_client(&self, app: &mut App, tick_rate: TickRate);
+/// Each layer's `internals` gives its stack on the one below it, with its test protocol. Each
+/// app's plugins hold Bevy's time and the stack's one-thread task pools, as `ConnectionStack`
+/// adds them, which the stepper's clocks and its repeatable runs take.
+pub trait Stack: Clone + Send + Sync + 'static {
+    /// Adds the plugins of remote client `client`, by its index, to `app`.
+    fn add_client(&self, app: &mut App, client: usize, tick_rate: TickRate);
 
     /// Adds the plugins of a server to `app`.
     fn add_server(&self, app: &mut App, tick_rate: TickRate);

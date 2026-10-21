@@ -272,11 +272,12 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         ]
     );
     // Projectiles and areas flew and lay; a hero carried a modifier, the snare's or the aura's.
-    assert!(
-        seen.projectiles > 0 && seen.areas > 0 && seen.modified_heroes > 0,
-        "{seen:?}"
+    // As tick sums: of the projectiles in flight, the areas laid and the heroes modified.
+    assert_eq!(
+        [seen.projectiles, seen.areas, seen.modified_heroes],
+        [210, 76, 654]
     );
-    // Progression: a hero gained a level from the kills near it.
+    // Progression: each hero gained levels from the kills near it, to 3 and 2.
     let levels: Vec<u32> = world
         .resource::<EntityIndex>()
         .iter()
@@ -286,7 +287,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
                 .then(|| unit.get::<Level>().unwrap().get())
         })
         .collect();
-    assert!(levels.iter().any(|&level| level > 1), "{levels:?}");
+    assert_eq!(levels, [3, 2]);
     // Navigation: the boulder, a static body, fell.
     let boulder = world
         .resource::<EntityIndex>()

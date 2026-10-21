@@ -39,7 +39,9 @@ impl StartDrive {
         rate: NonZeroU32,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<Self> {
-        let session = FixedSession::new(packages, rate, 1).seat_picked(&america(1));
+        let session = FixedSession::new(packages, 1)
+            .rate(rate)
+            .seat_picked(&america(1));
         let mut play = MatchPlay::new(session.start());
         let start = |name| {
             let of = MarkerOf {

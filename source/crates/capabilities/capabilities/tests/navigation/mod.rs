@@ -1,20 +1,19 @@
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
-use campfire_common::{DeclaredName, Tick};
+use campfire_common::Tick;
+use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
-use campfire_geometry::{Bounds, Polygon, PolygonError, Shape};
+use campfire_geometry::{Bounds, Polygon, Shape};
 use campfire_math::{Num, Vec3};
-use campfire_mode::{MapData, MapInput, MarkerData, ModeMap, PlacedUnitData, TeamManifest};
 use campfire_navigation::internals::PlannedRoute;
 use campfire_navigation::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
 use campfire_units::{
-    ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, MapPoint,
-    MapPointError, TurnStep, Units, Wall,
+    ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, TurnStep, Units, Wall,
 };
-use campfire_values::{Block, NameId, Names, PathId, Team, UnitType};
+use campfire_values::{Block, PathId};
 
 const ONE: i64 = 1 << 24;
 
@@ -36,7 +35,7 @@ fn walk_match() -> Match {
 
 /// A match of `declared`, with navigation among them, as `walk_match` gives one.
 fn walk_match_of(declared: &[Capability]) -> Match {
-    let mut game = Match::unscripted(declared);
+    let mut game = Match::builder(declared).role(Role::Rules).build();
     Navigation::walker_type(&mut game);
     game
 }
@@ -119,7 +118,7 @@ fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
     // From x = 3 a meter towards x = 5: it arrives at 4, then walks on to 5 and back to 4.
     let past = Navigation::unit(&mut game, (3, 0, 0), Some(Vec3::from((5, 0, 0))));
     let inside = Navigation::unit(&mut game, (1, 0, 1), None);
-    let id = Navigation::spawn_unit(&mut game, (9, 0, 9), Team::new(0), None, None, None);
+    let id = Navigation::walker_at(&mut game, (9, 0, 9)).place(&mut game);
 
     game.step();
     assert_eq!(game.part::<Position>(outside).get(), Vec3::from((4, 1, 2)));
@@ -141,58 +140,45 @@ fn bodies_part_and_block_the_way() {
     let quarter = Num::QUARTER;
     let half = Num::HALF;
     let mut game = blocking_walk_match();
-    let a = Navigation::body(
-        &mut game,
-        (0, 0, 0),
-        Some(Vec3::from((10, 0, 0))),
-        Some(quarter),
-        half,
-    );
-    let b = Navigation::body(
-        &mut game,
-        (3, 0, 0),
-        Some(Vec3::from((-10, 0, 0))),
-        Some(quarter),
-        half,
-    );
+    let a = Navigation::walker_at(&mut game, (0, 0, 0))
+        .circle(half)
+        .walks(quarter, Some(Vec3::from((10, 0, 0))))
+        .place(&mut game);
+    let b = Navigation::walker_at(&mut game, (3, 0, 0))
+        .circle(half)
+        .walks(quarter, Some(Vec3::from((-10, 0, 0))))
+        .place(&mut game);
     // A tower of radius 1 at (−6, 4), which does not walk, and C walking at it along z from 0: C
     // touches it at z = 2.5, 1.5 m off, and in tick 11, at 2.75, is pushed back all the way.
-    let tower = Navigation::body(&mut game, (-6, 0, 4), None, None, Num::ONE);
-    let c = Navigation::body(
-        &mut game,
-        (-6, 0, 0),
-        Some(Vec3::from((-6, 0, 8))),
-        Some(quarter),
-        half,
-    );
+    let tower = Navigation::walker_at(&mut game, (-6, 0, 4))
+        .circle(Num::ONE)
+        .place(&mut game);
+    let c = Navigation::walker_at(&mut game, (-6, 0, 0))
+        .circle(half)
+        .walks(quarter, Some(Vec3::from((-6, 0, 8))))
+        .place(&mut game);
     // D walks through a dead body on its way.
-    let dead = Navigation::body(&mut game, (20, 0, 0), None, Some(quarter), half);
+    let dead = Navigation::walker_at(&mut game, (20, 0, 0))
+        .circle(half)
+        .walks(quarter, None)
+        .place(&mut game);
     game.insert_parts(dead, Dead);
-    let d = Navigation::body(
-        &mut game,
-        (18, 0, 0),
-        Some(Vec3::from((22, 0, 0))),
-        Some(quarter),
-        half,
-    );
+    let d = Navigation::walker_at(&mut game, (18, 0, 0))
+        .circle(half)
+        .walks(quarter, Some(Vec3::from((22, 0, 0))))
+        .place(&mut game);
     // A walker at a rooted unit on its way along z = 10, which so stands: the walker touches it
     // in tick 8, at x = 1, and from tick 9 takes the whole overlap, back to 1 each tick, as a
     // walker takes it from a unit that stands. The rooted unit keeps its place and destination.
-    let rooted = Navigation::body(
-        &mut game,
-        (0, 0, 10),
-        Some(Vec3::from((10, 0, 10))),
-        Some(quarter),
-        half,
-    );
+    let rooted = Navigation::walker_at(&mut game, (0, 0, 10))
+        .circle(half)
+        .walks(quarter, Some(Vec3::from((10, 0, 10))))
+        .place(&mut game);
     Units::set_blocks(&mut game, rooted, &[Block::Move]);
-    let walker = Navigation::body(
-        &mut game,
-        (3, 0, 10),
-        Some(Vec3::from((-10, 0, 10))),
-        Some(quarter),
-        half,
-    );
+    let walker = Navigation::walker_at(&mut game, (3, 0, 10))
+        .circle(half)
+        .walks(quarter, Some(Vec3::from((-10, 0, 10))))
+        .place(&mut game);
     for _ in 0..5 {
         game.step();
     }
@@ -238,22 +224,21 @@ fn a_client_parts_its_units_only_from_held_units_that_cannot_walk() {
     let quarter = Num::QUARTER;
     let half = Num::HALF;
     let mut game = walk_match();
-    let blocked = Navigation::body(
-        &mut game,
-        (0, 0, 0),
-        Some(Vec3::from((4, 0, 0))),
-        Some(quarter),
-        half,
-    );
-    let passing = Navigation::body(
-        &mut game,
-        (0, 0, 4),
-        Some(Vec3::from((4, 0, 4))),
-        Some(quarter),
-        half,
-    );
-    let fixed = Navigation::body(&mut game, (2, 0, 0), None, None, half);
-    let resting = Navigation::body(&mut game, (2, 0, 4), None, Some(quarter), half);
+    let blocked = Navigation::walker_at(&mut game, (0, 0, 0))
+        .circle(half)
+        .walks(quarter, Some(Vec3::from((4, 0, 0))))
+        .place(&mut game);
+    let passing = Navigation::walker_at(&mut game, (0, 0, 4))
+        .circle(half)
+        .walks(quarter, Some(Vec3::from((4, 0, 4))))
+        .place(&mut game);
+    let fixed = Navigation::walker_at(&mut game, (2, 0, 0))
+        .circle(half)
+        .place(&mut game);
+    let resting = Navigation::walker_at(&mut game, (2, 0, 4))
+        .circle(half)
+        .walks(quarter, None)
+        .place(&mut game);
     // As on a client: the sim runs on no held unit, and collision names them.
     Unpredicted::register(&mut game);
     for held in [fixed, resting] {
@@ -289,15 +274,16 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
             .filter(|&cell| !Navigation::cell_open(game, ground(half), cell))
             .collect::<Vec<_>>()
     };
-    let tower = Navigation::body(&mut game, place(-6, -6), None, None, half);
-    let held = Navigation::body(&mut game, place(6, 6), None, None, half);
-    Navigation::body(
-        &mut game,
-        place(0, 0),
-        Some(Vec3::from((0, 0, 1))),
-        Some(Num::ONE),
-        half,
-    );
+    let tower = Navigation::walker_at(&mut game, place(-6, -6))
+        .circle(half)
+        .place(&mut game);
+    let held = Navigation::walker_at(&mut game, place(6, 6))
+        .circle(half)
+        .place(&mut game);
+    Navigation::walker_at(&mut game, place(0, 0))
+        .circle(half)
+        .walks(Num::ONE, Some(Vec3::from((0, 0, 1))))
+        .place(&mut game);
     Unpredicted::register(&mut game);
     game.insert_parts(held, Unpredicted);
     assert_eq!(blocked(&game), Vec::<usize>::new());
@@ -339,14 +325,13 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
         if planned {
             Navigation::load_open_pathing(&mut game, half, [-8, -8], [8, 8], [ground(half)]);
         }
-        Navigation::body(&mut game, (0, 0, 0), None, None, tower_radius);
-        let walker = Navigation::body(
-            &mut game,
-            (-4, 0, 0),
-            Some(Vec3::from((4, 0, 0))),
-            Some(quarter),
-            half,
-        );
+        Navigation::walker_at(&mut game, (0, 0, 0))
+            .circle(tower_radius)
+            .place(&mut game);
+        let walker = Navigation::walker_at(&mut game, (-4, 0, 0))
+            .circle(half)
+            .walks(quarter, Some(Vec3::from((4, 0, 0))))
+            .place(&mut game);
         let mut closest = u128::MAX;
         let mut arrived = None;
         for tick in 0..80 {
@@ -453,15 +438,18 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
                 vec![ground(creep_radius), ground(half)],
             );
         }
-        let hero = Navigation::body(&mut game, (0, 0, 0), None, Some(quarter), half);
-        let creep = Navigation::body(&mut game, creep_at, None, Some(quarter), creep_radius);
-        let walker = Navigation::body(
-            &mut game,
-            (-4, 0, 0),
-            Some(Vec3::from((4, 0, 0))),
-            Some(quarter),
-            half,
-        );
+        let hero = Navigation::walker_at(&mut game, (0, 0, 0))
+            .circle(half)
+            .walks(quarter, None)
+            .place(&mut game);
+        let creep = Navigation::walker_at(&mut game, creep_at)
+            .circle(creep_radius)
+            .walks(quarter, None)
+            .place(&mut game);
+        let walker = Navigation::walker_at(&mut game, (-4, 0, 0))
+            .circle(half)
+            .walks(quarter, Some(Vec3::from((4, 0, 0))))
+            .place(&mut game);
         let mut touched = false;
         let mut arrived = None;
         for tick in 0..80 {
@@ -504,20 +492,14 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
         if planned {
             Navigation::load_open_pathing(&mut game, half, [-8, -8], [8, 8], [ground(half)]);
         }
-        let east = Navigation::body(
-            &mut game,
-            (-4, 0, 0),
-            Some(Vec3::from((4, 0, 0))),
-            Some(quarter),
-            half,
-        );
-        let west = Navigation::body(
-            &mut game,
-            (4, 0, 0),
-            Some(Vec3::from((-4, 0, 0))),
-            Some(quarter),
-            half,
-        );
+        let east = Navigation::walker_at(&mut game, (-4, 0, 0))
+            .circle(half)
+            .walks(quarter, Some(Vec3::from((4, 0, 0))))
+            .place(&mut game);
+        let west = Navigation::walker_at(&mut game, (4, 0, 0))
+            .circle(half)
+            .walks(quarter, Some(Vec3::from((-4, 0, 0))))
+            .place(&mut game);
         let mut sides = [Num::ZERO; 2];
         let mut arrived = [None; 2];
         for tick in 0..120 {
@@ -539,7 +521,13 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
             assert_eq!(arrived, [Some(38); 2]);
             assert_eq!(game.part::<Position>(east).get(), Vec3::from((4, 0, 0)));
             assert_eq!(game.part::<Position>(west).get(), Vec3::from((-4, 0, 0)));
-            assert!(sides[0] < Num::ZERO && sides[1] > Num::ZERO, "{sides:?}");
+            // As they pass, each keeps the other's center two radii, 1 m, off: alike, each goes
+            // half of it off the line, on its own side. The route goes through the centers of the
+            // half-meter cells, the first clear one 0.75 m off the line, which each turns back
+            // from before it reaches it.
+            assert_eq!(sides[1], -sides[0], "{sides:?}");
+            let most = Num::int(3) / Num::int(4);
+            assert!(sides[1] >= half && sides[1] <= most, "{sides:?}");
         } else {
             // Pressed together, each half a metre from where they met, at x = 0.
             assert_eq!(arrived, [None; 2]);
@@ -570,30 +558,29 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
         vec![ground(half), flyer],
     );
     for z in [1, 3, 5] {
-        Navigation::body(&mut game, (6, 0, z), None, None, Num::ONE);
+        Navigation::walker_at(&mut game, (6, 0, z))
+            .circle(Num::ONE)
+            .place(&mut game);
     }
-    let standing = Navigation::body(&mut game, (3, 0, 3), None, Some(Num::ONE), half);
+    let standing = Navigation::walker_at(&mut game, (3, 0, 3))
+        .circle(half)
+        .walks(Num::ONE, None)
+        .place(&mut game);
     // An air unit of 0.5 m from (1, 3) to (11, 3), a meter a tick, flies straight over both: in
     // tick 2 it is on the ground unit, which does not move, and in tick 10 at its goal.
     let body = BodyForm::circle(half).unwrap().on(AIR);
-    let flying = Navigation::body_on(
-        &mut game,
-        (1, 0, 3),
-        Some(Vec3::from((11, 0, 3))),
-        Some(Num::ONE),
-        body,
-    );
+    let flying = Navigation::walker_at(&mut game, (1, 0, 3))
+        .body(body)
+        .walks(Num::ONE, Some(Vec3::from((11, 0, 3))))
+        .place(&mut game);
     // A ground unit of 0.5 m from (1, 1) to (11, 1) stops short of the wall, at the cell center
     // nearest its goal that it reaches: (4.5, 0.5) and (4.5, 1.5) tie at √42.5 ≈ 6.52 m, each
     // √2.5 ≈ 1.58 m from the tower at (6, 1), and the lower cell number wins. It walks straight
     // there, √12.5 ≈ 3.54 m, so it arrives in tick 4.
-    let walking = Navigation::body(
-        &mut game,
-        (1, 0, 1),
-        Some(Vec3::from((11, 0, 1))),
-        Some(Num::ONE),
-        half,
-    );
+    let walking = Navigation::walker_at(&mut game, (1, 0, 1))
+        .circle(half)
+        .walks(Num::ONE, Some(Vec3::from((11, 0, 1))))
+        .place(&mut game);
     let short = Vec3::new(Num::int(4) + half, Num::ZERO, half);
     let mut flown = Vec::new();
     for _ in 0..12 {
@@ -674,10 +661,16 @@ fn a_walker_steers_with_the_work_the_routes_left() {
             [12, 3],
             vec![ground(Num::ZERO), ground(quarter)],
         );
-        let walker = Navigation::body(&mut game, place(0, 1), Some(goal), Some(quarter), quarter);
+        let walker = Navigation::walker_at(&mut game, place(0, 1))
+            .circle(quarter)
+            .walks(quarter, Some(goal))
+            .place(&mut game);
         game.step();
         assert_eq!(Navigation::ahead(&game, walker), [goal]);
-        Navigation::body(&mut game, place(3, 1), None, Some(quarter), quarter);
+        Navigation::walker_at(&mut game, place(3, 1))
+            .circle(quarter)
+            .walks(quarter, None)
+            .place(&mut game);
         for _ in 0..askers {
             Navigation::unit(&mut game, place(0, 0), Some(place(11, 0)));
         }
@@ -701,7 +694,10 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
     let mut game = walk_match();
     Navigation::load_open_pathing(&mut game, Num::ONE, [0, 0], [8, 3], [ground(quarter)]);
     let goal = place(7, 1);
-    let walker = Navigation::body(&mut game, place(0, 1), Some(goal), Some(Num::ONE), quarter);
+    let walker = Navigation::walker_at(&mut game, place(0, 1))
+        .circle(quarter)
+        .walks(Num::ONE, Some(goal))
+        .place(&mut game);
     game.step();
     let entity = game.unit_entity(walker);
     let changed = |game: &Match| {
@@ -711,11 +707,15 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
             .last_changed()
     };
     let planned = changed(&game);
-    Navigation::body(&mut game, place(5, 0), None, None, half);
+    Navigation::walker_at(&mut game, place(5, 0))
+        .circle(half)
+        .place(&mut game);
     game.step();
     assert_eq!(changed(&game), planned);
     assert_eq!(Navigation::ahead(&game, walker), [goal]);
-    Navigation::body(&mut game, place(5, 1), None, None, half);
+    Navigation::walker_at(&mut game, place(5, 1))
+        .circle(half)
+        .place(&mut game);
     game.step();
     assert_ne!(Navigation::ahead(&game, walker), [goal]);
     assert!(game.part::<Route>(walker).is_reached());
@@ -751,8 +751,15 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     let walled = || {
         let mut game = walk_match();
         Navigation::load_open_pathing(&mut game, Num::ONE, [0, 0], [8, 3], [ground(quarter)]);
-        let towers = [0, 1, 2].map(|z| Navigation::body(&mut game, place(4, z), None, None, half));
-        let walker = Navigation::body(&mut game, place(0, 1), Some(goal), Some(Num::ONE), quarter);
+        let towers = [0, 1, 2].map(|z| {
+            Navigation::walker_at(&mut game, place(4, z))
+                .circle(half)
+                .place(&mut game)
+        });
+        let walker = Navigation::walker_at(&mut game, place(0, 1))
+            .circle(quarter)
+            .walks(Num::ONE, Some(goal))
+            .place(&mut game);
         let middle = game.unit_entity(towers[1]);
         (game, middle, walker)
     };
@@ -803,279 +810,6 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     assert_eq!(game.part::<Destination>(walker).get(), None);
     assert_eq!(game.part::<Route>(walker).goal(), None);
     assert_eq!(*game.part::<Progress>(walker), Progress::default());
-}
-
-/// A corridor 10 m by 4 m in half-meter cells, a lane along z = 2 from (1, 2) to (9, 2), towers
-/// at `towers`, a creep on the west spawn at (1, 1), which walks and so blocks nothing, and a camp
-/// marker at `camp`.
-fn corridor(towers: &[(i64, i64)], camp: (i64, i64)) -> MapData {
-    let point = MapPoint::ground;
-    let placed = |unit_type, (x, z)| PlacedUnitData::new(unit_type, "west", point(x, z));
-    let marker = |name, (x, z)| MarkerData::tagged(name, &[name], point(x, z));
-    let bounds = Bounds::new([Num::int(0), Num::int(0)], [Num::int(10), Num::int(4)]).unwrap();
-    let mut map = MapData::planar(bounds)
-        .with(MapNavigationData {
-            cell: Num::HALF,
-            walls: Vec::new(),
-        })
-        .with(MapPathsData(vec![PathData {
-            name: DeclaredName::new("lane").unwrap(),
-            points: vec![point(1, 2), point(9, 2)],
-            walk: PathWalk::Once,
-        }]));
-    map.units = towers
-        .iter()
-        .map(|&at| placed("tower", at))
-        .chain([placed("creep", (1, 1))])
-        .collect();
-    map.markers = vec![marker("spawn", (1, 1)), marker("camp", camp)];
-    map
-}
-
-/// The layers `rules` declares, by layer.
-fn layer_table(rules: &ModeNavigationData) -> Names<Layer> {
-    rules.layers.iter().map(DeclaredName::as_str).collect()
-}
-
-/// `map` resolved as a mode of one team, `west`, of `rules`, and checked walkable for `walkers`,
-/// its placed units' bodies by their types' names as `body_of` gives them.
-fn check_walkable(
-    map: &MapData,
-    walkers: &[Walker],
-    rules: &ModeNavigationData,
-    body_of: impl Fn(&str) -> Option<BodyForm>,
-) -> Result<(), MapProblem> {
-    const TYPES: [&str; 4] = ["tower", "creep", "cloud", "crate"];
-    let unit_type = |name: &str| {
-        let at = TYPES.iter().position(|&held| held == name)?;
-        Some(UnitType::new(u16::try_from(at).unwrap()))
-    };
-    let teams = [TeamManifest {
-        name: DeclaredName::new("west").unwrap(),
-        seats: 0,
-    }];
-    let layers = layer_table(rules);
-    let ground = MapBook::of(map.sections(), None).unwrap();
-    let navigation = NavigationBook::of(&ground, map.sections()).unwrap();
-    let walls = Navigation::walls_of(&ground, map.sections(), Some(&layers)).unwrap();
-    let input = MapInput {
-        map,
-        relations: &[],
-        teams: ModeMap::team_names(&teams).unwrap(),
-        paths: Some(&navigation.paths),
-    };
-    let map = ModeMap::of(input, unit_type).unwrap();
-    let name = |unit_type: UnitType| TYPES[unit_type.index()];
-    let named = |unit_type| DeclaredName::new(name(unit_type)).unwrap();
-    let body = |unit_type| body_of(name(unit_type));
-    let kinds: WalkerKinds = walkers.iter().copied().collect();
-    let check = WalkCheck {
-        ground: &ground,
-        navigation: &navigation,
-        walls: &walls,
-        walkers: &kinds,
-        placed: &map.placed_bodies(body),
-        spawns: &map.spawn_points(&rules.spawn_tags),
-    };
-    check.run(named)
-}
-
-/// The corridor's bodies: a tower of 0.9 m on the ground, a cloud of the same width in the air.
-fn corridor_body(unit_type: &str) -> Option<BodyForm> {
-    let tower = BodyForm::circle(Num::from_bits((9 << Num::FRAC_BITS) / 10)).unwrap();
-    match unit_type {
-        "tower" => Some(tower),
-        "cloud" => Some(tower.on(AIR)),
-        _ => None,
-    }
-}
-
-#[test]
-fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_every_marker() {
-    // Walkers of 0.5 m in the corridor. Towers at (5, 0) and (5, 4) block the centers closer than
-    // 1.4 m, z up to 1.25 and from 2.75 at x = 4.75 and 5.25, which leaves z = 1.75 and 2.25 open:
-    // a gap a walker passes. One more at (5, 2) closes it.
-    let half = Num::HALF;
-    let point = MapPoint::ground;
-    let placed = |unit_type, (x, z)| PlacedUnitData::new(unit_type, "west", point(x, z));
-    let rules = ModeNavigationData {
-        spawn_tags: ["spawn", "camp"]
-            .map(|tag| DeclaredName::new(tag).unwrap())
-            .into(),
-        ..ModeNavigationData::default()
-    };
-    let check = |towers: &[(i64, i64)], neutral| {
-        check_walkable(
-            &corridor(towers, neutral),
-            &[ground(half)],
-            &rules,
-            corridor_body,
-        )
-    };
-    assert_eq!(check(&[(5, 0), (5, 4)], (8, 3)), Ok(()));
-    let unreachable = MapProblem::WaypointUnreachable {
-        path: DeclaredName::new("lane").unwrap(),
-        waypoint: 1,
-    };
-    assert_eq!(check(&[(5, 0), (5, 2), (5, 4)], (8, 3)), Err(unreachable));
-    // A tower 1 m from the lane's end, (9, 2), or from the spawn marker, (1, 1), or from the camp
-    // marker, (8, 3): closer than 1.4 m.
-    let blocked = MapProblem::WaypointBlocked {
-        path: DeclaredName::new("lane").unwrap(),
-        waypoint: 1,
-    };
-    assert_eq!(check(&[(9, 3)], (8, 1)), Err(blocked));
-    let blocked = |marker: &str| {
-        let marker = DeclaredName::new(marker).unwrap();
-        Err(MapProblem::MarkerBlocked { marker })
-    };
-    assert_eq!(check(&[(2, 1)], (8, 3)), blocked("spawn"));
-    assert_eq!(check(&[(7, 3)], (8, 3)), blocked("camp"));
-    // A marker of no spawn tag of the mode's is not checked: with `spawn` alone, the tower by the
-    // camp loads.
-    let spawn_only = ModeNavigationData {
-        spawn_tags: vec![DeclaredName::new("spawn").unwrap()],
-        ..ModeNavigationData::default()
-    };
-    let by_camp = corridor(&[(7, 3)], (8, 3));
-    assert_eq!(
-        check_walkable(&by_camp, &[ground(half)], &spawn_only, corridor_body),
-        Ok(())
-    );
-
-    // Each layer's widest walker is checked against the bodies of its layer alone: an air walker
-    // passes over the towers that close the lane, and a cloud by the camp blocks it there, but
-    // not a walker on the ground.
-    let flyer = Walker {
-        layer: AIR,
-        radius: half,
-    };
-    let both = [ground(half), flyer];
-    let closed = corridor(&[(5, 0), (5, 2), (5, 4)], (8, 3));
-    assert_eq!(
-        check_walkable(&closed, &[flyer], &rules, corridor_body),
-        Ok(())
-    );
-    assert_eq!(
-        check_walkable(&closed, &both, &rules, corridor_body),
-        Err(MapProblem::WaypointUnreachable {
-            path: DeclaredName::new("lane").unwrap(),
-            waypoint: 1,
-        })
-    );
-    let mut clouded = corridor(&[(5, 0), (5, 4)], (8, 3));
-    clouded.units.push(placed("cloud", (7, 3)));
-    assert_eq!(
-        check_walkable(&clouded, &[ground(half)], &rules, corridor_body),
-        Ok(())
-    );
-    assert_eq!(
-        check_walkable(&clouded, &both, &rules, corridor_body),
-        blocked("camp")
-    );
-    assert_eq!(check_walkable(&clouded, &[], &rules, corridor_body), Ok(()));
-}
-
-#[test]
-fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() {
-    let half = Num::HALF;
-    let point = MapPoint::ground;
-    let rules = ModeNavigationData::default();
-    let flyer = Walker {
-        layer: AIR,
-        radius: half,
-    };
-    let both = [ground(half), flyer];
-    // A wall on the ground across the map from x = 5 to 6 closes the lane as the towers do, and
-    // the air walker flies over it; a wall round the spawn marker leaves the walker no place
-    // there. A wall's points must be in the map's bounds, on a layer the mode declares, and make
-    // a simple polygon.
-    let wall = |layer: Option<&str>, points: &[(i64, i64)]| WallData {
-        layer: layer.map(|layer| DeclaredName::new(layer).unwrap()),
-        points: points.iter().map(|&(x, z)| point(x, z)).collect(),
-    };
-    let walled = |walls: Vec<WallData>| {
-        let mut walled = corridor(&[], (8, 3));
-        let navigation = walled.section_mut::<MapNavigationData>();
-        navigation.unwrap().walls = walls;
-        walled
-    };
-    let across = walled(vec![wall(None, &[(5, 0), (6, 0), (6, 4), (5, 4)])]);
-    assert_eq!(
-        check_walkable(&across, &[flyer], &rules, corridor_body),
-        Ok(())
-    );
-    assert_eq!(
-        check_walkable(&across, &both, &rules, corridor_body),
-        Err(MapProblem::WaypointUnreachable {
-            path: DeclaredName::new("lane").unwrap(),
-            waypoint: 1,
-        })
-    );
-    let spawning = ModeNavigationData {
-        spawn_tags: vec![DeclaredName::new("spawn").unwrap()],
-        ..ModeNavigationData::default()
-    };
-    let round = walled(vec![wall(None, &[(0, 0), (2, 0), (2, 2), (0, 2)])]);
-    let spawn = DeclaredName::new("spawn").unwrap();
-    let blocked = Err(MapProblem::MarkerBlocked { marker: spawn });
-    assert_eq!(
-        check_walkable(&round, &both, &spawning, corridor_body),
-        blocked
-    );
-    let air = DeclaredName::new("air").unwrap();
-    let layered = ModeNavigationData {
-        layers: vec![DeclaredName::new("ground").unwrap(), air.clone()],
-        spawn_tags: Vec::new(),
-    };
-    let refused = [
-        (
-            wall(Some("air"), &[(5, 0), (6, 0), (6, 4)]),
-            &rules,
-            NavigationDataError::UnknownLayer(air),
-        ),
-        (
-            wall(None, &[(5, 0), (6, 0), (6, 5)]),
-            &rules,
-            NavigationDataError::Point(MapPointError::OutOfBounds),
-        ),
-        (
-            wall(None, &[(5, 0), (6, 0)]),
-            &rules,
-            NavigationDataError::Wall {
-                wall: 0,
-                problem: PolygonError::TooFewPoints,
-            },
-        ),
-        (
-            wall(Some("air"), &[(5, 0), (6, 4), (6, 0), (5, 4)]),
-            &layered,
-            NavigationDataError::Wall {
-                wall: 0,
-                problem: PolygonError::EdgesMeet {
-                    first: 0,
-                    second: 2,
-                },
-            },
-        ),
-    ];
-    let walls = |map: &MapData, rules| {
-        let ground = MapBook::of(map.sections(), None).unwrap();
-        Navigation::walls_of(&ground, map.sections(), Some(&layer_table(rules)))
-    };
-    for (wall, rules, error) in refused {
-        assert_eq!(walls(&walled(vec![wall]), rules), Err(error));
-    }
-    let lifted = walled(vec![wall(Some("air"), &[(5, 0), (6, 0), (6, 4)])]);
-    let walls = walls(&lifted, &layered).unwrap();
-    assert_eq!(
-        walls
-            .walls()
-            .iter()
-            .map(|wall| wall.layer)
-            .collect::<Vec<_>>(),
-        [AIR]
-    );
 }
 
 #[test]

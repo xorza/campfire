@@ -1,31 +1,25 @@
+use campfire_net_replication::internals::{replicon_app, shared_replicon_app};
+use core::fmt::Debug;
+
+use bevy_replicon::prelude::{EntityDiffExt, RuleFns};
+use campfire_net_connection::NetworkTarget;
+use campfire_net_core::NetTick;
+use campfire_net_replication::internals::{
+    ClientCopies, CompRepliconDiff, diff_message, diff_snapshot, newest_confirmed_value,
+    record_confirmed_tick,
+};
+use campfire_net_replication::{
+    ComponentRegistry, ConfirmedHistory, ConfirmedTickMap, HistoryState, Predicted,
+    PredictionTarget, Replicate,
+};
+use campfire_net_stepper::{StepOrder, Stepper, StepperSetup};
+use campfire_net_sync::TimelineSync;
+use campfire_net_timeline::LocalTimeline;
+
 use super::*;
 use crate::fixtures::prediction_stack::PredictionStack;
 use crate::prediction_history::PredictionHistory;
 use crate::prediction_registration_ext::PredictionRegistrationExt;
-use bevy_replicon::prelude::EntityDiffExt;
-use bevy_replicon::prelude::{RepliconTick, RuleFns};
-use bytes::Bytes;
-use campfire_codec::Binary;
-use campfire_net_connection::NetworkTarget;
-use campfire_net_core::NetTick;
-use campfire_net_replication::ConfirmedHistory;
-use campfire_net_replication::ConfirmedTickMap;
-use campfire_net_replication::HistoryState;
-use campfire_net_replication::Predicted;
-use campfire_net_replication::internals::CompRepliconDiff;
-use campfire_net_replication::internals::client_copy;
-use campfire_net_replication::internals::newest_confirmed_value;
-use campfire_net_replication::{PredictionTarget, Replicate};
-use campfire_net_stepper::StepperSetup;
-use campfire_net_stepper::{StepOrder, Stepper};
-use campfire_net_sync::TimelineSync;
-use campfire_net_timeline::LocalTimeline;
-
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
-
-use core::fmt::Debug;
-
-use campfire_net_replication::ComponentRegistry;
 
 impl PredictionRegistry {
     /// Returns true if the component is predicted
@@ -45,12 +39,9 @@ use crate::prediction_plugins::PredictionPlugins;
 use crate::prediction_registry_plugin::PredictionRegistryPlugin;
 use crate::prediction_setup::PredictionSetup;
 use bevy_ecs::system::RunSystemOnce;
-use bevy_replicon::prelude::{AuthMethod, RepliconPlugins, RepliconSharedPlugin};
-use bevy_replicon::shared::replication::diff::diff_index::DiffIndex;
 use bevy_replicon::shared::replication::registry::FnsId;
 use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 use bevy_replicon::shared::replication::registry::test_fns::TestFnsEntityExt;
-use bevy_state::app::StatesPlugin;
 use campfire_net_interpolation::{
     InterpolationFns, InterpolationMarkerPlugin, InterpolationPlugins,
     InterpolationRegistrationExt, InterpolationRegistry, InterpolationRegistryPlugin,
@@ -72,12 +63,8 @@ struct LocalRollbackOnlyComponent;
 struct LocalRollbackOnlyResource(u32);
 
 fn prediction_app() -> App {
-    let mut app = App::new();
+    let mut app = shared_replicon_app();
     app.add_plugins((
-        StatesPlugin,
-        RepliconSharedPlugin {
-            auth_method: AuthMethod::None,
-        },
         PredictionMarkerPlugin,
         InterpolationMarkerPlugin,
         InterpolationRegistryPlugin,
@@ -92,12 +79,8 @@ fn prediction_app() -> App {
 /// A server app: the shared protocol's plugins and the registry plugin, without
 /// `PredictionPlugins`.
 fn server_app() -> App {
-    let mut app = App::new();
+    let mut app = shared_replicon_app();
     app.add_plugins((
-        StatesPlugin,
-        RepliconSharedPlugin {
-            auth_method: AuthMethod::None,
-        },
         PredictionMarkerPlugin,
         InterpolationMarkerPlugin,
         InterpolationRegistryPlugin,
@@ -152,14 +135,8 @@ fn parity_mismatch(confirmed: &BuilderComponent, predicted: &BuilderComponent) -
 
 #[test]
 fn the_marker_plugin_enables_no_prediction() {
-    let mut app = App::new();
-    app.add_plugins((
-        StatesPlugin,
-        RepliconSharedPlugin {
-            auth_method: AuthMethod::None,
-        },
-        PredictionMarkerPlugin,
-    ));
+    let mut app = shared_replicon_app();
+    app.add_plugins(PredictionMarkerPlugin);
 
     assert!(!app.world().contains_resource::<PredictionRegistry>());
 }
@@ -245,55 +222,9 @@ fn a_local_rollback_builder_registers_a_rollback_with_no_network() {
     assert!(app.world().get_resource::<ComponentRegistry>().is_none());
 }
 
-#[derive(Component, Clone, Debug, Deserialize, PartialEq, Serialize)]
-struct TestDiffComponent(u32);
-
-impl RepliconDiffable for TestDiffComponent {
-    type Diff = u32;
-
-    fn apply_diff(&mut self, diff: &Self::Diff) -> Result<()> {
-        self.0 = *diff;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Serialize)]
-enum TestComponentDelta<'a> {
-    Snapshot {
-        index: DiffIndex,
-        component: &'a TestDiffComponent,
-    },
-    Diffs {
-        index: DiffIndex,
-        diffs: &'a [u32],
-    },
-}
-
-fn diff_snapshot(index: u16, component: &TestDiffComponent) -> Bytes {
-    let mut message = Vec::new();
-    let wire = TestComponentDelta::Snapshot {
-        index: DiffIndex::new(index),
-        component,
-    };
-    Binary::encode_into(&wire, &mut message);
-    message.into()
-}
-
-fn diff_message(index: u16, diffs: &[u32]) -> Bytes {
-    let mut message = Vec::new();
-    let wire = TestComponentDelta::Diffs {
-        index: DiffIndex::new(index),
-        diffs,
-    };
-    Binary::encode_into(&wire, &mut message);
-    message.into()
-}
-
 fn setup_prediction_diff_app() -> (App, FnsId) {
-    let mut app = App::new();
+    let mut app = replicon_app();
     app.add_plugins((
-        StatesPlugin,
-        RepliconPlugins,
         PredictionMarkerPlugin,
         InterpolationRegistryPlugin,
         PredictionRegistryPlugin,
@@ -303,7 +234,7 @@ fn setup_prediction_diff_app() -> (App, FnsId) {
     app.insert_resource(ConfirmedTickMap::default());
     app.insert_resource(PredictionSetup::default());
     app.world_mut().flush();
-    app.register_component::<TestDiffComponent>()
+    app.register_component::<CompRepliconDiff>()
         .replicate_diff()
         .predict();
     app.finish();
@@ -312,18 +243,10 @@ fn setup_prediction_diff_app() -> (App, FnsId) {
         app.world_mut()
             .resource_scope(|world, mut registry: Mut<'_, ReplicationRegistry>| {
                 let (_, fns_id) =
-                    registry.register_rule_fns(world, RuleFns::<TestDiffComponent>::new_diff());
+                    registry.register_rule_fns(world, RuleFns::<CompRepliconDiff>::new_diff());
                 fns_id
             });
     (app, fns_id)
-}
-
-fn record_confirmed_tick(app: &mut App, tick: u32) -> RepliconTick {
-    let replicon_tick = RepliconTick::new(tick);
-    app.world_mut()
-        .resource_mut::<ConfirmedTickMap>()
-        .record(replicon_tick, NetTick(tick));
-    replicon_tick
 }
 
 #[test]
@@ -441,7 +364,7 @@ fn a_diff_prediction_buffers_a_newer_diff_until_its_older_base_arrives() {
     let entity = app.world_mut().spawn(Predicted).id();
 
     app.world_mut().entity_mut(entity).apply_write(
-        diff_snapshot(0, &TestDiffComponent(0)),
+        diff_snapshot(0, &CompRepliconDiff(0)),
         fns_id,
         tick0,
     );
@@ -452,7 +375,7 @@ fn a_diff_prediction_buffers_a_newer_diff_until_its_older_base_arrives() {
     {
         let entity_ref = app.world().entity(entity);
         let history = entity_ref
-            .get::<ConfirmedHistory<TestDiffComponent>>()
+            .get::<ConfirmedHistory<CompRepliconDiff>>()
             .unwrap();
         assert!(history.get_state_at(NetTick(5)).is_none());
     }
@@ -463,19 +386,19 @@ fn a_diff_prediction_buffers_a_newer_diff_until_its_older_base_arrives() {
 
     let entity_ref = app.world().entity(entity);
     let history = entity_ref
-        .get::<ConfirmedHistory<TestDiffComponent>>()
+        .get::<ConfirmedHistory<CompRepliconDiff>>()
         .unwrap();
     assert_eq!(
         history
             .get_state_at(NetTick(3))
             .and_then(HistoryState::value),
-        Some(&TestDiffComponent(3))
+        Some(&CompRepliconDiff(3))
     );
     assert_eq!(
         history
             .get_state_at(NetTick(5))
             .and_then(HistoryState::value),
-        Some(&TestDiffComponent(5))
+        Some(&CompRepliconDiff(5))
     );
 }
 
@@ -487,8 +410,7 @@ fn a_diff_prediction_records_its_confirmed_history_from_replicon_diffs() {
     let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             Replicate::to_clients(NetworkTarget::All),
             PredictionTarget::to_clients(NetworkTarget::All),
@@ -496,18 +418,16 @@ fn a_diff_prediction_records_its_confirmed_history_from_replicon_diffs() {
         ))
         .id();
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(server_entity)
         .apply_diff::<CompRepliconDiff>(0)
         .unwrap();
 
     stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
-    let client_entity = client_copy(&stepper, server_entity).unwrap();
+    let client_entity = stepper.client_copy(0, server_entity).unwrap();
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .entity(client_entity)
             .contains::<Predicted>()
     );
@@ -517,8 +437,7 @@ fn a_diff_prediction_records_its_confirmed_history_from_replicon_diffs() {
     );
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(server_entity)
         .apply_diff::<CompRepliconDiff>(1)
         .unwrap();

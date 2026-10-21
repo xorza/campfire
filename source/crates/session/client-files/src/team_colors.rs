@@ -2,6 +2,7 @@ use campfire_values::{PackagePath, Team};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::client_file::{ClientFile, ClientFormat};
 use crate::client_path;
 
 /// A mode's `client/team_colors.toml`: the color of each team, in sRGB of 8 bits a channel, by
@@ -59,6 +60,10 @@ impl<'de> Deserialize<'de> for TeamColors {
     }
 }
 
+impl ClientFile for TeamColors {
+    const FORMAT: ClientFormat = ClientFormat::Toml;
+}
+
 #[cfg(test)]
 mod tests {
     use campfire_codec::Toml;
@@ -76,10 +81,18 @@ mod tests {
             colors
         );
         // No color, more than 256, or a channel past 255, fails to read.
-        assert!(Toml::parse::<TeamColors>("colors = []").is_err());
+        let refusal = |text: &str| {
+            let refused = Toml::parse::<TeamColors>(text).unwrap_err();
+            refused.message().to_owned()
+        };
+        let count = "a team colors file gives 1 to 256 colors";
+        assert_eq!(refusal("colors = []"), count);
         let many = format!("colors = [{}]", vec!["[1, 2, 3]"; 257].join(", "));
-        assert!(Toml::parse::<TeamColors>(&many).is_err());
-        assert!(Toml::parse::<TeamColors>("colors = [[256, 0, 0]]").is_err());
+        assert_eq!(refusal(&many), count);
+        assert_eq!(
+            refusal("colors = [[256, 0, 0]]"),
+            "invalid value: integer `256`, expected u8"
+        );
         assert_eq!(TeamColors::default().colors().len(), 3);
     }
 }

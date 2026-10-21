@@ -1,8 +1,10 @@
+use campfire_mode::{ModeData, PlayersData, SavesData};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::str;
 use std::sync::Arc;
 
+use campfire_codec::Toml;
 use campfire_codec::internals::TomlDocument;
 use campfire_package::{LoadError, ModePackages};
 use campfire_package_disk::PackageDir;
@@ -75,6 +77,30 @@ impl PackageTree {
             Edit::Rename(at, name) => self.edited(file, |document| document.rename(at, name)),
         };
         self.files.insert(PathBuf::from(file), edited.into_bytes());
+        self
+    }
+
+    /// Makes the mode's `[players]` as `players` says, in place of its own, and its `[saves]` as
+    /// `saves` says.
+    pub fn players_and_saves(&mut self, players: &PlayersData, saves: &SavesData) -> &mut Self {
+        let data = format!("{}/data/mode.toml", self.mode.root());
+        let added = format!(
+            "\n[players]\n{}\n[saves]\n{}",
+            Toml::write(players),
+            Toml::write(saves)
+        );
+        self.edit(&data, Edit::Remove(ModeData::PLAYERS));
+        self.edit(&data, Edit::Append(&added))
+    }
+
+    /// Makes each of `edits`, in order, each to a file by its path from the tree's root.
+    pub fn edit_all<'a>(
+        &mut self,
+        edits: impl IntoIterator<Item = (&'a str, Edit<'a>)>,
+    ) -> &mut Self {
+        for (file, edit) in edits {
+            self.edit(file, edit);
+        }
         self
     }
 

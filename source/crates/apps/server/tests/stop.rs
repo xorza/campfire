@@ -7,21 +7,13 @@ use std::process::{Child, Command};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use bevy_app::App;
-use bevy_ecs::entity::Entity;
-use bevy_state::app::StatesPlugin;
-use bevy_time::TimePlugin;
-use campfire_app_threads::OneThreadPlugins;
 use campfire_common::ExitStatus;
 use campfire_log::LogLine;
-use campfire_math::TickRate;
-use campfire_net::{Listening, NetProtocolPlugin, UdpLinks};
-use campfire_net_connection::{Client, Connect};
+use campfire_net::internals::ProtocolClient;
+use campfire_net::{Listening, UdpLinks};
 use campfire_net_endpoint::Endpoint;
-use campfire_net_link::{Link, Linked, Unlinked};
 use campfire_net_payload::{AppCode, UnlinkReason};
 use campfire_net_socket::ClientSocket;
-use campfire_net_stack::ClientPlugins;
 use campfire_protocol::SessionId;
 use campfire_store::internals::TestDir;
 use campfire_store::{InputFile, StopSignals};
@@ -101,7 +93,11 @@ fn a_stop_closes_each_link_and_exits_with_its_code() {
         thread::sleep(Duration::from_millis(1));
     };
 
-    let mut client = ClientApp::connect(&listening, MODE);
+    let socket =
+        ClientSocket::bind(listening.address, UdpLinks::client(listening.tls_key)).unwrap();
+    let capabilities = MODE.packages().manifest().capabilities;
+    let mut client =
+        ProtocolClient::connect(Endpoint::from(socket.endpoint()), &listening, capabilities);
     until("the link", || client.update().linked.then_some(()));
     StopSignals::stop(&server.0);
     // The server's close, not the idle timeout of 5 s, which `PATIENCE` does not reach.
@@ -123,58 +119,6 @@ impl Drop for ServerProcess {
         if self.0.try_wait().unwrap().is_none() {
             self.0.kill().unwrap();
             self.0.wait().unwrap();
-        }
-    }
-}
-
-/// A client's app, its entity the link and the endpoint.
-#[derive(Debug)]
-struct ClientApp {
-    app: App,
-    entity: Entity,
-}
-
-/// What a client's frame left: whether it is linked, and how its link ended.
-#[derive(Debug)]
-struct ClientState {
-    linked: bool,
-    end: Option<UnlinkReason>,
-}
-
-impl ClientApp {
-    /// A client of `mode`'s protocol that connects to the server `listening` names.
-    fn connect(listening: &Listening, mode: TestMode) -> Self {
-        let socket =
-            ClientSocket::bind(listening.address, UdpLinks::client(listening.tls_key)).unwrap();
-        let mut app = App::new();
-        app.add_plugins((OneThreadPlugins, TimePlugin, StatesPlugin));
-        app.add_plugins(ClientPlugins {
-            tick_rate: TickRate::try_from(listening.tick_hz.get()).unwrap(),
-        });
-        app.add_plugins(NetProtocolPlugin {
-            capabilities: mode.packages().manifest().capabilities,
-        });
-        app.finish();
-        app.cleanup();
-        let endpoint = Endpoint::from(socket.endpoint());
-        let entity = app
-            .world_mut()
-            .spawn((Client, Link::default(), endpoint))
-            .id();
-        app.world_mut().trigger(Connect { entity });
-        Self { app, entity }
-    }
-
-    /// Runs a frame.
-    fn update(&mut self) -> ClientState {
-        self.app.update();
-        let world = self.app.world();
-        ClientState {
-            linked: world.get::<Linked>(self.entity).is_some(),
-            end: world
-                .get::<Unlinked>(self.entity)
-                .map(|unlinked| unlinked.reason)
-                .filter(|&reason| reason != UnlinkReason::Initial),
         }
     }
 }

@@ -106,7 +106,8 @@ mod tests {
         assert_eq!(armor.take(arms, Num::EPSILON), Num::ZERO);
         assert_eq!(armor.take(crush, Num::MAX), Num::MAX);
         // A share below 0 does not read; a kind the mode does not declare does not resolve.
-        assert!(read(r#"armor = { crush = "-0.5" }"#).is_err());
+        let refused = read(r#"armor = { crush = "-0.5" }"#).unwrap_err();
+        assert_eq!(refused.message(), "an armor's share is at least 0");
         let stranger = read(r#"armor = { laser = "0" }"#).unwrap();
         assert_eq!(
             Armor::of(&stranger, &kinds),

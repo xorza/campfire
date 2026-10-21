@@ -1,6 +1,11 @@
 use super::*;
 use crate::prediction_registry::PredictionRegistry;
+use bevy_app::App;
+use bevy_app::PreUpdate;
+use bevy_app::Update;
 use campfire_net_replication::ComponentRegistry;
+use campfire_net_replication::internals::ClientCopies;
+use campfire_net_replication::internals::PROPAGATION_FRAMES;
 use campfire_net_sync::TimelineSync;
 use campfire_net_timeline::Rollback;
 
@@ -20,9 +25,7 @@ use crate::fixtures::protocol::CompCorr;
 use crate::fixtures::steps::trigger_state_rollback;
 use crate::rollback_setup::RollbackSetup;
 use crate::rollback_systems::RollbackSystems;
-use bevy::prelude::*;
 use bevy_replicon::prelude::Remote;
-use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_interpolation::internals::CompFull;
 use campfire_net_replication::internals::CompA;
@@ -399,15 +402,10 @@ fn a_snap_to_the_confirmed_value_matches_the_typed_query() {
 #[test]
 fn a_pre_spawned_entity_gets_a_history() {
     let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
-    let predicted = stepper
-        .client_app_mut(0)
-        .world_mut()
-        .spawn(CompFull(1.0))
-        .id();
+    let predicted = stepper.client_world_mut(0).spawn(CompFull(1.0)).id();
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<PredictionHistory<CompFull>>(predicted)
             .is_none()
     );
@@ -416,8 +414,7 @@ fn a_pre_spawned_entity_gets_a_history() {
     });
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<PredictionHistory<CompFull>>(predicted)
             .is_some()
     );
@@ -463,8 +460,7 @@ fn an_initial_marker_seeds_live_and_confirmed_history() {
 
     // Spawn an entity on the server with a predicted component
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             CompFull(42.0),
             CompCorr(24.0),
@@ -474,30 +470,23 @@ fn an_initial_marker_seeds_live_and_confirmed_history() {
         .id();
 
     // Let the entity replicate to the client
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     let predicted_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
+        .client_copy(0, server_entity)
         .expect("entity was not replicated to client");
 
     // The client entity should have Predicted after receiving PredictedSend.
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<Predicted>(predicted_entity)
             .is_some(),
         "client entity should have Predicted marker"
     );
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .entity(predicted_entity)
             .contains::<ObservedCompleteInitialPrediction>(),
         "Predicted observers should see live components and confirmed histories from the same update"
@@ -506,16 +495,14 @@ fn an_initial_marker_seeds_live_and_confirmed_history() {
     // The client entity should have the CompFull value from the server
     assert_eq!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<CompFull>(predicted_entity)
             .expect("client entity should have CompFull from replication"),
         &CompFull(42.0)
     );
     assert_eq!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<CompCorr>(predicted_entity)
             .expect("client entity should have CompCorr from replication"),
         &CompCorr(24.0)
@@ -523,7 +510,7 @@ fn an_initial_marker_seeds_live_and_confirmed_history() {
 
     // Resolve the server tick that produced the init message and check
     // the confirmed history in the same scope.
-    let world = stepper.client_app(0).world();
+    let world = stepper.client_world(0);
     let prediction_history = world
         .get::<PredictionHistory<CompFull>>(predicted_entity)
         .expect("client entity should have PredictionHistory<CompFull>");
@@ -572,35 +559,27 @@ fn an_initial_marker_seeds_live_and_confirmed_history() {
 fn a_manual_predicted_marker_backfills_an_existing_replicated_component() {
     let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((CompFull(42.0), Replicate::to_clients(NetworkTarget::All)))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     let client_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
+        .client_copy(0, server_entity)
         .expect("entity was not replicated to client");
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<ConfirmedHistory<CompFull>>(client_entity)
             .is_none()
     );
 
     stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .entity_mut(client_entity)
         .insert(Predicted);
 
-    let world = stepper.client_app(0).world();
+    let world = stepper.client_world(0);
     let confirm_history = world
         .get::<ConfirmHistory>(client_entity)
         .expect("replicated entity should have ConfirmHistory");
@@ -629,27 +608,20 @@ fn a_manual_predicted_marker_backfills_an_existing_replicated_component() {
 fn a_manual_predicted_marker_with_its_component_seeds_no_confirmed_history() {
     let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((CompA(1.0), Replicate::to_clients(NetworkTarget::All)))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     let client_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
+        .client_copy(0, server_entity)
         .expect("entity was not replicated to client");
     stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .entity_mut(client_entity)
         .insert((Predicted, CompFull(99.0)));
 
-    let entity = stepper.client_app(0).world().entity(client_entity);
+    let entity = stepper.client_world(0).entity(client_entity);
     assert!(entity.contains::<PredictionHistory<CompFull>>());
     assert!(
         !entity.contains::<ConfirmedHistory<CompFull>>(),
@@ -682,39 +654,31 @@ fn a_server_insert_on_a_predicted_entity_starts_a_rollback() {
             .before(RollbackSystems::Prepare),
     );
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             Replicate::to_clients(NetworkTarget::All),
             PredictionTarget::to_clients(NetworkTarget::All),
         ))
         .id();
 
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     let predicted_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
+        .client_copy(0, server_entity)
         .expect("entity was not replicated to the client");
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<CompFull>(predicted_entity)
             .is_none()
     );
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(server_entity)
         .insert(CompFull(42.0));
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
-    let world = stepper.client_app(0).world();
+    let world = stepper.client_world(0);
     assert!(
         world.resource::<RollbackObserved>().0,
         "the confirmed-tick full scan should detect the authoritative insert"
@@ -757,35 +721,28 @@ fn two_server_inserts_are_both_applied_by_one_rollback() {
             .before(RollbackSystems::Prepare),
     );
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             Replicate::to_clients(NetworkTarget::All),
             PredictionTarget::to_clients(NetworkTarget::All),
         ))
         .id();
 
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     let predicted_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
+        .client_copy(0, server_entity)
         .expect("entity was not replicated to the client");
-    let client_entity = stepper.client_app(0).world().entity(predicted_entity);
+    let client_entity = stepper.client_world(0).entity(predicted_entity);
     assert!(!client_entity.contains::<CompFull>());
     assert!(!client_entity.contains::<CompCorr>());
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(server_entity)
         .insert((CompFull(42.0), CompCorr(24.0)));
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
-    let world = stepper.client_app(0).world();
+    let world = stepper.client_world(0);
     assert!(
         world.resource::<RollbackObserved>().0,
         "the authoritative inserts should trigger a rollback"
@@ -814,8 +771,7 @@ fn two_server_inserts_are_both_applied_by_one_rollback() {
 
 fn check_history_ticks_ascend(stepper: &Stepper<PredictionStack>, entity: Entity) {
     let history = stepper
-        .client_app(0)
-        .world()
+        .client_world(0)
         .get::<PredictionHistory<CompFull>>(entity)
         .expect("Expected prediction history to be added");
     let ticks: Vec<NetTick> = history.states().map(|entry| entry.tick).collect();
@@ -836,22 +792,16 @@ fn a_history_follows_each_update_and_removal_in_and_out_of_a_rollback() {
 
     // add predicted, component
     let _tick = stepper.client_tick(0);
-    let predicted = stepper
-        .client_app_mut(0)
-        .world_mut()
-        .spawn((Predicted, Remote))
-        .id();
+    let predicted = stepper.client_world_mut(0).spawn((Predicted, Remote)).id();
 
     // 1. Updating Comp::Full on predicted component
     stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .entity_mut(predicted)
         .insert(CompFull(1.0));
     stepper.frame_step(1);
     stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .entity_mut(predicted)
         .get_mut::<CompFull>()
         .unwrap()
@@ -860,8 +810,7 @@ fn a_history_follows_each_update_and_removal_in_and_out_of_a_rollback() {
     let tick = stepper.client_tick(0);
     assert_eq!(
         stepper
-            .client_app_mut(0)
-            .world_mut()
+            .client_world_mut(0)
             .entity_mut(predicted)
             .get_mut::<PredictionHistory<CompFull>>()
             .expect("Expected prediction history to be added")
@@ -873,16 +822,14 @@ fn a_history_follows_each_update_and_removal_in_and_out_of_a_rollback() {
 
     // 2. Removing Comp::Full on predicted entity
     stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .entity_mut(predicted)
         .remove::<CompFull>();
     stepper.frame_step(1);
     let tick = stepper.client_tick(0);
     assert_eq!(
         stepper
-            .client_app_mut(0)
-            .world_mut()
+            .client_world_mut(0)
             .entity_mut(predicted)
             .get_mut::<PredictionHistory<CompFull>>()
             .expect("Expected prediction history to be added")
@@ -895,8 +842,7 @@ fn a_history_follows_each_update_and_removal_in_and_out_of_a_rollback() {
     // 3. After rollback, component is restored from history
     // Re-add CompFull and build history so rollback has valid data
     stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .entity_mut(predicted)
         .insert(CompFull(3.0));
     stepper.frame_step(1);
@@ -906,8 +852,7 @@ fn a_history_follows_each_update_and_removal_in_and_out_of_a_rollback() {
     stepper.frame_step(1);
     assert_eq!(
         stepper
-            .client_app_mut(0)
-            .world_mut()
+            .client_world_mut(0)
             .entity_mut(predicted)
             .get_mut::<PredictionHistory<CompFull>>()
             .expect("Expected prediction history to be added")
@@ -920,8 +865,7 @@ fn a_history_follows_each_update_and_removal_in_and_out_of_a_rollback() {
 
     // 4. Rollback to middle of history preserves the value at that tick
     stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .entity_mut(predicted)
         .get_mut::<CompFull>()
         .unwrap()
@@ -933,8 +877,7 @@ fn a_history_follows_each_update_and_removal_in_and_out_of_a_rollback() {
     stepper.frame_step(1);
     assert_eq!(
         stepper
-            .client_app_mut(0)
-            .world_mut()
+            .client_world_mut(0)
             .entity_mut(predicted)
             .get_mut::<PredictionHistory<CompFull>>()
             .expect("Expected prediction history to be added")

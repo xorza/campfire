@@ -1,4 +1,19 @@
+use std::str::Utf8Error;
+
+use campfire_codec::{BinaryError, TomlError};
 use thiserror::Error;
+
+/// Why a client file of a package does not read.
+#[derive(Debug, Error)]
+pub enum ClientFileError {
+    /// A TOML file's bytes are not UTF-8.
+    #[error("its text is not UTF-8")]
+    Text(#[from] Utf8Error),
+    #[error("{0}")]
+    Toml(#[from] TomlError),
+    #[error("{0}")]
+    Binary(#[from] BinaryError),
+}
 
 /// Why a terrain file is none the client draws (02-engine-core.md, Client): a shape, an index, a
 /// number or a rectangle past what it holds.

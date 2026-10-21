@@ -47,11 +47,7 @@ bevy_transform = { workspace = true, features = ["bevy-support"] }
 bevy_utils = { workspace = true, features = ["debug"] }
 
 [dev-dependencies]
-campfire-codec = { workspace = true, features = ["internals"] }
 campfire-net-interpolation = { workspace = true, features = ["internals"] }
-
-bevy.workspace = true
-bevy_state.workspace = true
 
 [lints]
 workspace = true

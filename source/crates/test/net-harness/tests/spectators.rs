@@ -35,16 +35,6 @@ fn duo(visibility: &'static [&'static str], spectators: u32) -> InProcessSetup {
     }
 }
 
-fn step_until(local: &mut InProcessMatch, done: impl Fn(&InProcessMatch) -> bool) {
-    for _ in 0..JOIN_STEPS {
-        if done(local) {
-            return;
-        }
-        local.step();
-    }
-    assert!(done(local), "not done after {JOIN_STEPS} steps");
-}
-
 fn state(local: &InProcessMatch, client: usize) -> &JoinState {
     local.client(client).world().resource::<JoinState>()
 }
@@ -66,7 +56,7 @@ fn replicated(app: &mut App) -> BTreeSet<StableId> {
 /// A spectator that joins `local` and steps until it watches; its index.
 fn watching(local: &mut InProcessMatch) -> usize {
     let spectator = local.add_spectator();
-    step_until(local, |local| {
+    local.step_until(JOIN_STEPS, |local| {
         state(local, spectator).watching_clock().is_some()
     });
     for _ in 0..5 {
@@ -102,7 +92,7 @@ fn a_spectator_watches_every_unit_holds_what_spectators_may_and_only_one_finds_a
 
     // The one place is taken: a second spectator is refused, told, and stops.
     let second = local.add_spectator();
-    step_until(&mut local, |local| state(local, second).loss().is_some());
+    local.step_until(JOIN_STEPS, |local| state(local, second).loss().is_some());
     assert_eq!(state(&local, second).loss(), Some(Loss::JoinRefused));
     let refused: Vec<JoinError> = local
         .log()
@@ -145,9 +135,9 @@ fn a_spectator_of_the_teams_views_watches_the_teams_it_chooses() {
     // Its link fails and comes back: the place its old link held is free again, and it watches
     // the west's view alone again, as it chose.
     local.cut_link(spectator);
-    step_until(&mut local, |local| state(local, spectator).is_rejoining());
+    local.step_until(JOIN_STEPS, |local| state(local, spectator).is_rejoining());
     local.mend_link(spectator);
-    step_until(&mut local, |local| {
+    local.step_until(JOIN_STEPS, |local| {
         state(local, spectator).watching_clock().is_some()
     });
     for _ in 0..5 {

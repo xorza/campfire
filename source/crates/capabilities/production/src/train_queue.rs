@@ -277,3 +277,63 @@ pub(crate) mod internals {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::{Binary, BinaryError};
+    use campfire_values::ResourceId;
+
+    use super::*;
+
+    #[test]
+    fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid_runs() {
+        #[derive(Debug, Serialize)]
+        struct Fields {
+            entries: Vec<Queued>,
+            head_done: Option<Tick>,
+            paid: Vec<ResourceAmount>,
+        }
+        let decode = |entries: Vec<Queued>, head_done: Option<u64>, paid: Vec<ResourceAmount>| {
+            let head_done = head_done.map(Tick::new);
+            let fields = Fields {
+                entries,
+                head_done,
+                paid,
+            };
+            Binary::decode::<TrainQueue>(&Binary::encode(&fields))
+        };
+        let gold = ResourceId::new(0);
+        let five = ResourceAmount {
+            resource: gold,
+            amount: 5,
+        };
+        let queued = Queued {
+            action: ActionId::new(0),
+            rank: Rank::FIRST,
+            time: Ticks::new(30),
+            paid: 1,
+        };
+        // Pushed at tick 5, a train of 30 ticks, which paid 5 gold, is done at tick 35.
+        let mut queue = TrainQueue::default();
+        queue.push(queued, &[five], Tick::new(5), &mut QueueDues::loose());
+        assert_eq!(decode(vec![queued], Some(35), vec![five]), Ok(queue));
+        assert_eq!(decode(vec![], None, vec![]), Ok(TrainQueue::default()));
+        assert_eq!(
+            decode(vec![], Some(35), vec![]).err(),
+            Some(BinaryError::REFUSED)
+        );
+        assert_eq!(
+            decode(vec![queued], None, vec![five]).err(),
+            Some(BinaryError::REFUSED)
+        );
+        // A paid run longer or shorter than the entries say.
+        assert_eq!(
+            decode(vec![queued], Some(35), vec![]).err(),
+            Some(BinaryError::REFUSED)
+        );
+        assert_eq!(
+            decode(vec![queued], Some(35), vec![five, five]).err(),
+            Some(BinaryError::REFUSED)
+        );
+    }
+}

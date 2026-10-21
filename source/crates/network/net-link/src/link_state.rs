@@ -82,7 +82,7 @@ mod tests {
             link.packet_session.send(
                 PayloadToken(1),
                 PayloadKind::new(0),
-                bytes::BytesMut::zeroed(OutgoingPayload::HEADROOM),
+                OutgoingPayload::buffer(&[]),
             );
             link.packet_session.accept(PacketNumber(2));
             link

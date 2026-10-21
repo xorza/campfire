@@ -1,3 +1,4 @@
+use crate::halves;
 use campfire_common::Seat;
 
 use super::*;
@@ -44,11 +45,6 @@ fn walled_to(max: [i64; 2], more: &[([i64; 2], [i64; 2])]) -> Match {
 /// by (3.5, 4.5) and (6.5, 4.5).
 fn over_the_wall() -> [Vec3; 3] {
     [halves(7, 9), halves(13, 9), halves(16, 2)]
-}
-
-/// The point `(x, z)` in halves of a meter.
-fn halves(x: i64, z: i64) -> Vec3 {
-    Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z)
 }
 
 /// The party of an order sent first in tick 0 by player 0, to `goal`.
@@ -216,7 +212,10 @@ fn a_party_searches_once_for_each_layer_it_moves_on() {
     let ground = [2, 3].map(|x| member(&mut game, Vec3::from((x, 0, 1)), goal, party));
     let body = BodyForm::circle(Num::QUARTER).unwrap().on(AIR);
     let air = [1, 2].map(|z| {
-        let id = Navigation::body_on(&mut game, (2, 0, z), Some(goal), Some(Num::ONE), body);
+        let id = Navigation::walker_at(&mut game, (2, 0, z))
+            .body(body)
+            .walks(Num::ONE, Some(goal))
+            .place(&mut game);
         Navigation::ask_route(
             &mut game,
             id,

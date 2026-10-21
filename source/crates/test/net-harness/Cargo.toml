@@ -17,8 +17,8 @@ kind = "test"
 campfire-app-threads.workspace = true
 campfire-bots.workspace = true
 campfire-capabilities = { workspace = true, features = ["internals"] }
-campfire-codec = { workspace = true, features = ["internals"] }
 campfire-common.workspace = true
+campfire-harness.workspace = true
 campfire-log = { workspace = true, features = ["internals"] }
 campfire-math = { workspace = true, features = ["internals"] }
 campfire-measure.workspace = true
@@ -27,12 +27,12 @@ campfire-net = { workspace = true, features = ["internals"] }
 campfire-net-connection.workspace = true
 campfire-net-core.workspace = true
 campfire-net-emulator = { workspace = true, features = ["internals"] }
-campfire-net-endpoint = { workspace = true, features = ["internals"] }
 campfire-net-link.workspace = true
-campfire-net-packets = { workspace = true, features = ["internals"] }
 campfire-net-payload = { workspace = true, features = ["internals"] }
 campfire-net-prediction = { workspace = true, features = ["internals"] }
+campfire-net-stepper.workspace = true
 campfire-net-sync = { workspace = true, features = ["internals"] }
+campfire-net-udp.workspace = true
 campfire-orders = { workspace = true, features = ["internals"] }
 campfire-package = { workspace = true, features = ["internals"] }
 campfire-protocol = { workspace = true, features = ["internals"] }
@@ -53,7 +53,6 @@ criterion = { workspace = true, features = ["cargo_bench_support"] }
 [dev-dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
 campfire-combat = { workspace = true, features = ["internals"] }
-campfire-harness.workspace = true
 campfire-navigation = { workspace = true, features = ["internals"] }
 campfire-net-messages = { workspace = true, features = ["internals"] }
 campfire-net-replication = { workspace = true, features = ["internals"] }

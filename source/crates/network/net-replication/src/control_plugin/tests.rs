@@ -2,9 +2,10 @@ use super::*;
 use crate::controlled_by::ControlledByRemote;
 use crate::controlled_lifetime::ControlledLifetime;
 use crate::fixtures::replication_stack::ReplicationStack;
+use crate::fixtures::steps::ClientCopies;
+use crate::fixtures::steps::PROPAGATION_FRAMES;
 use crate::replication_target::Replicate;
-use bevy::prelude::*;
-use bevy_replicon::shared::server_entity_map::ServerEntityMap;
+use bevy_ecs::system::EntityCommand;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_despawns::DespawnReplicated;
 use campfire_net_stepper::Stepper;
@@ -18,8 +19,7 @@ fn a_link_lifetime_entity_is_despawned_when_its_client_disconnects() {
 
     let client_of_1 = stepper.client_of(1).id();
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             Replicate::to_clients(NetworkTarget::All),
             ControlledBy {
@@ -31,27 +31,18 @@ fn a_link_lifetime_entity_is_despawned_when_its_client_disconnects() {
     assert!(stepper.client_of(1).get::<ControlledByRemote>().is_some());
 
     // the server entity is replicated to both clients
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
+        .client_copy(0, server_entity)
         .expect("entity is not present in entity map");
 
     // client 1 disconnects
     stepper.disconnect(1);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // the entity controlled by client 1 should be despawned on the server
     assert!(
-        stepper
-            .server_app()
-            .world()
-            .get_entity(server_entity)
-            .is_err(),
+        stepper.server_world().get_entity(server_entity).is_err(),
         "Entity controlled by disconnected client should be despawned on the server"
     );
 }
@@ -64,8 +55,7 @@ fn an_independent_controlled_entity_survives_its_client_disconnect() {
 
     let client_of_1 = stepper.client_of(1).id();
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             Replicate::to_clients(NetworkTarget::All),
             ControlledBy {
@@ -74,18 +64,14 @@ fn an_independent_controlled_entity_survives_its_client_disconnect() {
             },
         ))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // Disconnect and remove client 1's link entity.
     stepper.disconnect(1);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     assert!(
-        stepper
-            .server_app()
-            .world()
-            .get_entity(server_entity)
-            .is_ok(),
+        stepper.server_world().get_entity(server_entity).is_ok(),
         "Entity with independent lifetime should remain on the sender"
     );
 }

@@ -2,6 +2,8 @@ use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use campfire_common::ExitStatus;
+
 use crate::platform::os::Native;
 
 /// Whether the process caught the stop's signals: its handlers are the process's, as the OS
@@ -21,9 +23,9 @@ pub struct StopSignals {
 }
 
 impl StopSignals {
-    /// The code a second signal ends the process with: 130, `128 + SIGINT`, as a shell gives an
-    /// interrupted job, and `common::ExitStatus::Interrupted`'s, as a test there checks.
-    pub const EXIT_CODE: u8 = 130;
+    /// The code a second signal ends the process with: `ExitStatus::Interrupted`'s, the code the
+    /// binary gives on the first.
+    pub const EXIT_CODE: u8 = ExitStatus::Interrupted.code();
 
     /// Catches the stop's signals, once in a process, which a second call breaks on every OS;
     /// an error when the OS refuses a handler.

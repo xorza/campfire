@@ -1,6 +1,5 @@
 use campfire_client_files::{Blend, MaterialExtras, TeamPaint};
 use campfire_codec::Json;
-use campfire_store::internals::TestDir;
 
 use gltf_json::material::AlphaMode;
 use gltf_json::mesh::{Primitive, Semantic};
@@ -15,8 +14,7 @@ use crate::zero_hour::format::w3d::w3d_mesh::samples::GRADIENT_MODULATE;
 use crate::zero_hour::format::w3d::w3d_mesh::{
     Indexing, MaterialPass, Shader, Stage, Texture, VertexMaterial,
 };
-use crate::zero_hour::install::Install;
-use crate::zero_hour::install::samples::fixture;
+use crate::zero_hour::install::samples::FixtureInstall;
 use crate::zero_hour::model_nodes::LookSubObject;
 
 fn convert(name: &str, assets: &mut ModelAssets<'_>) -> ModelImport {
@@ -63,9 +61,10 @@ type NodeRow<'a> = (
 
 /// The fixture's tank, converted.
 fn tank() -> ModelImport {
-    let test_dir = TestDir::new();
-    fixture(&test_dir);
-    let install = Install::open(&test_dir.path("zh")).unwrap();
+    let FixtureInstall {
+        test_dir: _dir,
+        install,
+    } = FixtureInstall::new();
     let mut assets = ModelAssets::new(&install).unwrap();
     convert("Tank", &mut assets)
 }
@@ -319,9 +318,10 @@ fn an_hlod_s_materials_are_its_shaders_and_its_parts_what_its_look_reads() {
 
 #[test]
 fn a_name_is_an_hlod_a_mesh_alone_or_a_render_object_that_draws_nothing() {
-    let test_dir = TestDir::new();
-    fixture(&test_dir);
-    let install = Install::open(&test_dir.path("zh")).unwrap();
+    let FixtureInstall {
+        test_dir: _dir,
+        install,
+    } = FixtureInstall::new();
     let mut assets = ModelAssets::new(&install).unwrap();
     // `File.Mesh` is a mesh alone, at the scene's root, and its materials are named by it.
     let hull = convert("TANK.HULL", &mut assets);
@@ -433,9 +433,10 @@ fn vertex_colors_convert_only_as_the_diffuse_color() {
 
 #[test]
 fn a_shader_of_no_primary_gradient_draws_its_texture_alone_unlit() {
-    let test_dir = TestDir::new();
-    fixture(&test_dir);
-    let install = Install::open(&test_dir.path("zh")).unwrap();
+    let FixtureInstall {
+        test_dir: _dir,
+        install,
+    } = FixtureInstall::new();
     let assets = ModelAssets::new(&install).unwrap();
     // Two triangles of vertex colors, one of `Rock.tga`, which the archives hold, and one of
     // `Gone.tga`, which they do not; a diffuse of (255, 128, 0), half opaque, and `emissive`
@@ -549,9 +550,10 @@ fn a_shader_of_no_primary_gradient_draws_its_texture_alone_unlit() {
 
 #[test]
 fn a_triangle_of_no_texture_draws_what_its_shader_makes_of_the_null_vector() {
-    let test_dir = TestDir::new();
-    fixture(&test_dir);
-    let install = Install::open(&test_dir.path("zh")).unwrap();
+    let FixtureInstall {
+        test_dir: _dir,
+        install,
+    } = FixtureInstall::new();
     let assets = ModelAssets::new(&install).unwrap();
     // Seven triangles of no texture, a diffuse of (255, 128, 0) and red emissive light, each
     // under its shader: texturing off; texturing on, opaque, by an alpha test and by alpha,
@@ -652,9 +654,10 @@ fn a_triangle_of_no_texture_draws_what_its_shader_makes_of_the_null_vector() {
 
 #[test]
 fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
-    let test_dir = TestDir::new();
-    fixture(&test_dir);
-    let install = Install::open(&test_dir.path("zh")).unwrap();
+    let FixtureInstall {
+        test_dir: _dir,
+        install,
+    } = FixtureInstall::new();
     let assets = ModelAssets::new(&install).unwrap();
     let mut builder = ModelBuilder::new("layers");
     let stage = |coordinates: Vec<[f32; 2]>| Stage {
@@ -837,9 +840,10 @@ fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
 
 #[test]
 fn an_hlod_of_a_pivot_its_hierarchy_lacks_or_of_two_nodes_of_one_name_is_refused() {
-    let test_dir = TestDir::new();
-    fixture(&test_dir);
-    let install = Install::open(&test_dir.path("zh")).unwrap();
+    let FixtureInstall {
+        test_dir: _dir,
+        install,
+    } = FixtureInstall::new();
     let assets = ModelAssets::new(&install).unwrap();
     let pivot = |name: &str, parent| Pivot {
         name: name.to_owned(),

@@ -1,0 +1,85 @@
+use super::*;
+use campfire_net_channels::ChannelMode;
+use campfire_net_core::LinkDirection;
+use core::time::Duration;
+
+#[derive(Debug)]
+struct Chat;
+impl Channel for Chat {}
+
+fn hash_with(setup: ChannelSetup) -> RegistryHash {
+    let mut registry = ChannelRegistry::default();
+    registry.register_channel::<Chat>(setup);
+    registry.seal();
+    registry.hash().unwrap()
+}
+
+/// One channel, under each setting changed alone: every one changes the hash, so peers
+/// whose setup differ fail the protocol check.
+#[test]
+fn every_setting_enters_the_hash() {
+    let base = ChannelSetup::default();
+    let variants = [
+        ChannelSetup {
+            mode: ChannelMode::SequencedUnreliable,
+            ..base
+        },
+        ChannelSetup {
+            mode: ChannelMode::OrderedReliable,
+            ..base
+        },
+        ChannelSetup {
+            mode: ChannelMode::SequencedReliable,
+            ..base
+        },
+        ChannelSetup {
+            send_frequency: Duration::from_millis(50),
+            ..base
+        },
+        ChannelSetup {
+            priority: 2.0,
+            ..base
+        },
+        ChannelSetup {
+            retry_unsent_messages: false,
+            ..base
+        },
+    ];
+    let hashes = core::iter::once(base)
+        .chain(variants)
+        .map(hash_with)
+        .collect::<Vec<_>>();
+    for (i, hash) in hashes.iter().enumerate() {
+        for other in &hashes[i + 1..] {
+            assert_ne!(hash, other);
+        }
+    }
+    assert_eq!(hashes[0], hash_with(base));
+}
+
+/// A channel's directions enter the hash, and not the order of the calls that set them.
+#[test]
+fn directions_enter_the_hash() {
+    let hash = |directions: &[LinkDirections]| {
+        let mut registry = ChannelRegistry::default();
+        registry.register_channel::<Chat>(ChannelSetup::default());
+        for &direction in directions {
+            registry.add_direction::<Chat>(direction);
+        }
+        registry.seal();
+        registry.hash().unwrap()
+    };
+    let to_client = LinkDirections::from(LinkDirection::ServerToClient);
+    let to_server = LinkDirections::from(LinkDirection::ClientToServer);
+    assert_ne!(hash(&[]), hash(&[to_client]));
+    assert_ne!(hash(&[to_client]), hash(&[LinkDirections::BOTH]));
+    assert_eq!(hash(&[to_client, to_server]), hash(&[LinkDirections::BOTH]));
+}
+
+#[test]
+#[should_panic(expected = "the channel registry takes a registration after its plugin finished")]
+fn a_sealed_registry_refuses_a_channel() {
+    let mut registry = ChannelRegistry::default();
+    registry.seal();
+    registry.register_channel::<Chat>(ChannelSetup::default());
+}

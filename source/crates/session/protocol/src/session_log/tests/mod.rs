@@ -4,6 +4,7 @@ use blake3::Hasher;
 use campfire_common::{
     AfterLeave, MapName, PackageFingerprint, SegmentSeed, StateHash, Ticks, Version,
 };
+use campfire_threads::internals::Parallel;
 use secp256k1::{Keypair, XOnlyPublicKey};
 
 use super::*;
@@ -1154,7 +1155,9 @@ fn assert_truncations_and_flips_refused(bytes: &[u8]) {
         Ok(Tick::new(1))
     );
     let tag = b"campfire/session-log/v8".len();
-    for at in 0..bytes.len() {
+    // Each byte on a core of its own, as the sweep is long (02-engine-core.md, A sweep runs on
+    // every core).
+    Parallel::map_init(bytes.len(), Vec::new, |corrupt, at| {
         let expected = if at < tag {
             LogError::NotLog
         } else {
@@ -1169,14 +1172,15 @@ fn assert_truncations_and_flips_refused(bytes: &[u8]) {
         // breaks their encoding; 0xFF reaches nothing the two do not, but a variant past the
         // last, which `flawed_server_entries_are_refused` writes.
         for flip in [0x01, 0x80] {
-            let mut corrupt = bytes.to_vec();
+            corrupt.clear();
+            corrupt.extend_from_slice(bytes);
             corrupt[at] ^= flip;
             assert!(
-                SessionLog::decode(&corrupt).is_err(),
+                SessionLog::decode(corrupt).is_err(),
                 "byte {at} ^ {flip:#x}"
             );
         }
-    }
+    });
 }
 
 #[test]

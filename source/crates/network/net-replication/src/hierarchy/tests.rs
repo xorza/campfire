@@ -2,7 +2,8 @@ use super::*;
 use crate::disable_replicate_hierarchy::DisableReplicateHierarchy;
 use crate::fixtures::protocol::*;
 use crate::fixtures::replication_stack::ReplicationStack;
-use crate::fixtures::steps::client_copy;
+use crate::fixtures::steps::ClientCopies;
+use crate::fixtures::steps::PROPAGATION_FRAMES;
 use crate::manual_visibility::ManualVisibility;
 use crate::overridden::Overridden;
 use crate::replicate_like::ReplicateLike;
@@ -11,7 +12,6 @@ use crate::room_allocator::RoomAllocator;
 use crate::room_id::RoomId;
 use crate::rooms::Rooms;
 use crate::visibility_ext::VisibilityExt;
-use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_connection::RemoteId;
 use campfire_net_stepper::Stepper;
@@ -421,17 +421,9 @@ fn a_reparented_child_follows_its_new_root() {
 
 fn setup_hierarchy() -> (Stepper<ReplicationStack>, Entity, Entity, Entity) {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
-    let grandparent = stepper.server_app_mut().world_mut().spawn_empty().id();
-    let parent = stepper
-        .server_app_mut()
-        .world_mut()
-        .spawn(ChildOf(grandparent))
-        .id();
-    let child = stepper
-        .server_app_mut()
-        .world_mut()
-        .spawn(ChildOf(parent))
-        .id();
+    let grandparent = stepper.server_world_mut().spawn_empty().id();
+    let parent = stepper.server_world_mut().spawn(ChildOf(grandparent)).id();
+    let child = stepper.server_world_mut().spawn(ChildOf(parent)).id();
     (stepper, grandparent, parent, child)
 }
 
@@ -442,38 +434,25 @@ fn a_replicated_child_keeps_its_child_of() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((Replicate::to_clients(NetworkTarget::All),))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     let client_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
+        .client_copy(0, server_entity)
         .expect("entity is not present in entity map");
 
     let server_child = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((ChildOf(server_entity),))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     let client_child = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_child)
-        .copied()
+        .client_copy(0, server_child)
         .expect("entity is not present in entity map");
     assert_eq!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<ChildOf>(client_child)
             .unwrap()
             .parent(),
@@ -488,41 +467,28 @@ fn an_attached_hierarchy_replicates_and_a_detached_member_does_not() {
     let replicate = Replicate::to_links([stepper.client_of_entity(0)]);
     // disable attaching for the child, so the child won't have ReplicateLike or RelationshipSync
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(child)
         .insert(DisableReplicateHierarchy);
     // add Replicate, which should add the RelationshipSync and ReplicateLike through the hierarchy
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(grandparent)
         .insert(replicate);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // check that the parent got replicated, along with the hierarchy information
     let client_grandparent = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&grandparent)
-        .copied()
+        .client_copy(0, grandparent)
         .expect("entity is not present in entity map");
     let _client_parent = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&parent)
-        .copied()
+        .client_copy(0, parent)
         .expect("entity is not present in entity map");
 
     let (client_parent, client_parent_component) = stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .query::<(Entity, &ChildOf)>()
-        .single(stepper.client_app(0).world())
+        .single(stepper.client_world(0))
         .unwrap();
 
     assert_eq!(client_parent_component.parent(), client_grandparent);
@@ -530,34 +496,20 @@ fn an_attached_hierarchy_replicates_and_a_detached_member_does_not() {
     // TODO: check that the parent/grandparent have the same ReplicationGroupId
 
     // check that the child did not get replicated
-    assert!(
-        stepper
-            .server_app()
-            .world()
-            .get::<ReplicateLike>(child)
-            .is_none()
-    );
+    assert!(stepper.server_world().get::<ReplicateLike>(child).is_none());
 
     // The parent leaves the hierarchy: it had only a copy of the root's `Replicate`, so it stops
     // replicating, and the client despawns it.
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(parent)
         .remove::<ChildOf>();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
+    assert!(stepper.client_world(0).get_entity(client_parent).is_err());
     assert!(
         stepper
-            .client_app(0)
-            .world()
-            .get_entity(client_parent)
-            .is_err()
-    );
-    assert!(
-        stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<Children>(client_grandparent)
             .is_none()
     );
@@ -569,73 +521,42 @@ fn children_follow_a_parents_lost_visibility() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let server_parent = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((Replicate::to_clients(NetworkTarget::All), CompA(1.0)))
         .id();
     let server_child = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((ChildOf(server_parent), CompA(2.0)))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // Both parent and child should be visible to both clients initially
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_parent)
-            .copied()
-            .is_some(),
+        stepper.client_copy(1, server_parent).is_some(),
         "client 1 should see parent"
     );
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_child)
-            .copied()
-            .is_some(),
+        stepper.client_copy(1, server_child).is_some(),
         "client 1 should see child"
     );
 
     // Lose visibility for ONLY the parent on client 1
     let sender_1 = stepper.client_of_entity(1);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .lose_visibility(server_parent, sender_1);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // Parent should be hidden for client 1
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_parent)
-            .copied()
-            .is_none(),
+        stepper.client_copy(1, server_parent).is_none(),
         "client 1 should not see parent after lose_visibility"
     );
 
     // Child should also be hidden — lose_visibility reaches it through the ChildOf hierarchy
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_child)
-            .copied()
-            .is_none(),
+        stepper.client_copy(1, server_child).is_none(),
         "child should not be visible after lose_visibility on parent"
     );
 }
@@ -647,57 +568,39 @@ fn a_late_child_of_a_hidden_parent_stays_hidden() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let server_parent = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((Replicate::to_clients(NetworkTarget::All), CompA(1.0)))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // Both clients see the parent initially
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_parent)
-            .copied()
-            .is_some(),
+        stepper.client_copy(1, server_parent).is_some(),
         "client 1 should see parent"
     );
 
     // Hide the parent from client 1 before the child exists
     let sender_1 = stepper.client_of_entity(1);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .lose_visibility(server_parent, sender_1);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_parent)
-            .copied()
-            .is_none(),
+        stepper.client_copy(1, server_parent).is_none(),
         "client 1 should not see parent after lose_visibility"
     );
 
     // Spawn the child after the parent was hidden
     let server_child = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((ChildOf(server_parent), CompA(2.0)))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     assert_eq!(
         stepper
-            .server_app()
-            .world()
+            .server_world()
             .get::<ReplicateLike>(server_child)
             .unwrap()
             .root,
@@ -705,26 +608,12 @@ fn a_late_child_of_a_hidden_parent_stays_hidden() {
     );
     // Client 0 (parent still visible) should see the late child
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_child)
-            .copied()
-            .is_some(),
+        stepper.client_copy(0, server_child).is_some(),
         "client 0 should see late-spawned child"
     );
     // Client 1 (parent hidden) should NOT see the late child
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_child)
-            .copied()
-            .is_none(),
+        stepper.client_copy(1, server_child).is_none(),
         "late-spawned child should inherit lose_visibility from parent"
     );
 }
@@ -738,31 +627,21 @@ fn a_child_with_its_own_visibility_overrides_the_parent() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let server_parent = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((Replicate::to_clients(NetworkTarget::All), CompA(1.0)))
         .id();
     let server_child = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((ChildOf(server_parent), CompA(2.0)))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     let is_visible = |stepper: &Stepper<ReplicationStack>, entity: Entity| {
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&entity)
-            .copied()
-            .is_some()
+        stepper.client_copy(1, entity).is_some()
     };
     let is_marked = |stepper: &Stepper<ReplicationStack>| {
         stepper
-            .server_app()
-            .world()
+            .server_world()
             .get::<Overridden<ManualVisibility>>(server_child)
             .is_some()
     };
@@ -773,21 +652,19 @@ fn a_child_with_its_own_visibility_overrides_the_parent() {
 
     // hide the child directly: it stays hidden across parent pushes
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .lose_visibility(server_child, sender_1);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(is_visible(&stepper, server_parent));
     assert!(!is_visible(&stepper, server_child));
     assert!(is_marked(&stepper), "direct write should mark the child");
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .gain_visibility(server_parent, sender_1);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(is_visible(&stepper, server_parent));
     assert!(
         !is_visible(&stepper, server_child),
@@ -796,31 +673,28 @@ fn a_child_with_its_own_visibility_overrides_the_parent() {
 
     // removing the marker follows the parent's (visible) state again
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(server_child)
         .remove::<Overridden<ManualVisibility>>();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(is_visible(&stepper, server_child));
     assert!(!is_marked(&stepper));
 
     // hiding the parent hides the child again (it follows once more)
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .lose_visibility(server_parent, sender_1);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(!is_visible(&stepper, server_parent));
     assert!(!is_visible(&stepper, server_child));
 
     // widening: the child replicates while the parent stays hidden
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .gain_visibility(server_child, sender_1);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(!is_visible(&stepper, server_parent));
     assert!(
         is_visible(&stepper, server_child),
@@ -837,27 +711,23 @@ fn a_child_with_its_own_replicate_follows_the_rooms() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let room_a = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .resource_mut::<RoomAllocator>()
         .allocate();
     let room_b = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .resource_mut::<RoomAllocator>()
         .allocate();
 
     // client 0 is in room A, client 1 is in room B
     let client_of_0_entity = stepper.client_of_entity(0);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(client_of_0_entity)
         .insert(Rooms::single(room_a));
     let client_of_1_entity = stepper.client_of_entity(1);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(client_of_1_entity)
         .insert(Rooms::single(room_b));
 
@@ -865,8 +735,7 @@ fn a_child_with_its_own_replicate_follows_the_rooms() {
 
     // parent replicates to client 0 only and lives in room A
     let server_parent = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             Replicate::to_clients(NetworkTarget::single(client_0_id)),
             CompA(1.0),
@@ -875,50 +744,40 @@ fn a_child_with_its_own_replicate_follows_the_rooms() {
         .id();
     // child overrides the target (all clients) but inherits rooms
     let server_child = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             ChildOf(server_parent),
             Replicate::to_clients(NetworkTarget::All),
             CompA(2.0),
         ))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // attached, own `Replicate` kept, rooms followed from the parent
     assert_eq!(
         stepper
-            .server_app()
-            .world()
+            .server_world()
             .get::<ReplicateLike>(server_child)
             .map(|like| like.root),
         Some(server_parent)
     );
     assert_eq!(
-        stepper.server_app().world().get::<Replicate>(server_child),
+        stepper.server_world().get::<Replicate>(server_child),
         Some(&Replicate::to_clients(NetworkTarget::All))
     );
     assert_eq!(
-        stepper.server_app().world().get::<Rooms>(server_child),
+        stepper.server_world().get::<Rooms>(server_child),
         Some(&Rooms::single(room_a))
     );
     assert!(
         stepper
-            .server_app()
-            .world()
+            .server_world()
             .get::<Overridden<Rooms>>(server_child)
             .is_none()
     );
 
     let is_visible = |stepper: &Stepper<ReplicationStack>, client: usize, entity: Entity| {
-        stepper
-            .client_app(client)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&entity)
-            .copied()
-            .is_some()
+        stepper.client_copy(client, entity).is_some()
     };
     // client 0 sees both; client 1 sees neither: the child's own target
     // includes it, but the inherited rooms exclude it
@@ -938,33 +797,28 @@ fn children_follow_the_parents_rooms() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let room_a = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .resource_mut::<RoomAllocator>()
         .allocate();
     let room_b = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .resource_mut::<RoomAllocator>()
         .allocate();
 
     // client 0 is in room A, client 1 is in room B
     let client_of_0_entity = stepper.client_of_entity(0);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(client_of_0_entity)
         .insert(Rooms::single(room_a));
     let client_of_1_entity = stepper.client_of_entity(1);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(client_of_1_entity)
         .insert(Rooms::single(room_b));
 
     let server_parent = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             Replicate::to_clients(NetworkTarget::All),
             CompA(1.0),
@@ -973,17 +827,15 @@ fn children_follow_the_parents_rooms() {
         .id();
     // the child has no Rooms of its own; it should use the root's rooms
     let server_child = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((ChildOf(server_parent), CompA(2.0)))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // The hierarchy walk should have attached the child to the parent
     assert_eq!(
         stepper
-            .server_app()
-            .world()
+            .server_world()
             .get::<ReplicateLike>(server_child)
             .unwrap()
             .root,
@@ -992,132 +844,60 @@ fn children_follow_the_parents_rooms() {
 
     // parent is in room A: only client 0 sees parent and child
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_parent)
-            .copied()
-            .is_some(),
+        stepper.client_copy(0, server_parent).is_some(),
         "client 0 should see parent in room A"
     );
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_child)
-            .copied()
-            .is_some(),
+        stepper.client_copy(0, server_child).is_some(),
         "client 0 should see child of parent in room A"
     );
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_parent)
-            .copied()
-            .is_none(),
+        stepper.client_copy(1, server_parent).is_none(),
         "client 1 should not see parent in room A"
     );
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_child)
-            .copied()
-            .is_none(),
+        stepper.client_copy(1, server_child).is_none(),
         "client 1 should not see child of parent in room A"
     );
 
     // move the parent to room B: visibility should flip for both parent and child
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(server_parent)
         .insert(Rooms::single(room_b));
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_parent)
-            .copied()
-            .is_none(),
+        stepper.client_copy(0, server_parent).is_none(),
         "client 0 should not see parent after it moved to room B"
     );
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_child)
-            .copied()
-            .is_none(),
+        stepper.client_copy(0, server_child).is_none(),
         "client 0 should not see child after parent moved to room B"
     );
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_parent)
-            .copied()
-            .is_some(),
+        stepper.client_copy(1, server_parent).is_some(),
         "client 1 should see parent after it moved to room B"
     );
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_child)
-            .copied()
-            .is_some(),
+        stepper.client_copy(1, server_child).is_some(),
         "client 1 should see child after parent moved to room B"
     );
 
     // move client 0 into room B as well: it should see parent and child again
     let client_of_0_entity = stepper.client_of_entity(0);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(client_of_0_entity)
         .insert(Rooms::single(room_b));
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_parent)
-            .copied()
-            .is_some(),
+        stepper.client_copy(0, server_parent).is_some(),
         "client 0 should see parent after joining room B"
     );
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_child)
-            .copied()
-            .is_some(),
+        stepper.client_copy(0, server_child).is_some(),
         "client 0 should see child after joining room B"
     );
 }
@@ -1127,34 +907,34 @@ fn children_follow_the_parents_rooms() {
 #[test]
 fn a_child_attaches_once_its_parent_arrives() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
-    let parent = stepper.server_app_mut().world_mut().spawn_empty().id();
+    let parent = stepper.server_world_mut().spawn_empty().id();
     let child = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((Replicate::to_clients(NetworkTarget::All), ChildOf(parent)))
         .id();
-    stepper.frame_step(2);
-    let client_child = client_copy(&stepper, child).expect("the child replicates alone");
+    stepper.frame_step(PROPAGATION_FRAMES);
+    let client_child = stepper
+        .client_copy(0, child)
+        .expect("the child replicates alone");
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<ChildOf>(client_child)
             .is_none()
     );
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(parent)
         .insert(Replicate::to_clients(NetworkTarget::All));
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
-    let client_parent = client_copy(&stepper, parent).expect("the parent replicates");
+    let client_parent = stepper
+        .client_copy(0, parent)
+        .expect("the parent replicates");
     assert_eq!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<ChildOf>(client_child)
             .map(ChildOf::parent),
         Some(client_parent)
@@ -1169,43 +949,35 @@ fn a_member_outlives_a_root_that_stops_replicating() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     let client_id = stepper.client_of(0).get::<RemoteId>().unwrap().0;
     let root = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn(Replicate::to_clients(NetworkTarget::All))
         .id();
     let member = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             ChildOf(root),
             Replicate::to_clients(NetworkTarget::single(client_id)),
         ))
         .id();
-    stepper.frame_step(2);
-    let client_root = client_copy(&stepper, root).unwrap();
-    let client_member = client_copy(&stepper, member).unwrap();
+    stepper.frame_step(PROPAGATION_FRAMES);
+    let client_root = stepper.client_copy(0, root).unwrap();
+    let client_member = stepper.client_copy(0, member).unwrap();
     assert_eq!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<ChildOf>(client_member)
             .map(ChildOf::parent),
         Some(client_root)
     );
-    let local = stepper
-        .client_app_mut(0)
-        .world_mut()
-        .spawn(ChildOf(client_root))
-        .id();
+    let local = stepper.client_world_mut(0).spawn(ChildOf(client_root)).id();
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(root)
         .remove::<Replicate>();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
-    let world = stepper.client_app(0).world();
+    let world = stepper.client_world(0);
     assert!(world.get_entity(client_root).is_err());
     assert!(world.get_entity(local).is_err());
     let client_member = world.entity(client_member);
@@ -1219,53 +991,46 @@ fn a_member_outlives_a_root_that_stops_replicating() {
 fn a_member_outlives_its_hidden_root_and_attaches_when_it_returns() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     let root = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn(Replicate::to_clients(NetworkTarget::All))
         .id();
     let member = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((ChildOf(root), CompA(1.0)))
         .id();
-    stepper.frame_step(2);
-    let client_member = client_copy(&stepper, member).unwrap();
+    stepper.frame_step(PROPAGATION_FRAMES);
+    let client_member = stepper.client_copy(0, member).unwrap();
     let link = stepper.client_of_entity(0);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .gain_visibility(member, link);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .lose_visibility(root, link);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
-    assert_eq!(client_copy(&stepper, root), None);
+    assert_eq!(stepper.client_copy(0, root), None);
     let parent = |stepper: &Stepper<ReplicationStack>| {
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<ChildOf>(client_member)
             .map(ChildOf::parent)
     };
     assert_eq!(parent(&stepper), None);
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .entity(client_member)
             .contains::<RemoteParent>()
     );
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .gain_visibility(root, link);
-    stepper.frame_step(2);
-    let client_root = client_copy(&stepper, root).unwrap();
+    stepper.frame_step(PROPAGATION_FRAMES);
+    let client_root = stepper.client_copy(0, root).unwrap();
     assert_eq!(parent(&stepper), Some(client_root));
 }

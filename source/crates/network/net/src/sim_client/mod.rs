@@ -13,7 +13,7 @@ use bevy_ecs::schedule::common_conditions::{
     not, on_message, resource_exists, resource_exists_and_changed,
 };
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::{EntityWorldMut, Mut, World};
 use bevy_replicon::prelude::Remote;
 use campfire_bots::{BotOrder, BotScript, BotUnits, BotView, OrderScratch, ScriptedInput};
 use campfire_capabilities::{MatchKind, MatchSetup, Order, Release};
@@ -24,6 +24,7 @@ use campfire_log::LogEvent;
 use campfire_mode::MatchEnd;
 use campfire_net_connection::{Client, Connect, Disconnect};
 use campfire_net_endpoint::LinkBinding;
+use campfire_net_interpolation::InterpolationSystems;
 use campfire_net_link::{Link, Unlinked};
 use campfire_net_messages::{MessageReceiver, MessageSender};
 use campfire_net_payload::UnlinkReason;
@@ -176,9 +177,15 @@ impl SimClientPlugin {
 
     /// Spawns the client's entity, which its link and its connect name.
     pub fn spawn(world: &mut World) -> Entity {
-        world
-            .spawn((Client, ReplicationReceiver, Link::default()))
-            .id()
+        let mut client = world.spawn((Client, Link::default()));
+        Self::insert_parts(&mut client);
+        client.id()
+    }
+
+    /// Inserts on `client`, a client's entity of the stack's `Client` and `Link`, the parts the
+    /// sim client reads of it: the replication's receiver.
+    pub fn insert_parts(client: &mut EntityWorldMut<'_>) {
+        client.insert(ReplicationReceiver);
     }
 }
 
@@ -231,7 +238,9 @@ impl Plugin for SimClientPlugin {
         app.add_observer(lose_link);
         // The systems on the join state run in the order of a link's life, as one frame may bring
         // an offer and the match's start; none reads what another's commands make, so the order
-        // needs no sync point. The faults of the frame apply last.
+        // needs no sync point. A death of the frame logs at the tick of the join state they leave.
+        // The faults of the frame apply last. The frame goes after the stack's own, as a server's
+        // does (02-engine-core.md, The server's frame declares its order).
         let link = (
             retry_link,
             send_leave.run_if(resource_exists::<LeaveRequest>),
@@ -247,11 +256,17 @@ impl Plugin for SimClientPlugin {
         app.add_systems(
             Update,
             (
-                (link, receive_input_acks, report_end, report_deaths),
+                (
+                    link,
+                    receive_input_acks,
+                    report_end,
+                    report_deaths.after(receive_receipt),
+                ),
                 ReceiptWriter::report_failure,
                 WorkerFaults::watch,
             )
-                .chain(),
+                .chain()
+                .after(InterpolationSystems::All),
         );
         app.add_systems(
             Last,

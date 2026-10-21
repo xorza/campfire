@@ -5,6 +5,7 @@ use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::client_file::{ClientFile, ClientFormat};
 use crate::client_path;
 
 /// A mode's `client/keys.toml`: the keys of each of the client's actions, each a list of
@@ -378,6 +379,10 @@ impl<'de> Deserialize<'de> for KeyModifiers {
     }
 }
 
+impl ClientFile for KeysFile {
+    const FORMAT: ClientFormat = ClientFormat::Toml;
+}
+
 #[cfg(test)]
 mod tests {
     use campfire_codec::Toml;
@@ -429,6 +434,10 @@ mod tests {
         assert!(Toml::write(&file).contains(r#""Shift+Control+KeyB""#));
         // A key no chord names, a modifier key, a modifier twice or unknown, a chord of no key,
         // and an unknown field fail to read.
+        let refusal = |text: &str| {
+            let refused = Toml::parse::<KeysFile>(text).unwrap_err();
+            refused.message().to_owned()
+        };
         for chord in [
             "KeyÄ",
             "ControlLeft",
@@ -438,10 +447,18 @@ mod tests {
             "",
         ] {
             let text = format!("cast = [\"{chord}\"]");
-            assert!(Toml::parse::<KeysFile>(&text).is_err(), "{chord}");
+            assert_eq!(
+                refusal(&text),
+                "a chord is modifiers and a key by name",
+                "{chord}"
+            );
         }
-        assert!(Toml::parse::<KeysFile>("orbit = \"Shift+Shift\"").is_err());
-        assert!(Toml::parse::<KeysFile>("fire = []").is_err());
+        assert_eq!(
+            refusal("orbit = \"Shift+Shift\""),
+            "modifiers are `Shift`, `Control` and `Alt`, each once"
+        );
+        let fire = refusal("fire = []");
+        assert!(fire.starts_with("unknown field `fire`"), "{fire}");
     }
 
     #[test]

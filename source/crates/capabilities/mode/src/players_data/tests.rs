@@ -29,8 +29,16 @@ fn players_read_with_their_defaults_and_refuse_what_they_do_not_know() {
         read("control = \"avatar\"").unwrap().control,
         PlayerControl::Avatar
     );
-    assert!(read("control = \"hero\"").is_err());
+    let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
+    assert_eq!(
+        refusal("control = \"hero\""),
+        "unknown variant `hero`, expected `units` or `avatar`"
+    );
     assert_eq!(read("leaver = \"bot\"").unwrap().leaver, AfterLeave::Bot);
-    assert!(read("leaver = \"kick\"").is_err());
-    assert!(read("late_joins = true").is_err());
+    assert_eq!(
+        refusal("leaver = \"kick\""),
+        "unknown variant `kick`, expected one of `reserve`, `bot`, `open`"
+    );
+    let late = refusal("late_joins = true");
+    assert!(late.starts_with("unknown field `late_joins`"), "{late}");
 }

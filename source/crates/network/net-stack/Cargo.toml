@@ -21,6 +21,7 @@ internals = [
     "udp",
     "compression_lz4",
     "dep:bevy",
+    "dep:campfire-app-threads",
     "dep:campfire-net-stepper",
     "campfire-net-endpoint/internals",
     "campfire-net-interpolation/internals",
@@ -37,6 +38,7 @@ internals = [
 ]
 
 [dependencies]
+campfire-app-threads = { workspace = true, optional = true }
 campfire-math.workspace = true
 campfire-net-timeline.workspace = true
 campfire-net-core.workspace = true
@@ -62,15 +64,12 @@ bevy_app.workspace = true
 bevy_ecs = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
-campfire-app-threads.workspace = true
 campfire-log = { workspace = true, features = ["internals"] }
-campfire-math = { workspace = true, features = ["internals"] }
 campfire-measure.workspace = true
 campfire-net-bytes = { workspace = true, features = ["internals"] }
 campfire-net-channels = { workspace = true, features = ["internals"] }
 campfire-net-emulator = { workspace = true, features = ["internals"] }
 campfire-net-stack = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
 campfire-threads = { workspace = true, features = ["internals"] }
 
 

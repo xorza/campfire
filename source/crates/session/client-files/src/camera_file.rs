@@ -3,6 +3,7 @@ use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::client_file::{ClientFile, ClientFormat};
 use crate::client_path;
 
 /// A package's `client/camera.toml`: how the player's camera looks at the map and moves over it,
@@ -129,6 +130,10 @@ impl<'de> Deserialize<'de> for CameraFile {
     }
 }
 
+impl ClientFile for CameraFile {
+    const FORMAT: ClientFormat = ClientFormat::Toml;
+}
+
 #[cfg(test)]
 mod tests {
     use campfire_codec::Toml;
@@ -158,13 +163,21 @@ mod tests {
         // A negative edge is no camera, nor a file that gives none, nor one that gives a click's
         // time, which is the press's of `client/keys.toml`.
         let shipped = text("37.5", "120.0");
-        for wrong in [
-            shipped.replace("edge = 3.0", "edge = -1.0"),
-            shipped.replace("edge = 3.0\n", ""),
-            shipped.replace("edge = 3.0\n", "edge = 3.0\nclick = 0.167\n"),
-        ] {
-            assert!(Toml::parse::<CameraFile>(&wrong).is_err(), "{wrong}");
-        }
+        let refusal = |text: &str| {
+            let refused = Toml::parse::<CameraFile>(text).unwrap_err();
+            refused.message().to_owned()
+        };
+        let out_of_range = "a camera's pitch, field of view, heights or speeds are out of range";
+        assert_eq!(
+            refusal(&shipped.replace("edge = 3.0", "edge = -1.0")),
+            out_of_range
+        );
+        assert_eq!(
+            refusal(&shipped.replace("edge = 3.0\n", "")),
+            "missing field `edge`"
+        );
+        let click = refusal(&shipped.replace("edge = 3.0\n", "edge = 3.0\nclick = 0.167\n"));
+        assert!(click.starts_with("unknown field `click`"), "{click}");
         // Looking level or straight down, or a least height past the most or not above 0, is no
         // camera.
         for (pitch, least) in [
@@ -173,8 +186,9 @@ mod tests {
             ("37.5", "320.0"),
             ("37.5", "0.0"),
         ] {
-            assert!(
-                Toml::parse::<CameraFile>(&text(pitch, least)).is_err(),
+            assert_eq!(
+                refusal(&text(pitch, least)),
+                out_of_range,
                 "{pitch} {least}"
             );
         }

@@ -48,6 +48,7 @@ thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-bots = { workspace = true, features = ["internals"] }
+campfire-harness.workspace = true
 campfire-orders = { workspace = true, features = ["internals"] }
 campfire-progression = { workspace = true, features = ["internals"] }
 # Its tests resolve scripts in the workspace's test packages.

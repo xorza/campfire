@@ -561,8 +561,7 @@ fn the_apps_rate_holds_the_room_below_the_window() {
     let mut packet_session = PacketSession::new(Protection::Plain, None, setup, at(0));
     assert_eq!(packet_session.room(at(0)), 2_000);
     let mut queues = PacketSessionQueues::default();
-    let mut payload = BytesMut::zeroed(OutgoingPayload::HEADROOM);
-    payload.extend_from_slice(&[0; 1_000]);
+    let payload = OutgoingPayload::buffer(&[0; 1_000]);
     queues.send(PayloadToken(1), PayloadKind::new(0), payload);
     packet_session.take_over(&mut queues, at(0), &mut Vec::new());
     assert_eq!(packet_session.room(at(100)), 1_097);

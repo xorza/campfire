@@ -61,7 +61,10 @@ mod tests {
             |text: &str| Toml::parse::<Holder>(&format!("victim = {text:?}")).map(|h| h.victim);
         let filter = read("all:!constructing").unwrap();
         assert_eq!(filter.filter().to_string(), "all:!constructing");
-        assert!(read("enemies:!constructing").is_err());
+        assert_eq!(
+            read("enemies:!constructing").unwrap_err().message(),
+            "filter enemies:!constructing selects by tags alone, its relations all"
+        );
         assert_eq!(TagFilterData::default().filter(), &FilterData::all());
     }
 }

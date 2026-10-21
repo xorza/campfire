@@ -190,6 +190,7 @@ pub(crate) const PROXIES: [Proxy; 6] = [
         methods: &STORAGE_METHODS,
         types: &STORAGE_TYPES,
         dependencies: &[
+            "campfire-common",
             "campfire-threads",
             "libc",
             "signal-hook",

@@ -4,6 +4,7 @@ use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::client_file::{ClientFile, ClientFormat};
 use crate::client_path;
 
 /// A map's `client/maps/<name>/lights.toml`: the light its units are drawn in, as a fixed-function
@@ -59,6 +60,10 @@ impl<'de> Deserialize<'de> for MapLights {
     }
 }
 
+impl ClientFile for MapLights {
+    const FORMAT: ClientFormat = ClientFormat::Toml;
+}
+
 #[cfg(test)]
 mod tests {
     use campfire_codec::Toml;
@@ -84,7 +89,13 @@ mod tests {
             Toml::parse::<MapLights>(&Toml::write(&lights)).unwrap(),
             lights
         );
-        assert!(Toml::parse::<MapLights>(&text("[0.0, 0.0, 0.0]")).is_err());
-        assert!(Toml::parse::<MapLights>(&text("[0.0, nan, 0.0]")).is_err());
+        for direction in ["[0.0, 0.0, 0.0]", "[0.0, nan, 0.0]"] {
+            let refused = Toml::parse::<MapLights>(&text(direction)).unwrap_err();
+            assert_eq!(
+                refused.message(),
+                "a light's number is not finite, or its direction has no length",
+                "{direction}"
+            );
+        }
     }
 }

@@ -134,23 +134,32 @@ fn item(moba: &ScriptedMode<Moba3v3>, name: &str) -> ItemId {
     items.named(name).unwrap()
 }
 
-/// The farm: every hero reaches level 6 and learns every ability, its ultimate among them, with
-/// a point each, so its points left are its level less its ranks.
+/// The farm: every hero reaches level 6, Gale and Rime 8 and Veil 7, and learns every ability,
+/// its ultimate, the fourth, at rank 1, so its points left are its level less its ranks.
 pub(crate) fn assert_farm(showcase: &Showcase) {
+    let mut farmed = Vec::new();
     for player in 0..Moba3v3::PLAYERS {
         let hero = showcase.at(Moba3v3::SHOWCASE - 1, player);
         let ranks: Vec<u8> = hero.slots[..4]
             .iter()
             .map(|slot| Rank::count(slot.rank))
             .collect();
-        assert!(hero.level >= 6, "player {player}: level {}", hero.level);
-        assert!(
-            ranks.iter().all(|&rank| rank >= 1),
-            "player {player}: {ranks:?}"
-        );
         let spent: u32 = ranks.iter().map(|&rank| u32::from(rank)).sum();
         assert_eq!(hero.points, hero.level - spent, "player {player}");
+        farmed.push((hero.level, ranks));
     }
+    let learned = |level: u32, ranks: [u8; 4]| (level, ranks.to_vec());
+    assert_eq!(
+        farmed,
+        [
+            learned(6, [2, 2, 1, 1]),
+            learned(8, [3, 2, 2, 1]),
+            learned(6, [2, 2, 1, 1]),
+            learned(6, [2, 2, 1, 1]),
+            learned(8, [3, 2, 2, 1]),
+            learned(7, [2, 2, 2, 1]),
+        ]
+    );
 }
 
 /// The shop, in the tick after an income: each hero pays each item's cost, or a built item's

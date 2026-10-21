@@ -11,14 +11,14 @@ use campfire_combat::Combat;
 use campfire_common::{Seat, Tick};
 use campfire_interaction::{UseActionData, UseSlot, UseSpec};
 use campfire_math::Num;
-use campfire_mode::Mode;
 use campfire_orders::OrdersDirective;
 use campfire_players::Players;
 use campfire_script::internals::FailedCall;
-use campfire_script::{Filter, ScriptFailures, ScriptLimits, ScriptPools};
+use campfire_script::{Filter, ScriptFailures};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::Stats;
+use campfire_units::internals::Spawn;
 use campfire_units::{Owner, UnitTypeCore, Units};
 use campfire_values::{
     ActionId, Block, FilterData, Number, PackageIndex, PackagePath, Ranked, Scalar, Team,
@@ -74,13 +74,7 @@ impl Objects {
             Capability::Orders,
             Capability::Interaction,
         ];
-        let mut game = Match::server(
-            &declared,
-            ScriptPools {
-                limits: ScriptLimits::ROOMY,
-                players: 2,
-            },
-        );
+        let mut game = Match::builder(&declared).players(2).build();
         Units::name_kinds(&mut game, &["true"], &["health", "mana", "rage"], &[]);
         Abilities::load_types(&mut game);
         Abilities::load_stats(&mut game);
@@ -147,12 +141,14 @@ fn use_data(channel: Option<bool>) -> ActionData {
 fn user(game: &mut Match, name: &str, x: i16) -> StableId {
     let slots = TimedSlots::new(ActionSlots::new([]).with_empty(USES, 1));
     let parts = (Owner::new(Seat::new(0)), slots);
-    Mode::spawn_named(game, name, (x, 0, 0), Team::new(0), parts)
+    Spawn::named(game, name, (x, 0, 0)).parts(parts).place(game)
 }
 
 /// An object of `object` at `x` of `team`.
 fn object(game: &mut Match, object: UnitType, x: i16, team: u8) -> StableId {
-    Mode::spawn(game, object, (x, 0, 0), Team::new(team), ())
+    Spawn::of(object, (x, 0, 0))
+        .team(Team::new(team))
+        .place(game)
 }
 
 /// Runs a tick in which player 0 orders `unit` `directive`.
@@ -324,7 +320,9 @@ fn a_use_is_dropped_by_a_unit_with_no_use_slot_one_its_users_refuse_or_one_beyon
     ] {
         let (mut game, _) = Objects::load();
         let parts = (Owner::new(Seat::new(0)), TimedSlots::new(slots));
-        let id = Mode::spawn_named(&mut game, "caster", (0, 0, 0), Team::new(0), parts);
+        let id = Spawn::named(&game, "caster", (0, 0, 0))
+            .parts(parts)
+            .place(&mut game);
         let refused = SnapshotError::Invalid {
             ty: ActionSlots::NAME,
             id: Some(id),

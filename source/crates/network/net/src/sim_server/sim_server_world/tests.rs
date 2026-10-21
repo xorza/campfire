@@ -1,16 +1,20 @@
+use crate::sim_server::server_bots::SeatBot;
+use crate::sim_server::sim_server_world::internals::SimServerWorldInternals;
 use std::num::{NonZeroU8, NonZeroU32};
 
 use bevy_state::state::{NextState, State};
-use campfire_common::ExitStatus;
-use campfire_mode::HostPicks;
+use campfire_bots::{BotNames, BotScript, OrderScript};
+use campfire_common::{AfterLeave, ExitStatus, Seat, Tick};
+use campfire_harness::{FixedMatch, FixedSession};
+use campfire_mode::{HostPicks, PlayersData, SaveBy, SavesData};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
-    InputRules, Journal, SeatPlan, SeatStart, SeedChain, SessionHeader, SessionLog,
+    Controller, InputRules, Journal, LeaveReason, SeatPlan, SeatStart, SeedChain, ServerInput,
+    SessionHeader, SessionLog,
 };
 use campfire_runner::{HostChoices, SessionRules};
 use campfire_store::AppendWriter;
-use campfire_test_packages::TestMode;
-
+use campfire_test_packages::{PackageTree, TestMode};
 use campfire_threads::ThreadName;
 
 use super::*;
@@ -58,4 +62,51 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
     // The failure is given once; before the match, only a stop exits.
     assert_eq!(world.exit_due(StopRequest::NotAsked), None);
     assert_eq!(world.exit_due(StopRequest::Asked), Some(AppExit::Success));
+}
+
+#[test]
+fn a_plan_bot_plays_its_script_until_its_slot_changes_hands() {
+    // Slot 1 is the plan's bot; player 1 takes it over and leaves it to a bot again. A restore
+    // from there finds the slot changed hands: it plays the takeover script, which
+    // `follow_controllers` gives it, and the plan's no more.
+    let rules = PlayersData {
+        late_join: true,
+        bot_takeover: true,
+        leaver: AfterLeave::Bot,
+        ..PlayersData::DEFAULT
+    };
+    let saves = SavesData {
+        by: SaveBy::Player,
+        autosave_ms: None,
+    };
+    let packages = PackageTree::of(TestMode::Lane)
+        .players_and_saves(&rules, &saves)
+        .packages();
+    let script =
+        OrderScript::parse("[[order]]\ntick = 2\ndirective.orders.move.to = [1, 0]\n").unwrap();
+    let script = BotScript::new(&script, &BotNames::new(&packages.name_books())).unwrap();
+    let plan = [SeatPlan::Player, SeatPlan::Bot];
+    let mut fixed = FixedSession::planned(packages, InputRules::LAN, plan).start();
+    let seat = Seat::new(1);
+    let planned = |fixed: &FixedMatch| {
+        let slots = vec![SeatBot {
+            seat,
+            script: script.clone(),
+        }];
+        fixed.game().planned_bots(slots, Tick::new(0))
+    };
+    assert_eq!(planned(&fixed), [seat]);
+    fixed.join(1).unwrap();
+    fixed
+        .serve(ServerInput::Leave {
+            seat,
+            reason: LeaveReason::Asked,
+            becomes: AfterLeave::Bot,
+        })
+        .unwrap();
+    assert_eq!(
+        fixed.game().session().log().controller(seat),
+        Some(Controller::Bot)
+    );
+    assert_eq!(planned(&fixed), []);
 }

@@ -42,7 +42,6 @@ campfire-test-packages.workspace = true
 campfire-threads = { workspace = true, features = ["internals"] }
 campfire-units = { workspace = true, features = ["internals"] }
 campfire-values = { workspace = true, features = ["ecs", "internals"] }
-campfire-vision = { workspace = true, features = ["internals"] }
 
 bevy_ecs = { workspace = true, features = ["std"] }
 criterion = { workspace = true, features = ["cargo_bench_support"] }
@@ -50,11 +49,7 @@ secp256k1 = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-areas = { workspace = true, features = ["internals"] }
-campfire-codec = { workspace = true, features = ["internals"] }
-campfire-deliveries = { workspace = true, features = ["internals"] }
-campfire-interaction = { workspace = true, features = ["internals"] }
 campfire-projectiles = { workspace = true, features = ["internals"] }
-campfire-verifier = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

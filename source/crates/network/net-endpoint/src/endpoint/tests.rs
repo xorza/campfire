@@ -3,7 +3,6 @@ use bevy_app::{App, Update};
 use bevy_ecs::prelude::{Resource, With};
 use bevy_ecs::system::ResMut;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
-use bytes::BytesMut;
 use campfire_common::ChannelBinding;
 use campfire_net_core::Instant;
 use campfire_net_emulator::internals::per_mille;
@@ -68,13 +67,6 @@ impl Inbox {
         });
         fates
     }
-}
-
-/// A payload of `data` with its headroom.
-fn payload(data: &[u8]) -> BytesMut {
-    let mut payload = BytesMut::zeroed(OutgoingPayload::HEADROOM);
-    payload.extend_from_slice(data);
-    payload
 }
 
 /// A client's app and a server's, each with a plain endpoint over one emulated link, stepped by
@@ -170,7 +162,11 @@ impl Harness {
             .get_mut::<Link>(entity)
             .unwrap()
             .packet_session
-            .send(PayloadToken(token), PayloadKind::new(1), payload(data));
+            .send(
+                PayloadToken(token),
+                PayloadKind::new(1),
+                OutgoingPayload::buffer(data),
+            );
     }
 }
 
@@ -444,7 +440,11 @@ fn a_real_clock_runs_the_pass_on_a_thread() {
         .get_mut::<Link>(client_entity)
         .unwrap()
         .packet_session
-        .send(PayloadToken(1), PayloadKind::new(1), payload(b"threaded"));
+        .send(
+            PayloadToken(1),
+            PayloadKind::new(1),
+            OutgoingPayload::buffer(b"threaded"),
+        );
     let start = std::time::Instant::now();
     loop {
         client.update();

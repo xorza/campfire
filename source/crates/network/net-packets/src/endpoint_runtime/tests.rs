@@ -338,8 +338,7 @@ fn a_frame_wakes_the_io_thread_only_for_a_deadline_it_does_not_know() {
     assert!(client.key.is_some() && server.key.is_some());
     assert_eq!(client.runtime.io().wakes(), 0);
 
-    let mut payload = BytesMut::zeroed(OutgoingPayload::HEADROOM);
-    payload.extend_from_slice(b"data");
+    let payload = OutgoingPayload::buffer(b"data");
     client
         .queues
         .send(PayloadToken(1), PayloadKind::new(1), payload);

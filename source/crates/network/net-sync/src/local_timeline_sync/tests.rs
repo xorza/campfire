@@ -358,15 +358,12 @@ fn a_resync_applies_the_link_input_delay_with_its_objective() {
 #[test]
 fn a_change_of_the_input_delay_setup_computes_the_delay_again() {
     let mut stepper = Stepper::new(SyncStack, StepperSetup::single());
-    stepper.client_app_mut(0).world_mut().insert_resource(
+    stepper.client_world_mut(0).insert_resource(
         InputTimelineSetup::default().with_input_delay(InputDelaySetup::fixed_input_delay(3)),
     );
 
     stepper.frame_step(1);
 
-    let local_sync = stepper
-        .client_app(0)
-        .world()
-        .resource::<LocalTimelineSync>();
+    let local_sync = stepper.client_world(0).resource::<LocalTimelineSync>();
     assert_eq!(local_sync.input_delay(), 3);
 }

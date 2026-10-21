@@ -44,14 +44,14 @@ fn a_dash_moves_its_unit_exactly_to_a_point_or_to_the_unit_it_follows() {
     // m a tick at it from (0, 0, 20). The walker steps first each tick: 11, 12, 13, 14, 15; the
     // chaser 3, 6, 9, 12, and in tick 4, 3 m off, within its step and the bodies' 1 m, it comes
     // to 14, where their bodies touch, and ends.
-    let walker = Navigation::body(
-        &mut game,
-        (10, 0, 20),
-        Some(Vec3::from((30, 0, 20))),
-        Some(Num::ONE),
-        HALF,
-    );
-    let chaser = Navigation::body(&mut game, (0, 0, 20), None, Some(Num::ONE), HALF);
+    let walker = Navigation::walker_at(&mut game, (10, 0, 20))
+        .circle(HALF)
+        .walks(Num::ONE, Some(Vec3::from((30, 0, 20))))
+        .place(&mut game);
+    let chaser = Navigation::walker_at(&mut game, (0, 0, 20))
+        .circle(HALF)
+        .walks(Num::ONE, None)
+        .place(&mut game);
     let to = DashTo::Unit(walker);
     game.insert_parts(
         chaser,
@@ -95,8 +95,13 @@ fn a_restore_refuses_a_forced_move_whose_unit_cannot_take_it_or_whose_numbers_ov
     // it restores, else its refusal.
     let refusal = |walks: bool, forced: ForcedMove| {
         let mut game = walk_match();
-        let step = walks.then_some(Num::ONE);
-        let id = Navigation::body(&mut game, (0, 0, 0), None, step, HALF);
+        let walker = Navigation::walker_at(&mut game, (0, 0, 0)).circle(HALF);
+        let walker = if walks {
+            walker.walks(Num::ONE, None)
+        } else {
+            walker
+        };
+        let id = walker.place(&mut game);
         game.insert_parts(id, forced);
         (Release::refusal_into(&game, &mut walk_match()), id)
     };
@@ -145,7 +150,10 @@ fn a_restore_refuses_a_forced_move_whose_unit_cannot_take_it_or_whose_numbers_ov
         })
     };
     let mut game = walk_match();
-    let id = Navigation::body(&mut game, (0, 0, 0), None, Some(Num::ONE), HALF);
+    let id = Navigation::walker_at(&mut game, (0, 0, 0))
+        .circle(HALF)
+        .walks(Num::ONE, None)
+        .place(&mut game);
     game.insert_parts(id, (dash(Num::ONE), delivery(id)));
     let refused = Release::refusal_into(&game, &mut walk_match());
     assert_eq!(
@@ -264,8 +272,13 @@ fn a_forced_move_stops_before_a_static_body_and_on_the_bounds() {
     // A tower of 1 m at (3, 0, 0). A dash of 2 m a tick from (−3, 0, 0) to (4, 0, 0), its body
     // 0.5 m: −1, then 1; the step to 3 would come within 1.5 m of the tower, so it stays on 1
     // and ends.
-    Navigation::body(&mut game, (3, 0, 0), None, None, Num::ONE);
-    let dasher = Navigation::body(&mut game, (-3, 0, 0), None, Some(Num::ONE), HALF);
+    Navigation::walker_at(&mut game, (3, 0, 0))
+        .circle(Num::ONE)
+        .place(&mut game);
+    let dasher = Navigation::walker_at(&mut game, (-3, 0, 0))
+        .circle(HALF)
+        .walks(Num::ONE, None)
+        .place(&mut game);
     game.insert_parts(
         dasher,
         ForcedMove::Dash {
@@ -321,7 +334,9 @@ fn a_teleport_puts_its_unit_where_it_may_stand_at_once_and_ends_its_move() {
         map.bounds = Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap();
     });
     // A tower of 1 m at the origin blocks the four cells round it, whose centers are √0.5 m off.
-    Navigation::body(&mut game, (0, 0, 0), None, None, Num::ONE);
+    Navigation::walker_at(&mut game, (0, 0, 0))
+        .circle(Num::ONE)
+        .place(&mut game);
     let id = Navigation::unit(&mut game, (-3, 0, -3), Some(Vec3::from((3, 0, 3))));
     game.insert_parts(
         id,
@@ -379,7 +394,10 @@ fn a_knock_back_stops_before_a_wall_and_a_dash_crosses_one_to_a_cell_it_may_stan
     game.insert_resource(DeliveryQueue::default());
     let point = |x: i64, z: i64| Vec3::new(HALF * x, Num::ZERO, HALF * z);
     let unit = |game: &mut Match, x: i64, z: i64| {
-        Navigation::body(game, point(x, z), None, Some(Num::ONE), three_quarters)
+        Navigation::walker_at(game, point(x, z))
+            .circle(three_quarters)
+            .walks(Num::ONE, None)
+            .place(game)
     };
     // A knock back of 6 m over 3 ticks along x from (1.5, 3.5): to 3.5, whose cell is open; the
     // step to 5.5 touches column 4, which the walls block, so it stays on 3.5 and ends.

@@ -67,7 +67,7 @@ mod tests {
         let read = |text: &str| text.parse::<Scalar>();
         assert_eq!(read("50000"), Ok(Scalar::Int(50000)));
         assert_eq!(read("-0.5"), Ok(Scalar::Decimal(-Num::HALF)));
-        assert!(read("five").is_err());
+        assert_eq!(read("five"), Err(ParseNumError::Malformed));
         assert_eq!(Scalar::Int(50000).to_string(), "50000");
         assert_eq!(Scalar::Decimal(Num::HALF).to_string(), "0.5");
     }

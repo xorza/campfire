@@ -4,8 +4,9 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::world::World;
 
-/// What a remote client's next fixed tick runs once, right after its `FixedUpdate`, put there by
-/// `Stepper::client_fixed_update`.
+/// What an app's next fixed tick runs once: a remote client's right after its `FixedUpdate`, put
+/// there by `Stepper::client_fixed_update`, the server's right before, by
+/// `Stepper::server_fixed_update`.
 #[derive(Resource, Default)]
 pub(crate) struct FixedRun(Mutex<Option<Run>>);
 
@@ -16,6 +17,11 @@ type Run = Box<dyn FnOnce(&mut World) + Send>;
 /// schedule of its own, so a test's systems in the strict `FixedUpdate` need no order with it.
 #[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct AfterFixedUpdate;
+
+/// The schedule of the server's fixed tick that runs its `FixedRun`, right before `FixedUpdate`,
+/// whose systems of the tick read what it changed, as they read the sim's own changes.
+#[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct BeforeFixedUpdate;
 
 impl FixedRun {
     pub(crate) fn set(&self, run: Run) {

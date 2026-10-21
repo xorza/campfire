@@ -74,23 +74,22 @@ pub(crate) mod internals {
 
     use bevy_ecs::world::World;
     use campfire_actions::{SlotKindBook, SlotKindData, SlotKinds};
-    use campfire_codec::Binary;
     use campfire_combat::Combat;
     use campfire_common::{DeclaredName, SegmentSeed};
     use campfire_declarations::Role;
     use campfire_declarations::internals::BookLoad;
     use campfire_log::internals::LogCheck;
+    use campfire_mode::{HostPicks, ModeSetup};
     use campfire_players::Players;
-    use campfire_script::ScriptPools;
+    use campfire_script::{ListPlace, ModeScripts, ScriptId, ScriptLimits, ScriptPools};
     use campfire_sim::{Capability, MatchRate};
     use campfire_units::PoolId;
-    use serde::Serialize;
-    use serde::de::DeserializeOwned;
 
+    use crate::fixtures::package_set::PackageSet;
     use crate::release::Release;
     use crate::release::client_holds::ClientHolds;
     use crate::release::r#match::Match;
-    use crate::release::match_kind::MatchKind;
+    use crate::release::match_kind::{MatchKind, ModeStart, PackageScript};
     use crate::release::match_setup::MatchSetup;
     use crate::release::predicted_parts::PredictedParts;
 
@@ -107,35 +106,64 @@ pub(crate) mod internals {
                 _log: Some(log),
             }
         }
-    }
 
-    impl Match {
+        /// The match of the mode of `set`, loaded and built as a session's load and build make
+        /// one, its books by `Release::books` and its scripts compiled, its mode installed and
+        /// not started, as `start` gives. It fails the test on any warning it logs.
+        pub fn of_package(set: &PackageSet, start: PackageStart) -> Self {
+            let log = LogCheck::start();
+            let PackageStart {
+                players,
+                limits,
+                picks,
+            } = start;
+            let loaded = set.load(limits);
+            let books = loaded.books(set);
+            let pools = ScriptPools { limits, players };
+            let capabilities = Release::capability_set(&set.capabilities).unwrap();
+            let setup =
+                MatchSetup::new(SegmentSeed::ZERO, set.rate, Role::Server(pools)).set(capabilities);
+            let scripts: Vec<PackageScript<'_>> = (loaded.paths.iter())
+                .zip(&set.scripts)
+                .map(|(path, source)| PackageScript { path, source })
+                .collect();
+            let ids = (0..scripts.len()).map(ScriptId::nth);
+            let mode = ModeSetup {
+                scripts: ModeScripts::new(ids, ListPlace::new(set.own).unwrap()),
+                data: &loaded.data,
+                picks: &picks,
+                teams: &set.teams,
+                players,
+            };
+            let start = ModeStart {
+                scripts: &scripts,
+                setup: mode,
+            };
+            Self::new(setup, books, MatchKind::Mode(start)).with_log(log)
+        }
+
         /// The MOBA's 30 ticks a second.
         pub const TEST_RATE: MatchRate = MatchRate::new(NonZeroU32::new(30).unwrap());
 
-        /// A test's server match at `rate` of the capabilities `declared`, running scripts
-        /// within `budgets`, or none; with combat, its life pool the first. It has no mode
-        /// to start it, so it starts with the match's entity, as a start spawns it. It fails the
-        /// test on any warning it logs.
-        pub fn test(declared: &[Capability], rate: MatchRate, pools: Option<ScriptPools>) -> Self {
-            let mut started = Self::test_unstarted(declared, rate, pools);
-            Players::start_without_mode(&mut started, [], 0);
-            started
+        /// A test's match of the capabilities `declared` and each capability they need, which the
+        /// builder's setters shape: by default a server's at `TEST_RATE` that runs scripts within
+        /// `ScriptLimits::ROOMY` for one player, started with no mode, as a start spawns the
+        /// match's entity. With combat, its life pool is the first. It fails the test on any
+        /// warning it logs.
+        pub fn builder(declared: &[Capability]) -> MatchBuilder {
+            MatchBuilder {
+                declared: declared.to_vec(),
+                rate: Self::TEST_RATE,
+                role: Role::Server(ScriptPools {
+                    limits: ScriptLimits::ROOMY,
+                    players: 1,
+                }),
+                start: Start::WithoutMode,
+            }
         }
 
-        /// The match `test` gives, with no entity yet, for a mode to start.
-        pub fn test_unstarted(
-            declared: &[Capability],
-            rate: MatchRate,
-            pools: Option<ScriptPools>,
-        ) -> Self {
-            let set = Release::capability_set(declared).expect("a test declares a valid set");
-            let role = pools.map_or(Role::Rules, Role::Server);
-            let setup = MatchSetup::new(SegmentSeed::ZERO, rate, role).set(set);
-            Self::test_of(setup)
-        }
-
-        /// The match of `spec`, as `test_unstarted` gives it.
+        /// The match of `setup`, as `MatchBuilder::build` gives it before a client's parts and
+        /// the start.
         fn test_of(setup: MatchSetup) -> Self {
             let log = LogCheck::start();
             let set = setup.set;
@@ -158,43 +186,123 @@ pub(crate) mod internals {
                 _log: Some(log),
             }
         }
+    }
 
-        /// A server's match at `TEST_RATE` of `declared` that runs no scripts: no script host,
-        /// and no system that runs scripts, as a client's.
-        pub fn unscripted(declared: &[Capability]) -> Self {
-            Self::test(declared, Self::TEST_RATE, None)
+    /// How a test's match of a package set starts: its players, its scripts' limits, and what
+    /// the session's host picked of the mode's options and its seats' choices.
+    #[derive(Debug)]
+    pub struct PackageStart {
+        pub players: u32,
+        pub limits: ScriptLimits,
+        pub picks: HostPicks,
+    }
+
+    /// How a test's match starts.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Start {
+        /// With the match's entity and no player, as a start with no mode spawns it.
+        WithoutMode,
+        /// Not yet, for a mode or the test to start it.
+        Later,
+    }
+
+    /// A test's match before its build, which `Match::builder` starts.
+    #[derive(Debug)]
+    pub struct MatchBuilder {
+        declared: Vec<Capability>,
+        rate: MatchRate,
+        role: Role,
+        start: Start,
+    }
+
+    impl MatchBuilder {
+        /// At `rate`.
+        #[must_use]
+        pub const fn rate(mut self, rate: MatchRate) -> Self {
+            self.rate = rate;
+            self
         }
 
-        /// A predicting client's match at `TEST_RATE` of `declared`: each of its sim's queries
-        /// skips the units it holds as the server sent them, `Unpredicted`, and each unit it
-        /// predicts takes the server's parts its owner's client receives, as replication brings
+        /// Of `role`: `Role::Rules` runs no scripts, and `Role::Client` predicts, each of its
+        /// sim's queries skipping the units it holds as the server sent them, and each unit it
+        /// predicts taking the server's parts its owner's client receives, as replication brings
         /// them, which a client's spawn does not give.
-        pub fn predicting(declared: &[Capability]) -> Self {
-            let set = Release::capability_set(declared).expect("a test declares a valid set");
-            let setup = MatchSetup::new(SegmentSeed::ZERO, Self::TEST_RATE, Role::Client).set(set);
-            let mut started = Self::test_of(setup);
-            let holds = ClientHolds::of(&mut started, set);
-            let world = &mut *started;
-            Release::declare(
-                set,
-                &mut PredictedParts {
-                    world,
-                    holds: &holds,
-                },
-            );
-            Players::start_without_mode(&mut started, [], 0);
-            started
+        #[must_use]
+        pub const fn role(mut self, role: Role) -> Self {
+            self.role = role;
+            self
         }
 
-        /// A server's match at `TEST_RATE` of `declared`, running scripts within `budgets`.
-        pub fn server(declared: &[Capability], pools: ScriptPools) -> Self {
-            Self::test(declared, Self::TEST_RATE, Some(pools))
+        /// With scripts for `players` players.
+        #[must_use]
+        pub fn players(mut self, players: u32) -> Self {
+            self.pools().players = players;
+            self
         }
 
-        /// Whether `value`, encoded as a snapshot holds it, decodes again: a decode keeps the
-        /// rules a type's own values follow, as a restore check keeps those that need the match.
-        pub fn decodes<T: Serialize + DeserializeOwned>(value: &T) -> bool {
-            Binary::decode::<T>(&Binary::encode(value)).is_ok()
+        /// With scripts within `limits`.
+        #[must_use]
+        pub fn limits(mut self, limits: ScriptLimits) -> Self {
+            self.pools().limits = limits;
+            self
+        }
+
+        /// Unstarted, with no entity yet, for a mode or the test to start.
+        #[must_use]
+        pub const fn unstarted(mut self) -> Self {
+            self.start = Start::Later;
+            self
+        }
+
+        fn pools(&mut self) -> &mut ScriptPools {
+            let Role::Server(pools) = &mut self.role else {
+                panic!("only a server's match runs scripts");
+            };
+            pools
+        }
+
+        /// The match.
+        pub fn build(self) -> Match {
+            let set =
+                Release::capability_set(&self.with_needs()).expect("a test declares a valid set");
+            let client = matches!(self.role, Role::Client);
+            let setup = MatchSetup::new(SegmentSeed::ZERO, self.rate, self.role).set(set);
+            let mut game = Match::test_of(setup);
+            if client {
+                let holds = ClientHolds::of(&mut game, set);
+                let world = &mut *game;
+                Release::declare(
+                    set,
+                    &mut PredictedParts {
+                        world,
+                        holds: &holds,
+                    },
+                );
+            }
+            if self.start == Start::WithoutMode {
+                Players::start_without_mode(&mut game, [], 0);
+            }
+            game
+        }
+
+        /// The capabilities declared, with each one they need, theirs in turn, in the order
+        /// first named.
+        fn with_needs(&self) -> Vec<Capability> {
+            let rows = Release::rows();
+            let mut declared = Vec::new();
+            let mut next = self.declared.clone();
+            next.reverse();
+            while let Some(capability) = next.pop() {
+                if declared.contains(&capability) {
+                    continue;
+                }
+                declared.push(capability);
+                let needs = rows
+                    .needs(capability)
+                    .expect("every capability has a module of the release");
+                next.extend(needs.iter().rev().filter(|need| !declared.contains(need)));
+            }
+            declared
         }
     }
 }

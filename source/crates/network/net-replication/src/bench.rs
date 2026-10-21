@@ -3,6 +3,7 @@
 //! `integration/<send or receive>_<insert or update>/…`: the server's or the client's update for a
 //! frame that replicates `ENTITIES` entities, each timed alone.
 
+use crate::fixtures::steps::PROPAGATION_FRAMES;
 use bevy_ecs::query::With;
 use campfire_measure::Kind;
 use campfire_measure::Scale;
@@ -103,10 +104,10 @@ impl Case {
                 );
                 ENTITIES
             ];
-            stepper.server_app_mut().world_mut().spawn_batch(entities);
+            stepper.server_world_mut().spawn_batch(entities);
             if self.change == Change::Update {
-                stepper.frame_step(2);
-                let world = stepper.server_app_mut().world_mut();
+                stepper.frame_step(PROPAGATION_FRAMES);
+                let world = stepper.server_world_mut();
                 for mut component in world
                     .query_filtered::<&mut CompSimple, With<Replicate>>()
                     .iter_mut(world)

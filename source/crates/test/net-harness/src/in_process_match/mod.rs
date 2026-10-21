@@ -1,56 +1,55 @@
-use std::mem;
-use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use bevy_app::App;
-use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_state::app::StatesPlugin;
-use bevy_time::{Time, TimePlugin, TimeUpdateStrategy, Virtual};
-use campfire_app_threads::OneThreadPlugins;
+use bevy_ecs::world::World;
+use bevy_time::{Time, Virtual};
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::{Directive, Order};
-use campfire_codec::Toml;
 use campfire_common::{Seat, Tick, TlsKey};
+use campfire_harness::HashTrail;
 use campfire_log::internals::LogCheck;
-use campfire_mode::{ModeData, PlayersData, SaveBy, SavesData};
+use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::TickHashes;
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
-    ClientDir, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup, LocalPacePlugin,
-    MatchClock, Os, Pace, PendingOrders, PendingRestore, SeatScript, ServerBots, ServerDir,
-    ServerPin, ServerSetup, SessionDir, SessionOpening, SessionSigner, SessionTimes,
-    SimClientPlugin, SimServerPlugins, SimServerWorld, UdpLinks, UncheckedRestore, UnixClock,
+    ClientDir, JoinState, Lobby, LobbyOpening, LobbySetup, MatchClock, Os, Pace, PendingOrders,
+    PendingRestore, SeatScript, ServerBots, ServerDir, ServerSetup, SessionDir, SessionOpening,
+    SessionTimes, SimServerWorld, UdpLinks, UncheckedRestore, UnixClock,
 };
-use campfire_net_connection::{Connect, Connected, Start};
+use campfire_net_connection::Connected;
 use campfire_net_core::LinkDirection;
-use campfire_net_emulator::{
-    DirectionCounts, DuplexModel, EmulatedLinkId, EmulatedNetwork, LinkModel, Phase, WireClock,
-};
-use campfire_net_endpoint::Endpoint;
-use campfire_net_link::{LinkOf, RemoteAddress, Server, Unlink};
-use campfire_net_packets::EmulatedWires;
+use campfire_net_emulator::{DirectionCounts, DuplexModel, LinkModel, Phase};
+use campfire_net_link::Unlink;
 use campfire_net_payload::UnlinkReason;
-use campfire_net_prediction::{PredictionCounts, PredictionSetup, RollbackMode};
+use campfire_net_prediction::{PredictionCounts, RollbackMode};
+use campfire_net_stepper::{AppId, ClientKind, Init, StepOrder, Stepper, StepperSetup};
 use campfire_net_sync::{LocalTimelineSync, TimelineSync};
+use campfire_net_udp::ServerIdentity;
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, InputRules, LogReplay, SeedChain, ServerInput, Signer};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, MatchRate, SimTick, SimWorld, StableId};
-use campfire_test_packages::{Edit, PackageTree, TestMode};
+use campfire_test_packages::{PackageTree, TestMode};
 use campfire_units::internals::UnitsWorldInternals;
 use campfire_units::{Body, MoveStep, Owner};
 use campfire_values::{NameId, Team};
 use campfire_visibility::HostVisibility;
 
+use crate::in_process_match::link_layout::{LinkLayout, LinkRows};
+use crate::in_process_match::match_stack::{Joiner, MatchStack};
+use crate::in_process_match::server_record::ServerRecord;
+
+pub(crate) mod link_layout;
+mod match_stack;
+pub(crate) mod server_record;
+
 /// Frames a connection gets to link and sync its timeline, and a join to start the match.
 const CONNECT_FRAMES: usize = 300;
-/// The seed of the server's endpoint's draws.
-const SERVER_SEED: u64 = 5;
 
 /// What an `InProcessMatch` runs: how many players join, and how.
 #[derive(Debug, Clone)]
@@ -84,24 +83,6 @@ pub struct InProcessSetup {
     /// The most spectators the session admits.
     pub max_spectators: u32,
 }
-
-/// How an `InProcessMatch` lays the server's links out in its tables. A query gives entities in
-/// the order of their tables, which the stack's parallel commands change from run to run once
-/// Bevy's `multi_threaded` is on, so a match plays the same in both layouts when the server takes
-/// nothing in a query's order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkLayout {
-    /// The clients connect in player order, and the links lie as Bevy puts them.
-    InOrder,
-    /// The clients connect in reverse, and before each server frame the links' rows go in the
-    /// reverse of player order. The players take the same slots: one frame's joins go in the order
-    /// of their main keys, and each player's sorts after the one before.
-    Reversed,
-}
-
-/// A mark that moves a server link out of its table and back, so its row goes last.
-#[derive(Component, Debug)]
-struct Moved;
 
 /// What a step cost each end: each client's frame, by client, and the server's worst frame.
 #[derive(Debug, Clone, Default)]
@@ -181,29 +162,14 @@ impl InProcessSetup {
     }
 }
 
-/// A server app and one client app for each player, joined by sealed links over the stack's
-/// emulator, each link following the setup's `LinkModel`, each app on a manual clock that advances
-/// one tick per `step` and the emulator's wire clock driven with them, so every run repeats exactly
-/// (02-engine-core.md, The harness's time is Bevy's). Each player holds fixed keys and draws
-/// fixed random bytes, and the server keeps the state hash after every tick.
+/// A server app and one client app for each player, joined by sealed links on the stack's
+/// stepper, each link following the setup's `LinkModel`, each app at its own frame rate on the
+/// stepper's one virtual time, so every run repeats exactly (02-engine-core.md, One driver of
+/// integrated tests). Each player holds fixed keys and draws fixed random bytes, and the server
+/// keeps the state hash after every tick.
 #[derive(Debug)]
 pub struct InProcessMatch {
-    server: App,
-    /// The server's entity, which its endpoint and its links belong to.
-    server_entity: Entity,
-    clients: Vec<App>,
-    /// Each client app's client entity.
-    client_entities: Vec<Entity>,
-    /// Each client's address on its link, by which the server's link to it is found.
-    addresses: Vec<SocketAddr>,
-    /// Each client's link on the emulator.
-    wires: Vec<EmulatedLinkId>,
-    /// The links made so far, which seeds each link's draws.
-    links_made: u64,
-    /// The emulator every link runs on, its wire clock driven by `now`.
-    network: EmulatedNetwork,
-    /// The time every end's frames reached.
-    now: Duration,
+    stepper: Stepper<MatchStack>,
     /// How many spectators it added, which takes each one's key.
     spectators: usize,
     setup: InProcessSetup,
@@ -216,13 +182,39 @@ pub struct InProcessMatch {
     clock: UnixClock,
     /// What the last step cost each end, kept from step to step.
     step_cost: StepCost,
-    /// The server's links that `lay_out_links` moves, in client order.
-    link_rows: Vec<Entity>,
     /// Last, so it drops after the apps and sees what they log as they drop.
     log: LogCheck,
 }
 
 impl InProcessMatch {
+    /// The server's session with its seed revealed, as it publishes it: its log's file, and its
+    /// hash after each tick it played.
+    pub fn server_record(&mut self) -> ServerRecord {
+        let world = self.server_mut().world_mut();
+        world.resource_mut::<Session>().reveal_seed();
+        let mut file = Vec::new();
+        world.resource::<Session>().log().encode(&mut file);
+        let live = HashTrail::of_totals(world.resource::<TickHashes>().get().iter().copied());
+        ServerRecord { file, live }
+    }
+
+    /// Asserts that the server's log replays to the hashes it played.
+    pub fn assert_log_replays(&mut self) {
+        let record = self.server_record();
+        record.assert_replays(self.packages());
+    }
+
+    /// Steps until `done`, which holds within `steps` steps.
+    pub fn step_until(&mut self, steps: usize, done: impl Fn(&Self) -> bool) {
+        for _ in 0..steps {
+            if done(self) {
+                return;
+            }
+            self.step();
+        }
+        assert!(done(self), "not done in {steps} steps");
+    }
+
     /// The seed chain the tests' servers commit to.
     pub const SEED_CHAIN: SeedChain = TestKey::seed_chain(NonZeroU32::MIN);
 
@@ -242,11 +234,14 @@ impl InProcessMatch {
             (1..=2).contains(&setup.players),
             "the lane mode takes 1 or 2 players"
         );
-        let packages = Self::lane_mode(setup.rules, setup.saves);
+        let packages = PackageTree::of(TestMode::Lane)
+            .players_and_saves(&setup.rules, &setup.saves)
+            .packages();
         Self::of_mode(setup, packages)
     }
 
-    /// A match of `packages` at their default rate, its clients connected and synced.
+    /// A match of `packages` at their default rate, its clients connected and synced: the
+    /// clients run a frame a tick, and the server `setup.server_frames`.
     pub fn of_mode(setup: InProcessSetup, packages: ModePackages) -> Self {
         let log = LogCheck::start();
         assert!(
@@ -260,49 +255,64 @@ impl InProcessMatch {
         );
         let packages = Arc::new(packages);
         let pace = Arc::new(Pace::default());
-        let mut server = Self::server_app(&setup, &packages, &pace);
-        let server_entity = Self::serve(&mut server);
+        let clock = UnixClock::manual(TestKey::NOW);
+        let rate = Self::rate(&packages);
+        let tick = rate.length();
+        let server_frame = tick / setup.server_frames;
+        assert_eq!(
+            server_frame * setup.server_frames,
+            tick,
+            "the frames make a whole tick"
+        );
+        let players = setup.players;
+        let joiners = (0..players).map(|client| {
+            Joiner::Player(match setup.links {
+                LinkLayout::InOrder => client,
+                LinkLayout::Reversed => players - 1 - client,
+            })
+        });
+        let stack = MatchStack {
+            packages: Arc::clone(&packages),
+            pace: Arc::clone(&pace),
+            clock: clock.clone(),
+            rollbacks: setup.rollbacks,
+            links: setup.links,
+            joiners: joiners.collect(),
+        };
+        let stepper = Stepper::new(
+            stack,
+            StepperSetup {
+                frame_interval: tick,
+                server_frame_interval: server_frame,
+                tick_rate: rate.rate(),
+                init: Init::Deferred,
+                link: DuplexModel::symmetric(setup.link.clone()),
+                identity: Self::server_identity,
+                alpn: UdpLinks::ALPN,
+                ..StepperSetup::with_clients(vec![ClientKind::Udp; players])
+            },
+        );
         let mut local = Self {
-            server,
-            server_entity,
-            clients: Vec::with_capacity(setup.players),
-            client_entities: Vec::with_capacity(setup.players),
-            addresses: Vec::with_capacity(setup.players),
-            wires: Vec::with_capacity(setup.players),
-            link_rows: Vec::with_capacity(setup.players),
-            links_made: 0,
-            network: EmulatedNetwork::new(WireClock::Driven),
-            now: Duration::ZERO,
+            stepper,
             spectators: 0,
             setup,
             packages,
             data: None,
             pace,
-            clock: UnixClock::manual(TestKey::NOW),
+            clock,
             step_cost: StepCost::default(),
             log,
         };
-        let InProcessSetup { players, links, .. } = local.setup;
-        for client in 0..players {
-            let player = match links {
-                LinkLayout::InOrder => client,
-                LinkLayout::Reversed => players - 1 - client,
-            };
-            local.add_client(player);
-        }
+        local.stepper.connect();
+        local.lay_out_links();
         for _ in 0..CONNECT_FRAMES {
-            let synced =
-                local
-                    .clients
-                    .iter()
-                    .zip(&local.client_entities)
-                    .all(|(client, &entity)| {
-                        let world = client.world();
-                        world.entity(entity).contains::<Connected>()
-                            && world
-                                .get_resource::<LocalTimelineSync>()
-                                .is_some_and(TimelineSync::is_synced)
-                    });
+            let synced = (0..local.stepper.client_count()).all(|client| {
+                let world = local.stepper.client_world(client);
+                local.stepper.client(client).contains::<Connected>()
+                    && world
+                        .get_resource::<LocalTimelineSync>()
+                        .is_some_and(TimelineSync::is_synced)
+            });
             if synced {
                 return local;
             }
@@ -311,45 +321,14 @@ impl InProcessMatch {
         panic!("the clients did not connect and sync in {CONNECT_FRAMES} frames");
     }
 
-    /// The server's app of `packages` at their default rate, its frames `setup.server_frames` a
-    /// tick, before any link.
-    fn server_app(setup: &InProcessSetup, packages: &ModePackages, pace: &Arc<Pace>) -> App {
-        let tick_hz = packages.manifest().tick_hz.default();
-        let rate = MatchRate::new(tick_hz);
-        let mut server = App::new();
-        server.add_plugins(SimServerPlugins {
-            tick_hz,
-            capabilities: packages.manifest().capabilities,
-            hosting: Hosting::Local,
-        });
-        server.add_plugins(LocalPacePlugin {
-            pace: Arc::clone(pace),
-            tick_rate: rate.rate(),
-        });
-        server.init_resource::<TickHashes>();
-        let tick = rate.length();
-        let frame = tick / setup.server_frames;
-        assert_eq!(
-            frame * setup.server_frames,
-            tick,
-            "the frames make a whole tick"
-        );
-        server.insert_resource(TimeUpdateStrategy::ManualDuration(frame));
-        server
+    /// The rate of a match of `packages`: their default.
+    const fn rate(packages: &ModePackages) -> MatchRate {
+        MatchRate::new(packages.manifest().tick_hz.default())
     }
 
-    /// Spawns the server's entity in `server`, its endpoint of the UDP protocol over the emulator
-    /// with the test server's key, and starts it; its entity.
-    fn serve(server: &mut App) -> Entity {
-        let endpoint = Endpoint::from(UdpLinks::server(&Self::server_signer()).emulated(
-            UdpLinks::admission(NonZeroU32::MAX, Duration::from_secs(1)),
-            SERVER_SEED,
-        ));
-        let entity = server.world_mut().spawn((Server::default(), endpoint)).id();
-        server.finish();
-        server.cleanup();
-        server.world_mut().trigger(Start { entity });
-        entity
+    /// The length of a tick of the match.
+    fn tick(&self) -> Duration {
+        Self::rate(&self.packages).length()
     }
 
     /// The signer of the test server's key, from which its TLS key derives.
@@ -357,9 +336,14 @@ impl InProcessMatch {
         Signer::new(TestKey::server(), Entropy::Fixed(5))
     }
 
+    /// The identity of the test server's endpoint, its raw key derived from its own.
+    fn server_identity() -> ServerIdentity {
+        UdpLinks::identity(&Self::server_signer())
+    }
+
     /// The TLS key every client pins: the test server's raw key.
     fn tls_key() -> TlsKey {
-        UdpLinks::server(&Self::server_signer())
+        Self::server_identity()
             .tls_key()
             .expect("a raw key's identity")
     }
@@ -379,16 +363,10 @@ impl InProcessMatch {
     }
 
     fn add(&mut self, joiner: Joiner) -> usize {
-        let ClientApp { mut app, entity } = ClientApp::new(self, joiner);
-        app.finish();
-        app.cleanup();
-        self.clients.push(app);
-        self.client_entities.push(entity);
-        let client = self.clients.len() - 1;
-        let ClientLink { address, wire } = self.link_client(client);
-        self.addresses.push(address);
-        self.wires.push(wire);
-        self.clients[client].world_mut().trigger(Connect { entity });
+        self.stepper.stack_mut().joiners.push(joiner);
+        let client = self.stepper.add_remote_client();
+        self.stepper.connect_client(client);
+        self.lay_out_links();
         client
     }
 
@@ -396,52 +374,42 @@ impl InProcessMatch {
     /// network that works again does: a client that tries its link again connects through it once
     /// its wait passed.
     pub fn mend_link(&mut self, client: usize) {
-        let ClientLink { address, wire } = self.link_client(client);
-        self.addresses[client] = address;
-        self.wires[client] = wire;
+        self.stepper.relink(client);
+        self.lay_out_links();
     }
 
-    /// Links `client` to the server over a new pair of emulated wires.
-    fn link_client(&mut self, client: usize) -> ClientLink {
-        let seed = self.links_made;
-        self.links_made += 1;
-        let wires = self
-            .network
-            .pair(DuplexModel::symmetric(self.setup.link.clone()).with_seed(seed));
-        let ends = ClientLink {
-            address: wires.client.client_address(),
-            wire: wires.client.link(),
-        };
-        self.server
-            .world()
-            .get::<Endpoint<EmulatedWires>>(self.server_entity)
-            .expect("the server holds its endpoint")
-            .io()
-            .add(wires.server);
-        let endpoint =
-            Endpoint::from(UdpLinks::client(Self::tls_key()).emulated(wires.client, seed));
-        let entity = self.client_entities[client];
-        self.clients[client]
-            .world_mut()
-            .entity_mut(entity)
-            .insert(endpoint);
-        ends
+    /// Gives the server of a reversed layout its clients' addresses, in client order, by which
+    /// it puts its links' rows in that order before each of its frames.
+    fn lay_out_links(&mut self) {
+        let addresses =
+            (0..self.stepper.client_count()).map(|client| self.stepper.client_address(client));
+        let addresses = addresses.collect();
+        if let Some(mut rows) = self
+            .stepper
+            .server_world_mut()
+            .get_resource_mut::<LinkRows>()
+        {
+            rows.addresses = addresses;
+        }
     }
 
     /// Cuts `client`'s link, as a network that fails does: its wires carry nothing more, and the
     /// server and the client each see it end as a silent peer's.
     pub fn cut_link(&mut self, client: usize) {
+        let now = self.stepper.now();
         for direction in [LinkDirection::ClientToServer, LinkDirection::ServerToClient] {
-            self.network
-                .add_phase(self.wires[client], direction, Phase::outage(self.now));
+            let wire = self.stepper.client_link(client);
+            self.stepper
+                .network()
+                .add_phase(wire, direction, Phase::outage(now));
         }
         let link = self.link(client);
-        self.server.world_mut().trigger(Unlink {
+        self.stepper.server_world_mut().trigger(Unlink {
             entity: link,
             reason: UnlinkReason::TimedOut,
         });
-        let entity = self.client_entities[client];
-        self.clients[client].world_mut().trigger(Unlink {
+        let entity = self.stepper.client_entity(client);
+        self.stepper.client_world_mut(client).trigger(Unlink {
             entity,
             reason: UnlinkReason::TimedOut,
         });
@@ -454,23 +422,8 @@ impl InProcessMatch {
 
     /// Every input the server logged, in the order logged.
     pub fn server_inputs(&self) -> Vec<ServerInput<'_>> {
-        let session = self.server.world().resource::<Session>();
+        let session = self.stepper.server_world().resource::<Session>();
         session.log().server_inputs().collect()
-    }
-
-    /// The test lane mode, its `[players]` as `rules` says in place of its own, and its
-    /// `[saves]` as `saves` says.
-    pub fn lane_mode(rules: PlayersData, saves: SavesData) -> ModePackages {
-        const DATA: &str = "modes/lane/data/mode.toml";
-        let added = format!(
-            "\n[players]\n{}\n[saves]\n{}",
-            Toml::write(&rules),
-            Toml::write(&saves)
-        );
-        PackageTree::of(TestMode::Lane)
-            .edit(DATA, Edit::Remove(ModeData::PLAYERS))
-            .edit(DATA, Edit::Append(&added))
-            .packages()
     }
 
     /// What the server opens or restores its session with: the signer of its key, the setup's
@@ -504,24 +457,30 @@ impl InProcessMatch {
     /// client `client-<index>` in it, where it writes its receipts.
     pub fn keep_data(&mut self, dir: PathBuf) {
         assert!(
-            !self.server.world().contains_resource::<MatchClock>(),
+            !self
+                .stepper
+                .server_world()
+                .contains_resource::<MatchClock>(),
             "a server keeps its data from before the match"
         );
-        for (client, app) in self.clients.iter_mut().enumerate() {
+        for client in 0..self.stepper.client_count() {
             let own = ClientDir::open(&dir.join(format!("client-{client}"))).unwrap();
-            app.world_mut().keep_receipts(Arc::new(own));
+            self.stepper
+                .client_world_mut(client)
+                .keep_receipts(Arc::new(own));
         }
         let data = ServerDir::open(&dir).unwrap();
-        self.server.world_mut().insert_resource(data);
+        self.stepper.server_world_mut().insert_resource(data);
         self.data = Some(dir);
     }
 
     /// Ends the server, as a crash after its journal's last sync does; each client sees its
     /// link end as a silent peer's, at once.
     pub fn stop_server(&mut self) {
-        drop(mem::replace(&mut self.server, App::new()));
-        for (client, &entity) in self.clients.iter_mut().zip(&self.client_entities) {
-            client.world_mut().trigger(Unlink {
+        self.stepper.stop_server();
+        for client in 0..self.stepper.client_count() {
+            let entity = self.stepper.client_entity(client);
+            self.stepper.client_world_mut(client).trigger(Unlink {
                 entity,
                 reason: UnlinkReason::TimedOut,
             });
@@ -542,9 +501,6 @@ impl InProcessMatch {
             .restore()
             .unwrap()
             .expect("a session whose match started");
-        let mut server = Self::server_app(&self.setup, &self.packages, &self.pace);
-        self.server_entity = Self::serve(&mut server);
-        server.world_mut().insert_resource(data);
         let restore = PendingRestore::check(UncheckedRestore {
             session,
             packages: Arc::clone(&self.packages),
@@ -552,18 +508,18 @@ impl InProcessMatch {
             bots: self.server_bots(),
         })
         .unwrap();
-        server
-            .world_mut()
-            .open_session(SessionOpening::Restored(Box::new(restore)));
-        server.update();
+        self.stepper.restart_server(move |world| {
+            world.insert_resource(data);
+            world.open_session(SessionOpening::Restored(Box::new(restore)));
+        });
+        self.lay_out_links();
+        self.stepper.frame(AppId::Server);
         assert!(
-            server.world().contains_resource::<MatchClock>(),
+            self.stepper
+                .server_world()
+                .contains_resource::<MatchClock>(),
             "the session restores in the server's first frame"
         );
-        self.server = server;
-        for client in 0..self.clients.len() {
-            self.mend_link(client);
-        }
     }
 
     /// `open_match`, then `await_avatars` for `CONNECT_FRAMES`, as the lane mode's avatars come
@@ -604,22 +560,22 @@ impl InProcessMatch {
             seats: self.setup.players + self.setup.bots.len(),
         })
         .expect("the lane mode runs at its default rate");
-        if let Some(data) = self.server.world().get_resource::<ServerDir>() {
+        if let Some(data) = self.stepper.server_world().get_resource::<ServerDir>() {
             lobby.keep_files(data).unwrap();
         }
-        self.server
-            .world_mut()
+        self.stepper
+            .server_world_mut()
             .open_session(SessionOpening::New(Box::new(lobby)));
         for _ in 0..CONNECT_FRAMES {
-            let playing = |client: &App| {
-                client
-                    .world()
-                    .resource::<JoinState>()
-                    .playing_clock()
-                    .is_some()
+            let playing = |client: usize| {
+                let world = self.stepper.client_world(client);
+                world.resource::<JoinState>().playing_clock().is_some()
             };
-            if self.server.world().contains_resource::<MatchClock>()
-                && self.clients.iter().all(playing)
+            if self
+                .stepper
+                .server_world()
+                .contains_resource::<MatchClock>()
+                && (0..self.stepper.client_count()).all(playing)
             {
                 return;
             }
@@ -642,7 +598,7 @@ impl InProcessMatch {
 
     /// Whether `client` holds its player's avatar, which the server spawned.
     fn holds_avatar(&self, client: usize) -> bool {
-        let world = self.clients[client].world();
+        let world = self.stepper.client_world(client);
         self.spawned_avatar(client)
             .is_some_and(|avatar| world.entity_of(avatar).is_some())
     }
@@ -650,126 +606,93 @@ impl InProcessMatch {
     /// Loses every packet the server sends `client` from now on, as a link that drops one way
     /// does, though the client's own packets arrive.
     pub fn lose_server_packets(&mut self, client: usize) {
-        self.network.add_phase(
-            self.wires[client],
-            LinkDirection::ServerToClient,
-            Phase::outage(self.now),
-        );
+        let phase = Phase::outage(self.stepper.now());
+        self.server_packets(client, phase);
     }
 
     /// Passes the packets the server sends `client` again.
     pub fn pass_server_packets(&mut self, client: usize) {
-        self.network.add_phase(
-            self.wires[client],
-            LinkDirection::ServerToClient,
-            Phase::recovery(self.now, self.setup.link.clone()),
-        );
+        let phase = Phase::recovery(self.stepper.now(), self.setup.link.clone());
+        self.server_packets(client, phase);
     }
 
-    /// One frame of the server alone, which shifts where in a step its ticks fall.
+    /// Makes the packets the server sends `client` follow `phase`.
+    fn server_packets(&self, client: usize, phase: Phase) {
+        let wire = self.stepper.client_link(client);
+        self.stepper
+            .network()
+            .add_phase(wire, LinkDirection::ServerToClient, phase);
+    }
+
+    /// Runs `run` on the server's world in its next fixed tick, before the tick's systems, as the
+    /// sim changes its state; the steps that follow run it.
+    pub fn server_fixed_update(&mut self, run: impl FnOnce(&mut World) + Send + 'static) {
+        self.stepper.server_fixed_update(run);
+    }
+
+    /// The server's next frame alone, which shifts where in a tick its frames fall.
     pub fn server_frame(&mut self) {
-        self.lay_out_links();
-        self.server.update();
+        self.stepper.frame(AppId::Server);
     }
 
-    /// Puts the rows of the server's links in each of their tables in client order, the reverse of
-    /// player order, when the setup lays them out reversed: all go out to another table, then
-    /// back in client order, as Bevy appends a row that enters a table.
-    fn lay_out_links(&mut self) {
-        if self.setup.links == LinkLayout::InOrder {
-            return;
-        }
-        let world = self.server.world_mut();
-        self.link_rows.clear();
-        let mut links = world.query::<(Entity, &RemoteAddress)>();
-        for address in &self.addresses {
-            let link = links
-                .iter(world)
-                .find(|(_, remote)| remote.0 == *address)
-                .map(|(link, _)| link);
-            self.link_rows
-                .extend(link.filter(|&link| world.get::<LinkOf>(link).is_some()));
-        }
-        for &link in &self.link_rows {
-            world.entity_mut(link).insert(Moved);
-        }
-        for &link in &self.link_rows {
-            world.entity_mut(link).remove::<Moved>();
-        }
-    }
-
-    /// One frame of each client, then the server's frames: one tick each, what each end's frames
-    /// cost kept in `step_cost`, the wire clock at the tick's end. A server whose session went
-    /// back to a save then starts again on its data, as a local server does.
+    /// One tick of every end, each at its own frame rate: a frame of each client, and the
+    /// server's frames, which fall together with the clients' at the tick's end run after them;
+    /// what each end's frames cost kept in `step_cost`. A server whose session went back to a
+    /// save then starts again on its data, as a local server does.
     pub fn step(&mut self) {
+        let apps = (0..self.stepper.client_count()).map(AppId::Client);
+        for app in apps.chain([AppId::Server]) {
+            self.stepper.take_slowest_frame(app);
+        }
+        self.stepper.run_for(self.tick(), StepOrder::ClientsFirst);
         self.step_cost.clear();
-        self.advance(1);
-        for client in 0..self.clients.len() {
-            let start = Instant::now();
-            self.client_frame(client);
-            self.step_cost.clients.push(start.elapsed());
+        for client in 0..self.stepper.client_count() {
+            let spent = self.stepper.take_slowest_frame(AppId::Client(client));
+            self.step_cost.clients.push(spent);
         }
-        for _ in 0..self.setup.server_frames {
-            let start = Instant::now();
-            self.server_frame();
-            self.step_cost.server = self.step_cost.server.max(start.elapsed());
-        }
-        if self.server.world().is_reload_wanted() {
+        self.step_cost.server = self.stepper.take_slowest_frame(AppId::Server);
+        if self.stepper.server_world().is_reload_wanted() {
             self.restart_server();
         }
     }
 
-    /// `ticks` frames of each client alone, then one frame of the server as long as their ticks:
-    /// a server whose process stalled, and whose clients ran on and sent their inputs meanwhile.
+    /// `ticks` ticks of the clients alone, then a frame of the server as long as their ticks: a
+    /// server whose process stalled, and whose clients ran on and sent their inputs meanwhile.
     pub fn stall_server(&mut self, ticks: u32) {
-        for _ in 0..ticks {
-            self.advance(1);
-            for client in 0..self.clients.len() {
-                self.client_frame(client);
-            }
-        }
-        let tick = MatchRate::new(self.packages.manifest().tick_hz.default()).length();
-        let frame = tick / self.setup.server_frames;
-        let stalled = TimeUpdateStrategy::ManualDuration(tick * ticks);
-        self.server.insert_resource(stalled);
-        self.server_frame();
-        self.server
-            .insert_resource(TimeUpdateStrategy::ManualDuration(frame));
+        let stall = self.tick() * ticks;
+        self.stepper.stall(AppId::Server, stall);
+        self.stepper.run_for(stall, StepOrder::ClientsFirst);
     }
 
-    /// A stall of the whole host for `ticks` ticks, as an OS that stops every process: the wire
-    /// clock runs on while no end runs a frame. Then each client takes the stalled time in one
-    /// frame, which its virtual clock cuts to its `max_delta`, and the server in frames of at
-    /// most its own `max_delta`, as a server that woke during the stall does, so it runs every
-    /// tick it missed.
+    /// A stall of the whole host for `ticks` ticks, as an OS that stops every process: the
+    /// clients run no frame while the wire clock runs on, and then each takes the stalled time in
+    /// one frame, which its virtual clock cuts to its `max_delta`. The server, which its wake
+    /// brought back during the stall, runs a frame each `max_delta` of it, so it runs every tick
+    /// it missed.
     pub fn stall_host(&mut self, ticks: u32) {
-        self.advance(ticks);
-        let tick = MatchRate::new(self.packages.manifest().tick_hz.default()).length();
-        for client in &mut self.clients {
-            client.insert_resource(TimeUpdateStrategy::ManualDuration(tick * ticks));
-            client.update();
-            client.insert_resource(TimeUpdateStrategy::ManualDuration(tick));
+        let stall = self.tick() * ticks;
+        let clients = self.stepper.client_count();
+        for client in 0..clients {
+            self.stepper.stall(AppId::Client(client), stall);
         }
-        let most = self.server.world().resource::<Time<Virtual>>().max_delta();
-        let most = u32::try_from(most.as_nanos() / tick.as_nanos()).unwrap();
-        let mut left = ticks;
-        while left > 0 {
+        let world = self.stepper.server_world();
+        let most = world.resource::<Time<Virtual>>().max_delta();
+        let mut left = stall;
+        while left > Duration::ZERO {
             let frame = left.min(most);
-            self.server
-                .insert_resource(TimeUpdateStrategy::ManualDuration(tick * frame));
-            self.server_frame();
+            self.stepper.advance_time(frame);
+            self.stepper.frame(AppId::Server);
             left -= frame;
         }
-        self.server
-            .insert_resource(TimeUpdateStrategy::ManualDuration(
-                tick / self.setup.server_frames,
-            ));
+        for client in 0..clients {
+            self.stepper.frame(AppId::Client(client));
+        }
     }
 
     /// Each input of a player that the server's log applied, in the order of its ticks, from the
     /// log's latest checkpoint on.
     pub fn applied_inputs(&self) -> Vec<AppliedInput> {
-        let log = self.server.world().resource::<Session>().log();
+        let log = self.stepper.server_world().resource::<Session>().log();
         let mut inputs = Vec::new();
         let Some(mut replay) = LogReplay::of(log) else {
             return inputs;
@@ -785,16 +708,9 @@ impl InProcessMatch {
         inputs
     }
 
-    /// One frame of `client` alone: one tick of it.
+    /// The next frame of `client` alone: one tick of it.
     pub fn client_frame(&mut self, client: usize) {
-        self.clients[client].update();
-    }
-
-    /// Moves the wire clock `ticks` ticks on, as every end's frames do.
-    fn advance(&mut self, ticks: u32) {
-        let tick = MatchRate::new(self.packages.manifest().tick_hz.default()).length();
-        self.now += tick * ticks;
-        self.network.set_time(self.now);
+        self.stepper.frame(AppId::Client(client));
     }
 
     pub const fn setup(&self) -> &InProcessSetup {
@@ -804,8 +720,8 @@ impl InProcessMatch {
     /// Gives `client`'s avatar an order, sent in the client's next tick.
     pub fn order(&mut self, client: usize, directive: impl Into<Directive>) {
         let unit = self.avatar(client);
-        self.clients[client]
-            .world_mut()
+        self.stepper
+            .client_world_mut(client)
             .resource_mut::<PendingOrders>()
             .push(Order::one(unit, directive));
     }
@@ -815,7 +731,7 @@ impl InProcessMatch {
         let books = self.packages.name_books();
         let bot = BotScript::new(script, &BotNames::new(&books))
             .expect("a test's bot names what its mode has");
-        self.clients[client].world_mut().insert_resource(bot);
+        self.stepper.client_world_mut(client).insert_resource(bot);
     }
 
     /// `client`'s player's avatar, as the server holds it.
@@ -826,7 +742,7 @@ impl InProcessMatch {
 
     /// `client`'s player's avatar, as the server holds it, once the server spawned it.
     fn spawned_avatar(&self, client: usize) -> Option<StableId> {
-        let world = self.server.world();
+        let world = self.stepper.server_world();
         let slot = world
             .link_seat(self.link(client))
             .expect("the match started, with the client's slot");
@@ -851,7 +767,7 @@ impl InProcessMatch {
 
     /// The team of `client`'s player's avatar.
     pub fn team(&self, client: usize) -> Team {
-        let world = self.server.world();
+        let world = self.stepper.server_world();
         let avatar = world.entity_of(self.avatar(client));
         *world
             .get::<Team>(avatar.expect("the avatar exists"))
@@ -859,13 +775,13 @@ impl InProcessMatch {
     }
 
     pub const fn server(&self) -> &App {
-        &self.server
+        self.stepper.server_app()
     }
 
     pub fn app(&self, end: End) -> &App {
         match end {
-            End::Server => &self.server,
-            End::Client(client) => &self.clients[client],
+            End::Server => self.stepper.server_app(),
+            End::Client(client) => self.stepper.client_app(client),
         }
     }
 
@@ -876,20 +792,20 @@ impl InProcessMatch {
 
     /// The times `client` rolled its state back.
     pub fn rollbacks(&self, client: usize) -> u32 {
-        let world = self.clients[client].world();
+        let world = self.stepper.client_world(client);
         world.resource::<PredictionCounts>().rollbacks
     }
 
     /// The client whose player's avatar is on `team`.
     pub fn client_of(&self, team: Team) -> usize {
-        (0..self.clients.len())
+        (0..self.stepper.client_count())
             .find(|&client| self.team(client) == team)
             .expect("a client plays each team")
     }
 
     /// The tower of `team` on the server: its one unit that stands, has a body and no owner.
     pub fn tower(&self, team: Team) -> StableId {
-        let world = self.server.world();
+        let world = self.stepper.server_world();
         let mut towers = world
             .resource::<EntityIndex>()
             .iter()
@@ -906,43 +822,39 @@ impl InProcessMatch {
     }
 
     pub const fn server_mut(&mut self) -> &mut App {
-        &mut self.server
+        self.stepper.server_app_mut()
     }
 
     pub fn client(&self, client: usize) -> &App {
-        &self.clients[client]
+        self.stepper.client_app(client)
     }
 
     pub fn client_mut(&mut self, client: usize) -> &mut App {
-        &mut self.clients[client]
+        self.stepper.client_app_mut(client)
     }
 
     /// Makes the server give its receipts in its next update, as if their second passed.
     pub fn give_receipts(&mut self) {
-        self.server.world_mut().give_receipts();
+        self.stepper.server_world_mut().give_receipts();
     }
 
     /// Holds the server's next round of receipts until `give_receipts`, so a test that steps
     /// slower than real time, as one does under a loaded host, meets none it did not ask for.
     pub fn hold_receipts(&mut self) {
-        self.server.world_mut().hold_receipts();
+        self.stepper.server_world_mut().hold_receipts();
     }
 
-    /// The server's link to `client`, which its endpoint spawned at the client's address.
+    /// The server's link to `client`, as the stepper finds it, or a placeholder before the
+    /// server's endpoint spawned one.
     pub fn link(&self, client: usize) -> Entity {
-        let world = self.server.world();
-        let address = self.addresses[client];
-        world
-            .try_query::<(Entity, &RemoteAddress)>()
-            .expect("the server's links hold their addresses")
-            .iter(world)
-            .find(|(_, remote)| remote.0 == address)
-            .map_or(Entity::PLACEHOLDER, |(link, _)| link)
+        let link = self.stepper.try_client_of_entity(client);
+        link.unwrap_or(Entity::PLACEHOLDER)
     }
 
     /// What `direction` of `client`'s wire did with its packets so far.
     pub fn wire_counts(&self, client: usize, direction: LinkDirection) -> DirectionCounts {
-        self.network.counts(self.wires[client], direction)
+        let wire = self.stepper.client_link(client);
+        self.stepper.network().counts(wire, direction)
     }
 
     /// The pause and the speed every end follows.
@@ -961,85 +873,6 @@ impl InProcessMatch {
     }
 }
 
-/// A client's new link: its address on its wires, and their link on the emulator.
-#[derive(Debug, Clone, Copy)]
-struct ClientLink {
-    address: SocketAddr,
-    wire: EmulatedLinkId,
-}
-
-/// A client app of an `InProcessMatch`, and its client entity.
-#[derive(Debug)]
-struct ClientApp {
-    app: App,
-    entity: Entity,
-}
-
-/// Who a client joins as: a player, whose keys and rollback mode the setup gives, or the
-/// `n`th spectator, with a key of its own.
-#[derive(Debug, Clone, Copy)]
-enum Joiner {
-    Player(usize),
-    Spectator(usize),
-}
-
-impl ClientApp {
-    /// The app of `joiner` in `local`, at its packages' default rate, following its pace and
-    /// reading its clock.
-    fn new(local: &InProcessMatch, joiner: Joiner) -> Self {
-        let setup = &local.setup;
-        let tick_hz = local.packages.manifest().tick_hz.default();
-        let (keys, role, rollback) = match joiner {
-            Joiner::Player(player) => (
-                TestKey::player(u32::try_from(player).unwrap()),
-                JoinRole::Play,
-                setup.rollbacks[player],
-            ),
-            Joiner::Spectator(spectator) => (
-                TestKey::spectator(u32::try_from(spectator).unwrap()),
-                JoinRole::Watch,
-                RollbackMode::Check,
-            ),
-        };
-        let sim_client = SimClientPlugin {
-            main: Arc::new(Signer::new(keys.main, Entropy::Fixed(4))),
-            session: SessionSigner::new(Signer::new(keys.session, Entropy::Fixed(4))),
-            server: ServerPin {
-                key: TestKey::server().x_only_public_key().0,
-                tls_key: InProcessMatch::tls_key(),
-                tick_hz,
-            },
-            role,
-            hosting: Hosting::Local,
-            packages: Arc::clone(&local.packages),
-            os: Os {
-                clock: local.clock.clone(),
-                entropy: Entropy::Fixed(4),
-            },
-            data: None,
-        };
-        let rate = MatchRate::new(tick_hz);
-        let mut client = App::new();
-        client.add_plugins((OneThreadPlugins, TimePlugin, StatesPlugin));
-        client.add_plugins(sim_client);
-        client.add_plugins(LocalPacePlugin {
-            pace: Arc::clone(&local.pace),
-            tick_rate: rate.rate(),
-        });
-        client.insert_resource(TimeUpdateStrategy::ManualDuration(rate.length()));
-        client
-            .world_mut()
-            .resource_mut::<PredictionSetup>()
-            .rollback_setup
-            .mode = rollback;
-        let entity = SimClientPlugin::spawn(client.world_mut());
-        Self {
-            app: client,
-            entity,
-        }
-    }
-}
-
 pub(crate) mod bench {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Duration;
@@ -1047,6 +880,7 @@ pub(crate) mod bench {
 
     use campfire_bots::OrderScript;
     use campfire_math::{Num, Vec3};
+    use campfire_net_emulator::LinkModel;
     use campfire_net_prediction::RollbackMode;
     use campfire_orders::OrdersDirective;
     use campfire_sim::{Position, SimWorld};
@@ -1055,7 +889,6 @@ pub(crate) mod bench {
     use campfire_units::GroundPoint;
 
     use crate::in_process_match::{CONNECT_FRAMES, End, InProcessMatch, InProcessSetup, StepCost};
-    use campfire_net_emulator::LinkModel;
 
     /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new
     /// order every 40 frames keeps the avatar walking and the server sending updates.
@@ -1152,8 +985,8 @@ pub(crate) mod bench {
         /// Where each client's avatar stands on the server, by client, into `places`.
         pub(crate) fn avatar_places(&self, places: &mut Vec<Vec3>) {
             places.clear();
-            let world = self.server.world();
-            for client in 0..self.clients.len() {
+            let world = self.stepper.server_world();
+            for client in 0..self.stepper.client_count() {
                 let avatar = world.entity_of(self.avatar(client));
                 let position = world.get::<Position>(avatar.expect("the avatar exists"));
                 places.push(position.expect("an avatar has a place").get());
@@ -1170,7 +1003,7 @@ pub(crate) mod bench {
             around: &[Vec3],
             spent: &mut StepCost,
         ) {
-            debug_assert_eq!(around.len(), self.clients.len());
+            debug_assert_eq!(around.len(), self.stepper.client_count());
             for _ in 0..steps {
                 if frame.is_multiple_of(LEG_FRAMES) {
                     let side = if frame.is_multiple_of(2 * LEG_FRAMES) {

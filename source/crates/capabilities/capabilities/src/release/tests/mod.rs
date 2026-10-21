@@ -22,7 +22,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimUpdate, SimWorld, StateRegistry};
 use campfire_store::{DirEntries, EntryKind, InputFile};
 use campfire_units::UnitTypeCore;
-use campfire_values::Team;
+use campfire_units::internals::Spawn;
 use serde::Deserialize;
 
 use super::*;
@@ -96,7 +96,8 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
 
 /// Installs `declared` into a fresh match that runs `scripts`.
 fn installed(declared: &[Capability], pools: Option<ScriptPools>) -> Match {
-    Match::test(declared, Match::TEST_RATE, pools)
+    let role = pools.map_or(Role::Rules, Role::Server);
+    Match::builder(declared).role(role).build()
 }
 
 #[test]
@@ -183,7 +184,7 @@ fn every_pair_of_capabilities_with_only_what_they_need_orders_every_pair_of_thei
             for mut game in [
                 installed(&declared, Some(scripts)),
                 installed(&declared, None),
-                Match::predicting(&declared),
+                Match::builder(&declared).role(Role::Client).build(),
             ] {
                 game.step();
                 matches += 1;
@@ -482,7 +483,6 @@ fn each_capability_installs_after_the_lower_layers_it_builds_on() {
 #[test]
 fn a_unit_holds_only_parts_the_declarations_list() {
     // The mode's module, which the capability of the same name hides here.
-    use campfire_mode::Mode;
     // A match of every capability the release runs: a unit holds only parts the declarations
     // list, as state or derived; one more is named.
     /// A part of a unit that no declaration lists.
@@ -490,9 +490,9 @@ fn a_unit_holds_only_parts_the_declarations_list() {
     struct Unlisted;
     let set = Release::capabilities();
     let declared: Vec<Capability> = set.iter().collect();
-    let mut game = Match::unscripted(&declared);
+    let mut game = Match::builder(&declared).role(Role::Rules).build();
     let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    let id = Mode::spawn(&mut game, unit_type, Vec3::ZERO, Team::new(0), ());
+    let id = Spawn::of(unit_type, Vec3::ZERO).place(&mut game);
     assert_eq!(
         Release::unlisted_components(set, &game),
         Vec::<String>::new()

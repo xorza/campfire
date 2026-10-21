@@ -1,7 +1,7 @@
 //! The rules of the capability crates' code: where their sets are named, their roles' and books'
 //! names, their lookups by name, and the words of a genre they leave to data.
 
-use crate::workspace::{Crate, crates, holder, sources};
+use crate::workspace::{Crate, crates, holder, sources_of};
 
 mod genre_words;
 mod lookups;
@@ -46,8 +46,9 @@ fn capability_sources() -> Vec<NamedCode> {
 /// The production code of the sources of each crate that `naming` names, by the path it gives.
 fn named_code(naming: impl Fn(&Crate) -> Option<Naming>) -> Vec<NamedCode> {
     let crates = crates();
+    let named = crates.iter().filter(|krate| naming(krate).is_some());
     let mut found = Vec::new();
-    for file in sources() {
+    for file in sources_of(named) {
         let Some(krate) = holder(&crates, &file.path).map(|at| &crates[at]) else {
             continue;
         };

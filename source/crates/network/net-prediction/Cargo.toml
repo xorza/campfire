@@ -44,14 +44,10 @@ bevy_time.workspace = true
 bevy_utils = { workspace = true, features = ["debug"] }
 
 [dev-dependencies]
-campfire-codec = { workspace = true, features = ["internals"] }
 campfire-net-emulator = { workspace = true, features = ["internals"] }
 campfire-net-prediction = { workspace = true, features = ["internals"] }
 
 serde = { workspace = true, features = ["derive", "rc", "std"] }
-
-bevy.workspace = true
-bevy_state.workspace = true
 
 [lints]
 workspace = true

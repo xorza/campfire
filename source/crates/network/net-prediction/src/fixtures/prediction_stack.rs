@@ -24,8 +24,8 @@ impl PredictionStack {
 }
 
 impl Stack for PredictionStack {
-    fn add_client(&self, app: &mut App, tick_rate: TickRate) {
-        InterpolationStack.add_client(app, tick_rate);
+    fn add_client(&self, app: &mut App, client: usize, tick_rate: TickRate) {
+        InterpolationStack.add_client(app, client, tick_rate);
         Self::add_markers(app);
         if !app.is_plugin_added::<PredictionPlugin>() {
             app.add_plugins((PredictionRegistryPlugin, PredictionPlugins));
@@ -70,8 +70,7 @@ mod tests {
         let stepper = Stepper::new(PredictionStack, StepperSetup::single());
         assert!(
             stepper
-                .client_app(0)
-                .world()
+                .client_world(0)
                 .contains_resource::<PredictionSetup>()
         );
     }

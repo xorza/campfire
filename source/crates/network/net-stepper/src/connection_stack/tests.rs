@@ -1,7 +1,7 @@
 use super::*;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
-use bevy_time::{TimePlugin, TimeUpdateStrategy};
+use bevy_time::TimeUpdateStrategy;
 use campfire_net_connection::RemoteId;
 use campfire_net_connection::{
     Client, ClientOf, Connect, Connected, Disconnected, DisconnectedReason, Start,

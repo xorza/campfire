@@ -5,14 +5,12 @@ use bevy_app::App;
 use campfire_actions::SlotTimes;
 use campfire_bots::OrderScript;
 use campfire_common::Tick;
-use campfire_harness::HashTrail;
 use campfire_math::{Num, Vec3};
-use campfire_net::internals::TickHashes;
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup, LinkLayout};
 use campfire_orders::OrdersDirective;
-use campfire_protocol::{LogReplay, SessionLog};
-use campfire_runner::{Replay, Session};
+use campfire_protocol::LogReplay;
+use campfire_runner::Session;
 use campfire_sim::{MatchRate, Position, SimWorld, StableId};
 use campfire_stats::Pools;
 use campfire_units::{Body, Dead, GroundPoint, Life, PoolId, SeenBy};
@@ -153,12 +151,8 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
         .map(|script| OrderScript::parse(script).unwrap().orders().len())
         .iter()
         .sum();
-    let server = local.server_mut().world_mut();
-    server.resource_mut::<Session>().reveal_seed();
-    let live = HashTrail::of_totals(server.resource::<TickHashes>().get().iter().copied());
-    let mut file = Vec::new();
-    server.resource::<Session>().log().encode(&mut file);
-    let decoded = SessionLog::decode(&file).unwrap();
+    let record = local.server_record();
+    let decoded = record.log();
     let mut replay = LogReplay::of(&decoded).unwrap();
     let mut applied = Vec::new();
     while !replay.is_done(&decoded) {
@@ -173,13 +167,10 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
         "{applied:?}"
     );
     assert_eq!(
-        live.totals().len(),
+        record.live.totals().len(),
         usize::try_from(decoded.next_tick().get()).unwrap()
     );
-    let decoded = SessionLog::decode(&file).unwrap();
-    let mut replay = Replay::of(decoded, local.packages()).unwrap();
-    let replayed = HashTrail::of_replay(&mut replay);
-    live.assert_same(&replayed.unwrap());
+    record.assert_replays(local.packages());
 }
 
 /// The orders by team, the west, whose hero is the walker, then the east, whose is the runner:

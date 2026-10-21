@@ -78,7 +78,6 @@ tracing = { workspace = true, features = ["attributes", "std"] }
 campfire-import = { workspace = true, features = ["internals"] }
 
 fluent-syntax.workspace = true
-serde = { workspace = true, features = ["derive", "std"] }
 
 [lints]
 workspace = true

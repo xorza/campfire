@@ -2,6 +2,7 @@ use super::*;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use campfire_net_replication::ConfirmedTickMap;
 use campfire_net_replication::HistoryDiffReceiver;
+use campfire_net_replication::internals::{replicon_app, shared_replicon_app};
 use core::time::Duration;
 
 use crate::app_interpolation_ext::AppInterpolationExt;
@@ -20,11 +21,8 @@ use bevy_ecs::archetype::Archetype;
 use bevy_ecs::component::Component;
 use bevy_ecs::query::ArchetypeFilter;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
-use bevy_replicon::prelude::{
-    Diffable as RepliconDiffable, RepliconPlugins, RepliconSharedPlugin, RepliconTick,
-};
+use bevy_replicon::prelude::{Diffable as RepliconDiffable, RepliconTick};
 use bevy_replicon::shared::replication::diff::diff_index::DiffIndex;
-use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_net_core::TickInstant;
 use campfire_net_replication::AppComponentExt;
@@ -197,12 +195,8 @@ fn setup_app(current_tick: NetTick, send_interval_ms: u64) -> App {
 
 /// An app at `current_tick` with no rule yet.
 fn setup_app_without_rule(current_tick: NetTick, send_interval_ms: u64) -> App {
-    let mut app = App::new();
-    app.add_plugins((
-        StatesPlugin,
-        RepliconSharedPlugin::default(),
-        InterpolationMarkerPlugin,
-    ));
+    let mut app = shared_replicon_app();
+    app.add_plugins(InterpolationMarkerPlugin);
     app.world_mut().insert_resource(ConfirmedTickMap::default());
     app.world_mut()
         .insert_resource(ReplicationStorage::default());
@@ -236,13 +230,8 @@ impl InterpolationTestAppBuilder {
     }
 
     fn build(self) -> App {
-        let mut app = App::new();
-        app.add_plugins((
-            TimePlugin,
-            StatesPlugin,
-            RepliconPlugins,
-            InterpolationMarkerPlugin,
-        ));
+        let mut app = replicon_app();
+        app.add_plugins((TimePlugin, InterpolationMarkerPlugin));
         app.insert_resource(ConfirmedTickMap::default());
         app.configure_sets(
             Update,
@@ -435,12 +424,8 @@ fn a_disabled_bundle_blocks_the_rules_of_its_members() {
 
 #[test]
 fn a_linear_interpolate_registers_an_ease_rule() {
-    let mut app = App::new();
-    app.add_plugins((
-        StatesPlugin,
-        RepliconSharedPlugin::default(),
-        InterpolationMarkerPlugin,
-    ));
+    let mut app = shared_replicon_app();
+    app.add_plugins(InterpolationMarkerPlugin);
     app.world_mut().insert_resource(ConfirmedTickMap::default());
     app.register_component::<TestComp>()
         .replicate()

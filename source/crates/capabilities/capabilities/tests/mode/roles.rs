@@ -4,6 +4,16 @@ use campfire_values::Named;
 
 use super::*;
 
+/// The test mode with a `dummy`, a grunt of 1000 health, and the mode's own `strike`, whose
+/// call an action's role makes.
+fn roles_set() -> PackageSet {
+    let mut set = mode_packages(SCRIPT);
+    set.units.push_str(&stat_type("dummy", &[]));
+    set.data
+        .push_str("\n[actions.strike]\ntargeting = \"none\"\n");
+    set
+}
+
 #[test]
 fn every_role_reads_the_match_and_all_but_the_ai_deal_damage_heal_and_restore() {
     let changes = r#"
@@ -13,10 +23,10 @@ fn every_role_reads_the_match_and_all_but_the_ai_deal_damage_heal_and_restore() 
     ctx.add_resource(ctx.players[0], "gold", 5);"#;
     let reads = r#"[ctx.teams, ctx.map.paths, ctx.avatars().len(), ctx.units_tagged("avatar").len(),
         ctx.players.len()]"#;
-    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    let mut game = started(&roles_set(), ScriptLimits::ROOMY).unwrap();
     Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
-    let actor = Mode::stat_grunt(&mut game, Team::new(0), &[]);
-    let target = Mode::stat_grunt(&mut game, Team::new(1), &[]);
+    let actor = spawn_of(&mut game, "dummy", Team::new(0));
+    let target = spawn_of(&mut game, "dummy", Team::new(1));
     let entity = game.unit_entity(target);
     let mut life = Life::full(Num::int(1000));
     life.take(Num::int(20));
@@ -126,10 +136,10 @@ fn every_role_reads_the_match_and_all_but_the_ai_deal_damage_heal_and_restore() 
 fn a_script_turns_a_neutral_pair_hostile_and_filters_follow_it() {
     // Team a and the neutral team regard each other neutral, as the mode declares; b is hostile to
     // both. At the origin: a's and b's fighters, and the map's neutral grunt.
-    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    let mut game = started(&roles_set(), ScriptLimits::ROOMY).unwrap();
     Mode::tick_inputs(&mut game, &[]);
-    let a = Mode::stat_grunt(&mut game, Team::new(0), &[]);
-    Mode::stat_grunt(&mut game, Team::new(1), &[]);
+    let a = spawn_of(&mut game, "dummy", Team::new(0));
+    spawn_of(&mut game, "dummy", Team::new(1));
     let counts = r#"
 fn probe(ctx, unit) {
     let counts = [];
@@ -206,10 +216,10 @@ fn probe(ctx, unit) {
 fn the_modes_damage_comes_from_the_source_it_names_else_from_none() {
     // The mode's call has no acting unit: its damage of the target comes from none, and with the
     // actor named, from the actor, whom the target then lists among its recent attackers.
-    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    let mut game = started(&roles_set(), ScriptLimits::ROOMY).unwrap();
     Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
-    let actor = Mode::stat_grunt(&mut game, Team::new(0), &[]);
-    let target = Mode::stat_grunt(&mut game, Team::new(1), &[]);
+    let actor = spawn_of(&mut game, "dummy", Team::new(0));
+    let target = spawn_of(&mut game, "dummy", Team::new(1));
     let attackers = |game: &mut Match, call: &str| -> i64 {
         let deal = format!(
             r#"fn probe(ctx, unit) {{ for other in ctx.find(unit, unit.position, 100, "enemies") {{ {call} }} }}"#

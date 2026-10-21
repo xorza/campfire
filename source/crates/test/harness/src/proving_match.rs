@@ -12,7 +12,7 @@ use campfire_values::Team;
 use crate::fixed_session::FixedSession;
 use crate::fixed_session::fixed_match::FixedMatch;
 use crate::match_units::MatchUnits;
-use crate::scripted::{CastAim, Plan, Scripted, TICK_HZ};
+use crate::scripted::{CastAim, Plan, Scripted};
 use crate::scripted_mode::ScriptedMode;
 
 /// The camps team, which holds the neutral boulder.
@@ -112,7 +112,7 @@ impl ProvingMatch {
     pub fn load() -> ScriptedMode<Self> {
         let packages = TestMode::Proving.packages();
         let plan = [SeatPlan::Player, SeatPlan::Open];
-        let session = FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan);
+        let session = FixedSession::planned(packages, InputRules::ROOMY, plan);
         ScriptedMode::new(session, SCRIPT.to_vec())
     }
 }

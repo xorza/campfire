@@ -5,6 +5,8 @@
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
+#[cfg(feature = "internals")]
+mod arena;
 mod events;
 mod match_build;
 mod replay;
@@ -30,5 +32,5 @@ pub use crate::session_rules::{CheckedTerms, HostChoices, SessionRules};
 /// What the test harness builds an arena of.
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::match_build::internals::ArenaSetup;
+    pub use crate::arena::Arena;
 }

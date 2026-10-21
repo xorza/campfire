@@ -56,7 +56,6 @@ bevy_time = { workspace = true, features = ["bevy_reflect"] }
 campfire-net-link.workspace = true
 campfire-net-replication = { workspace = true, features = ["internals"] }
 
-bevy.workspace = true
 
 
 [[bench]]

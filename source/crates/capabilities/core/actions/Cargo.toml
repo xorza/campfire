@@ -41,7 +41,6 @@ thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
-campfire-codec = { workspace = true, features = ["internals"] }
 
 
 [lints]

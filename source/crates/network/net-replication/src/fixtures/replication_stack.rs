@@ -32,8 +32,8 @@ impl ReplicationStack {
 }
 
 impl Stack for ReplicationStack {
-    fn add_client(&self, app: &mut App, tick_rate: TickRate) {
-        MessagesStack.add_client(app, tick_rate);
+    fn add_client(&self, app: &mut App, client: usize, tick_rate: TickRate) {
+        MessagesStack.add_client(app, client, tick_rate);
         Self::add_shared(app);
         if !app.is_plugin_added::<ClientReplicationPlugin>() {
             app.add_plugins(ClientReplicationPlugins);
@@ -86,11 +86,10 @@ mod tests {
     fn an_entity_replicates_to_the_client() {
         let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
         stepper
-            .server_app_mut()
-            .world_mut()
+            .server_world_mut()
             .spawn((CompA(1.0), Replicate::to_clients(NetworkTarget::All)));
         stepper.frame_step(4);
-        let world = stepper.client_app_mut(0).world_mut();
+        let world = stepper.client_world_mut(0);
         let replicated = world
             .query_filtered::<&CompA, With<Remote>>()
             .iter(world)

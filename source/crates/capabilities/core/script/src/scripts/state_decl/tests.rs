@@ -131,8 +131,12 @@ fn an_enum_starts_at_its_default_or_first_member_and_holds_only_its_members() {
     assert_eq!(phase.initial(), &StateValue::Text("play".into()));
     // It writes its members and its first value, and reads back to itself.
     assert_eq!(Toml::parse::<StateDecl>(&Toml::write(&phase)), Ok(phase));
-    assert!(read("type = \"int\"\nvalues = [\"a\"]").is_err());
-    assert!(read("type = \"enum\"").is_err());
+    let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
+    assert_eq!(
+        refusal("type = \"int\"\nvalues = [\"a\"]"),
+        "`values` of the type Int"
+    );
+    assert_eq!(refusal("type = \"enum\""), "an enum with no `values`");
 }
 
 #[test]

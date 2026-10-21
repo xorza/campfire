@@ -2,12 +2,12 @@ use bevy_ecs::world::World;
 use campfire_actions::ActionTarget;
 use campfire_common::Seat;
 use campfire_math::{Num, Vec3};
-use campfire_mode::Mode;
 use campfire_navigation::Navigation;
 use campfire_orders::OrdersDirective;
 use campfire_production::Production;
 use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
+use campfire_units::internals::Spawn;
 use campfire_units::{BodyForm, BuildTarget, GroundPoint, Owner, SeenBy};
 use campfire_values::{Team, TeamSet, UnitType};
 
@@ -46,13 +46,10 @@ pub trait ProductionFixtures {
 
 impl ProductionFixtures for Production {
     fn owned(world: &mut World, unit_type: UnitType, owner: Seat) -> StableId {
-        Mode::spawn(
-            world,
-            unit_type,
-            Vec3::ZERO,
-            Team::new(1),
-            Owner::new(owner),
-        )
+        Spawn::of(unit_type, Vec3::ZERO)
+            .team(Team::new(1))
+            .parts(Owner::new(owner))
+            .place(world)
     }
 
     fn tick_ordering(world: &mut World, slot: u32, id: StableId, directive: impl Into<Directive>) {
@@ -104,7 +101,11 @@ impl ProductionFixtures for Production {
         seen: Option<TeamSet>,
     ) -> StableId {
         let form = BodyForm::circle(Num::HALF).unwrap();
-        let id = Navigation::spawn_unit(world, position, team, None, Some(Num::ONE), Some(form));
+        let id = Navigation::walker_at(world, position)
+            .team(team)
+            .body(form)
+            .walks(Num::ONE, None)
+            .place(world);
         if let Some(teams) = seen {
             world.insert_parts(id, SeenBy::new(teams));
         }

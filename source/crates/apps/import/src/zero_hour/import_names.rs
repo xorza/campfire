@@ -168,24 +168,13 @@ impl ShellNames {
 
 #[cfg(test)]
 mod tests {
-    use campfire_codec::Toml;
-    use serde::Deserialize;
-    use serde::de::IgnoredAny;
+    use campfire_codec::{Toml, TomlTable};
 
     use super::*;
     use crate::zero_hour::format::ini::object_ini::ObjectIni;
 
     #[test]
     fn an_objects_name_is_its_own_unless_another_took_it() {
-        // Each type's section reads as the engine's unit type where the import's package loads.
-        #[derive(Debug, Deserialize)]
-        struct Units {
-            #[expect(
-                clippy::zero_sized_map_values,
-                reason = "the test reads each section's name alone"
-            )]
-            units: BTreeMap<DeclaredName, IgnoredAny>,
-        }
         let mut ini = ObjectIni::default();
         let objects =
             "Object Rocks1\nEnd\nObject AmericaTank\nEnd\nObject ROCKS1\nEnd\nObject Oak\nEnd\n";
@@ -214,8 +203,12 @@ mod tests {
         assert_eq!(file.max_speed, None);
         let toml = file.text;
         assert_eq!(toml, "[units.americatank]\n\n[units.rocks1]\n");
-        let units: Units = Toml::parse(&toml).unwrap();
-        let read: Vec<&str> = units.units.keys().map(DeclaredName::as_str).collect();
+        // Each type's section reads by its name as the engine's unit type, where the import's
+        // package loads.
+        let mut file: TomlTable = Toml::parse(&toml).unwrap();
+        let units = file.take::<BTreeMap<DeclaredName, TomlTable>>("units");
+        let units = units.unwrap().unwrap();
+        let read: Vec<&str> = units.keys().map(DeclaredName::as_str).collect();
         assert_eq!(read, ["americatank", "rocks1"]);
     }
 }

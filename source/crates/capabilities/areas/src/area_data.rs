@@ -80,3 +80,32 @@ impl Section for AreaData {
     const TABLE: SectionTable = SectionTable::DeliveryType;
     const KEY: &'static str = "area";
 }
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::Toml;
+
+    use super::*;
+
+    #[test]
+    fn an_area_reads_only_with_a_radius_that_is_not_negative() {
+        let read = |text: &str| Toml::parse::<AreaData>(text);
+        assert_eq!(
+            read("radius = 0").unwrap(),
+            AreaData {
+                radius: Num::ZERO,
+                delay_ms: 0,
+                duration_ms: 0,
+                affects: None,
+                inside: AreaInsideData::default(),
+            }
+        );
+        for refused in ["radius = -1", "radius = \"-0.5\""] {
+            let message = read(refused).unwrap_err().message().to_owned();
+            assert!(
+                message.starts_with("an area's radius is not negative"),
+                "{refused}"
+            );
+        }
+    }
+}

@@ -1,5 +1,7 @@
 use std::panic;
 
+use campfire_declarations::Role;
+
 use campfire_capabilities::Match;
 use campfire_common::Seat;
 use campfire_players::*;
@@ -13,7 +15,10 @@ fn a_match_with_no_mode_starts_with_its_entity_then_its_players_and_none_joins_o
     // Two players, of teams 1 then 0, with two resources each: the match's entity holds
     // relations of hostile teams, and each player's its slot, its team, the stats' part and
     // two resources at 0.
-    let mut game = Match::test_unstarted(&[Capability::Stats], Match::TEST_RATE, None);
+    let mut game = Match::builder(&[Capability::Stats])
+        .role(Role::Rules)
+        .unstarted()
+        .build();
     Players::start_without_mode(&mut game, [Team::new(1), Team::new(0)], 2);
     let entity = game.match_entity().unwrap();
     assert_eq!(game.get::<Relations>(entity), Some(&Relations::default()));
@@ -31,7 +36,10 @@ fn a_match_with_no_mode_starts_with_its_entity_then_its_players_and_none_joins_o
     assert_eq!(game.player_entity(Seat::new(2)), None);
 
     // A player joins only a match that started: one of no match entity refuses it.
-    let mut unstarted = Match::test_unstarted(&[Capability::Stats], Match::TEST_RATE, None);
+    let mut unstarted = Match::builder(&[Capability::Stats])
+        .role(Role::Rules)
+        .unstarted()
+        .build();
     let joined = panic::catch_unwind(panic::AssertUnwindSafe(|| {
         Players::spawn(&mut unstarted, 1, 0);
     }));

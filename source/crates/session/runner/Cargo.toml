@@ -9,19 +9,25 @@ kind = "glue"
 
 [features]
 internals = [
+    "campfire-actions/internals",
     "campfire-capabilities/internals",
     "campfire-declarations/internals",
     "campfire-log/internals",
+    "campfire-math/internals",
     "campfire-mode/internals",
     "campfire-package/internals",
     "campfire-players/internals",
     "campfire-protocol/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
+    "campfire-stats/internals",
+    "campfire-units/internals",
+    "campfire-values/internals",
     "campfire-vision/internals",
 ]
 
 [dependencies]
+campfire-actions = { workspace = true, optional = true }
 campfire-capabilities.workspace = true
 campfire-common.workspace = true
 campfire-declarations.workspace = true
@@ -31,7 +37,11 @@ campfire-package.workspace = true
 campfire-players.workspace = true
 campfire-protocol.workspace = true
 campfire-script.workspace = true
+campfire-math = { workspace = true, optional = true }
 campfire-sim.workspace = true
+campfire-stats = { workspace = true, optional = true }
+campfire-units = { workspace = true, optional = true }
+campfire-values = { workspace = true, optional = true }
 campfire-visibility.workspace = true
 campfire-vision = { workspace = true, optional = true }
 
@@ -42,6 +52,12 @@ thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
+campfire-areas = { workspace = true, features = ["internals"] }
+campfire-combat = { workspace = true, features = ["internals"] }
+campfire-deliveries = { workspace = true, features = ["internals"] }
+campfire-navigation = { workspace = true, features = ["internals"] }
+campfire-orders = { workspace = true, features = ["internals"] }
+campfire-projectiles = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
 # Its tests read the workspace's test packages from disk.
 campfire-test-packages.workspace = true

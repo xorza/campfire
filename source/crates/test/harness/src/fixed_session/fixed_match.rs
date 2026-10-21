@@ -42,6 +42,11 @@ impl FixedMatch {
         }
     }
 
+    /// Runs the match's next tick on the inputs it holds, as its session does.
+    pub fn step(&mut self) {
+        self.game.run_tick_alone();
+    }
+
     /// Sends player `seat`'s input of `payload` stamped for `stamp`, in a packet of its own; how
     /// it applies.
     pub fn send(&mut self, seat: u32, stamp: Tick, payload: &[u8]) -> Applied {

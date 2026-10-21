@@ -11,7 +11,7 @@ use super::*;
 fn a_script_cuts_cooldowns_by_time_and_by_share_down_to_now() {
     let cutter = r#"
 fn take_input(ctx, player, name, value) {
-    let x = ctx.avatars("a")[0];
+    let x = ctx.all_units_tagged("striker")[0];
     if value == "cut" {
         ctx.cut_cooldown(x, "strike", 1000);
     } else if value == "part" {
@@ -25,7 +25,7 @@ fn take_input(ctx, player, name, value) {
     } else if value == "unknown" {
         ctx.cut_cooldown(x, "lunge", 1000);
     } else if value == "unheld" {
-        ctx.cut_cooldown(ctx.avatars("b")[0], "strike", 1000);
+        ctx.cut_cooldown(ctx.all_units_tagged("tower")[0], "strike", 1000);
     } else if value == "negative" {
         ctx.cut_cooldown(x, "strike", -1);
     } else if value == "kind" {
@@ -35,10 +35,16 @@ fn take_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = picking_match(cutter, ScriptLimits::ROOMY);
-    // Hero X holds `strike` in its basic slot 0; hero Y does not hold it.
-    let x = Mode::pick(&mut game, 0, "hero-x");
-    Mode::pick(&mut game, 2, "hero-y");
+    // A striker, a unit type of the mode's own, holds the mode's `strike` in its basic slot 0, as
+    // a script cuts the cooldown of an action of its own package alone; the tower holds none.
+    let mut set = mode_packages(&format!("{cutter}{PICKING}"));
+    set.data
+        .push_str("\n[tags.striker]\n\n[actions.strike]\ntargeting = \"none\"\n");
+    let striker = "\n[units.striker]\ntags = [\"striker\"]\nslots = { basic = [\"strike\"] }\n";
+    set.units.push_str(striker);
+    let mut game = started(&set, ScriptLimits::ROOMY).unwrap();
+    let x = spawn_of(&mut game, "striker", Team::new(0));
+    let x = game.unit_entity(x);
     let ready = |game: &Match| {
         let times = game.get::<SlotTimes>(x).unwrap();
         times.slot(0).unwrap().ready_at.get()

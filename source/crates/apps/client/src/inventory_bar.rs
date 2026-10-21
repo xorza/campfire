@@ -218,19 +218,9 @@ fn write_slot(line: &mut String, slot: ShownSlot<'_>, clock: BarClock) {
 mod tests {
     use std::num::NonZeroU32;
 
-    use bevy::ecs::system::{IntoSystem, System};
-    use bevy::ecs::world::World;
     use campfire_values::ItemId;
 
     use super::*;
-
-    #[test]
-    fn the_bar_takes_no_conflicting_access() {
-        // Bevy checks that a system's queries do not conflict as it initializes the system.
-        let mut world = World::new();
-        let mut bar = IntoSystem::into_system(InventoryBarPlugin::show);
-        bar.initialize(&mut world);
-    }
 
     #[test]
     fn a_slot_shows_its_item_its_stack_or_uses_and_its_seconds_left() {

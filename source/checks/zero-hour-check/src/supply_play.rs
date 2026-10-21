@@ -77,7 +77,8 @@ impl SupplyPlay {
             }
         };
         let china: SeatPick = CHINA.parse().expect("the play's pick");
-        let session = FixedSession::planned(packages, rate, InputRules::ROOMY, [SeatPlan::Player])
+        let session = FixedSession::planned(packages, InputRules::ROOMY, [SeatPlan::Player])
+            .rate(rate)
             .picked(picks.places())
             .seat_picked(&[china]);
         let mut play = MatchPlay::new(session.start());

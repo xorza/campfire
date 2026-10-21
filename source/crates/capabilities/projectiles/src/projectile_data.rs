@@ -374,3 +374,90 @@ pub(crate) mod internals {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::Toml;
+
+    use super::*;
+
+    #[test]
+    fn a_projectile_reads_only_with_a_positive_speed_a_width_of_0_to_4096_m_and_no_negative_range()
+    {
+        let read = |text: &str| Toml::parse::<ProjectileData>(text);
+        let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
+        let plain = ProjectileData::flying(Num::HALF);
+        assert_eq!(read("speed = \"0.5\"").unwrap(), plain);
+        assert_eq!(
+            read("speed = 20\nwidth = 0\nrange = 0").unwrap(),
+            ProjectileData {
+                speed: Num::int(20),
+                range: Some(Num::ZERO),
+                ..plain.clone()
+            }
+        );
+        // A width of 4,096 m flies as a circle of 2,048 m, the widest body; a bit more does not read.
+        let widest = read("speed = 20\nwidth = 4096").unwrap();
+        assert_eq!(widest.width, Num::int(4096));
+        // `hits` is `none`, a filter or a list of filters, `enemies` when it is absent; a list of
+        // none, and a list of a filter that is none, do not read.
+        let hits = |text: &str| read(&format!("speed = 1\nhits = {text}")).map(|data| data.hits);
+        let filter = |text: &str| FilterData::parse(text).unwrap();
+        assert_eq!(hits("\"none\"").unwrap(), ProjectileHits::Nothing);
+        assert_eq!(
+            hits("\"allies:avatar\"").unwrap(),
+            ProjectileHits::Units(vec![filter("allies:avatar")])
+        );
+        assert_eq!(
+            hits("[\"enemies:structure\", \"all:wall\"]").unwrap(),
+            ProjectileHits::Units(vec![filter("enemies:structure"), filter("all:wall")])
+        );
+        assert_eq!(plain.hits, ProjectileHits::Units(vec![filter("enemies")]));
+        for text in ["\"nobody\"", "[\"all\", \"nobody\"]"] {
+            let message = hits(text).unwrap_err().message().to_owned();
+            assert!(message.starts_with("filter \"nobody\""), "{message}");
+        }
+        assert_eq!(
+            hits("[]").unwrap_err().message(),
+            "a list of hits holds a filter at least; `none` hits no unit"
+        );
+        for (text, message) in [
+            ("speed = 0", "a projectile's speed is positive"),
+            ("speed = \"-0.5\"", "a projectile's speed is positive"),
+            (
+                "speed = 9223372036854775807",
+                "9223372036854775807 is past what a number holds",
+            ),
+            (
+                "speed = 20\nwidth = -1",
+                "a projectile's width is not negative",
+            ),
+            (
+                "speed = 20\nwidth = \"-0.001\"",
+                "a projectile's width is not negative",
+            ),
+            (
+                "speed = 20\nwidth = \"4096.00000006\"",
+                "a projectile's width is at most 4,096 m",
+            ),
+            (
+                "speed = 20\nrange = -1",
+                "a projectile's range is not negative",
+            ),
+        ] {
+            assert!(refusal(text).starts_with(message), "{text}");
+        }
+        // A projectile writes each field but its defaults, and reads back what it wrote: a line of
+        // its speed alone, one of every field a line takes, and a curve that hits nothing.
+        for text in [
+            "speed = \"0.5\"\n",
+            "speed = 20\nwidth = 2\nrange = 9\nhoming = true\nstop_on_hit = true\nonce_per_cast = true\nhits = [\"enemies:structure\", \"all:wall\"]\n",
+            "speed = 20\nhits = \"none\"\n\n[curve]\nfirst = [\"0.5\", 10]\nsecond = [1, -2]\nfollow = 3\nlife_ms = 900\n",
+        ] {
+            let data = read(text).unwrap();
+            let written = Toml::write(&data);
+            assert_eq!(read(&written).unwrap(), data, "{written}");
+            assert_eq!(Toml::write(&read(&written).unwrap()), written);
+        }
+    }
+}

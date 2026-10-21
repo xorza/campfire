@@ -1,9 +1,8 @@
 use super::*;
 use crate::fixtures::protocol::{CompA, CompReplicateOnce, CompRepliconDiff};
 use crate::fixtures::replication_stack::ReplicationStack;
-use crate::fixtures::steps::{
-    PROPAGATION_FRAMES, client_copy, on_client, on_server, spawn_on_server,
-};
+use crate::fixtures::steps::ClientCopies;
+use crate::fixtures::steps::PROPAGATION_FRAMES;
 use crate::replication_target::Replicate;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_stepper::Stepper;
@@ -93,63 +92,69 @@ fn a_replicate_once_component_sends_only_its_insert() {
     {
         let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
-        let source_entity = spawn_on_server(
-            &mut stepper,
-            (
+        let source_entity = stepper
+            .server_world_mut()
+            .spawn((
                 Replicate::to_clients(NetworkTarget::All),
                 CompReplicateOnce(1.0),
-            ),
-        );
+            ))
+            .id();
         stepper.frame_step(PROPAGATION_FRAMES);
 
-        let mirrored_entity = client_copy(&stepper, source_entity)
+        let mirrored_entity = stepper
+            .client_copy(0, source_entity)
             .unwrap_or_else(|| panic!("entity is not present in entity map"));
-        let initial_comp = on_client(&mut stepper, |world| {
+        let initial_comp = {
+            let world = stepper.client_world_mut(0);
             world
                 .entity(mirrored_entity)
                 .get::<CompReplicateOnce>()
                 .cloned()
-        });
+        };
         assert_eq!(
             initial_comp,
             Some(CompReplicateOnce(1.0)),
             "initial replicate_once component should replicate"
         );
 
-        on_server(&mut stepper, |world| {
+        {
+            let world = stepper.server_world_mut();
             world
                 .entity_mut(source_entity)
                 .get_mut::<CompReplicateOnce>()
                 .unwrap()
                 .0 = 2.0;
-        });
+        };
         stepper.frame_step(PROPAGATION_FRAMES);
 
-        let updated_comp = on_client(&mut stepper, |world| {
+        let updated_comp = {
+            let world = stepper.client_world_mut(0);
             world
                 .entity(mirrored_entity)
                 .get::<CompReplicateOnce>()
                 .cloned()
-        });
+        };
         assert_eq!(
             updated_comp,
             Some(CompReplicateOnce(1.0)),
             "replicate_once component updates should not replicate"
         );
 
-        on_server(&mut stepper, |world| {
+        {
+            let world = stepper.server_world_mut();
             world
                 .entity_mut(source_entity)
                 .remove::<CompReplicateOnce>();
-        });
+        };
         stepper.frame_step(PROPAGATION_FRAMES);
 
-        let removed = on_client(&mut stepper, |world| {
+        let removed = {
+            let world = stepper.client_world_mut(0);
             world
                 .entity(mirrored_entity)
                 .get::<CompReplicateOnce>()
                 .is_none()
-        });
+        };
         assert!(removed, "replicate_once component remove should replicate");
     }
 }

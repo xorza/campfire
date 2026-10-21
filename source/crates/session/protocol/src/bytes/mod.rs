@@ -1,0 +1,22 @@
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+/// A payload's bytes, which serialize as bytes in one write, where a `&[u8]` serializes as a
+/// sequence, a write for each `u8`. Postcard encodes both alike, a varint length and then the
+/// bytes, so the wire does not change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Bytes<'a>(pub(crate) &'a [u8]);
+
+impl Serialize for Bytes<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(self.0)
+    }
+}
+
+impl<'de: 'a, 'a> Deserialize<'de> for Bytes<'a> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        <&'a [u8]>::deserialize(deserializer).map(Bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests;

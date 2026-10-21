@@ -107,6 +107,11 @@ The engine has no genres. It has **capabilities**, each one mechanism; a package
 
 - **A mechanism in Rhai.** A mode may declare a scripted system: a script that runs each interval in a stage over the units a filter selects, under the `systems` pool, as Dota 2's custom games add thinkers in Lua. It is called once an interval with all its units, so Rhai's call cost is one an interval, and its filter's units are kept, not searched.
 
-## Testing combinations
+## Testing
 
+- **One builder of a rules match.** `Match::builder` takes the players, the limits, the rate, the role and whether the match starts, and adds each capability's needs, so a test runs a set a package can declare, which `Release::capability_set` still checks.
+- **One spec of a spawned unit.** `units::internals::Spawn` takes the type, the place, the team, the facing, the walk and the parts, and its `place` is a test's one path to the spawner; a capability's helper is a preset that returns one. Refused: positional helpers of up to 7 arguments.
+- **A mode test loads its package.** A package set in `internals` holds a test mode's files as text, and `Match::of_package` builds its match through `Release::books` and the mode's install, as a session's load does; a test changes the mode by an edit of its data, and derives each value a stat or a pool's maximum sets. Refused: a hand-made install of the books, which allowed what no package can hold, a mode's action in an avatar's slot, and drifted from the load.
+- **No module harness.** A tier that installs one capability and its needs makes a cycle, as the mode's core lives above combat, navigation and production, or tests a composition no release runs.
+- **The capabilities keep their own short reader of their group's manifests,** which checks each capability's needs against its crate's dependencies. Refused: the reader of `rules` as a library, which puts it in the shipped build.
 - **Every pair of capabilities meets in a test.** Every pair a mode may declare together meets in a test mode with a golden, as all-pairs testing covers every two-way combination with few cases.

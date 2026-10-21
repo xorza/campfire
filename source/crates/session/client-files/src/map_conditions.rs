@@ -2,6 +2,7 @@ use campfire_common::{DeclaredName, MapName};
 use campfire_values::PackagePath;
 use serde::{Deserialize, Serialize};
 
+use crate::client_file::{ClientFile, ClientFormat};
 use crate::client_path;
 
 /// A map's `client/maps/<name>/conditions.toml`: the conditions it draws its looks in, as a night
@@ -18,4 +19,8 @@ impl MapConditions {
     pub fn path(map: &MapName) -> PackagePath {
         client_path::of_map(map, "conditions.toml")
     }
+}
+
+impl ClientFile for MapConditions {
+    const FORMAT: ClientFormat = ClientFormat::Toml;
 }

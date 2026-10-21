@@ -41,8 +41,8 @@ impl SyncStack {
 }
 
 impl Stack for SyncStack {
-    fn add_client(&self, app: &mut App, tick_rate: TickRate) {
-        TransportStack.add_client(app, tick_rate);
+    fn add_client(&self, app: &mut App, client: usize, tick_rate: TickRate) {
+        TransportStack.add_client(app, client, tick_rate);
         Self::add_shared(app);
         app.add_plugins(ClientSyncPlugins);
     }
@@ -88,6 +88,6 @@ mod tests {
     #[test]
     fn the_client_syncs() {
         let stepper = Stepper::new(SyncStack, StepperSetup::single());
-        assert!(input_timeline_is_synced(stepper.client_app(0).world()));
+        assert!(input_timeline_is_synced(stepper.client_world(0)));
     }
 }

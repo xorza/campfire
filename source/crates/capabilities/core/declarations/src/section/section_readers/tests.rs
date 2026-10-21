@@ -247,7 +247,11 @@ fn an_open_sets_member_reads_by_its_key_in_its_set_alone_and_a_section_reads_it(
         format!("{:?}", other(two, &readers).unwrap()),
         "OtherTwo { value: 2 }"
     );
-    assert!(shown(value("{ value = \"x\" }"), &readers).is_err());
+    let refused = shown(value("{ value = \"x\" }"), &readers).unwrap_err();
+    assert_eq!(
+        refused.message(),
+        "invalid type: string \"x\", expected i64"
+    );
     assert!(readers.listed::<Shown>("three").is_none());
     assert_eq!(readers.listed_keys::<Shown>().collect::<Vec<_>>(), ["two"]);
     assert_eq!(readers.listed_keys::<Others>().collect::<Vec<_>>(), ["two"]);

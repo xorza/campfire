@@ -2,6 +2,7 @@ use std::any::TypeId;
 
 use bevy_ecs::component::ComponentInfo;
 use campfire_capabilities::Match;
+use campfire_declarations::Role;
 use campfire_sim::HostRule;
 use campfire_units::*;
 
@@ -9,7 +10,7 @@ use campfire_units::*;
 fn the_unit_group_hosts_exactly_the_kinds_that_require_it() {
     // `UnitEntity`'s host rule lists its kinds by hand; each kind's marker requires it. The
     // two agree: a kind that requires it is in the list, and none other is.
-    let game = Match::test(&[], Match::TEST_RATE, None);
+    let game = Match::builder(&[]).role(Role::Rules).build();
     let components = game.components();
     let unit = components.component_id::<UnitEntity>().unwrap();
     let kinds = game.resource::<EntityKinds>();

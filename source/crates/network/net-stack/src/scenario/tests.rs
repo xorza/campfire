@@ -22,6 +22,7 @@ use crate::scenario::Scenario;
 use crate::scenario::faults::{Faults, GilbertLoss, Latency, Outage};
 use campfire_log::internals::LogCheck;
 use campfire_net_stepper::ClientKind;
+use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::internals::input_timeline_is_synced;
@@ -161,7 +162,7 @@ fn full_outage_then_reconnect() {
     }
     // Nothing arrives after `start`: the silence passes the packet session's 1 s timeout on the
     // first frame after 1 s.
-    stepper.run_for(Duration::from_millis(1100));
+    stepper.run_for(Duration::from_millis(1100), StepOrder::ClientsFirst);
     assert_eq!(
         stepper
             .client(0)
@@ -172,7 +173,7 @@ fn full_outage_then_reconnect() {
 
     // The server despawned its link to the client, so that neither its server's links nor
     // `peer_map` hold it: a reconnect is a new link.
-    let world = stepper.server_app().world();
+    let world = stepper.server_world();
     assert!(world.get_entity(old_client_of).is_err());
     assert!(
         world
@@ -191,10 +192,10 @@ fn full_outage_then_reconnect() {
     assert!(world.resource::<NetworkIdMap>().is_empty());
 
     stepper.reconnect(0);
-    stepper.run_for(Duration::from_secs(2));
+    stepper.run_for(Duration::from_secs(2), StepOrder::ClientsFirst);
     assert!(stepper.client(0).contains::<Connected>());
     assert!(stepper.client_of(0).contains::<Connected>());
-    assert!(input_timeline_is_synced(stepper.client_app(0).world()));
+    assert!(input_timeline_is_synced(stepper.client_world(0)));
 }
 
 /// The reasons each `Unlink` of an app gave, in order.
@@ -227,13 +228,13 @@ fn a_protocol_violation_unlinks_the_peer() {
             });
         stepper.frame_step(1);
 
-        let world = stepper.server_app().world();
+        let world = stepper.server_world();
         assert_eq!(
             world.resource::<Unlinks>().0,
             [(client_of, UnlinkReason::ProtocolViolation)]
         );
         assert!(world.get_entity(client_of).is_err());
-        stepper.run_for(Duration::from_millis(200));
+        stepper.run_for(Duration::from_millis(200), StepOrder::ClientsFirst);
         assert_eq!(
             stepper
                 .client(0)

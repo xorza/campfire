@@ -514,7 +514,6 @@ impl Mode {
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    use bevy_ecs::bundle::{Bundle, NoBundleEffect};
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
     use campfire_actions::Actions;
@@ -529,12 +528,11 @@ pub mod internals {
     };
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
-        EntityIndex, IdAllocator, Position, SeatEvent, SeatEventKind, SimTick, SimWorld, StableId,
-        TickInputs,
+        EntityIndex, Position, SeatEvent, SeatEventKind, SimTick, SimWorld, StableId, TickInputs,
     };
-    use campfire_stats::{Application, Modifiers, NewInstance, StatBook, StatOp, StatShare, Stats};
-    use campfire_units::{Life, Owner, SpawnAt, Spawner, Units};
-    use campfire_values::{NameId, PackageIndex, Rank, Stat, TagSet, Team, UnitType};
+    use campfire_stats::Stats;
+    use campfire_units::Owner;
+    use campfire_values::{NameId, PackageIndex, Rank, Team, UnitType};
 
     use crate::Mode;
     use crate::match_mode::MatchMode;
@@ -560,73 +558,6 @@ pub mod internals {
             frame.extension::<ModeCall>()?.map().point_of(of)
         }
 
-        /// Spawns a unit of the mode's type `name` at `position` on `team`, of the next stable id,
-        /// with `parts`, as the mode's own spawns do.
-        pub fn spawn_typed(
-            world: &mut World,
-            name: &str,
-            position: Vec3,
-            team: Team,
-            parts: impl Bundle<Effect: NoBundleEffect>,
-        ) -> StableId {
-            let unit_type =
-                Units::type_named(world, name).unwrap_or_else(|| panic!("no unit type {name}"));
-            Self::spawn_at(world, unit_type, position, Num::ZERO, team, parts)
-        }
-
-        /// Spawns a unit of the mode's type `unit_type` at `position`, turned `angle` degrees, on
-        /// `team`, of the next stable id, with `parts`, through the match's spawner, as the mode's
-        /// own spawns do.
-        pub(super) fn spawn_at(
-            world: &mut World,
-            unit_type: UnitType,
-            position: Vec3,
-            angle: Num,
-            team: Team,
-            parts: impl Bundle<Effect: NoBundleEffect>,
-        ) -> StableId {
-            let id = world.resource_mut::<IdAllocator>().allocate();
-            let at = SpawnAt {
-                id,
-                unit_type,
-                team,
-                owner: None,
-                position,
-                angle,
-            };
-            Spawner::place_any(world, at, parts);
-            id
-        }
-    }
-
-    impl Mode {
-        /// Spawns a unit of the mode's type `unit_type` at `position` on `team`, of the next stable
-        /// id, with `parts`, as the mode's own spawns do, once the match loaded its types: the
-        /// first spawn seals their tags, with no effect for a tag, as a mode's load does once
-        /// its packages load. On a client's match too, as the server would send the unit.
-        pub fn spawn(
-            world: &mut World,
-            unit_type: UnitType,
-            position: impl Into<Vec3>,
-            team: Team,
-            parts: impl Bundle<Effect: NoBundleEffect>,
-        ) -> StableId {
-            Self::spawn_turned(world, unit_type, position, Num::ZERO, team, parts)
-        }
-
-        /// Spawns a unit as `spawn` does, turned `angle` degrees.
-        pub fn spawn_turned(
-            world: &mut World,
-            unit_type: UnitType,
-            position: impl Into<Vec3>,
-            angle: Num,
-            team: Team,
-            parts: impl Bundle<Effect: NoBundleEffect>,
-        ) -> StableId {
-            Units::seal_once(world);
-            Self::spawn_at(world, unit_type, position.into(), angle, team, parts)
-        }
-
         /// Starts the match as `start` does, every seat held.
         pub fn start_held(world: &mut World) -> Result<(), CallError> {
             Self::start(world, &vec![SeatHolder::Held; Self::seats(world)])
@@ -636,19 +567,6 @@ pub mod internals {
         pub fn seats(world: &World) -> usize {
             let players = world.resource::<MatchMode>().teams.players();
             usize::try_from(players).expect("seats fit usize")
-        }
-
-        /// Spawns a unit of the mode's type `name`, as `spawn` does.
-        pub fn spawn_named(
-            world: &mut World,
-            name: &str,
-            position: impl Into<Vec3>,
-            team: Team,
-            parts: impl Bundle<Effect: NoBundleEffect>,
-        ) -> StableId {
-            let unit_type =
-                Units::type_named(world, name).unwrap_or_else(|| panic!("no unit type {name}"));
-            Self::spawn(world, unit_type, position, team, parts)
         }
 
         /// Player `seat` picks `hero` in a tick: the hero it then owns.
@@ -736,37 +654,6 @@ pub mod internals {
         pub fn failures(world: &World) -> Vec<FailureKind> {
             let failures = world.resource::<ScriptFailures>().calls();
             failures.into_iter().map(|failure| failure.kind).collect()
-        }
-
-        /// A grunt of the mode's on `team`, of 1000 health in place of its type's, whose modifier
-        /// adds `stats` by name; with no stats, it carries no modifier, and the match's books stay
-        /// as they are, so a grunt spawns at any tick.
-        pub fn stat_grunt(world: &mut World, team: Team, stats: &[(&str, Num)]) -> StableId {
-            let grunt = Units::type_named(world, "grunt").unwrap();
-            let life = Life::full(Num::int(1000));
-            if stats.is_empty() {
-                return Self::spawn(world, grunt, Vec3::ZERO, team, life);
-            }
-            let book = world.resource::<StatBook>();
-            let changes: Vec<_> = stats
-                .iter()
-                .map(|&(name, _)| {
-                    (
-                        book.named(&Stat::named(name).unwrap()).unwrap(),
-                        StatOp::Add,
-                    )
-                })
-                .collect();
-            let id = Stats::push_modifier_changes(world, &changes, TagSet::NONE);
-            let shares = stats
-                .iter()
-                .map(|&(_, value)| StatShare { value, live: None });
-            let instance = NewInstance {
-                stats: shares.collect(),
-                ..NewInstance::bare(id, None)
-            };
-            let modifiers = Modifiers::bundle([Application::refresh(instance)]);
-            Self::spawn(world, grunt, Vec3::ZERO, team, (life, modifiers))
         }
 
         /// Queues `amount` of damage of the kind `kind` from `source` to `target`, dealt by

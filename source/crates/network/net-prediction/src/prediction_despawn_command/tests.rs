@@ -1,13 +1,13 @@
 use super::*;
 use crate::fixtures::prediction_stack::PredictionStack;
 use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
-use bevy::prelude::Component;
 use bevy_replicon::prelude::Remote;
-use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::{NetworkTarget, NetworkTopology};
 use campfire_net_core::NetTick;
 use campfire_net_interpolation::internals::CompFull;
+use campfire_net_replication::internals::ClientCopies;
 use campfire_net_replication::internals::CompSimple;
+use campfire_net_replication::internals::PROPAGATION_FRAMES;
 use campfire_net_replication::{PredictionTarget, Replicate};
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
@@ -22,8 +22,7 @@ fn rollback_restores_a_prediction_despawned_entity() {
     let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             CompFull(1.0),
             CompSimple(1.0),
@@ -31,75 +30,57 @@ fn rollback_restores_a_prediction_despawned_entity() {
             PredictionTarget::to_clients(NetworkTarget::All),
         ))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     let predicted_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
+        .client_copy(0, server_entity)
         .expect("entity is not present in entity map");
 
     // check that a rollback occurred to add the components on the predicted entity
     assert_eq!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<CompFull>(predicted_entity)
             .unwrap(),
         &CompFull(1.0)
     );
     assert_eq!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<CompSimple>(predicted_entity)
             .unwrap(),
         &CompSimple(1.0)
     );
     // try adding a non-protocol component (which could be some rendering component)
     stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .entity_mut(predicted_entity)
         .insert(TestComponent(1));
 
     // despawn the predicted entity locally
     stepper
-        .client_app_mut(0)
-        .world_mut()
+        .client_world_mut(0)
         .commands()
         .entity(predicted_entity)
         .prediction_despawn();
     stepper.frame_step(1);
     // make sure that the entity is disabled
+    assert!(stepper.client_world(0).get_entity(predicted_entity).is_ok());
     assert!(
         stepper
-            .client_app(0)
-            .world()
-            .get_entity(predicted_entity)
-            .is_ok()
-    );
-    assert!(
-        stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<PredictionDespawned>(predicted_entity)
             .is_some()
     );
 
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<Remote>(predicted_entity)
             .is_some()
     );
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<Predicted>(predicted_entity)
             .is_some()
     );
@@ -107,8 +88,7 @@ fn rollback_restores_a_prediction_despawned_entity() {
     // update the server entity to trigger a rollback where the predicted entity should be
     // 're-spawned'
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .get_mut::<CompFull>(server_entity)
         .unwrap()
         .0 = 2.0;
@@ -117,7 +97,7 @@ fn rollback_restores_a_prediction_despawned_entity() {
     let mut rollback_completed = false;
     for _ in 0..8 {
         stepper.frame_step(1);
-        let world = stepper.client_app(0).world();
+        let world = stepper.client_world(0);
         let despawned_removed = world.get::<PredictionDespawned>(predicted_entity).is_none();
         let state_updated = world
             .get::<CompFull>(predicted_entity)
@@ -135,16 +115,14 @@ fn rollback_restores_a_prediction_despawned_entity() {
     // Check that the entity was rolled back and the PredictionDespawned marker was removed
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<PredictionDespawned>(predicted_entity)
             .is_none()
     );
 
     assert_eq!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<CompFull>(predicted_entity)
             .unwrap(),
         &CompFull(2.0)
@@ -152,8 +130,7 @@ fn rollback_restores_a_prediction_despawned_entity() {
     // non-Full components are also present
     assert_eq!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .get::<CompSimple>(predicted_entity)
             .unwrap(),
         &CompSimple(1.0)

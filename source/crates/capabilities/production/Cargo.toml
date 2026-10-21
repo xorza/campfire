@@ -46,7 +46,6 @@ serde = { workspace = true, features = ["derive", "rc", "std"] }
 thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
-campfire-codec = { workspace = true, features = ["internals"] }
 campfire-production = { workspace = true, features = ["internals"] }
 
 [lints]

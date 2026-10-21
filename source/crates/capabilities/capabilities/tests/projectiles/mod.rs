@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_capabilities::{Match, Release};
-use campfire_codec::{Binary, Toml};
+use campfire_codec::{Binary, BinaryError};
 use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, OnDeath, ROLL_STREAM, RecentAttack, RecentAttackers};
 use campfire_common::{SegmentSeed, Tick};
@@ -9,13 +9,13 @@ use campfire_declarations::ByType;
 use campfire_declarations::internals::BookLoad;
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Rng, Vec3};
-use campfire_mode::Mode;
 use campfire_navigation::NavigationEffect;
 use campfire_projectiles::*;
-use campfire_script::{Effect, Frame, ScriptLimits, ScriptPools};
+use campfire_script::{Effect, Frame};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::Stats;
+use campfire_units::internals::Spawn;
 use campfire_units::{BodyForm, DashTo, Dead, Deaths, Life, MapBook, SeenBy, UnitTypeCore, Units};
 use campfire_values::{FilterData, Team, TypeScope, UnitType};
 use campfire_vision::{Sight, Vision};
@@ -60,11 +60,7 @@ const ALONG_X: Vec3 = Vec3::new(Num::ONE, Num::ZERO, Num::ZERO);
 /// A match of `declared`, with combat and projectiles among them, and the stat book a weapon
 /// reads.
 fn volley_match_of(declared: &[Capability]) -> Match {
-    let budgets = ScriptPools {
-        limits: ScriptLimits::ROOMY,
-        players: 1,
-    };
-    let mut game = Match::server(declared, budgets);
+    let mut game = Match::builder(declared).build();
     Combat::load_weapon_stats(&mut game);
     game
 }
@@ -136,8 +132,10 @@ impl Volley {
 fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
     let mut game = volley_match();
     let volley = Volley::place(&mut game);
-    let shooter_id = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-    let target_id = Mode::spawn(&mut game, volley.round, (5, 0, 0), Team::new(1), ());
+    let shooter_id = Spawn::of(volley.shooter, (0, 0, 0)).place(&mut game);
+    let target_id = Spawn::of(volley.round, (5, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     let entity = game.unit_entity(target_id);
     Combat::attack(&mut game, shooter_id, target_id);
 
@@ -181,10 +179,14 @@ fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
 fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     let mut game = volley_match();
     let volley = Volley::place(&mut game);
-    let first = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-    let second = Mode::spawn(&mut game, volley.shooter, (0, 0, 1), Team::new(0), ());
-    let doomed = Mode::spawn(&mut game, volley.target, (5, 0, 0), Team::new(1), ());
-    let gone = Mode::spawn(&mut game, volley.target, (-5, 0, 1), Team::new(1), ());
+    let first = Spawn::of(volley.shooter, (0, 0, 0)).place(&mut game);
+    let second = Spawn::of(volley.shooter, (0, 0, 1)).place(&mut game);
+    let doomed = Spawn::of(volley.target, (5, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
+    let gone = Spawn::of(volley.target, (-5, 0, 1))
+        .team(Team::new(1))
+        .place(&mut game);
     Combat::attack(&mut game, first, doomed);
     Combat::attack(&mut game, second, gone);
 
@@ -240,8 +242,14 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
         Binary::decode::<StruckUnits>(&bytes)
     };
     assert!(decode(&[(first, doomed), (first, gone), (second, doomed)]).is_ok());
-    assert!(decode(&[(first, gone), (first, doomed)]).is_err());
-    assert!(decode(&[(first, doomed), (first, doomed)]).is_err());
+    assert_eq!(
+        decode(&[(first, gone), (first, doomed)]).err(),
+        Some(BinaryError::REFUSED)
+    );
+    assert_eq!(
+        decode(&[(first, doomed), (first, doomed)]).err(),
+        Some(BinaryError::REFUSED)
+    );
 
     game.step();
     assert_eq!(game.now().get(), 6);
@@ -258,10 +266,14 @@ fn a_teleport_ends_the_homing_projectiles_on_its_unit_and_a_dash_does_not() {
         Capability::Projectiles,
     ]);
     let volley = Volley::place(&mut game);
-    let first = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-    let second = Mode::spawn(&mut game, volley.shooter, (0, 0, 1), Team::new(0), ());
-    let blinker = Mode::spawn(&mut game, volley.target, (5, 0, 0), Team::new(1), ());
-    let dasher = Mode::spawn(&mut game, volley.target, (5, 0, 1), Team::new(1), ());
+    let first = Spawn::of(volley.shooter, (0, 0, 0)).place(&mut game);
+    let second = Spawn::of(volley.shooter, (0, 0, 1)).place(&mut game);
+    let blinker = Spawn::of(volley.target, (5, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
+    let dasher = Spawn::of(volley.target, (5, 0, 1))
+        .team(Team::new(1))
+        .place(&mut game);
     Combat::attack(&mut game, first, blinker);
     Combat::attack(&mut game, second, dasher);
 
@@ -315,9 +327,10 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
     for second_goes in [false, true] {
         let mut game = volley_match();
         let volley = Volley::place(&mut game);
-        let shooters =
-            [0, 10].map(|x| Mode::spawn(&mut game, volley.shooter, (x, 0, 0), Team::new(0), ()));
-        let victim = Mode::spawn(&mut game, volley.target, (5, 0, 0), Team::new(1), ());
+        let shooters = [0, 10].map(|x| Spawn::of(volley.shooter, (x, 0, 0)).place(&mut game));
+        let victim = Spawn::of(volley.target, (5, 0, 0))
+            .team(Team::new(1))
+            .place(&mut game);
         let victim_entity = game.unit_entity(victim);
         let mut life = game.get_mut::<Life>(victim_entity).unwrap();
         life.take(Num::int(40));
@@ -365,41 +378,25 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
 fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_ends_at_its_range() {
     let mut game = volley_match();
     let volley = Volley::place(&mut game);
-    let source = Mode::spawn(&mut game, volley.target, (0, 0, -9), Team::new(0), ());
+    let source = Spawn::of(volley.target, (0, 0, -9)).place(&mut game);
     let point = |x: Num, z: Num| Vec3::new(x, Num::ZERO, z);
     let e = Num::EPSILON;
     // The lance's reach is half its width, 0.5 m, and these bodies have no radius. Its path runs
     // along x from 0 to 6: 0.5 m beside it and 0.5 m past its end are in reach, one bit more is
     // not, and an ally is never hit.
-    let beside = Mode::spawn(
-        &mut game,
-        volley.target,
-        point(Num::int(2), Num::HALF),
-        Team::new(1),
-        (),
-    );
-    let wide = Mode::spawn(
-        &mut game,
-        volley.target,
-        point(Num::int(3), Num::HALF + e),
-        Team::new(1),
-        (),
-    );
-    let ally = Mode::spawn(&mut game, volley.target, (1, 0, 0), Team::new(0), ());
-    let past = Mode::spawn(
-        &mut game,
-        volley.target,
-        point(Num::int(6) + Num::HALF, Num::ZERO),
-        Team::new(1),
-        (),
-    );
-    let beyond = Mode::spawn(
-        &mut game,
-        volley.target,
-        point(Num::int(6) + Num::HALF + e, Num::ZERO),
-        Team::new(1),
-        (),
-    );
+    let beside = Spawn::of(volley.target, point(Num::int(2), Num::HALF))
+        .team(Team::new(1))
+        .place(&mut game);
+    let wide = Spawn::of(volley.target, point(Num::int(3), Num::HALF + e))
+        .team(Team::new(1))
+        .place(&mut game);
+    let ally = Spawn::of(volley.target, (1, 0, 0)).place(&mut game);
+    let past = Spawn::of(volley.target, point(Num::int(6) + Num::HALF, Num::ZERO))
+        .team(Team::new(1))
+        .place(&mut game);
+    let beyond = Spawn::of(volley.target, point(Num::int(6) + Num::HALF + e, Num::ZERO))
+        .team(Team::new(1))
+        .place(&mut game);
     let lance = volley.lance;
     Projectiles::fire_line(&mut game, source, lance, ALONG_X);
 
@@ -443,13 +440,17 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     // tick 6, where its path reaches 3 m from 2.5 m; the one past them is never hit.
     let mut game = volley_match();
     let volley = Volley::place(&mut game);
-    let source = Mode::spawn(&mut game, volley.target, (0, 0, -9), Team::new(0), ());
+    let source = Spawn::of(volley.target, (0, 0, -9)).place(&mut game);
     let [first, second, behind] = [
         Vec3::from((3, 0, 0)),
         Vec3::from((3, 0, 0)),
         Vec3::from((4, 0, 0)),
     ]
-    .map(|at| Mode::spawn(&mut game, volley.target, at, Team::new(1), ()));
+    .map(|at| {
+        Spawn::of(volley.target, at)
+            .team(Team::new(1))
+            .place(&mut game)
+    });
     let dart = volley.dart;
     Projectiles::fire_line(&mut game, source, dart, ALONG_X);
     for _ in 0..6 {
@@ -470,16 +471,14 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     // with no navigation spawns the box, which makes room for none.
     let mut game = volley_match();
     let volley = Volley::place(&mut game);
-    let source = Mode::spawn(&mut game, volley.target, (0, 0, -9), Team::new(0), ());
+    let source = Spawn::of(volley.target, (0, 0, -9)).place(&mut game);
     let near = |x: &str, z: &str| point(x.parse().unwrap(), z.parse().unwrap());
-    let block = Mode::spawn(
-        &mut game,
-        volley.block,
-        near("3.5", "0.3"),
-        Team::new(1),
-        (),
-    );
-    let dot = Mode::spawn(&mut game, volley.target, near("2.6", "0"), Team::new(1), ());
+    let block = Spawn::of(volley.block, near("3.5", "0.3"))
+        .team(Team::new(1))
+        .place(&mut game);
+    let dot = Spawn::of(volley.target, near("2.6", "0"))
+        .team(Team::new(1))
+        .place(&mut game);
     Projectiles::fire_line(&mut game, source, dart, ALONG_X);
     for _ in 0..7 {
         game.step();
@@ -508,8 +507,10 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
     Vision::load_grid(&mut game, Grid::new(Num::ONE, bounds).unwrap(), &[], 2);
     let sight = Sight::new(Num::ONE).unwrap();
     ByType::<Sight>::amend(&mut game, |_, book| book.set(scout, sight));
-    let source = Mode::spawn(&mut game, volley.target, (0, 0, -9), Team::new(0), ());
-    let enemy = Mode::spawn(&mut game, volley.target, (5, 0, 0), Team::new(1), ());
+    let source = Spawn::of(volley.target, (0, 0, -9)).place(&mut game);
+    let enemy = Spawn::of(volley.target, (5, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Projectiles::fire_line(&mut game, source, scout, ALONG_X);
     let seen = |game: &Match| {
         game.part::<SeenBy>(enemy)
@@ -551,7 +552,7 @@ fn a_line_that_reaches_the_bounds_ends_on_their_edge_and_its_sight_stays_within_
     Vision::load_grid(&mut game, Grid::new(Num::ONE, bounds).unwrap(), &[], 2);
     let sight = Sight::new(Num::ONE).unwrap();
     ByType::<Sight>::amend(&mut game, |_, book| book.set(scout, sight));
-    let source = Mode::spawn(&mut game, volley.target, (0, 0, -4), Team::new(0), ());
+    let source = Spawn::of(volley.target, (0, 0, -4)).place(&mut game);
     let slant = Vec3::new(
         Num::from_bits(10_066_330),
         Num::ZERO,
@@ -572,83 +573,5 @@ fn a_line_that_reaches_the_bounds_ends_on_their_edge_and_its_sight_stays_within_
     assert!(flown.iter().all(|&at| bounds.contains(at)));
 }
 
-#[test]
-fn a_projectile_reads_only_with_a_positive_speed_a_width_of_0_to_4096_m_and_no_negative_range() {
-    let read = |text: &str| Toml::parse::<ProjectileData>(text);
-    let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
-    let plain = ProjectileData::flying(Num::HALF);
-    assert_eq!(read("speed = \"0.5\"").unwrap(), plain);
-    assert_eq!(
-        read("speed = 20\nwidth = 0\nrange = 0").unwrap(),
-        ProjectileData {
-            speed: Num::int(20),
-            range: Some(Num::ZERO),
-            ..plain.clone()
-        }
-    );
-    // A width of 4,096 m flies as a circle of 2,048 m, the widest body; a bit more does not read.
-    let widest = read("speed = 20\nwidth = 4096").unwrap();
-    assert_eq!(widest.width, Num::int(4096));
-    // `hits` is `none`, a filter or a list of filters, `enemies` when it is absent; a list of
-    // none, and a list of a filter that is none, do not read.
-    let hits = |text: &str| read(&format!("speed = 1\nhits = {text}")).map(|data| data.hits);
-    let filter = |text: &str| FilterData::parse(text).unwrap();
-    assert_eq!(hits("\"none\"").unwrap(), ProjectileHits::Nothing);
-    assert_eq!(
-        hits("\"allies:avatar\"").unwrap(),
-        ProjectileHits::Units(vec![filter("allies:avatar")])
-    );
-    assert_eq!(
-        hits("[\"enemies:structure\", \"all:wall\"]").unwrap(),
-        ProjectileHits::Units(vec![filter("enemies:structure"), filter("all:wall")])
-    );
-    assert_eq!(plain.hits, ProjectileHits::Units(vec![filter("enemies")]));
-    for text in ["\"nobody\"", "[\"all\", \"nobody\"]"] {
-        let message = hits(text).unwrap_err().message().to_owned();
-        assert!(message.starts_with("filter \"nobody\""), "{message}");
-    }
-    assert_eq!(
-        hits("[]").unwrap_err().message(),
-        "a list of hits holds a filter at least; `none` hits no unit"
-    );
-    for (text, message) in [
-        ("speed = 0", "a projectile's speed is positive"),
-        ("speed = \"-0.5\"", "a projectile's speed is positive"),
-        (
-            "speed = 9223372036854775807",
-            "9223372036854775807 is past what a number holds",
-        ),
-        (
-            "speed = 20\nwidth = -1",
-            "a projectile's width is not negative",
-        ),
-        (
-            "speed = 20\nwidth = \"-0.001\"",
-            "a projectile's width is not negative",
-        ),
-        (
-            "speed = 20\nwidth = \"4096.00000006\"",
-            "a projectile's width is at most 4,096 m",
-        ),
-        (
-            "speed = 20\nrange = -1",
-            "a projectile's range is not negative",
-        ),
-    ] {
-        assert!(refusal(text).starts_with(message), "{text}");
-    }
-    // A projectile writes each field but its defaults, and reads back what it wrote: a line of
-    // its speed alone, one of every field a line takes, and a curve that hits nothing.
-    for text in [
-        "speed = \"0.5\"\n",
-        "speed = 20\nwidth = 2\nrange = 9\nhoming = true\nstop_on_hit = true\nonce_per_cast = true\nhits = [\"enemies:structure\", \"all:wall\"]\n",
-        "speed = 20\nhits = \"none\"\n\n[curve]\nfirst = [\"0.5\", 10]\nsecond = [1, -2]\nfollow = 3\nlife_ms = 900\n",
-    ] {
-        let data = read(text).unwrap();
-        let written = Toml::write(&data);
-        assert_eq!(read(&written).unwrap(), data, "{written}");
-        assert_eq!(Toml::write(&read(&written).unwrap()), written);
-    }
-}
-
 mod curves;
+mod deliveries;

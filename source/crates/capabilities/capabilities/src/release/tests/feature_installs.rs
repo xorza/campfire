@@ -1,11 +1,11 @@
 use super::*;
-use crate::books::test_package::TestPackage;
+use crate::fixtures::package_set::PackageSet;
 
 /// A mode package with each fact that decides an install: a map's vision grid, a count of
 /// supply, a pool that regenerates, a modifier of an interval, and a type of a turret, a slow
 /// weapon, toggles that cost an attack and a second, and a channel.
-pub(super) const EVERY_SYSTEM: TestPackage<'_> = TestPackage {
-    mode: r#"
+pub(super) fn every_system() -> PackageSet {
+    let mode = r#"
 name = "mode"
 supply = { max = 10 }
 combat = { damage_kinds = ["physical"], life = "health" }
@@ -17,18 +17,6 @@ health = {}
 health_regen = {}
 attack_speed = {}
 attack_damage = {}
-"#,
-    map: r#"
-bounds = { min = [-4, -4], max = [4, 4] }
-grid = { cell = "1.0" }
-"#,
-    content: r#"
-[units.tank]
-pools = ["health"]
-slots = { basic = ["shell", "guard", "burn", "focus"] }
-turret = { turn_rate = "90", tolerance_deg = "5", slot = "basic" }
-stats = { health = { base = 10 } }
-combat = {}
 
 [actions.shell]
 name = "action-shell"
@@ -57,8 +45,40 @@ channel = { duration_ms = 1000, tick_ms = 500 }
 
 [modifiers.pulse]
 interval_ms = 1000
-"#,
-};
+"#;
+    let units = r#"
+[units.tank]
+pools = ["health"]
+slots = { basic = ["shell", "guard", "burn", "focus"] }
+turret = { turn_rate = "90", tolerance_deg = "5", slot = "basic" }
+stats = { health = { base = 10 } }
+combat = {}
+"#;
+    let map = r#"
+bounds = { min = [-4, -4], max = [4, 4] }
+grid = { cell = "1.0" }
+"#;
+    let capabilities = Release::capabilities().iter();
+    PackageSet {
+        data: mode.to_owned(),
+        units: units.to_owned(),
+        map: map.to_owned(),
+        avatars: Vec::new(),
+        loadouts: Vec::new(),
+        scripts: Vec::new(),
+        own: 0,
+        teams: Vec::new(),
+        capabilities: capabilities
+            .filter(|&capability| !CapabilitySet::CORE.contains(capability))
+            .collect(),
+        rate: Match::TEST_RATE,
+    }
+}
+
+/// The books of the match of `set`, as its load builds them.
+pub(super) fn books_of(set: &PackageSet) -> Books {
+    set.load(ScriptLimits::ROOMY).books(set)
+}
 
 /// The names of the systems a server's match of the rules alone, of every capability, of `books`
 /// installs, in order.
@@ -81,7 +101,7 @@ fn a_feature_installs_its_passes_only_in_a_match_whose_books_have_it() {
     // weapons' hits, the toggles that cost an attack, the turrets' aim, the supply's count, the
     // modifiers' intervals, the regen and the sight.
     let none = installed(Release::empty_books(Match::TEST_RATE));
-    let every = installed(EVERY_SYSTEM.books(Match::TEST_RATE, &[]));
+    let every = installed(books_of(&every_system()));
     let mut added = every;
     for name in &none {
         let at = added.iter().position(|held| held == name);

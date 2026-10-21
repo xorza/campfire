@@ -118,7 +118,7 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for PendingCalls<T> {
 
 #[cfg(test)]
 mod tests {
-    use campfire_codec::Binary;
+    use campfire_codec::{Binary, BinaryError};
 
     use super::*;
 
@@ -151,6 +151,9 @@ mod tests {
         // No call that waits with a count fails to decode.
         let mut none = Binary::encode(&Vec::<i32>::new());
         none.push(1);
-        assert!(Binary::decode::<PendingCalls<i32>>(&none).is_err());
+        assert_eq!(
+            Binary::decode::<PendingCalls<i32>>(&none).err(),
+            Some(BinaryError::REFUSED)
+        );
     }
 }

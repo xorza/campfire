@@ -65,3 +65,22 @@ impl Replication for StatusTags {
     const KIND: DataKind = DataKind::Unit;
     type Sending = SentPredicted;
 }
+
+#[cfg(test)]
+mod tests {
+    use campfire_values::TagProperties;
+
+    use super::*;
+
+    #[test]
+    fn a_turn_changes_its_own_tag_alone() {
+        let [site_tag, gathering] = [(4, "site"), (7, "gathering")]
+            .map(|(at, name)| EngineTag::new(at, name, TagProperties::NONE));
+        let site = StatusTags::from([site_tag]);
+        let both = StatusTags::from([site_tag, gathering]);
+        assert_eq!(site.turned(gathering, true), both);
+        assert_eq!(both.turned(gathering, false), site);
+        assert_eq!(site.turned(site_tag, true), site);
+        assert_eq!(site.turned(site_tag, false), StatusTags::default());
+    }
+}

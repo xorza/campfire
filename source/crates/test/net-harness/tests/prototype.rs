@@ -9,10 +9,10 @@ use campfire_actions::ActionProgress;
 use campfire_capabilities::Order;
 use campfire_combat::Respawn;
 use campfire_common::{DeclaredName, Seat, Tick, Ticks};
-use campfire_harness::{ArchetypeWatch, HashTrail};
+use campfire_harness::ArchetypeWatch;
 use campfire_math::{Num, Vec3};
 use campfire_mode::{MatchResult, ModeState, ModeWorld};
-use campfire_net::internals::{SimServerWorldInternals, TickHashes};
+use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
     InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders,
 };
@@ -25,8 +25,7 @@ use campfire_net_replication::{Predicted, PredictionTarget, Replicate};
 use campfire_orders::OrdersDirective;
 use campfire_players::{PlayerResources, PlayersWorld, ResourcesData};
 use campfire_projectiles::Projectile;
-use campfire_protocol::{InputError, SessionLog, Signature};
-use campfire_runner::{Replay, Session};
+use campfire_protocol::{InputError, Signature};
 use campfire_script::StateValue;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
 use campfire_stats::{Modifiers, Stats, StatsWorld};
@@ -144,18 +143,16 @@ fn server_and_replay_agree_on_every_tick() {
         let link = local.link(0);
         let server_world = local.server_mut().world_mut();
         assert!(!server_world.link_refused(link).unwrap(), "{case}");
-        server_world.resource_mut::<Session>().reveal_seed();
-        let live = server_world.resource::<TickHashes>().get().to_vec();
+        let record = local.server_record();
         let ticks = started + u64::try_from(MATCH_FRAMES).unwrap();
-        assert_eq!(u64::try_from(live.len()).unwrap(), ticks, "{case}");
-        let live = HashTrail::of_totals(live);
-        let mut file = Vec::new();
-        server_world.resource::<Session>().log().encode(&mut file);
-        let decoded = SessionLog::decode(&file).unwrap();
-        assert_eq!(decoded.next_tick(), Tick::new(ticks), "{case}");
-        let mut replay = Replay::of(decoded, local.packages()).unwrap();
-        let replayed = HashTrail::of_replay(&mut replay);
-        assert_eq!(live.difference(&replayed.unwrap()), None, "{case}");
+        assert_eq!(
+            u64::try_from(record.live.totals().len()).unwrap(),
+            ticks,
+            "{case}"
+        );
+        assert_eq!(record.log().next_tick(), Tick::new(ticks), "{case}");
+        let replayed = record.replayed(local.packages());
+        assert_eq!(record.live.difference(&replayed), None, "{case}");
     }
 }
 
@@ -661,14 +658,17 @@ impl Handoff {
         world.link_seat(self.local.link(client)).unwrap()
     }
 
-    /// Gives the hero to `owner` on the server, or takes its owner.
+    /// Gives the hero to `owner` on the server, or takes its owner, in the server's next tick, as
+    /// the sim does.
     fn set_owner(&mut self, owner: Option<Seat>) {
-        let entity = self.entity_in(self.local.server());
-        let mut unit = self.local.server_mut().world_mut().entity_mut(entity);
-        match owner {
-            Some(slot) => unit.insert(Owner::new(slot)),
-            None => unit.remove::<Owner>(),
-        };
+        let hero = self.hero;
+        self.local.server_fixed_update(move |world| {
+            let mut unit = world.entity_mut(world.entity_of(hero).unwrap());
+            match owner {
+                Some(slot) => unit.insert(Owner::new(slot)),
+                None => unit.remove::<Owner>(),
+            };
+        });
     }
 
     /// Steps every end until `done`.

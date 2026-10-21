@@ -1,10 +1,10 @@
 use bevy_ecs::world::World;
 use campfire_common::Seat;
 use campfire_math::Vec3;
-use campfire_mode::Mode;
 use campfire_orders::Orders;
 use campfire_sim::StableId;
 use campfire_units::Owner;
+use campfire_units::internals::Spawn;
 use campfire_values::{Team, UnitType};
 
 /// The test fixtures of `Orders` that need a crate above its own.
@@ -27,6 +27,9 @@ impl OrdersFixtures for Orders {
         team: Team,
         slot: u32,
     ) -> StableId {
-        Mode::spawn(world, hero, position, team, Owner::new(Seat::new(slot)))
+        Spawn::of(hero, position)
+            .team(team)
+            .parts(Owner::new(Seat::new(slot)))
+            .place(world)
     }
 }

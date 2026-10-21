@@ -28,9 +28,9 @@ impl InterpolationStack {
 }
 
 impl Stack for InterpolationStack {
-    fn add_client(&self, app: &mut App, tick_rate: TickRate) {
-        SyncStack.add_client(app, tick_rate);
-        ReplicationStack.add_client(app, tick_rate);
+    fn add_client(&self, app: &mut App, client: usize, tick_rate: TickRate) {
+        SyncStack.add_client(app, client, tick_rate);
+        ReplicationStack.add_client(app, client, tick_rate);
         Self::add_shared(app);
         if !app.is_plugin_added::<InterpolationPlugin>() {
             app.add_plugins(InterpolationPlugins);
@@ -83,8 +83,6 @@ mod tests {
     #[test]
     fn both_timelines_sync() {
         let stepper = Stepper::new(InterpolationStack, StepperSetup::single());
-        assert!(interpolation_timeline_is_synced(
-            stepper.client_app(0).world()
-        ));
+        assert!(interpolation_timeline_is_synced(stepper.client_world(0)));
     }
 }

@@ -78,16 +78,16 @@ impl<'a> ModelAssets<'a> {
 
 #[cfg(test)]
 mod tests {
-    use campfire_store::internals::TestDir;
 
     use super::*;
-    use crate::zero_hour::install::samples::fixture;
+    use crate::zero_hour::install::samples::FixtureInstall;
 
     #[test]
     fn a_texture_is_its_dds_else_its_tga_as_named() {
-        let test_dir = TestDir::new();
-        fixture(&test_dir);
-        let install = Install::open(&test_dir.path("zh")).unwrap();
+        let FixtureInstall {
+            test_dir: _dir,
+            install,
+        } = FixtureInstall::new();
         let assets = ModelAssets::new(&install).unwrap();
         let texture = |name: &str| assets.texture(name).map(|path| path.to_string());
         // The archives hold `Rock.dds` and `Sign.tga`.

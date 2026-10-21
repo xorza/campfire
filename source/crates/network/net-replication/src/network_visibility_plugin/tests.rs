@@ -1,10 +1,11 @@
 use super::*;
 use crate::fixtures::protocol::*;
 use crate::fixtures::replication_stack::ReplicationStack;
+use crate::fixtures::steps::ClientCopies;
+use crate::fixtures::steps::PROPAGATION_FRAMES;
 use crate::inheritance_plugin::InheritancePlugin;
 use crate::replication_target::Replicate;
 use crate::visibility_ext::VisibilityExt;
-use bevy_replicon::shared::server_entity_map::ServerEntityMap;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_despawns::DespawnReplicated;
 use campfire_net_messages::LinkMessages;
@@ -140,123 +141,32 @@ fn a_direct_write_on_a_root_marks_nothing() {
 }
 
 #[test]
-fn gaining_visibility_spawns_the_entity() {
-    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
-
-    let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
-        .spawn(Replicate::to_clients(NetworkTarget::All))
-        .id();
-    stepper.frame_step(2);
-    stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
-        .expect("entity should be auto-visible after spawn");
-
-    // lose visibility
-    let client_of_0_entity = stepper.client_of_entity(0);
-    stepper
-        .server_app_mut()
-        .world_mut()
-        .commands()
-        .lose_visibility(server_entity, client_of_0_entity);
-    stepper.frame_step(2);
-    assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_none(),
-        "entity should not be visible after lose_visibility"
-    );
-
-    // gain visibility again
-    let client_of_0_entity = stepper.client_of_entity(0);
-    stepper
-        .server_app_mut()
-        .world_mut()
-        .commands()
-        .gain_visibility(server_entity, client_of_0_entity);
-    stepper.frame_step(2);
-    stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
-        .expect("entity should be visible again after gain_visibility");
-}
-
-#[test]
 fn losing_visibility_despawns_the_entity() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn(Replicate::to_clients(NetworkTarget::All))
         .id();
     let sender = stepper.client_of_entity(0);
-    stepper.frame_step(2);
-    let client_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
-        .unwrap();
+    stepper.frame_step(PROPAGATION_FRAMES);
+    let client_entity = stepper.client_copy(0, server_entity).unwrap();
 
     // lose visibility: a Despawn message should be sent
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .lose_visibility(server_entity, sender);
-    stepper.frame_step(2);
-    assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_none()
-    );
-    assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .get_entity(client_entity)
-            .is_err()
-    );
+    stepper.frame_step(PROPAGATION_FRAMES);
+    assert!(stepper.client_copy(0, server_entity).is_none());
+    assert!(stepper.client_world(0).get_entity(client_entity).is_err());
 
     // gain visibility: a spawn message should be sent again
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .gain_visibility(server_entity, sender);
-    stepper.frame_step(2);
-    assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_some()
-    );
+    stepper.frame_step(PROPAGATION_FRAMES);
+    assert!(stepper.client_copy(0, server_entity).is_some());
 }
 
 #[test]
@@ -264,85 +174,53 @@ fn losing_retained_visibility_keeps_the_entity() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((Replicate::to_clients(NetworkTarget::All), CompSimple(1.0)))
         .id();
     let sender = stepper.client_of_entity(0);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
-    let client_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
-        .unwrap();
+    let client_entity = stepper.client_copy(0, server_entity).unwrap();
     assert_eq!(
-        stepper
-            .client_app(0)
-            .world()
-            .get::<CompSimple>(client_entity),
+        stepper.client_world(0).get::<CompSimple>(client_entity),
         Some(&CompSimple(1.0))
     );
 
     // Retain the existing remote entity but stop sending updates.
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .lose_visibility_retained(server_entity, sender);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     assert_eq!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied(),
+        stepper.client_copy(0, server_entity),
         Some(client_entity),
         "retained visibility should preserve the remote entity mapping"
     );
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(server_entity)
         .insert(CompSimple(2.0));
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert_eq!(
-        stepper
-            .client_app(0)
-            .world()
-            .get::<CompSimple>(client_entity),
+        stepper.client_world(0).get::<CompSimple>(client_entity),
         Some(&CompSimple(1.0)),
         "retained hidden entities should not receive mutations"
     );
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .gain_visibility(server_entity, sender);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert_eq!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied(),
+        stepper.client_copy(0, server_entity),
         Some(client_entity),
         "gaining visibility should reuse the retained remote entity"
     );
     assert_eq!(
-        stepper
-            .client_app(0)
-            .world()
-            .get::<CompSimple>(client_entity),
+        stepper.client_world(0).get::<CompSimple>(client_entity),
         Some(&CompSimple(2.0)),
         "gaining visibility should send the latest component value"
     );
@@ -353,43 +231,26 @@ fn retained_visibility_before_the_first_replication_sends_nothing() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn(Replicate::to_clients(NetworkTarget::All))
         .id();
     let sender = stepper.client_of_entity(0);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .lose_visibility_retained(server_entity, sender);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_none(),
+        stepper.client_copy(0, server_entity).is_none(),
         "AfterFirstVisibility should not spawn an entity that was never visible"
     );
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .gain_visibility(server_entity, sender);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_some(),
+        stepper.client_copy(0, server_entity).is_some(),
         "the entity should spawn when it becomes visible for the first time"
     );
 }
@@ -399,96 +260,62 @@ fn always_present_visibility_spawns_a_hidden_entity() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((Replicate::to_clients(NetworkTarget::All), CompSimple(1.0)))
         .id();
     let sender = stepper.client_of_entity(0);
 
     // AlwaysPresent sends the initial state even when the entity starts hidden.
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .lose_visibility_always_present(server_entity, sender);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     let client_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
+        .client_copy(0, server_entity)
         .expect("AlwaysPresent should spawn an entity that starts hidden");
     assert_eq!(
-        stepper
-            .client_app(0)
-            .world()
-            .get::<CompSimple>(client_entity),
+        stepper.client_world(0).get::<CompSimple>(client_entity),
         Some(&CompSimple(1.0))
     );
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(server_entity)
         .insert(CompSimple(2.0));
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert_eq!(
-        stepper
-            .client_app(0)
-            .world()
-            .get::<CompSimple>(client_entity),
+        stepper.client_world(0).get::<CompSimple>(client_entity),
         Some(&CompSimple(1.0)),
         "AlwaysPresent entities should stop receiving updates while hidden"
     );
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .gain_visibility(server_entity, sender);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert_eq!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied(),
+        stepper.client_copy(0, server_entity),
         Some(client_entity),
         "gaining visibility should reuse the always-present remote entity"
     );
     assert_eq!(
-        stepper
-            .client_app(0)
-            .world()
-            .get::<CompSimple>(client_entity),
+        stepper.client_world(0).get::<CompSimple>(client_entity),
         Some(&CompSimple(2.0)),
         "gaining visibility should send the latest component value"
     );
 
     // Visibility lifetime must not suppress a true authoritative despawn.
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .lose_visibility_always_present(server_entity, sender);
-    stepper.frame_step(2);
-    DespawnReplicated.apply(
-        stepper
-            .server_app_mut()
-            .world_mut()
-            .entity_mut(server_entity),
-    );
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
+    DespawnReplicated.apply(stepper.server_world_mut().entity_mut(server_entity));
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .get_entity(client_entity)
-            .is_err(),
+        stepper.client_world(0).get_entity(client_entity).is_err(),
         "an authoritative despawn should override AlwaysPresent visibility"
     );
 }
@@ -498,60 +325,29 @@ fn a_despawn_reaches_a_retained_entity() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn(Replicate::to_clients(NetworkTarget::All))
         .id();
     let sender = stepper.client_of_entity(0);
-    stepper.frame_step(2);
-    let client_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
-        .unwrap();
+    stepper.frame_step(PROPAGATION_FRAMES);
+    let client_entity = stepper.client_copy(0, server_entity).unwrap();
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .lose_visibility_retained(server_entity, sender);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .get_entity(client_entity)
-            .is_ok(),
+        stepper.client_world(0).get_entity(client_entity).is_ok(),
         "visibility loss should retain the remote entity"
     );
 
-    DespawnReplicated.apply(
-        stepper
-            .server_app_mut()
-            .world_mut()
-            .entity_mut(server_entity),
-    );
-    stepper.frame_step(2);
+    DespawnReplicated.apply(stepper.server_world_mut().entity_mut(server_entity));
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .get_entity(client_entity)
-            .is_err(),
+        stepper.client_world(0).get_entity(client_entity).is_err(),
         "an authoritative despawn should override retained visibility"
     );
-    assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_none()
-    );
+    assert!(stepper.client_copy(0, server_entity).is_none());
 }
 
 #[test]
@@ -559,45 +355,26 @@ fn removing_replicate_suppresses_the_despawn_of_a_retained_entity() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn(Replicate::to_clients(NetworkTarget::All))
         .id();
     let sender = stepper.client_of_entity(0);
-    stepper.frame_step(2);
-    let client_entity = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
-        .unwrap();
+    stepper.frame_step(PROPAGATION_FRAMES);
+    let client_entity = stepper.client_copy(0, server_entity).unwrap();
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .lose_visibility_retained(server_entity, sender);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(server_entity)
         .remove::<Replicate>();
-    DespawnReplicated.apply(
-        stepper
-            .server_app_mut()
-            .world_mut()
-            .entity_mut(server_entity),
-    );
-    stepper.frame_step(2);
+    DespawnReplicated.apply(stepper.server_world_mut().entity_mut(server_entity));
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .get_entity(client_entity)
-            .is_ok(),
+        stepper.client_world(0).get_entity(client_entity).is_ok(),
         "removing Replicate before despawning should keep the retained remote entity"
     );
 }
@@ -610,46 +387,28 @@ fn a_despawn_reaches_only_the_clients_that_see_the_entity() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let server_entity_0 = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((Replicate::to_clients(NetworkTarget::All),))
         .id();
     let client_of_0_entity = stepper.client_of_entity(0);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .gain_visibility(server_entity_0, client_of_0_entity);
 
     let server_entity_1 = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((Replicate::to_clients(NetworkTarget::All),))
         .id();
     let client_of_1_entity = stepper.client_of_entity(1);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .gain_visibility(server_entity_1, client_of_1_entity);
 
-    stepper.frame_step(2);
-    let client_entity_0 = stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity_0)
-        .copied()
-        .unwrap();
-    let client_entity_1 = stepper
-        .client_app(1)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity_1)
-        .copied()
-        .unwrap();
+    stepper.frame_step(PROPAGATION_FRAMES);
+    let client_entity_0 = stepper.client_copy(0, server_entity_0).unwrap();
+    let client_entity_1 = stepper.client_copy(1, server_entity_1).unwrap();
 
     // update the entity_map on the second connection to re-use the same entity
     // as client 0, so that we can check if the second connection also receives a despawn
@@ -664,32 +423,15 @@ fn a_despawn_reaches_only_the_clients_that_see_the_entity() {
         .entity_mapper
         .insert(server_entity_0, client_entity_1);
 
-    DespawnReplicated.apply(
-        stepper
-            .server_app_mut()
-            .world_mut()
-            .entity_mut(server_entity_0),
-    );
-    stepper.frame_step(2);
+    DespawnReplicated.apply(stepper.server_world_mut().entity_mut(server_entity_0));
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // client entity 0 has been despawned
-    assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .get_entity(client_entity_0)
-            .is_err()
-    );
+    assert!(stepper.client_world(0).get_entity(client_entity_0).is_err());
 
     // client entity 1 has not been despawned (because connection 1 did not have visibility on
     // server_entity_0)
-    assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .get_entity(client_entity_1)
-            .is_ok()
-    );
+    assert!(stepper.client_world(1).get_entity(client_entity_1).is_ok());
 }
 
 /// There is no logspam when we despawn an entity with NetworkVisibility
@@ -698,13 +440,11 @@ fn a_despawn_reaches_only_the_clients_that_see_the_entity() {
 fn despawning_an_entity_hidden_from_a_client_logs_nothing() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     let server_parent = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((Replicate::to_clients(NetworkTarget::All), CompA(1.0)))
         .id();
     let _server_child = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             Replicate::to_clients(NetworkTarget::All),
             ChildOf(server_parent),
@@ -713,12 +453,7 @@ fn despawning_an_entity_hidden_from_a_client_logs_nothing() {
 
     stepper.frame_step(1);
     info!("Server despawning parent that is not visible to the client");
-    DespawnReplicated.apply(
-        stepper
-            .server_app_mut()
-            .world_mut()
-            .entity_mut(server_parent),
-    );
+    DespawnReplicated.apply(stepper.server_world_mut().entity_mut(server_parent));
     stepper.frame_step(10);
 }
 
@@ -729,66 +464,43 @@ fn repeated_lose_visibility_keeps_the_replication_target() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn(Replicate::to_clients(NetworkTarget::All))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     stepper
-        .client_app(0)
-        .world()
-        .resource::<ServerEntityMap>()
-        .to_client()
-        .get(&server_entity)
-        .copied()
+        .client_copy(0, server_entity)
         .expect("entity should be auto-visible after spawn");
 
     // lose visibility
     let client_of_0_entity = stepper.client_of_entity(0);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .lose_visibility(server_entity, client_of_0_entity);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_none(),
+        stepper.client_copy(0, server_entity).is_none(),
         "entity should not be visible after lose_visibility"
     );
 
     // lose visibility again (idempotent): should not cause issues
     let client_of_0_entity = stepper.client_of_entity(0);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .lose_visibility(server_entity, client_of_0_entity);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // gain visibility: we should be able to replicate
     let client_of_0_entity = stepper.client_of_entity(0);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .commands()
         .gain_visibility(server_entity, client_of_0_entity);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_some(),
+        stepper.client_copy(0, server_entity).is_some(),
         "entity should be visible again after gain_visibility"
     );
 }
@@ -802,87 +514,49 @@ fn visibility_overrides_survive_a_replication_target_change() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(2));
 
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn(Replicate::to_clients(NetworkTarget::All))
         .id();
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // both clients should see the entity
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_some(),
+        stepper.client_copy(0, server_entity).is_some(),
         "client 0 should see the entity"
     );
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_some(),
+        stepper.client_copy(1, server_entity).is_some(),
         "client 1 should see the entity"
     );
 
     // lose visibility for client 1 (second client, index 1)
     let sender_1 = stepper.client_of_entity(1);
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .lose_visibility(server_entity, sender_1);
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // client 1 should no longer see the entity
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_none(),
+        stepper.client_copy(1, server_entity).is_none(),
         "client 1 should not see the entity after lose_visibility"
     );
 
     // re-insert Replicate targeting all clients (triggers on_discard + on_insert)
     stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .entity_mut(server_entity)
         .insert(Replicate::to_clients(NetworkTarget::All));
-    stepper.frame_step(2);
+    stepper.frame_step(PROPAGATION_FRAMES);
 
     // client 0 should still see the entity
     assert!(
-        stepper
-            .client_app(0)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_some(),
+        stepper.client_copy(0, server_entity).is_some(),
         "client 0 should still see the entity after ReplicationTarget change"
     );
     // client 1 should still NOT see the entity (visibility override persists)
     assert!(
-        stepper
-            .client_app(1)
-            .world()
-            .resource::<ServerEntityMap>()
-            .to_client()
-            .get(&server_entity)
-            .copied()
-            .is_none(),
+        stepper.client_copy(1, server_entity).is_none(),
         "client 1 should still not see the entity after ReplicationTarget change"
     );
 }

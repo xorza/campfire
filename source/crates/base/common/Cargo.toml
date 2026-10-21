@@ -17,7 +17,6 @@ zeroize = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

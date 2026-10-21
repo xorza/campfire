@@ -1,8 +1,9 @@
 //! The test lane mode plays 30 s to its golden record, whatever its heroes' text says: its walker
-//! learns with its points, and fells creeps for their experience.
+//! learns with its points, and fells creeps for their experience. Its waves trade to an end
+//! before the next, and a wave with none to meet falls to the tower it strikes.
 
-use std::num::NonZeroU32;
-
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
 use campfire_capabilities::{Directive, Order};
 use campfire_combat::{Combat, DamageCause};
@@ -10,16 +11,19 @@ use campfire_common::{StateHash, Tick};
 use campfire_harness::{ArchetypeWatch, FixedMatch, FixedSession, MatchRecord, MatchUnits};
 use campfire_math::Num;
 use campfire_navigation::PathWalker;
+use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
 use campfire_production::Production;
 use campfire_progression::{Experience, Points};
 use campfire_runner::{ScriptCallFailed, SessionWorld};
 use campfire_script::ScriptFailures;
+use campfire_sim::EntityIndex;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimWorld, StableId};
 use campfire_stats::Level;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{Dead, Deaths, StatusTags, Units};
+use campfire_units::{GroundPoint, Life, MoveStep, Owner};
 use campfire_values::{Rank, Team, TrackId, UnitType};
 
 /// The walker's learning and progress as a tick left them: the ranks of its basic abilities and
@@ -57,16 +61,104 @@ fn order(fixed: &mut FixedMatch, walker: StableId, tick: u64, directive: impl In
 const TICKS: u64 = 900;
 const MEET: u64 = 140;
 
+/// A match of the lane mode whose one player's walker walks from tick 0 to the map's edge, 8 m off
+/// the lane, out of every creep's and tower's reach.
+fn quiet_lane() -> FixedMatch {
+    let mut fixed = FixedSession::new(TestMode::Lane.packages(), 1).start();
+    let walker = MatchUnits::of(fixed.game()).hero(0);
+    let edge = GroundPoint {
+        x: Num::ZERO,
+        z: Num::from_int(8).unwrap(),
+    };
+    order(&mut fixed, walker, 0, OrdersDirective::Move { to: edge });
+    fixed
+}
+
+/// The units of `team` in `world` that walk, as `walks`, and have no owner: its creeps, or its
+/// tower.
+fn unowned(world: &World, team: u8, walks: bool) -> Vec<Entity> {
+    world
+        .resource::<EntityIndex>()
+        .iter()
+        .map(|(_, entity)| entity)
+        .filter(|&entity| {
+            let unit = world.entity(entity);
+            unit.get::<Team>() == Some(&Team::new(team))
+                && unit.contains::<MoveStep>() == walks
+                && !unit.contains::<Owner>()
+                && unit.contains::<UnitType>()
+        })
+        .collect()
+}
+
+/// 30 s between waves at 30 ticks a second.
+const WAVE_TICKS: u64 = 900;
+
+#[test]
+fn two_equal_waves_trade_to_an_end_before_the_next_wave() {
+    // The waves spawn 32 m apart and close at 7.5 m/s: they meet about 4 s later. The lane is a
+    // mirror, so each creep has its twin: the two front creeps fall to twelve strikes of 25, six
+    // from each rear creep, then the two rear creeps to twelve more, 24 ticks apart, 9.6 s. All
+    // four fall well before the next wave, the twins in the same tick, and neither wave is left
+    // to push: a hero tips the balance.
+    let mut fixed = quiet_lane();
+    let mut tick = 0;
+    while unowned(fixed.game(), 0, true).is_empty() {
+        fixed.game_mut().run_tick_alone();
+        tick += 1;
+    }
+    let spawned = tick;
+    let mut gone = [None; 2];
+    while gone.iter().any(Option::is_none) {
+        assert!(tick - spawned < WAVE_TICKS, "the fight ends");
+        fixed.game_mut().run_tick_alone();
+        tick += 1;
+        for (team, gone) in (0..).zip(&mut gone) {
+            if gone.is_none() && unowned(fixed.game(), team, true).is_empty() {
+                *gone = Some(tick);
+            }
+        }
+    }
+    assert_eq!(gone[0], gone[1]);
+}
+
+#[test]
+fn a_wave_with_no_wave_to_meet_strikes_the_tower_and_falls_to_it() {
+    // The west wave goes as it spawns. The east wave walks into the west tower's reach, strikes
+    // it for 25 a strike, and falls to it: two of its strikes of 150 kill a creep of 300. All
+    // this before the next wave.
+    let mut fixed = quiet_lane();
+    let mut tick = 0;
+    while unowned(fixed.game(), 0, true).is_empty() {
+        fixed.game_mut().run_tick_alone();
+        tick += 1;
+    }
+    let spawned = tick;
+    for creep in unowned(fixed.game(), 0, true) {
+        fixed.game_mut().despawn(creep);
+    }
+    let west = unowned(fixed.game(), 0, false)[0];
+    while !unowned(fixed.game(), 1, true).is_empty() {
+        assert!(tick - spawned < WAVE_TICKS, "the tower kills the wave");
+        fixed.game_mut().run_tick_alone();
+        tick += 1;
+    }
+    let full = Num::from_int(1500).unwrap();
+    let lost = full - fixed.game().get::<Life>(west).unwrap().current();
+    let strike = Num::from_int(25).unwrap();
+    // The wave lands two strikes before the tower fells it.
+    assert_eq!(lost, strike * 2, "{lost:?} of {full:?}");
+}
+
 /// The mode's scripted match, which `source/.config/nextest.toml` exempts from the bound of 1 s.
 mod scripted_match {
-    use campfire_orders::OrdersDirective;
     use campfire_progression::ProgressionDirective;
 
     use super::*;
 
     #[test]
     fn the_lane_match_plays_to_its_golden_record() {
-        let session = FixedSession::new(TestMode::Lane.packages(), NonZeroU32::new(30).unwrap(), 2);
+        let session = FixedSession::new(TestMode::Lane.packages(), 2);
         let mut fixed = session.start();
         let mut record = MatchRecord::of(fixed.game_mut(), session.packages(), session.seats());
         let walker = MatchUnits::of(fixed.game()).hero(0);
@@ -208,7 +300,6 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
         PackageTree::of(TestMode::Lane)
             .edit("modes/lane/scripts/tower_ai.rhai", throws)
             .packages(),
-        NonZeroU32::new(30).unwrap(),
         2,
     );
     let mut fixed = session.start();
@@ -240,7 +331,7 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
 
 /// The state hash of each of the first 300 ticks of a lane match of `packages`.
 fn hashes(packages: ModePackages) -> Vec<StateHash> {
-    let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
+    let session = FixedSession::new(packages, 2);
     let mut fixed = session.start();
     (0..300)
         .map(|_| {
@@ -254,7 +345,7 @@ fn hashes(packages: ModePackages) -> Vec<StateHash> {
 fn a_kill_gives_its_killer_the_victims_experience_and_an_allys_kill_gives_none() {
     // The first wave spawns in tick 0. The walker fells a creep of the other team: it takes the
     // creep's 60; it fells one of its own team, an ally's kill: it takes none.
-    let session = FixedSession::new(TestMode::Lane.packages(), NonZeroU32::new(30).unwrap(), 2);
+    let session = FixedSession::new(TestMode::Lane.packages(), 2);
     let mut fixed = session.start();
     fixed.game_mut().run_tick_alone();
     let walker = MatchUnits::of(fixed.game()).hero(0);
@@ -301,7 +392,7 @@ fn a_victim_the_experience_filter_leaves_out_gives_none() {
                 Edit::Set("experience.victim", "\"all:!constructing\""),
             );
         }
-        let session = FixedSession::new(tree.load().unwrap(), NonZeroU32::new(30).unwrap(), 2);
+        let session = FixedSession::new(tree.load().unwrap(), 2);
         let mut fixed = session.start();
         fixed.game_mut().run_tick_alone();
         let walker = MatchUnits::of(fixed.game()).hero(0);

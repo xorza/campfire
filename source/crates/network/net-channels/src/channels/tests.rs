@@ -154,8 +154,7 @@ mod lz4 {
             .sender_mut(channel_type_id)
             .unwrap()
             .collect_send_candidates(&mut candidates);
-        // The compressed message is one candidate of fewer than 3 fragments, the first of which
-        // names its compression.
+        // The compressed message is one candidate of one fragment, which names its compression.
         assert_eq!(candidates.len(), 1);
         let MessageRef::Fragment(first) = sender_transport
             .senders
@@ -165,7 +164,7 @@ mod lz4 {
         };
         let first = first.data();
         assert_eq!(first.compression, Some(FragmentCompression::Lz4));
-        assert!(first.fragments.0 < 3);
+        assert_eq!(first.fragments.0, 1);
 
         let mut cursor = CandidateCursor::default();
         let mut packets = vec![];
@@ -251,8 +250,9 @@ mod lz4 {
 
         assert_eq!(packet.messages.len(), 8);
         let compression = packet.compression.unwrap();
+        // LZ4's 29 bytes for the eight messages, after the tick's.
+        assert_eq!(compression.compressed_len, 29);
         assert_eq!(packet.len(), LONG_TICK_LEN + compression.compressed_len);
-        assert!(packet.len() < 600);
         Ok(())
     }
 
@@ -570,7 +570,17 @@ mod steps {
             sender.send(channel_id, expected.clone(), 1.0).unwrap();
             sender.flush(&mut sender_queues, NetTick(0), Instant::ZERO);
             let sends: Vec<_> = sender_queues.take_sends().collect();
-            assert!(sends.len() > 1);
+            // A payload of 1,166 bytes takes fragments of 1,148, so 3,000 = 2 · 1,148 + 704 go in
+            // 3; one of 256, of 238, so 3,000 = 12 · 238 + 144 go in 13.
+            let fragment_len = fragment_len_for_max_payload(sender_payload).unwrap();
+            assert_eq!(
+                (fragment_len, sends.len()),
+                if sender_payload == 256 {
+                    (238, 13)
+                } else {
+                    (1148, 3)
+                }
+            );
             assert!(sends.iter().all(|send| send.data().len() <= sender_payload));
 
             for (number, send) in (0..).zip(sends) {
@@ -729,6 +739,7 @@ mod steps {
                 }
             }
         }
-        assert!(read > 0 && broken > 0, "{read} read, {broken} broken");
+        // Of the seed's 3 · 2,048 = 6,144 mutations, 2,995 read and 3,149 break.
+        assert_eq!([read, broken], [2995, 3149]);
     }
 }

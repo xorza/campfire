@@ -1,6 +1,7 @@
 use super::*;
 use crate::correction::CorrectionFn;
 use crate::rollback_plugin::RollbackPlugin;
+use campfire_net_replication::internals::shared_replicon_app;
 
 use crate::correction_ease::CorrectionEase;
 use crate::correction_policy::CorrectionPolicy;
@@ -14,8 +15,6 @@ use crate::visual_correction::VisualCorrection;
 use bevy_curve::{Curve, Ease, FunctionCurve, Interval};
 use bevy_ecs::system::RunSystemOnce;
 
-use bevy_replicon::prelude::*;
-use bevy_state::app::StatesPlugin;
 use campfire_net_core::NetTick;
 use campfire_net_interpolation::AppInterpolationExt;
 use campfire_net_interpolation::FrameInterpolationHistory;
@@ -92,12 +91,8 @@ impl ReplicationDiffable<Self> for TestRot {
 }
 
 fn switch_app() -> App {
-    let mut app = App::new();
+    let mut app = shared_replicon_app();
     app.add_plugins((
-        StatesPlugin,
-        RepliconSharedPlugin {
-            auth_method: AuthMethod::None,
-        },
         PredictionMarkerPlugin,
         InterpolationMarkerPlugin,
         InterpolationRegistryPlugin,

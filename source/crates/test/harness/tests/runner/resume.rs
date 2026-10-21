@@ -2,7 +2,6 @@
 //! to the checkpoint's tick, plays each later tick to the hash of the run that made it: every
 //! value a tick reads is state, or derived data a restore builds again.
 
-use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use campfire_common::ErrorReport;
@@ -135,7 +134,7 @@ fn the_proving_match_resumes_from_each_checkpoint_to_the_same_hashes() {
 #[test]
 fn the_lane_match_resumes_from_each_checkpoint_to_the_same_hashes() {
     let packages = TestMode::Lane.packages();
-    let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
+    let session = FixedSession::new(packages, 2);
     let at = [100, 300, 600];
     let run = Checkpointed::run(session.start(), at, 900, |fixed, _| {
         fixed.game_mut().run_tick_alone();

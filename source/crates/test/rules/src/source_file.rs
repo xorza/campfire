@@ -98,9 +98,13 @@ impl SourceFile {
     /// gate holds, a `tests.rs` or a file of a `tests` directory. A `bench.rs` is library code, as
     /// `internals` builds it.
     pub(crate) fn library(&self) -> Option<String> {
-        let (name, dirs) = self.names();
-        let test = self.gate == Some(Gate::Test) || dirs.contains(&"tests") || name == "tests.rs";
-        (!test).then(|| self.blanked(&self.analysis().code, &[Gate::Test]))
+        (!self.is_test()).then(|| self.blanked(&self.analysis().code, &[Gate::Test]))
+    }
+
+    /// Its code with no comment, where the whole file is a test's: a module `#[cfg(test)]` holds,
+    /// a `tests.rs` or a file of a `tests` directory.
+    pub(crate) fn test_code(&self) -> Option<&str> {
+        self.is_test().then(|| self.analysis().code.as_str())
     }
 
     /// The paths of the modules a gate holds at their declarations at this file's top, each with
@@ -182,6 +186,13 @@ impl SourceFile {
     fn is_production(&self) -> bool {
         let (name, dirs) = self.names();
         self.gate.is_none() && !dirs.contains(&"tests") && name != "tests.rs" && name != "bench.rs"
+    }
+
+    /// Whether all of it is a test's: a module `#[cfg(test)]` holds, a `tests.rs` or a file of a
+    /// `tests` directory.
+    fn is_test(&self) -> bool {
+        let (name, dirs) = self.names();
+        self.gate == Some(Gate::Test) || dirs.contains(&"tests") || name == "tests.rs"
     }
 
     /// Its file's name, and the directories its path holds it in.

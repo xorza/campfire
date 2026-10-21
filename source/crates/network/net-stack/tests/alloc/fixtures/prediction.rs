@@ -56,8 +56,7 @@ fn audit_prediction(kind: ClientKind) {
         .client_app_mut(0)
         .add_systems(FixedUpdate, increment_predicted);
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((
             CompFull(0.0),
             Replicate::to_clients(NetworkTarget::All),
@@ -77,8 +76,7 @@ fn audit_prediction(kind: ClientKind) {
         );
     });
     let history = stepper
-        .client_app(0)
-        .world()
+        .client_world(0)
         .get::<PredictionHistory<CompFull>>(client_entity)
         .unwrap();
     assert!(!history.is_empty(), "the client records predicted values");

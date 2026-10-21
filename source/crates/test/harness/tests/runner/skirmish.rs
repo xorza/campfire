@@ -1,8 +1,6 @@
 //! Zero Hour's skirmish, its rules package's script played by a test mode (09-zero-hour.md, Eight
 //! teams of one; 09-zero-hour.md, Defeat by the last building that counts).
 
-use std::num::NonZeroU32;
-
 use bevy_ecs::world::World;
 use campfire_combat::{Combat, DamageCause};
 use campfire_common::Seat;
@@ -44,9 +42,8 @@ fn session(plan: [SeatPlan; 3]) -> FixedSession {
 
 /// The session of a skirmish whose slots `plan` opens, of no faction picked.
 fn unpicked(plan: [SeatPlan; 3]) -> FixedSession {
-    let rate = NonZeroU32::new(30).unwrap();
     let packages = TestMode::Skirmish.packages();
-    FixedSession::planned(packages, rate, InputRules::ROOMY, plan)
+    FixedSession::planned(packages, InputRules::ROOMY, plan)
 }
 
 /// A skirmish whose slots `plan` opens, after its start's tick.
@@ -213,9 +210,8 @@ fn a_kill_pays_its_killers_player_its_share_of_the_victims_cost_rounded_up() {
             "fn on_match_start(ctx) {\n    ctx.set_bounty_share(ctx.players[0], num(1) / 4);\n",
         ),
     );
-    let rate = NonZeroU32::new(30).unwrap();
     let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Bot];
-    let mut fixed = FixedSession::planned(tree.load().unwrap(), rate, InputRules::ROOMY, plan)
+    let mut fixed = FixedSession::planned(tree.load().unwrap(), InputRules::ROOMY, plan)
         .seat_picked(&bases())
         .start();
     let dozer = one(&fixed, "dozer", 0);
@@ -268,9 +264,8 @@ fn a_kill_of_a_site_under_construction_pays_no_bounty_by_the_victim_filter() {
         if !filtered {
             tree.edit("zero-hour/data/rules.toml", Edit::Remove("bounty.victim"));
         }
-        let rate = NonZeroU32::new(30).unwrap();
         let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Bot];
-        let mut fixed = FixedSession::planned(tree.load().unwrap(), rate, InputRules::ROOMY, plan)
+        let mut fixed = FixedSession::planned(tree.load().unwrap(), InputRules::ROOMY, plan)
             .seat_picked(&bases())
             .start();
         let dozer = one(&fixed, "dozer", 0);

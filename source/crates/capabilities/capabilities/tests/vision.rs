@@ -3,11 +3,11 @@ use campfire_capabilities::{Match, Release};
 use campfire_deliveries::Deliveries;
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_math::Num;
-use campfire_mode::Mode;
 use campfire_script::FailureKind;
-use campfire_script::{ApiError, ScriptLimits, ScriptPools, Unit};
+use campfire_script::{ApiError, Unit};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId};
+use campfire_units::internals::Spawn;
 use campfire_units::{BodyForm, Dead, Life, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{Relation, TagProperties, Team, TeamSet, TypeScope, VisionShare};
 use campfire_vision::*;
@@ -25,10 +25,8 @@ fn vision_match_of_teams(teams: usize) -> Match {
 /// A match of `teams` teams whose map has the brush of `brush`'s areas, in order, with the
 /// tests' seers.
 fn vision_match_with_brush(teams: usize, brush: &[Polygon]) -> Match {
-    let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptPools { limits, players: 1 };
     let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
-    let mut game = Match::server(&declared, scripts);
+    let mut game = Match::builder(&declared).build();
     let bounds = Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
     let grid = Grid::new(Num::int(1), bounds).unwrap();
     Vision::load_grid(&mut game, grid, brush, teams);
@@ -307,7 +305,9 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     Units::give_type(&mut game, building, Life::full(Num::int(100)));
     let body = BodyForm::box_sized([Num::int(6), Num::int(2)]).unwrap();
     Units::give_type(&mut game, building, body);
-    let building = Mode::spawn(&mut game, building, (5, 0, 0), Team::new(1), ());
+    let building = Spawn::of(building, (5, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     let seer = Vision::spawn_seer(&mut game, -1, 0, Team::new(0), Some(4));
     game.step();
     assert_eq!(Vision::seen_by(&game, building), team(1).with(Team::new(0)));

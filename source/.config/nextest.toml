@@ -38,6 +38,12 @@ threads-required = "num-cpus"
 filter = 'package(campfire-harness) & test(/^runner::proving_match::sweep::/)'
 threads-required = "num-cpus"
 
+# The log file's sweep of every cut and flip runs its bytes on every core, as the proving match's
+# sweeps do.
+[[profile.default.overrides]]
+filter = 'package(campfire-protocol) & test(=session_log::tests::every_truncation_and_every_flip_of_a_log_file_is_refused)'
+threads-required = "num-cpus"
+
 # The wire cost cases run in parallel, a thread for each of its five.
 [[profile.default.overrides]]
 filter = 'package(campfire-net-stack) & test(=scenario::wire_cost::tests::each_case_puts_exact_counts_on_the_wire)'
@@ -67,6 +73,10 @@ threads-required = "num-cpus"
 
 [[profile.ci.overrides]]
 filter = 'package(campfire-harness) & test(/^runner::proving_match::sweep::/)'
+threads-required = "num-cpus"
+
+[[profile.ci.overrides]]
+filter = 'package(campfire-protocol) & test(=session_log::tests::every_truncation_and_every_flip_of_a_log_file_is_refused)'
 threads-required = "num-cpus"
 
 [[profile.ci.overrides]]

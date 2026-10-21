@@ -37,8 +37,6 @@ pub(crate) fn short_3v3(edits: &[(&str, Edit<'_>)], tail: &str) -> ModePackages 
         let marker = |z| format!("team = \"{team}\"\nposition = [0, {z}]");
         tree.edit(map, Edit::Replace(&marker(from), &marker(to)));
     }
-    for &(file, edit) in edits {
-        tree.edit(file, edit);
-    }
+    tree.edit_all(edits.iter().copied());
     tree.edit(data, Edit::Append(tail)).packages()
 }

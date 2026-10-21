@@ -1,6 +1,8 @@
 //! A local match's pause and speed: paused, no end runs a sim tick, and the match resumes at the
 //! tick it stopped before; at speed 2, each tick lasts half the session's tick, so a frame of the
-//! clock as long as a session's tick runs two.
+//! clock as long as a session's tick runs two, but for the nanosecond the half rounds up.
+
+use std::time::Duration;
 
 use bevy_time::{Fixed, Time};
 use campfire_net::{JoinState, PaceSpeed};
@@ -39,19 +41,25 @@ fn a_paused_match_runs_no_tick_and_at_speed_2_runs_two_ticks_a_frame() {
         assert_eq!(local.next_tick(End::Server), server + frames);
     }
 
-    // At speed 2, a tick lasts half the session's: a frame, a session's tick long, runs two, the
-    // first with the time the fixed clock held over too, as many more as half ticks it holds.
+    // At speed 2, a tick lasts half the session's, rounded up to the nanosecond: 16,666,667 ns of
+    // 33,333,333. A frame, a session's tick long, runs as many as the time the fixed clock held
+    // over and the frame's make, and holds the rest over: two, or one when less than a
+    // nanosecond was held, as two need a nanosecond more than a frame.
     let tick = MatchRate::new(local.packages().manifest().tick_hz.default()).length();
-    let held = local.server().world().resource::<Time<Fixed>>().overstep();
+    let half = Duration::from_nanos(16_666_667);
+    assert_eq!(tick, Duration::from_nanos(33_333_333));
+    let mut held = local.server().world().resource::<Time<Fixed>>().overstep();
     local.pace().set_speed(PaceSpeed::Double);
-    let start = local.next_tick(End::Server);
-    local.step();
-    let first = 2 + u64::try_from(held.as_nanos() / (tick / 2).as_nanos()).unwrap();
-    assert_eq!(local.next_tick(End::Server), start + first);
-    for frames in 1..=30 {
+    let mut next = local.next_tick(End::Server);
+    for _ in 0..30 {
         local.step();
-        assert_eq!(local.next_tick(End::Server), start + first + 2 * frames);
+        let ran = (held + tick).as_nanos() / half.as_nanos();
+        held = held + tick - half * u32::try_from(ran).unwrap();
+        next += u64::try_from(ran).unwrap();
+        assert_eq!(local.next_tick(End::Server), next);
     }
+    let fixed = local.server().world().resource::<Time<Fixed>>();
+    assert_eq!((fixed.timestep(), fixed.overstep()), (half, held));
     for client in 0..2 {
         let state = local.client(client).world().resource::<JoinState>();
         assert!(state.playing_clock().is_some(), "client {client} plays on");

@@ -19,6 +19,8 @@ mod os;
 mod pace;
 mod paced_runner;
 mod process_exit;
+#[cfg(feature = "internals")]
+mod protocol_client;
 mod session_times;
 mod sim_client;
 mod sim_server;
@@ -99,6 +101,7 @@ pub use crate::unix_clock::UnixClock;
 
 #[cfg(feature = "internals")]
 pub mod internals {
+    pub use crate::protocol_client::{ProtocolClient, ProtocolClientState};
     #[expect(
         clippy::module_name_repetitions,
         reason = "a module's world trait for tests and benches is `<Module>WorldInternals` (AGENTS.md)"

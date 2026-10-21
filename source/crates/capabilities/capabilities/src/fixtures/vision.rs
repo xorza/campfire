@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
-use campfire_mode::Mode;
 use campfire_sim::StableId;
+use campfire_units::internals::Spawn;
 use campfire_units::{Life, UnitTypeCore, Units};
 use campfire_values::{TagProperties, Team, TypeScope};
 use campfire_vision::internals::SIGHTS;
@@ -41,6 +41,8 @@ impl VisionFixtures for Vision {
 
     fn spawn_seer(world: &mut World, x: i64, z: i64, team: Team, sight: Option<i64>) -> StableId {
         let position = Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
-        Mode::spawn_named(world, &Self::seer(sight), position, team, ())
+        Spawn::named(world, &Self::seer(sight), position)
+            .team(team)
+            .place(world)
     }
 }

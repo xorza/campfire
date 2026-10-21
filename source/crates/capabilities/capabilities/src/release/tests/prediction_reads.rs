@@ -11,8 +11,9 @@ use campfire_declarations::ServerOnlySystems;
 use campfire_stats::{Modifiers, UnitStats};
 
 use super::*;
+use crate::fixtures::package_set::PackageSet;
 use crate::release::client_holds::ClientHolds;
-use crate::release::tests::feature_installs::EVERY_SYSTEM;
+use crate::release::tests::feature_installs::{books_of, every_system};
 
 /// What `access` reads, a component's data or its presence, `Has` and `With` among them, and
 /// whether only on the units a client predicts, as the default filters make a query that names
@@ -83,7 +84,10 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     Release::build(
         &mut world,
         spec(Role::Client).unbuilt(),
-        EVERY_SYSTEM.books(rate, &[]),
+        books_of(&PackageSet {
+            rate,
+            ..every_system()
+        }),
         rules,
     );
     let unpredicted = world.register_component::<Unpredicted>();
@@ -160,7 +164,10 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     Release::build(
         &mut server,
         spec(Role::Rules),
-        EVERY_SYSTEM.books(rate, &[]),
+        books_of(&PackageSet {
+            rate,
+            ..every_system()
+        }),
         MatchKind::Rules,
     );
     let (client, server) = (system_names(&mut world), server_only_systems(&server));

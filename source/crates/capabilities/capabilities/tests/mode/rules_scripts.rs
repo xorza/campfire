@@ -1,5 +1,6 @@
 use std::num::NonZeroU64;
 
+use campfire_common::Tick;
 use campfire_progression::LevelUps;
 use campfire_script::{CapabilityRefusal, ModeEvents};
 use campfire_units::AudienceOwner;
@@ -107,7 +108,8 @@ fn a_rules_script_reads_no_mode_state_and_neither_ends_the_match_nor_chooses() {
     // The mode's own script ends the match, listed after a rules script.
     let ends = "fn on_match_start(ctx) { ctx.win(\"a\"); }";
     let game = listed_match(&["fn on_match_start(ctx) {}", ends], 1, ScriptLimits::ROOMY);
-    assert!(game.unwrap().match_end().is_some());
+    let won = MatchEnd::new(Tick::new(0), MatchResult::Won(Team::new(0)));
+    assert_eq!(game.unwrap().match_end(), Some(won));
 }
 
 #[test]

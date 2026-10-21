@@ -1,25 +1,31 @@
-use campfire_actions::LaunchId;
+use std::collections::BTreeMap;
+
+use campfire_abilities::*;
+use campfire_actions::{ActionData, ActionTarget, DeliveryData, LaunchId, Targeting};
 use campfire_areas::*;
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
-use campfire_codec::Toml;
+use campfire_codec::Binary;
 use campfire_common::{DeclaredName, Tick, Ticks};
+use campfire_declarations::Role;
 use campfire_deliveries::{Deliveries, Delivering};
 use campfire_math::{Num, Vec3};
-use campfire_mode::Mode;
 use campfire_production::Production;
 use campfire_projectiles::Projectiles;
-use campfire_script::Filter;
+use campfire_script::{Filter, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent, SimWorld};
 use campfire_stats::{
     Application, AuraData, CarriedMut, ModifierData, Modifiers, NewInstance, Reapply, Stats,
 };
-use campfire_units::{Dead, Life, UnitTypeCore, UnitTypes, Units, UnitsWorld};
+use campfire_units::internals::Spawn;
+use campfire_units::{Body, Dead, Life, UnitTypeCore, UnitTypes, Units, UnitsWorld};
 use campfire_values::{
-    EngineTag, FilterData, Number, PackageIndex, ParamRef, Rank, Relation, RelationSet, Scalar,
-    TagSet, Team, TypeScope, VisionShare,
+    Block, EngineTag, FilterData, Number, PackageIndex, ParamRef, Rank, Relation, RelationSet,
+    Scalar, TagSet, Team, TypeScope, VisionShare,
 };
+
+use crate::abilities::{abilities_match_with, changing, half_meters, strike};
 
 #[test]
 fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
@@ -45,28 +51,6 @@ fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
     ] {
         let selects = units.map(|tags| parse(filter).selects(Relation::Hostile, tags));
         assert_eq!(selects, selected, "{filter}");
-    }
-}
-
-#[test]
-fn an_area_reads_only_with_a_radius_that_is_not_negative() {
-    let read = |text: &str| Toml::parse::<AreaData>(text);
-    assert_eq!(
-        read("radius = 0").unwrap(),
-        AreaData {
-            radius: Num::ZERO,
-            delay_ms: 0,
-            duration_ms: 0,
-            affects: None,
-            inside: AreaInsideData::default(),
-        }
-    );
-    for refused in ["radius = -1", "radius = \"-0.5\""] {
-        let message = read(refused).unwrap_err().message().to_owned();
-        assert!(
-            message.starts_with("an area's radius is not negative"),
-            "{refused}"
-        );
     }
 }
 
@@ -103,9 +87,9 @@ fn an_area_is_state_and_restores() {
         (field, action, warding, source)
     };
     let declared = [Capability::Stats, Capability::Combat, Capability::Areas];
-    let mut game = Match::unscripted(&declared);
+    let mut game = Match::builder(&declared).role(Role::Rules).build();
     let (field, action, warding, source_type) = loads(&mut game);
-    let source = Mode::spawn(&mut game, source_type, Vec3::ZERO, Team::new(0), ());
+    let source = Spawn::of(source_type, Vec3::ZERO).place(&mut game);
     let by = Delivering {
         source,
         action,
@@ -116,7 +100,7 @@ fn an_area_is_state_and_restores() {
     let area = Area::new(by, None, Tick::new(9));
     let trigger = AreaTrigger::at(Tick::new(5));
     let id = Deliveries::spawn_of(&mut game, source, field, Vec3::ZERO, (area, trigger));
-    let mut restored = Match::unscripted(&declared);
+    let mut restored = Match::builder(&declared).role(Role::Rules).build();
     loads(&mut restored);
     Release::restore_into(&game, &mut restored);
     assert_eq!(restored.part::<Area>(id), game.part::<Area>(id));
@@ -125,14 +109,14 @@ fn an_area_is_state_and_restores() {
     let entity = game.unit_entity(id);
     let triggers = |at| AreaTrigger::at(Tick::new(at)).check(&game, entity);
     assert_eq!([5, 9, 10].map(triggers), [true, true, false]);
-    let id = Mode::spawn(&mut game, source_type, Vec3::ZERO, Team::new(0), ());
+    let id = Spawn::of(source_type, Vec3::ZERO).place(&mut game);
     assert!(!trigger.check(&game, game.unit_entity(id)));
     // Its times are at most the limit: a tick past it fails to decode.
     let past = Tick::new(Tick::LIMIT.get() + 1);
-    assert!(Match::decodes(&Area::new(by, None, Tick::LIMIT)));
-    assert!(!Match::decodes(&Area::new(by, None, past)));
-    assert!(Match::decodes(&AreaTrigger::at(Tick::LIMIT)));
-    assert!(!Match::decodes(&AreaTrigger::at(past)));
+    assert!(Binary::decodes_again(&Area::new(by, None, Tick::LIMIT)));
+    assert!(!Binary::decodes_again(&Area::new(by, None, past)));
+    assert!(Binary::decodes_again(&AreaTrigger::at(Tick::LIMIT)));
+    assert!(!Binary::decodes_again(&AreaTrigger::at(past)));
     // An area of a launch the match did not load has no lists to run.
     let launched = Delivering {
         launch: Some(LaunchId::nth(0)),
@@ -154,7 +138,7 @@ fn an_area_and_an_aura_hold_on_the_same_units_of_each_relation_and_life() {
     // `marked` on the units that may be attacked, and an aura of the enemies that holds
     // `inspired`, each of 2 m around the source at 0.
     let declared = [Capability::Stats, Capability::Combat, Capability::Areas];
-    let mut game = Match::unscripted(&declared);
+    let mut game = Match::builder(&declared).role(Role::Rules).build();
     let core = UnitTypeCore::default();
     let plain = Units::load_type(&mut game, TypeScope::Mode, "plain", &core);
     Units::give_type(&mut game, plain, Life::full(Num::int(100)));
@@ -206,7 +190,7 @@ fn an_area_and_an_aura_hold_on_the_same_units_of_each_relation_and_life() {
     );
     let spawn = |game: &mut Match, unit_type, (x, z), team| {
         let at = Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
-        Mode::spawn(game, unit_type, at, Team::new(team), ())
+        Spawn::of(unit_type, at).team(Team::new(team)).place(game)
     };
     let source = spawn(&mut game, plain, (0, 0), 0);
     let units = [
@@ -258,4 +242,229 @@ fn an_area_and_an_aura_hold_on_the_same_units_of_each_relation_and_life() {
     assert_eq!(holds(marked), enemies);
     assert_eq!(holds(guarded), [true, false, false, false, false, false]);
     assert_eq!(holds(rallied), [false, false, false, true, false, false]);
+}
+
+#[test]
+fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
+    // A delay of 0 ms triggers in tick 1, of 100 ms, 3 ticks at 30 a second, in tick 3: an area
+    // lands in the tick its cast resolves, tick 0, and triggers its delay later, one tick at the
+    // least.
+    for (delay_ms, trigger) in [(0, 1), (100, 3)] {
+        let declared = [
+            Capability::Stats,
+            Capability::Combat,
+            Capability::Abilities,
+            Capability::Areas,
+        ];
+        let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+        let blast = Units::load_type(
+            &mut game,
+            TypeScope::Mode,
+            "blast",
+            &UnitTypeCore::default(),
+        );
+        let data = AreaData {
+            radius: Num::int(2),
+            delay_ms,
+            duration_ms: 0,
+            affects: None,
+            inside: AreaInsideData::default(),
+        };
+        Areas::load_type(&mut game, blast, PackageIndex::MODE, &data);
+        let shot = ActionData {
+            targeting: Targeting::Point,
+            delivery: Some(DeliveryData::Area {
+                unit_type: DeclaredName::new("blast").unwrap(),
+            }),
+            ..strike()
+        };
+        // Each hook deals damage only when it reads the area still there, no aimed unit, and no
+        // direction, as an area flies none.
+        let source = r#"
+            fn on_hit(ctx, caster, target, hit) {
+                if hit.delivery.unit_type == "blast" && hit.aimed == () && hit.direction == () {
+                    ctx.damage(target, "true", 50);
+                }
+            }
+            fn on_end(ctx, caster, hit) {
+                if hit.delivery.unit_type == "blast" {
+                    ctx.damage(caster, "true", 7);
+                }
+            }
+        "#;
+        let action = Abilities::load(&mut game, "shot", &shot, source);
+        let caster = Abilities::caster(&mut game, action, 1);
+        // The area lands on (4, 0, 0), of radius 2: a body of no radius 2 m away is inside it and
+        // one a bit farther is not; a body of radius 0.5 2.5 m away touches it; an enemy whose
+        // tags block it as a target is reached all the same; an ally is not.
+        let center = Num::int(4);
+        let edge = Abilities::spawn_combatant(
+            &mut game,
+            Vec3::from((center + Num::int(2), 0, 0)),
+            Team::new(1),
+            (),
+        );
+        let beyond = Abilities::spawn_combatant(
+            &mut game,
+            Vec3::from((center, 0, Num::int(2) + Num::EPSILON)),
+            Team::new(1),
+            (),
+        );
+        let body = Body::new(half_meters(1)).unwrap();
+        let wide = Abilities::spawn_combatant(
+            &mut game,
+            Vec3::from((center - half_meters(5), 0, 0)),
+            Team::new(1),
+            body,
+        );
+        let hidden =
+            Abilities::spawn_combatant(&mut game, Vec3::from((center, 0, 1)), Team::new(1), ());
+        Units::set_blocks(&mut game, hidden, &[Block::Target]);
+        let ally =
+            Abilities::spawn_combatant(&mut game, Vec3::from((center, 0, 0)), Team::new(0), ());
+        let units = [edge, beyond, wide, hidden, ally, caster];
+        let areas = |game: &mut Match| {
+            let mut query = game.query::<&Area>();
+            query.iter(game).count()
+        };
+
+        Abilities::cast(
+            &mut game,
+            caster,
+            ActionTarget::Point(Vec3::from((center, 0, 0))),
+        );
+        game.run_until(trigger);
+        assert_eq!(
+            units.map(|id| Stats::health(&game, id)),
+            [500; 6],
+            "{delay_ms}"
+        );
+        assert_eq!(areas(&mut game), 1);
+        // It triggers, deals 50 to each enemy it reaches, ends at once with no duration, and
+        // its `on_end` deals 7 to its caster.
+        game.run_until(trigger + 1);
+        let healths = units.map(|id| Stats::health(&game, id));
+        assert_eq!(healths, [450, 500, 450, 450, 500, 493], "{delay_ms}");
+        assert_eq!(areas(&mut game), 0);
+        assert_eq!(Abilities::failed_calls(&game), []);
+    }
+}
+
+#[test]
+fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selects() {
+    let declared = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Abilities,
+        Capability::Areas,
+    ];
+    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let grunt = UnitTypeCore::tagged(&["grunt"]);
+    let grunt = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt);
+    Abilities::give_combatant(&mut game, grunt);
+    let field = Units::load_type(
+        &mut game,
+        TypeScope::Mode,
+        "field",
+        &UnitTypeCore::default(),
+    );
+    Abilities::load_stats(&mut game);
+    let [cover, rally, slow] = ["cover", "rally", "slow"].map(|name| {
+        Stats::load_modifier(
+            &mut game,
+            PackageIndex::MODE,
+            name,
+            &changing(&[], &[], None),
+            None,
+        );
+        Stats::modifier(&game, PackageIndex::MODE, name).unwrap()
+    });
+    // Radius 2 and 100 ms, 3 ticks at 30 a second; it hits only enemy grunts, and holds a
+    // modifier of its own on its caster, its caster's allies and its enemies.
+    let data = AreaData {
+        radius: Num::int(2),
+        delay_ms: 0,
+        duration_ms: 100,
+        affects: Some(FilterData::parse("enemies:grunt").unwrap()),
+        inside: AreaInsideData {
+            caster: Some(DeclaredName::new("cover").unwrap()),
+            allies: Some(DeclaredName::new("rally").unwrap()),
+            enemies: Some(DeclaredName::new("slow").unwrap()),
+        },
+    };
+    Areas::load_type(&mut game, field, PackageIndex::MODE, &data);
+    // The tag book, which a match's stats derive each unit's tags from, once every type is tagged.
+    Units::seal_tags(&mut game, &BTreeMap::new());
+    let shot = ActionData {
+        targeting: Targeting::Point,
+        delivery: Some(DeliveryData::Area {
+            unit_type: DeclaredName::new("field").unwrap(),
+        }),
+        ..strike()
+    };
+    let source = r#"
+        fn on_hit(ctx, caster, target, hit) {
+            ctx.damage(target, "true", 50);
+        }
+    "#;
+    let action = Abilities::load(&mut game, "shot", &shot, source);
+    let caster = Abilities::caster(&mut game, action, 1);
+    // The area lands on (1, 0, 0), with its caster 1 m away. Inside it: an ally, an enemy grunt,
+    // an enemy of no type, and one whose tags block it as a target. Outside it, 3 m away: an ally
+    // and an enemy grunt.
+    let point = |x: i16, z: i16| Vec3::from((x, 0, z));
+    let ally = Abilities::spawn_combatant(&mut game, point(1, 1), Team::new(0), ());
+    let enemy_grunt = Spawn::of(grunt, point(2, 0))
+        .team(Team::new(1))
+        .place(&mut game);
+    let enemy = Abilities::spawn_combatant(&mut game, point(1, -1), Team::new(1), ());
+    let hidden = Abilities::spawn_combatant(&mut game, point(0, 0), Team::new(1), ());
+    Units::set_blocks(&mut game, hidden, &[Block::Target]);
+    let far_ally = Abilities::spawn_combatant(&mut game, point(4, 0), Team::new(0), ());
+    let far_grunt = Spawn::of(grunt, point(1, 3))
+        .team(Team::new(1))
+        .place(&mut game);
+    let units = [
+        caster,
+        ally,
+        enemy_grunt,
+        enemy,
+        hidden,
+        far_ally,
+        far_grunt,
+    ];
+    // The area's modifiers each unit holds, beside the block the hidden one holds.
+    let held = |game: &Match| {
+        units.map(|unit| {
+            let mut held = Stats::carried_modifiers(game, unit);
+            held.retain(|(id, _)| [cover, rally, slow].contains(id));
+            held
+        })
+    };
+    let from_caster = |id| vec![(id, Some(caster))];
+    let inside = [
+        from_caster(cover),
+        from_caster(rally),
+        from_caster(slow),
+        from_caster(slow),
+        from_caster(slow),
+        vec![],
+        vec![],
+    ];
+
+    // It lands in tick 0 and holds its modifiers from that tick, on the hidden enemy too. It
+    // triggers in tick 1, where its filter decides alone: 50 to the enemy grunt inside, and to no
+    // other.
+    Abilities::cast(&mut game, caster, ActionTarget::Point(point(1, 0)));
+    game.run_until(1);
+    assert_eq!(held(&game), inside);
+    game.run_until(2);
+    let healths = units.map(|unit| Stats::health(&game, unit));
+    assert_eq!(healths, [500, 500, 450, 500, 500, 500, 500]);
+    // It ends in tick 3, and its modifiers with it.
+    game.run_until(3);
+    assert_eq!(held(&game), inside);
+    game.run_until(4);
+    assert_eq!(held(&game), [const { Vec::new() }; 7]);
+    assert_eq!(Abilities::failed_calls(&game), []);
 }

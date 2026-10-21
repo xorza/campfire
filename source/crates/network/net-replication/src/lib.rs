@@ -163,7 +163,6 @@ pub mod internals {
     };
     pub use crate::fixtures::replication_counts::summed_replication_counts;
     pub use crate::fixtures::replication_stack::ReplicationStack;
-    pub use crate::fixtures::steps::{
-        PROPAGATION_FRAMES, client_copy, on_client, on_server, spawn_on_server,
-    };
+    pub use crate::fixtures::replicon_apps::{replicon_app, shared_replicon_app};
+    pub use crate::fixtures::steps::{ClientCopies, PROPAGATION_FRAMES};
 }

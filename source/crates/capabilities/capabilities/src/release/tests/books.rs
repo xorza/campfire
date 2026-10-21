@@ -75,7 +75,9 @@ fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
         said.ends_with("StatBook loads before its match's systems install"),
         "{said}"
     );
-    let mut open = Match::unscripted(&[Capability::Stats]);
+    let mut open = Match::builder(&[Capability::Stats])
+        .role(Role::Rules)
+        .build();
     StatBook::new(&rules, Num::ONE).load_into(&mut open);
     open.step();
     assert_eq!(open.resource::<StatBook>().len(), 1);

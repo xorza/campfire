@@ -24,7 +24,7 @@ use campfire_units::{HeightGrid, TypeOrigin, TypeOriginBook};
 use campfire_values::{ActionId, DamageKind, PackageIndex, PackagePath, Rank};
 
 use super::*;
-use crate::test_app::client_app;
+use crate::test_app;
 use crate::view::area_view::{AREA_LIFT, AreaViewPlugin};
 use crate::view::unit_looks::LookNodes;
 
@@ -39,7 +39,7 @@ fn view() -> App {
 
 /// The view `view` gives, which `setup` gives what it adds before the view's first frame.
 fn view_of(setup: impl FnOnce(&mut App)) -> App {
-    let mut app = client_app();
+    let mut app = test_app::view();
     app.add_plugins(ViewPlugin);
     setup(&mut app);
     app.update();

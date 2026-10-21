@@ -30,8 +30,12 @@ impl UdpLinks {
 
     /// The server whose own key `signer` holds.
     pub fn server(signer: &Signer) -> UdpServer {
-        let secret = ServerSecret::new(Secret::new(*signer.secret_bytes()));
-        UdpServer::new(ServerIdentity::raw_key(secret), Self::setup())
+        UdpServer::new(Self::identity(signer), Self::setup())
+    }
+
+    /// The identity of the server whose own key `signer` holds: the raw key derived from it.
+    pub fn identity(signer: &Signer) -> ServerIdentity {
+        ServerIdentity::raw_key(ServerSecret::new(Secret::new(*signer.secret_bytes())))
     }
 
     /// A client that pins the server's raw key `tls_key`.

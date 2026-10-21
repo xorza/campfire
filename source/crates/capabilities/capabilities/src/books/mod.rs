@@ -9,8 +9,6 @@ pub(crate) mod book_input;
 pub(crate) mod leftover_books;
 pub(crate) mod load_names;
 pub(crate) mod package_content;
-#[cfg(test)]
-pub(crate) mod test_package;
 pub(crate) mod units_seed;
 
 /// The books of a match, built once from its packages at its tick rate, each until the build

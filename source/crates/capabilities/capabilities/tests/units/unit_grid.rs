@@ -3,12 +3,12 @@ use std::ops::ControlFlow;
 use bevy_ecs::change_detection::Tick;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_capabilities::Match;
+use campfire_declarations::Role;
 use campfire_math::{Num, Vec3};
-use campfire_mode::Mode;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, StableId};
+use campfire_units::internals::Spawn;
 use campfire_units::*;
-use campfire_values::Team;
 
 /// What a reader finds within 2 m of the origin after a refresh, each unit by its id and its
 /// body's bound, and the run of the build it read.
@@ -35,11 +35,10 @@ fn near_origin(game: &mut Match) -> (Vec<(StableId, Num)>, Tick) {
 
 #[test]
 fn refreshes_share_one_build_until_a_unit_comes_goes_moves_or_changes_its_body() {
-    let mut game = Match::unscripted(&[]);
+    let mut game = Match::builder(&[]).role(Role::Rules).build();
     let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
     Units::give_type(&mut game, unit_type, BodyForm::circle(Num::HALF).unwrap());
-    let spawn =
-        |game: &mut Match, x: i16| Mode::spawn(game, unit_type, (x, 0, 0), Team::new(0), ());
+    let spawn = |game: &mut Match, x: i16| Spawn::of(unit_type, (x, 0, 0)).place(game);
     let (first, second) = (spawn(&mut game, 0), spawn(&mut game, 10));
     let half = Num::HALF;
 

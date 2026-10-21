@@ -343,3 +343,6 @@ impl fmt::Debug for Relinks {
         f.debug_tuple("Relinks").finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+mod tests;

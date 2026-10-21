@@ -132,7 +132,8 @@ impl SkirmishPlay {
             }
         };
         let plan = [SeatPlan::Player, SeatPlan::Bot];
-        let session = FixedSession::planned(packages, rate, InputRules::ROOMY, plan)
+        let session = FixedSession::planned(packages, InputRules::ROOMY, plan)
+            .rate(rate)
             .picked(picks.places())
             .seat_picked(&america(2));
         let mut playing = MatchPlay::new(session.start());

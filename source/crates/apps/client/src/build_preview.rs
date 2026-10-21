@@ -340,29 +340,18 @@ impl BuildPreviewPlugin {
 
 #[cfg(test)]
 mod tests {
-    use bevy::ecs::system::{IntoSystem, RunSystemOnce, System};
-    use bevy::ecs::world::World;
+    use bevy::ecs::system::RunSystemOnce;
     use bevy::state::app::{AppExtStates, StatesPlugin};
     use bevy::state::state::State;
     use campfire_capabilities::Match;
     use campfire_capabilities::internals::ProductionFixtures;
+    use campfire_declarations::Role;
     use campfire_production::{BuildStart, NewBuild, Production, Style};
     use campfire_sim::{Capability, IdAllocator};
     use campfire_units::BodyForm;
     use campfire_values::{ActionId, Share, UnitType};
 
     use super::*;
-
-    #[test]
-    fn the_previews_systems_take_no_conflicting_access() {
-        // Bevy checks that a system's queries do not conflict as it initializes the system.
-        let mut world = World::new();
-        IntoSystem::into_system(BuildPreviewPlugin::show).initialize(&mut world);
-        IntoSystem::into_system(BuildPreviewPlugin::follow).initialize(&mut world);
-        IntoSystem::into_system(BuildPreviewPlugin::judge).initialize(&mut world);
-        IntoSystem::into_system(BuildPreviewPlugin::tint).initialize(&mut world);
-        IntoSystem::into_system(BuildPreviewPlugin::click).initialize(&mut world);
-    }
 
     #[test]
     fn the_placing_lasts_while_the_input_places_and_goes_as_it_selects_again() {
@@ -400,7 +389,9 @@ mod tests {
     fn the_preview_is_red_over_an_enemys_body_and_green_clear_of_it() {
         // Walkers of a half meter: a builder of team 0 at the origin, an enemy at (10, 0), and a
         // friend at (−10, 0).
-        let mut game = Match::predicting(&[Capability::Navigation, Capability::Production]);
+        let mut game = Match::builder(&[Capability::Navigation, Capability::Production])
+            .role(Role::Client)
+            .build();
         let (own, enemy) = (Team::new(0), Team::new(1));
         let builder = Production::yard_walker(&mut game, (0, 0, 0), own, None);
         Production::yard_walker(&mut game, (10, 0, 0), enemy, None);

@@ -3,7 +3,7 @@ use std::path::Path;
 
 use campfire_store::{DirEntries, DirEntry, EntryKind, InputFile};
 
-use crate::manifest::CargoManifest;
+use crate::manifest::{CargoDependency, CargoManifest};
 use crate::source_file::SourceFile;
 use crate::source_files::SourceFiles;
 
@@ -71,6 +71,174 @@ pub(crate) fn required_closure(
     reached
 }
 
+/// Whether a build follows the dev-dependencies of the crate it starts from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DevEdges {
+    /// Its dependencies alone, as its test build holds them besides its dev-dependencies.
+    Left,
+    /// Its dependencies and its dev-dependencies: the whole of its tests' build.
+    Followed,
+}
+
+/// Every crate the test build of `name`, a crate of `manifests`, holds but itself: its
+/// dependencies with its own `internals` on, each feature its dependencies and dev-dependencies
+/// turn on them, and, past them, each dependency of a crate of the workspace with the features its
+/// edge turns on; a crate outside the workspace is reached as a manifest here names it. With
+/// `DevEdges::Followed`, its dev-dependencies too.
+pub(crate) fn test_build<'a>(
+    manifests: &'a [(String, CargoManifest)],
+    name: &str,
+    dev_edges: DevEdges,
+) -> BTreeSet<&'a str> {
+    let (root, manifest) = manifests
+        .iter()
+        .find(|(crate_name, _)| crate_name == name)
+        .expect("a test build starts at a crate of the workspace");
+    let mut build = FeatureBuild {
+        manifests,
+        crates: BTreeSet::new(),
+        features: BTreeSet::new(),
+        enabled: BTreeSet::new(),
+        waiting: Vec::new(),
+        next: vec![Step::Crate(root)],
+    };
+    if manifest.feature("internals").is_some() {
+        build.next.push(Step::Feature(root, "internals"));
+    }
+    for (other, dependency) in manifest.dev_dependencies() {
+        let normal = manifest.dependencies().any(|(name, _)| name == other);
+        if normal || dev_edges == DevEdges::Followed {
+            build.edge(other, dependency);
+        }
+    }
+    build.run();
+    build.crates.remove(root.as_str());
+    build.crates
+}
+
+/// A build's walk of the crates and features it turns on, from the steps it has yet to take.
+#[derive(Debug)]
+struct FeatureBuild<'a> {
+    manifests: &'a [(String, CargoManifest)],
+    crates: BTreeSet<&'a str>,
+    features: BTreeSet<(&'a str, &'a str)>,
+    /// Each optional dependency a crate's features turned on: the crate, and the dependency.
+    enabled: BTreeSet<(&'a str, &'a str)>,
+    /// Each weak entry, `x?/f`, of an optional `x` that no feature turned on yet: the crate, `x`,
+    /// and `f`.
+    waiting: Vec<(&'a str, &'a str, &'a str)>,
+    next: Vec<Step<'a>>,
+}
+
+/// One step of a build: a crate it holds, or a feature it turns on in a crate.
+#[derive(Debug, Clone, Copy)]
+enum Step<'a> {
+    Crate(&'a str),
+    Feature(&'a str, &'a str),
+}
+
+impl<'a> FeatureBuild<'a> {
+    fn manifest(&self, name: &str) -> Option<&'a CargoManifest> {
+        let manifests = self.manifests;
+        manifests
+            .iter()
+            .find(|(crate_name, _)| crate_name == name)
+            .map(|(_, manifest)| manifest)
+    }
+
+    fn edge(&mut self, other: &'a str, dependency: &'a CargoDependency) {
+        self.next.push(Step::Crate(other));
+        for feature in &dependency.features {
+            self.next.push(Step::Feature(other, feature));
+        }
+    }
+
+    /// Holds `other`, a dependency of `name` through `dependency`, which a feature of `name` turns
+    /// on: an optional one holds from now on, with each weak entry of `name` that waited for it.
+    fn turn_on_dependency(
+        &mut self,
+        name: &'a str,
+        other: &'a str,
+        dependency: &'a CargoDependency,
+    ) {
+        self.edge(other, dependency);
+        if dependency.optional && self.enabled.insert((name, other)) {
+            let waited = (self.waiting.iter()).filter(|&&(of, on, _)| of == name && on == other);
+            self.next
+                .extend(waited.map(|&(_, _, inner)| Step::Feature(other, inner)));
+        }
+    }
+
+    fn run(&mut self) {
+        while let Some(step) = self.next.pop() {
+            match step {
+                Step::Crate(name) => self.hold(name),
+                Step::Feature(name, feature) => self.turn_on(name, feature),
+            }
+        }
+    }
+
+    /// Holds the crate `name` and each dependency its build requires.
+    fn hold(&mut self, name: &'a str) {
+        if !self.crates.insert(name) {
+            return;
+        }
+        let Some(manifest) = self.manifest(name) else {
+            return;
+        };
+        for (other, dependency) in manifest.dependencies() {
+            if !dependency.optional {
+                self.edge(other, dependency);
+            }
+        }
+    }
+
+    /// Turns on `feature` of the crate `name`: each entry of the feature, or the optional
+    /// dependency of that name. A weak entry, `x?/f`, turns `f` on of a required `x`, and of an
+    /// optional one once a feature of `name` turns it on, as Cargo's does.
+    fn turn_on(&mut self, name: &'a str, feature: &'a str) {
+        if !self.features.insert((name, feature)) {
+            return;
+        }
+        self.next.push(Step::Crate(name));
+        let Some(manifest) = self.manifest(name) else {
+            return;
+        };
+        let dependency = |other: &str| {
+            manifest
+                .dependencies()
+                .find(|(dependency_name, _)| *dependency_name == other)
+        };
+        let Some(entries) = manifest.feature(feature) else {
+            if let Some((other, dependency)) = dependency(feature) {
+                self.turn_on_dependency(name, other, dependency);
+            }
+            return;
+        };
+        for entry in entries {
+            if let Some(other) = entry.strip_prefix("dep:") {
+                if let Some((other, dependency)) = dependency(other) {
+                    self.turn_on_dependency(name, other, dependency);
+                }
+            } else if let Some((other, inner)) = entry.split_once('/') {
+                let weak = other.ends_with('?');
+                let Some((other, dependency)) = dependency(other.trim_end_matches('?')) else {
+                    continue;
+                };
+                if !weak {
+                    self.turn_on_dependency(name, other, dependency);
+                } else if dependency.optional && !self.enabled.contains(&(name, other)) {
+                    self.waiting.push((name, other, inner));
+                    continue;
+                }
+                self.next.push(Step::Feature(other, inner));
+            } else {
+                self.next.push(Step::Feature(name, entry));
+            }
+        }
+    }
+}
+
 /// A crate of the workspace: its directory's name, its package's name, and its manifest.
 #[derive(Debug)]
 pub(crate) struct Crate {
@@ -136,6 +304,19 @@ pub(crate) fn sources() -> Vec<SourceFile> {
     for dir_name in ["crates", "checks"] {
         for mut file in SourceFiles::under(&source().join(dir_name)) {
             file.path = format!("{dir_name}/{}", file.path);
+            read.push(file);
+        }
+    }
+    read
+}
+
+/// Each Rust source file of `crates`, by its path under `source/`, with its text: the walk of
+/// their directories alone, for a rule that reads a few crates of the workspace.
+pub(crate) fn sources_of<'a>(crates: impl IntoIterator<Item = &'a Crate>) -> Vec<SourceFile> {
+    let mut read = Vec::new();
+    for krate in crates {
+        for mut file in SourceFiles::under(&source().join(&krate.path)) {
+            file.path = format!("{}/{}", krate.path, file.path);
             read.push(file);
         }
     }

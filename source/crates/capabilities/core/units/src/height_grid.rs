@@ -183,10 +183,10 @@ mod tests {
         let edge = HeightGrid::new([bound - Num::ONE, Num::ZERO], Num::ONE, half, 2, vec![0; 4]);
         assert_eq!(edge.unwrap().far_corner(), [bound, Num::ONE]);
         let ragged = [&bytes[..13], &[2, 3, 0, 1, 2]].concat();
-        assert!(matches!(
-            Binary::decode::<HeightGrid>(&ragged),
-            Err(BinaryError::Malformed(_))
-        ));
+        assert_eq!(
+            Binary::decode::<HeightGrid>(&ragged).err(),
+            Some(BinaryError::REFUSED)
+        );
         // The same grid with its column count over-long, 2 as 0x82 0x00, or a byte past its end.
         let long = [&bytes[..13], &[0x82, 0x00], &bytes[14..]].concat();
         let trailing = [bytes.as_slice(), &[0]].concat();

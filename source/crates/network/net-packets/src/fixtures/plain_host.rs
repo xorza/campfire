@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_platform::time::Instant as OsInstant;
-use bytes::BytesMut;
 use campfire_net_core::Instant;
 use campfire_net_payload::{
     OutgoingPayload, PacketSessionQueues, PayloadFate, PayloadKind, PayloadToken, UnlinkReason,
@@ -235,8 +234,7 @@ impl<Io: DatagramIo> PlainHost<Io> {
     /// Queues `data` as a payload of kind 1 on the packet session `carrier` carries, its fate
     /// reported as `token`.
     pub fn queue(&mut self, carrier: u32, token: u64, data: &[u8]) {
-        let mut payload = BytesMut::zeroed(OutgoingPayload::HEADROOM);
-        payload.extend_from_slice(data);
+        let payload = OutgoingPayload::buffer(data);
         self.link_mut(carrier)
             .expect("the carrier holds a packet session")
             .queues

@@ -1,12 +1,12 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::panic;
 
 use crate::bans::{PROXIES, foreign_names};
 use crate::manifest::{CargoManifest, CrateKind, WorkspaceManifest};
 use crate::source_file::SourceFile;
 use crate::workspace::{
-    Crate, crate_dependencies, crates, holder, manifests, read, required_closure, sim_closure,
-    source, sources,
+    Crate, DevEdges, crate_dependencies, crates, holder, manifests, read, required_closure,
+    sim_closure, source, sources, test_build,
 };
 
 #[test]
@@ -112,7 +112,8 @@ fn is_engine(name: &str) -> bool {
 
 /// What breaks the rule of a crate's kind, by crate (02-engine-core.md, Every crate declares its
 /// kind): a crate that names no kind; a problem or IO crate with an engine crate in its required
-/// closure; a glue crate that requires an IO crate; and a library that requires a test crate.
+/// closure, or in its tests' build (02-engine-core.md, A problem crate's test runs no app); a glue
+/// crate that requires an IO crate; and a library that requires a test crate.
 fn kind_problems(manifests: &[(String, CargoManifest)]) -> Vec<String> {
     let kind = |name: &str| {
         manifests
@@ -127,9 +128,13 @@ fn kind_problems(manifests: &[(String, CargoManifest)]) -> Vec<String> {
             continue;
         };
         if matches!(own, CrateKind::Problem | CrateKind::Io) {
-            let engines = required_closure(manifests, name).into_iter();
-            for other in engines.filter(|other| is_engine(other)) {
+            let required = required_closure(manifests, name);
+            for other in required.iter().filter(|other| is_engine(other)) {
                 problems.push(format!("{name} requires {other}"));
+            }
+            let tests = test_build(manifests, name, DevEdges::Followed).into_iter();
+            for other in tests.filter(|other| is_engine(other) && !required.contains(*other)) {
+                problems.push(format!("{name}'s tests build {other}"));
             }
         }
         let library = matches!(
@@ -168,7 +173,8 @@ fn each_crate_keeps_the_rule_of_its_kind() {
     assert!(!is_engine("bevy_platform") && !is_engine("bevy_math") && !is_engine("bytes"));
     // A problem crate whose dependency's dependency is the engine, a glue crate that requires an
     // IO crate, a library that requires a test crate, and a crate with no kind; an optional
-    // dependency counts for none, as a feature turns it on.
+    // dependency counts for none, as a feature turns it on. `h`, a problem crate, dev-depends on
+    // `d`, a test crate of no engine, and on `i`, one that runs an app.
     let sample = [
         ("a", "problem", "b.workspace = true\n"),
         (
@@ -192,6 +198,20 @@ fn each_crate_keeps_the_rule_of_its_kind() {
         "g".to_owned(),
         CargoManifest::parse("[package]\nname = \"g\"\n"),
     ));
+    sample.push((
+        "h".to_owned(),
+        CargoManifest::parse(concat!(
+            "[package]\nname = \"h\"\n\n[package.metadata.campfire]\nkind = \"problem\"\n\n",
+            "[dev-dependencies]\nd.workspace = true\ni.workspace = true\n",
+        )),
+    ));
+    sample.push((
+        "i".to_owned(),
+        CargoManifest::parse(concat!(
+            "[package]\nname = \"i\"\n\n[package.metadata.campfire]\nkind = \"test\"\n\n",
+            "[dependencies]\nbevy_app.workspace = true\n",
+        )),
+    ));
     assert_eq!(
         kind_problems(&sample),
         [
@@ -199,6 +219,7 @@ fn each_crate_keeps_the_rule_of_its_kind() {
             "b requires the IO crate c",
             "e requires the test crate d",
             "g names no kind",
+            "h's tests build bevy_app",
         ]
     );
 }
@@ -328,48 +349,9 @@ fn nested_crates(crates: &[Crate]) -> Vec<String> {
         .collect()
 }
 
-/// The crates whose test infrastructure any crate's tests may take: `store`'s test directories and
-/// pinned files, `threads`' parallel runs, races and named threads, `log`'s check of the warnings,
-/// `measure`'s allocation audit, `codec` for a type's encoded form, `math` for the numbers a
-/// crate's values hold, and the test packages (02-engine-core.md, One rule of test homes).
-const TEST_INFRASTRUCTURE: [&str; 7] = [
-    "campfire-codec",
-    "campfire-log",
-    "campfire-math",
-    "campfire-measure",
-    "campfire-store",
-    "campfire-test-packages",
-    "campfire-threads",
-];
-
 /// The entries of `manifest`'s `internals` feature.
 fn internals_entries(manifest: &CargoManifest) -> &[String] {
     manifest.feature("internals").unwrap_or_default()
-}
-
-/// The crates of the workspace each crate of `manifests` builds on, by its name: those it
-/// depends on, and theirs, by its dependencies alone.
-fn dependency_closures(manifests: &[(String, CargoManifest)]) -> BTreeMap<&str, BTreeSet<&str>> {
-    let workspace = |other: &str| manifests.iter().any(|(crate_name, _)| crate_name == other);
-    manifests
-        .iter()
-        .map(|(name, _)| {
-            let mut found = BTreeSet::new();
-            let mut next = vec![name.as_str()];
-            while let Some(at) = next.pop() {
-                let (_, manifest) = manifests
-                    .iter()
-                    .find(|(crate_name, _)| crate_name == at)
-                    .expect("a closure walks the workspace's crates");
-                for (other, _) in manifest.dependencies() {
-                    if workspace(other) && found.insert(other) {
-                        next.push(other);
-                    }
-                }
-            }
-            (name.as_str(), found)
-        })
-        .collect()
 }
 
 /// What breaks the rule of the `internals` feature, by crate: a test build turns it on through
@@ -377,13 +359,10 @@ fn dependency_closures(manifests: &[(String, CargoManifest)]) -> BTreeMap<&str, 
 /// `feature = "internals"`. A crate with the feature dev-depends on itself with it, and its
 /// feature turns on the feature of each dependency that has it; each dev-dependency on a crate
 /// with it turns it on, as a test of one crate uses another's helpers; and no crate has a `bench`
-/// feature beside it. A dev-dependency on another crate of the workspace is test infrastructure;
-/// a crate that is none of its dependencies, which only its tests read, and that builds on no
-/// crate its own build lacks, so the test build gains that crate alone and holds no second copy
-/// of one, as a crate that depends on it would bring; or, of a crate with no feature of its own,
-/// as a binary, which cannot dev-depend on itself, a dependency whose helpers its tests read.
+/// feature beside it, nor a dev-dependency on a dependency whose `internals` its own turns on
+/// with a strong entry, as a weak one turns on nothing a test build does not hold.
+/// What a dev-dependency may be is `dev_dependencies`' rule.
 fn internals_problems(manifests: &[(String, CargoManifest)]) -> Vec<String> {
-    let closures = dependency_closures(manifests);
     let with_internals = |other: &str| {
         manifests.iter().any(|(crate_name, manifest)| {
             crate_name == other && manifest.feature("internals").is_some()
@@ -410,20 +389,11 @@ fn internals_problems(manifests: &[(String, CargoManifest)]) -> Vec<String> {
             if with_internals(other) && !dependency.turns_internals_on() {
                 problems.push(format!("{name} dev-depends on {other} with no internals"));
             }
-            let workspace = manifests.iter().any(|(crate_name, _)| crate_name == other);
             let depends = manifest.dependencies().any(|(name, _)| name == other);
-            let within = workspace && closures[other].is_subset(&closures[name.as_str()]);
-            let allowed = other == name
-                || TEST_INFRASTRUCTURE.contains(&other)
-                || if depends { !own } else { within };
-            if workspace && !allowed {
+            let strong = entries.contains(&format!("{other}/internals"));
+            if own && other != name && depends && strong {
                 problems.push(format!(
-                    "{name} dev-depends on {other}, past its tests' rule"
-                ));
-            }
-            if workspace && other != name && closures[other].contains(name.as_str()) {
-                problems.push(format!(
-                    "{name} dev-depends on {other}, which builds on it: a second copy"
+                    "{name} dev-depends on {other}, whose internals its own turns on"
                 ));
             }
         }
@@ -531,14 +501,11 @@ fn a_test_build_turns_internals_on_and_code_has_one_gate_for_it() {
 
 #[test]
 fn the_internals_rule_names_each_crate_that_breaks_it() {
-    // `a` has the feature and no dev-dependency on itself, and dev-depends on `b`, which builds on
-    // nothing, and on `c`, which builds on `b`, past `a`'s build of nothing; `b` has it on itself,
-    // and on `a` without it, and a `bench` feature beside it; `c` has none, and dev-depends on `b`,
-    // its dependency, with it. `d` has the feature, leaves its dependency `b`'s off, and
-    // dev-depends on it, on `c`, no dependency, which builds on `b` alone, and on
-    // `campfire-store`, test infrastructure. `e` depends on `c` and dev-depends on `b`, which its
-    // build holds through `c`. `f` dev-depends on `campfire-test-packages`, test infrastructure,
-    // which builds on `f`, so `f`'s tests would hold two copies of it.
+    // `a` has the feature and no dev-dependency on itself, and dev-depends on `b` and `c`; `b` has
+    // it on itself, and on `a` without it, and a `bench` feature beside it; `c` has none, and
+    // dev-depends on `b`, its dependency, with it. `d` has the feature, leaves its dependency
+    // `b`'s off, and dev-depends on it, on `c` and on `campfire-store`. `e` depends on `c` and
+    // turns `c`'s on through its own, so its dev-dependency on `c` turns on nothing new.
     let crates = [
         (
             "a",
@@ -571,27 +538,17 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
         (
             "e",
             concat!(
-                "[features]\ninternals = []\n\n[dependencies]\nc.workspace = true\n\n",
-                "[dev-dependencies]\nb = { workspace = true, features = [\"internals\"] }\n",
+                "[features]\ninternals = [\"c/internals\"]\n\n[dependencies]\nc.workspace = true\n\n",
+                "[dev-dependencies]\nc = { workspace = true, features = [\"internals\"] }\n",
                 "e = { workspace = true, features = [\"internals\"] }\n"
             ),
         ),
-        (
-            "f",
-            "[dev-dependencies]\ncampfire-test-packages.workspace = true\n",
-        ),
-        ("campfire-test-packages", "[dependencies]\nf.workspace = true\n"),
     ]
     .map(|(name, manifest)| (name.to_owned(), CargoManifest::parse(manifest)));
     // `a` turns no crate's on; `b` its own; `c` `b`'s; `d` its own, `a`'s through its own, `b`'s,
     // and `campfire-store`'s, which is not among them, and not `c`'s, which `d` passes on weakly.
     let reads = "x::internals::X; a::internals::A; b::internals::B; data::internals::D;";
     let weak = "c::internals::C;";
-    let closures = dependency_closures(&crates);
-    assert_eq!(
-        ["a", "c", "e"].map(|name| closures[name].iter().copied().collect::<Vec<_>>()),
-        [vec![], vec!["b"], vec!["b", "c"]]
-    );
     let off = |name: &str| internals_read_off(&crates, name, reads);
     assert_eq!(off("a"), ["b"]);
     assert_eq!(off("b"), ["a"]);
@@ -606,13 +563,11 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
         internals_problems(&crates),
         [
             "a dev-depends on b with no internals",
-            "a dev-depends on c, past its tests' rule",
             "a dev-depends on itself with no internals",
             "b has a bench feature",
             "b dev-depends on a with no internals",
             "d's internals leaves b's off",
-            "d dev-depends on b, past its tests' rule",
-            "f dev-depends on campfire-test-packages, which builds on it: a second copy",
+            "e dev-depends on c, whose internals its own turns on",
         ]
     );
     // The gate is spelled in parts, so this file holds none.

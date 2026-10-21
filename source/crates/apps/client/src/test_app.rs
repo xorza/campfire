@@ -1,15 +1,23 @@
-//! The app a test of the client's systems runs them in.
+//! The apps a test of the client's systems runs them in.
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bevy::app::App;
+use bevy::DefaultPlugins;
+use bevy::app::{App, PluginGroup};
 use bevy::asset::{AssetApp, AssetPlugin};
+use bevy::log::LogPlugin;
 use bevy::mesh::Mesh;
 use bevy::pbr::StandardMaterial;
+use bevy::render::RenderPlugin;
+use bevy::render::settings::WgpuSettings;
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
+use bevy::window::{ExitCondition, WindowPlugin};
+use bevy::winit::WinitPlugin;
+use bevy::world_serialization::WorldAsset;
 use campfire_actions::{ActionBook, SlotKindBook};
+use campfire_app_threads::OneThreadPlugins;
 use campfire_net::JoinState;
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use campfire_test_packages::TestMode;
@@ -20,15 +28,49 @@ use crate::selection::Selection;
 use crate::view::client_data::ClientData;
 use crate::view::unit_looks::UnitLooks;
 
-/// An app with no window of what a client's match holds before any plugin of the client's end: the
-/// match's books and tick, empty, the world's bounds for its map, the client's join, waiting for
-/// its offer, no looks, an empty selection, the engine's keys, and a clock that moves only as a
-/// test sets it.
-pub(crate) fn client_app() -> App {
+/// An app with no window of what a client's match holds before any plugin of the client's end, as
+/// `add_match` adds it, with a clock and the assets of meshes and materials.
+pub(crate) fn view() -> App {
     let mut app = App::new();
     app.add_plugins((TimePlugin, AssetPlugin::default()));
     app.init_asset::<Mesh>();
     app.init_asset::<StandardMaterial>();
+    add_match(&mut app);
+    app
+}
+
+/// An app of Bevy's default plugins, as a window's end adds them, but with no window, no event
+/// loop and no render backend.
+pub(crate) fn headless() -> App {
+    let mut app = App::new();
+    let render = RenderPlugin {
+        render_creation: WgpuSettings {
+            backends: None,
+            ..WgpuSettings::default()
+        }
+        .into(),
+        ..RenderPlugin::default()
+    };
+    let window = WindowPlugin {
+        primary_window: None,
+        exit_condition: ExitCondition::DontExit,
+        ..WindowPlugin::default()
+    };
+    app.add_plugins(
+        DefaultPlugins
+            .set(render)
+            .set(window)
+            .disable::<WinitPlugin>()
+            .disable::<LogPlugin>(),
+    );
+    app
+}
+
+/// Adds to `app` what a client's match holds before any plugin of the client's end: the match's
+/// books and tick, empty, the world's bounds for its map, the client's join, waiting for its
+/// offer, no looks, an empty selection, the engine's keys, and a clock that moves only as a test
+/// sets it.
+pub(crate) fn add_match(app: &mut App) {
     app.init_resource::<EntityIndex>();
     app.init_resource::<SimTick>();
     app.init_resource::<MapBook>();
@@ -42,5 +84,12 @@ pub(crate) fn client_app() -> App {
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
     Unpredicted::register(app.world_mut());
     app.init_resource::<ClientData>();
+}
+
+/// An app with no window that loads assets on the test's thread, models among them.
+pub(crate) fn assets() -> App {
+    let mut app = App::new();
+    app.add_plugins((OneThreadPlugins, AssetPlugin::default()));
+    app.init_asset::<WorldAsset>();
     app
 }

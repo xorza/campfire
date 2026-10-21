@@ -1,3 +1,6 @@
+use campfire_codec::Toml;
+use serde::Deserialize;
+
 use super::*;
 
 #[test]
@@ -65,4 +68,27 @@ fn a_path_is_plain_names_joined_by_slashes_with_one_spelling() {
     let script = PackagePath::parse("scripts/ai/think.rhai").unwrap();
     assert!(script.is_under("scripts") && script.is_under("scripts/ai"));
     assert!(!script.is_under("script") && !script.is_under("scripts/ai/think.rhai"));
+}
+
+#[test]
+fn data_reads_a_path_only_as_parse_takes_it() {
+    #[derive(Debug, PartialEq, Eq, Deserialize)]
+    struct Named {
+        script: PackagePath,
+    }
+    let read = |text: &str| Toml::parse::<Named>(&format!("script = {text:?}"));
+    assert_eq!(
+        read("scripts/a.rhai"),
+        Ok(Named {
+            script: PackagePath::parse("scripts/a.rhai").unwrap(),
+        })
+    );
+    // Data that names a path outside the package does not read.
+    let refusal = read("../x.rhai").unwrap_err();
+    assert!(
+        refusal
+            .message()
+            .starts_with("\"../x.rhai\": no path in the package"),
+        "{refusal:?}"
+    );
 }

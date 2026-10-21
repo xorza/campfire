@@ -75,8 +75,7 @@ impl PathCheck for RoutedEstablishment {
 /// it.
 fn client_payload(client: &mut PacketSession, now: Instant) -> BytesMut {
     let mut queues = PacketSessionQueues::default();
-    let mut payload = BytesMut::zeroed(OutgoingPayload::HEADROOM);
-    payload.extend_from_slice(b"data");
+    let payload = OutgoingPayload::buffer(b"data");
     queues.send(PayloadToken(0), PayloadKind::new(0), payload);
     let mut out = Vec::new();
     client.take_over(&mut queues, now, &mut out);
@@ -240,7 +239,7 @@ fn a_peer_that_moves_is_checked_at_its_new_address_and_then_followed() {
     queues.send(
         PayloadToken(1),
         PayloadKind::new(0),
-        BytesMut::zeroed(OutgoingPayload::HEADROOM),
+        OutgoingPayload::buffer(&[]),
     );
     out.clear();
     core.set_time(EndpointTime::Driven(at(13)));
@@ -455,7 +454,7 @@ fn a_moved_peer_is_checked_under_loss_reorder_and_duplicates() {
             queues.send(
                 PayloadToken(frame),
                 PayloadKind::new(0),
-                BytesMut::zeroed(OutgoingPayload::HEADROOM),
+                OutgoingPayload::buffer(&[]),
             );
             core.set_time(EndpointTime::Driven(now));
             core.take_over(key, &mut queues, &mut out);

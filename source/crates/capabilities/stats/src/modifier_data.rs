@@ -147,3 +147,15 @@ impl DataSection for ModifierData {
 impl DataSection for AuraData {
     const TABLE: DataTable = DataTable::new("A modifier's `aura`");
 }
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::Toml;
+
+    use super::*;
+
+    #[test]
+    fn a_modifiers_default_is_what_an_empty_table_reads() {
+        assert_eq!(Toml::parse::<ModifierData>(""), Ok(ModifierData::default()));
+    }
+}

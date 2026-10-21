@@ -27,21 +27,19 @@ fn a_sealed_replicated_update_each_frame_stays_in_its_budget() {
 fn audit_replication(kind: ClientKind) {
     let mut stepper = Stepper::new(FullStack, StepperSetup::with_clients(vec![kind]));
     let server_entity = stepper
-        .server_app_mut()
-        .world_mut()
+        .server_world_mut()
         .spawn((CompFull(0.0), Replicate::to_clients(NetworkTarget::All)))
         .id();
     let client_entity = fixtures::replicate_to_client(&mut stepper, server_entity);
     AUDIT.budget(LINK + 1).run(|| {
         let mut component = stepper
-            .server_app_mut()
-            .world_mut()
+            .server_world_mut()
             .get_mut::<CompFull>(server_entity)
             .unwrap();
         component.0 += 1.0;
         let sent = component.0;
         stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
-        let received = stepper.client_app(0).world().get::<CompFull>(client_entity);
+        let received = stepper.client_world(0).get::<CompFull>(client_entity);
         assert_eq!(received, Some(&CompFull(sent)));
     });
 }

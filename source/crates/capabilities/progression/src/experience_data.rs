@@ -169,7 +169,14 @@ mod tests {
                 filter: FilterData::parse("enemies:avatar").unwrap()
             }
         );
-        assert!(to("track = \"level\"\nto = \"nearest\"").is_err());
-        assert!(to("track = \"level\"\nto = { radius = \"-1\", filter = \"enemies\" }").is_err());
+        let refusal = |text: &str| to(text).unwrap_err().message().to_owned();
+        assert_eq!(
+            refusal("track = \"level\"\nto = \"nearest\""),
+            "experience goes to \"killer\" or { radius, filter }, not \"nearest\""
+        );
+        assert_eq!(
+            refusal("track = \"level\"\nto = { radius = \"-1\", filter = \"enemies\" }"),
+            "an experience radius is 0 or more"
+        );
     }
 }

@@ -130,3 +130,76 @@ pub(crate) mod internals {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::{Binary, BinaryError};
+
+    use super::*;
+
+    const fn track(at: u8) -> TrackId {
+        TrackId::new(at)
+    }
+
+    #[test]
+    fn a_level_is_reached_exactly_at_its_threshold_and_never_falls() {
+        let book = TrackBook::sample();
+        assert_eq!(book.level_track(), Some(track(0)));
+        assert_eq!(book.names().named("valor"), Some(track(1)));
+        assert_eq!(book.names().name(track(1)), Some("valor"));
+        // A threshold met is a level: 99.99… is 1, 100 is 2, 299 is 2, 300 and anything past
+        // are 3.
+        let level = |xp| book.level_at(track(0), xp).get();
+        let below = Num::int(100) - Num::EPSILON;
+        let levels = [below, Num::int(100), Num::int(299), Num::int(300), Num::MAX].map(level);
+        assert_eq!(levels, [1, 2, 2, 3, 3]);
+        assert_eq!(book.level_at(track(1), Num::int(50)).get(), 2);
+
+        // Experience adds up to the largest number at most, and a level set past what it reaches
+        // stays: a level is state. Each track holds its own level, the `level` track's too.
+        let mut experience = Experience::new(TrackSet::from([track(0), track(1)]));
+        let level_of = |experience: &Experience, at| experience.get(track(at)).unwrap().level.get();
+        assert_eq!([0, 1].map(|at| level_of(&experience, at)), [1, 1]);
+        let raised = experience.add(track(0), Num::int(150), &book);
+        assert_eq!((raised.from.get(), raised.to.get()), (1, 2));
+        let raised = experience.add(track(0), Num::MAX, &book);
+        assert_eq!((raised.from.get(), raised.to.get()), (2, 3));
+        assert_eq!(experience.get(track(0)).unwrap().xp, Num::MAX);
+        assert_eq!([0, 1].map(|at| level_of(&experience, at)), [3, 1]);
+        let mut ahead = Experience::new(TrackSet::from([track(1)]));
+        ahead.tracks_mut()[0].level = Level::new(5).unwrap();
+        let raised = ahead.add(track(1), Num::int(60), &book);
+        assert_eq!((raised.from.get(), raised.to.get()), (5, 5));
+        assert_eq!(ahead.get(track(0)), None);
+    }
+
+    #[test]
+    fn a_snapshot_with_tracks_out_of_order_or_negative_experience_fails_to_decode() {
+        #[derive(Debug, Serialize)]
+        struct Fields {
+            tracks: Vec<TrackXp>,
+        }
+        let held = |at, xp| TrackXp {
+            track: track(at),
+            xp,
+            level: Level::default(),
+        };
+        let decode = |tracks: Vec<TrackXp>| {
+            let bytes = Binary::encode(&Fields { tracks });
+            Binary::decode::<Experience>(&bytes)
+        };
+        assert!(decode(vec![held(0, Num::int(5)), held(3, Num::ZERO)]).is_ok());
+        assert_eq!(
+            decode(vec![held(3, Num::int(5)), held(0, Num::int(5))]).err(),
+            Some(BinaryError::REFUSED)
+        );
+        assert_eq!(
+            decode(vec![held(1, Num::int(5)), held(1, Num::int(5))]).err(),
+            Some(BinaryError::REFUSED)
+        );
+        assert_eq!(
+            decode(vec![held(0, -Num::EPSILON)]).err(),
+            Some(BinaryError::REFUSED)
+        );
+    }
+}

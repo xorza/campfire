@@ -17,7 +17,7 @@ bevy_ecs = { workspace = true, features = ["std"] }
 bevy_reflect = { workspace = true, features = ["smallvec", "std"] }
 
 [dev-dependencies]
-bytes = { workspace = true, features = ["std"] }
+campfire-net-payload = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

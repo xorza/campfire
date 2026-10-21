@@ -7,9 +7,9 @@ use campfire_combat::OnDeath;
 use campfire_common::Seat;
 use campfire_declarations::MatchFacts;
 use campfire_math::{Num, Vec3};
-use campfire_mode::Mode;
 use campfire_sim::{Capability, StableId};
 use campfire_stats::Pools;
+use campfire_units::internals::Spawn;
 use campfire_units::{Life, MoveStep, Owner, UnitTypeCore, Units};
 use campfire_values::{ActionId, PackageIndex, Rank, Team, TypeScope, UnitType};
 
@@ -112,7 +112,10 @@ impl AbilitiesFixtures for Abilities {
         team: Team,
         parts: impl Bundle<Effect: NoBundleEffect>,
     ) -> StableId {
-        Mode::spawn_named(world, "combatant", position, team, parts)
+        Spawn::named(world, "combatant", position)
+            .team(team)
+            .parts(parts)
+            .place(world)
     }
 
     fn spawn_caster(
@@ -121,7 +124,10 @@ impl AbilitiesFixtures for Abilities {
         team: Team,
         parts: impl Bundle<Effect: NoBundleEffect>,
     ) -> StableId {
-        Mode::spawn_named(world, "caster", position, team, parts)
+        Spawn::named(world, "caster", position)
+            .team(team)
+            .parts(parts)
+            .place(world)
     }
 
     fn attacker(
@@ -131,7 +137,7 @@ impl AbilitiesFixtures for Abilities {
         team: Team,
         target: StableId,
     ) -> StableId {
-        let id = Mode::spawn(world, unit_type, position, team, ());
+        let id = Spawn::of(unit_type, position).team(team).place(world);
         ProgressDues::change_unit(world, id, |progress, dues| {
             progress.set_attack_target(Some(target), dues);
         });
@@ -151,11 +157,13 @@ impl AbilitiesFixtures for Abilities {
                 Rank::new(rank),
             )])),
         );
-        Mode::spawn_named(world, name, Vec3::ZERO, Team::new(0), parts)
+        Spawn::named(world, name, Vec3::ZERO)
+            .parts(parts)
+            .place(world)
     }
 
     fn fighter(world: &mut World, fighter: UnitType, slots: TimedSlots) -> StableId {
-        Mode::spawn(world, fighter, Vec3::ZERO, Team::new(0), slots)
+        Spawn::of(fighter, Vec3::ZERO).parts(slots).place(world)
     }
 
     fn walking_caster(world: &mut World, action: ActionId) -> StableId {

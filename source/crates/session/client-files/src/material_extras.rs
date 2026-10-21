@@ -150,10 +150,15 @@ mod tests {
         let tinted = r#"{"blend": {"mode": "opaque"}, "depth_write": true, "depth_bias": 0, "team": {"tint": true}}"#;
         let tinted = Json::parse::<MaterialExtras>(tinted).unwrap().team;
         assert_eq!((tinted.tint, tinted.hue_mask), (true, false));
+        // A cutoff past 1, and a mask of none.
+        let refusal = |text: &str| Json::parse::<MaterialExtras>(text).unwrap_err().to_string();
         let past =
             r#"{"blend": {"mode": "mask", "cutoff": 1.5}, "depth_write": true, "depth_bias": 0}"#;
-        assert!(Json::parse::<MaterialExtras>(past).is_err());
-        let nan = r#"{"blend": {"mode": "mask"}, "depth_write": true, "depth_bias": 0}"#;
-        assert!(Json::parse::<MaterialExtras>(nan).is_err());
+        assert_eq!(
+            refusal(past),
+            "a blend's cutoff is not a number from 0 to 1"
+        );
+        let uncut = r#"{"blend": {"mode": "mask"}, "depth_write": true, "depth_bias": 0}"#;
+        assert_eq!(refusal(uncut), "missing field `cutoff` at line 1 column 26");
     }
 }

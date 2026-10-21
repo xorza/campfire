@@ -1,10 +1,11 @@
-use bevy::asset::{Asset, Handle};
+use bevy::app::{App, Plugin};
+use bevy::asset::{Asset, Handle, embedded_asset};
 use bevy::gltf::GltfMaterial;
 use bevy::material::AlphaMode;
 use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::pbr::{
     ExtendedMaterial, MaterialExtension, MaterialExtensionKey, MaterialExtensionPipeline,
-    StandardMaterial,
+    MaterialPlugin, StandardMaterial,
 };
 use bevy::reflect::Reflect;
 use bevy::render::render_resource::{
@@ -63,12 +64,24 @@ pub(crate) struct FileBlendKey {
     depth_write: bool,
 }
 
-/// The shader of every file material, embedded in the client.
+/// The shader of every file material, embedded in the client by `FileMaterialPlugin`, from this
+/// module's directory.
 const SHADER: &str = "embedded://campfire_client/view/file_material/file_material.wesl";
 
 /// The bits of a file material's team paint, as its shader reads them.
 const TINT: u32 = 1;
 const HUE_MASK: u32 = 2;
+
+/// The file materials: their shader, embedded, and their material's plugin.
+#[derive(Debug)]
+pub(crate) struct FileMaterialPlugin;
+
+impl Plugin for FileMaterialPlugin {
+    fn build(&self, app: &mut App) {
+        embedded_asset!(app, "file_material.wesl");
+        app.add_plugins(MaterialPlugin::<FileMaterial>::default());
+    }
+}
 
 impl FileBlend {
     /// The extras a glTF material of none draws by, as Bevy draws its alpha mode: opaque or

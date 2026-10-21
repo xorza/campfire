@@ -60,6 +60,8 @@ mod row_source;
 mod script_book;
 mod seen_by;
 mod source_reads;
+#[cfg(feature = "internals")]
+mod spawn;
 mod spawn_at;
 mod spawn_callbacks;
 mod spawn_point;
@@ -178,6 +180,7 @@ pub use crate::wall_book::WallBook;
 
 #[cfg(feature = "internals")]
 pub mod internals {
+    pub use crate::spawn::Spawn;
     pub use crate::units::internals::TEST_PACKAGE;
     #[expect(
         clippy::module_name_repetitions,

@@ -17,18 +17,18 @@ use campfire_declarations::MatchFacts;
 use campfire_declarations::internals::BookLoad;
 use campfire_items::*;
 use campfire_math::{Num, Vec3};
-use campfire_mode::Mode;
 use campfire_orders::OrdersDirective;
 use campfire_players::{OutOfPlay, Players, PlayersWorld, ResourceAmount};
-use campfire_script::{Filter, ScriptLimits, ScriptPools};
+use campfire_script::Filter;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
 use campfire_stats::{Hold, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
+use campfire_units::internals::Spawn;
 use campfire_units::{Dead, Life, Owner, UnitTypeCore, Units};
 use campfire_values::{
-    ActionId, Block, ModifierId, NameId, PackageIndex, ResourceId, Team, UnitType,
+    ActionId, Block, ItemId, ModifierId, NameId, Number, PackageIndex, Ranked, ResourceId, Scalar,
+    Share, Stat, Team, UnitType,
 };
-use campfire_values::{ItemId, Number, Ranked, Scalar, Share, Stat};
 use campfire_visibility::OutView;
 use serde::Deserialize;
 use serde::de::{IntoDeserializer, value};
@@ -112,7 +112,7 @@ impl Carrier {
         Units::give_type(game, carrier, UseGroup::new(kind));
         let owner = Owner::new(Seat::new(0));
         let shop = spawn_shop(game, shop_type);
-        let id = Mode::spawn(game, carrier, Vec3::ZERO, Team::new(0), owner);
+        let id = Spawn::of(carrier, Vec3::ZERO).parts(owner).place(game);
         game.part_mut::<Life>(id).take(Num::int(200));
         Self {
             id,
@@ -166,13 +166,7 @@ impl Carrier {
 
 /// A server's match of the carrier's capabilities.
 fn carrier_match() -> Match {
-    Match::server(
-        &Carrier::CAPABILITIES,
-        ScriptPools {
-            limits: ScriptLimits::ROOMY,
-            players: 1,
-        },
-    )
+    Match::builder(&Carrier::CAPABILITIES).build()
 }
 
 /// Gives `game` the item book and player 0's 1000 of `gold`; the shop's type.
@@ -228,7 +222,7 @@ fn shop_type(game: &mut Match, sells: Vec<ItemId>, buyers: &str, share: Share) -
 
 /// A shop unit of `shop_type`, of team 0 and no player, at the origin.
 fn spawn_shop(game: &mut Match, shop_type: UnitType) -> StableId {
-    Mode::spawn(game, shop_type, Vec3::ZERO, Team::new(0), ())
+    Spawn::of(shop_type, Vec3::ZERO).place(game)
 }
 
 const fn buy(item: u32, shop: StableId) -> ItemsDirective {
@@ -325,8 +319,9 @@ fn an_active_keeps_its_cooldown_across_a_swap_and_a_carried_item_holds_its_modif
         &mut game,
         &[Directive::from(buy(FLASH, shop)), Directive::from(cast(0))],
     );
+    // The cast resolved in tick 0, and its 1000 ms at the test's 30 Hz are 30 ticks.
     let ready = game.part::<SlotTimes>(carrier.id).slot(0).unwrap().ready_at;
-    assert!(ready > game.now());
+    assert_eq!((game.now(), ready), (Tick::new(1), Tick::new(30)));
     // The flash moves to slot 2 with its cooldown; slot 0 is empty and ready.
     carrier.order(&mut game, &[ItemsDirective::Swap { from: 0, to: 2 }]);
     let slots = game.part::<ActionSlots>(carrier.id);
@@ -397,7 +392,7 @@ impl ShopRead {
 }
 
 /// Player 0's gold.
-fn gold(game: &World) -> i64 {
+fn player_gold(game: &World) -> i64 {
     let resources = game.player_resources(Seat::new(0));
     resources.unwrap().amount(ResourceId::new(0))
 }
@@ -424,15 +419,9 @@ struct ShopMatch {
     living: UnitType,
 }
 
-fn shop_match() -> ShopMatch {
+fn item_shop() -> ShopMatch {
     let declared = [Capability::Stats, Capability::Items];
-    let mut game = Match::server(
-        &declared,
-        ScriptPools {
-            limits: ScriptLimits::ROOMY,
-            players: 2,
-        },
-    );
+    let mut game = Match::builder(&declared).players(2).build();
     let gold = ResourceId::new(0);
     let item = |cost: i64, components: &[u32], stack: u32| ItemSpec {
         cost: vec![ResourceAmount {
@@ -487,13 +476,13 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         shop,
         shopper,
         living,
-    } = shop_match();
+    } = item_shop();
     let owner = Owner::new(Seat::new(0));
-    let hero = Mode::spawn(&mut game, shopper, (0, 0, 0), Team::new(0), owner);
+    let hero = Spawn::of(shopper, (0, 0, 0)).parts(owner).place(&mut game);
     let step = |game: &mut Match, actions: &[ItemsDirective]| {
         game.step_with(&[(Seat::new(0), &trades(hero, actions))]);
     };
-    let held = |game: &Match| (gold(game), carried(game, hero));
+    let held = |game: &Match| (player_gold(game), carried(game, hero));
     // The reader: the shop sells its three in its order; the edge costs its 1000 with no blade
     // held, a potion 50, and the charm, which it does not sell, nothing.
     let read = |game: &mut Match, item: u32| ShopRead::of(game, shop, hero, ItemId::nth(item));
@@ -564,7 +553,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     );
     assert_eq!(held(&game), (1605, vec![None, Some((2, 1)), None]));
     game.step_with(&[(Seat::new(1), &trades(hero, &[buy(2, shop)]))]);
-    assert_eq!(gold(&game), 1605);
+    assert_eq!(player_gold(&game), 1605);
     game.insert_parts(hero, Dead);
     step(
         &mut game,
@@ -600,7 +589,10 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     assert_eq!(held(&game), (0, vec![Some((1, 1)), Some((2, 1)), None]));
 
     // A unit of another team in the shop's region is out of a shop of its own.
-    let other = Mode::spawn(&mut game, shopper, (0, 0, 0), Team::new(1), owner);
+    let other = Spawn::of(shopper, (0, 0, 0))
+        .team(Team::new(1))
+        .parts(owner)
+        .place(&mut game);
     assert!(!ShopRead::of(&mut game, shop, other, ItemId::nth(0)).served);
     game.player_resources_mut(Seat::new(0))
         .unwrap()
@@ -608,7 +600,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         .unwrap();
     game.step_with(&[(Seat::new(0), &trades(other, &[buy(0, shop)]))]);
     assert_eq!(
-        (gold(&game), carried(&game, other)),
+        (player_gold(&game), carried(&game, other)),
         (300, vec![None, None, None])
     );
 
@@ -618,26 +610,26 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     game.entity_mut(out).insert(OutOfPlay);
     game.resource_mut::<MatchFacts>().out = OutView::Spectators;
     step(&mut game, &[buy(2, shop)]);
-    assert_eq!(gold(&game), 300);
+    assert_eq!(player_gold(&game), 300);
     game.resource_mut::<MatchFacts>().out = OutView::Team;
     step(&mut game, &[buy(2, shop)]);
-    assert_eq!(gold(&game), 250);
+    assert_eq!(player_gold(&game), 250);
 
     // A shop that leaves the dead out, as Warcraft III's does, serves the hero only once it lives
     // again, and within its reach: from 5 m, the reach, a potion of 50; from a bit past it, none.
     // An order that names a unit that is no shop, the hero itself, is dropped.
     let living_shop = spawn_shop(&mut game, living);
     step(&mut game, &[buy(2, living_shop)]);
-    assert_eq!(gold(&game), 250);
+    assert_eq!(player_gold(&game), 250);
     let entity = game.unit_entity(hero);
     game.entity_mut(entity).remove::<Dead>();
     *game.part_mut::<Position>(hero) = Position::from((5, 0, 0));
     step(&mut game, &[buy(2, living_shop), buy(2, hero)]);
-    assert_eq!(gold(&game), 200);
+    assert_eq!(player_gold(&game), 200);
     let past = Vec3::new(Num::int(5) + Num::from_bits(1), Num::ZERO, Num::ZERO);
     *game.part_mut::<Position>(hero) = Position::from(past);
     step(&mut game, &[buy(2, living_shop)]);
-    assert_eq!(gold(&game), 200);
+    assert_eq!(player_gold(&game), 200);
 
     // The nearest shop whose buyers select the hero, in its reach or not, as a panel shows it:
     // of the two at the origin, 5 m and a bit away, the lower stable id; then one at (8, 0, 0),
@@ -645,7 +637,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     // despawns; and once the hero is dead, the one that serves the dead.
     let nearest = |game: &mut Match| ShopRead::nearest(game, hero);
     assert_eq!(nearest(&mut game), Some(shop));
-    let near = Mode::spawn(&mut game, living, (8, 0, 0), Team::new(0), ());
+    let near = Spawn::of(living, (8, 0, 0)).place(&mut game);
     assert_eq!(nearest(&mut game), Some(near));
     let entity = game.unit_entity(near);
     game.entity_mut(entity).despawn();

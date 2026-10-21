@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use campfire_codec::{Toml, TomlTable};
 use campfire_common::{ContentHash, PackageFingerprint};
 use campfire_store::internals::{PinnedFile, TestDir};
 
@@ -214,19 +213,18 @@ fn a_package_reads_its_own_files_only() {
     struct Hero {
         name: String,
         slots: BTreeMap<String, Vec<String>>,
-        actions: BTreeMap<String, TomlTable>,
+        actions: BTreeMap<String, Action>,
     }
     #[derive(Debug, serde::Deserialize)]
-    struct Named {
-        #[expect(dead_code, reason = "the read fails before any use")]
-        script: PackagePath,
+    struct Action {
+        name: String,
     }
     let path = |text| PackagePath::parse(text).unwrap();
     let walker = walker().files().unwrap();
     let hero: Hero = walker.read_data(&path("data/avatar.toml")).unwrap();
     assert_eq!(hero.name, "hero-name");
     assert_eq!(hero.slots["basic"][2], "third");
-    assert!(hero.actions.contains_key("first"));
+    assert_eq!(hero.actions["first"].name, "action-first");
     let script = walker.read_text(&path("scripts/strike.rhai")).unwrap();
     assert!(script.starts_with("fn on_resolve(ctx, caster, target)"));
 
@@ -238,8 +236,6 @@ fn a_package_reads_its_own_files_only() {
     ] {
         assert_eq!(PackagePath::parse(text), None, "{text}");
     }
-    // Data that names a path outside the package does not read.
-    assert!(Toml::parse::<Named>(r#"script = "../x.rhai""#).is_err());
     assert!(matches!(
         walker.read_text(&path("scripts/missing.rhai")),
         Err(ContentError::Missing { .. })

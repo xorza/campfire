@@ -19,7 +19,18 @@ fn saves_read_with_their_defaults_and_refuse_what_they_do_not_know() {
             autosave_ms: NonZeroU32::new(12_000),
         }
     );
-    assert!(read("by = \"anyone\"").is_err());
-    assert!(read("autosave_ms = 0").is_err());
-    assert!(read("autosave = 1").is_err());
+    let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
+    assert_eq!(
+        refusal("by = \"anyone\""),
+        "unknown variant `anyone`, expected `player` or `mode`"
+    );
+    assert_eq!(
+        refusal("autosave_ms = 0"),
+        "invalid value: integer `0`, expected a nonzero u32"
+    );
+    let autosave = refusal("autosave = 1");
+    assert!(
+        autosave.starts_with("unknown field `autosave`"),
+        "{autosave}"
+    );
 }

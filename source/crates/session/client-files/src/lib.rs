@@ -9,6 +9,7 @@
 #![warn(clippy::float_arithmetic)]
 
 mod camera_file;
+mod client_file;
 mod client_objects;
 mod client_path;
 mod client_units;
@@ -25,11 +26,12 @@ mod texture_format;
 mod texture_levels;
 
 pub use crate::camera_file::{CameraFile, CameraHeight};
+pub use crate::client_file::{ClientFile, ClientFormat};
 pub use crate::client_objects::{ClientObject, ClientObjects};
 pub use crate::client_units::{
     ClientModel, ClientUnit, ClientUnits, LookVariant, ModelScale, ModelTop,
 };
-pub use crate::error::{TerrainFileError, TextureLevelsError};
+pub use crate::error::{ClientFileError, TerrainFileError, TextureLevelsError};
 pub use crate::hud_file::{HudFile, ShownBars};
 pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};
 pub use crate::ktx2_image::Ktx2Image;

@@ -40,15 +40,10 @@ thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
-campfire-app-threads.workspace = true
-campfire-math = { workspace = true, features = ["internals"] }
+campfire-net = { workspace = true, features = ["internals"] }
 campfire-net-payload = { workspace = true, features = ["internals"] }
-campfire-net-stack = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-test-packages.workspace = true
-
-bevy_state.workspace = true
-bevy_time.workspace = true
 
 [lints]
 workspace = true

@@ -147,6 +147,7 @@ mod tests {
             mode("killer = \"enemies\"\nshare = \"0.5\"").unwrap().share,
             half
         );
-        assert!(mode("killer = \"enemies\"\nshare = \"-0.5\"").is_err());
+        let refused = mode("killer = \"enemies\"\nshare = \"-0.5\"").unwrap_err();
+        assert_eq!(refused.message(), "a bounty's share is 0 or more");
     }
 }

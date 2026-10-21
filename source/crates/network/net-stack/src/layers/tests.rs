@@ -40,16 +40,14 @@ fn a_client_server_has_every_layers_components() {
     assert!(stepper.client(0).contains::<LinkEstimator>());
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .contains_resource::<LocalTimelineSync>()
     );
     assert!(!stepper.client(0).contains::<LocalTimelineSync>());
     assert!(stepper.client(0).contains::<RemoteTimeline>());
     assert!(
         stepper
-            .client_app(0)
-            .world()
+            .client_world(0)
             .contains_resource::<InterpolationTimeline>()
     );
     assert!(!stepper.client(0).contains::<InterpolationTimeline>());
@@ -103,18 +101,11 @@ fn a_disconnect_the_server_asks_for_logs_no_error() {
     let server = stepper.server_entity();
     let server_client = stepper.client_of_entity(0);
     drop(LogCheck::scoped(|| {
-        stepper
-            .server_app_mut()
-            .world_mut()
-            .trigger(Stop::from(server));
+        stepper.server_world_mut().trigger(Stop::from(server));
         stepper.step(20, stepper.frame_interval(), StepOrder::ServerFirst);
 
         assert!(
-            stepper
-                .server_app()
-                .world()
-                .get_entity(server_client)
-                .is_err(),
+            stepper.server_world().get_entity(server_client).is_err(),
             "server-side client entity should be removed after server-requested disconnection"
         );
     }));
@@ -147,8 +138,7 @@ fn an_abrupt_unlink_logs_no_error() {
         // The client stops, as an abrupt close leaves it.
         stepper.stall(AppId::Client(0), Duration::from_secs(3600));
         stepper
-            .server_app_mut()
-            .world_mut()
+            .server_world_mut()
             .entity_mut(server_client)
             .insert(Unlinked {
                 reason: UnlinkReason::TimedOut,
@@ -156,18 +146,14 @@ fn an_abrupt_unlink_logs_no_error() {
 
         stepper.frame_step(1);
         assert_eq!(
-            stepper.server_app().world().resource::<Disconnects>().0,
+            stepper.server_world().resource::<Disconnects>().0,
             [(
                 server_client,
                 DisconnectedReason::LinkFailed(UnlinkReason::TimedOut)
             )]
         );
         assert!(
-            stepper
-                .server_app()
-                .world()
-                .get_entity(server_client)
-                .is_err(),
+            stepper.server_world().get_entity(server_client).is_err(),
             "the connection layer despawns the disconnected link"
         );
 

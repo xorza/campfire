@@ -1,3 +1,4 @@
+use campfire_codec::Binary;
 use campfire_common::Tick;
 use campfire_values::NameId;
 
@@ -55,7 +56,7 @@ fn a_restore_check_needs_the_timers_in_order_and_numbered_below_the_next() {
     let changed = |change: fn(&mut Timers)| {
         let mut timers = last.clone();
         change(&mut timers);
-        Match::decodes(&timers) && timers.check(&world)
+        Binary::decodes_again(&timers) && timers.check(&world)
     };
     assert!(!changed(|timers| *timers.next_seq_mut() += 1));
     assert!(!changed(

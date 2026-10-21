@@ -209,18 +209,15 @@ fn is_dimmed(service: Service, purchase: Option<Purchase>, amount: i64) -> bool 
 
 #[cfg(test)]
 mod tests {
-    use bevy::ecs::system::{IntoSystem, RunSystemOnce, System};
+    use bevy::ecs::system::RunSystemOnce;
     use bevy::ecs::world::World;
 
     use super::*;
 
     #[test]
-    fn the_panel_takes_no_conflicting_access_and_p_shows_it() {
-        // Bevy checks that a system's queries do not conflict as it initializes the system.
+    fn p_shows_the_panel_and_p_again_hides_it() {
+        // The panel is hidden as it spawns.
         let mut world = World::new();
-        let mut panel = IntoSystem::into_system(ShopPanelPlugin::show);
-        panel.initialize(&mut world);
-        // P shows the panel, hidden as it spawns, and P again hides it.
         world.run_system_once(ShopPanelPlugin::spawn).unwrap();
         let shown = |world: &mut World| {
             let mut panel = world.query_filtered::<&Visibility, With<PanelRoot>>();

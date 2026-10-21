@@ -1,5 +1,7 @@
 use bevy_app::App;
 use bevy_ecs::world::{EntityWorldMut, World};
+use bevy_time::TimePlugin;
+use campfire_app_threads::OneThreadPlugins;
 use campfire_math::TickRate;
 use campfire_net_connection::{ConnectionPlugins, ServerConnectionPlugins};
 use campfire_net_endpoint::EndpointPlugin;
@@ -20,6 +22,8 @@ impl ConnectionStack {
     fn add_shared(app: &mut App, tick_rate: TickRate) {
         if !app.is_plugin_added::<ClockPlugin>() {
             app.add_plugins((
+                OneThreadPlugins,
+                TimePlugin,
                 TimelinePlugins { tick_rate },
                 LinkPlugin,
                 EndpointPlugin::<EmulatedWires>::default(),
@@ -30,7 +34,7 @@ impl ConnectionStack {
 }
 
 impl Stack for ConnectionStack {
-    fn add_client(&self, app: &mut App, tick_rate: TickRate) {
+    fn add_client(&self, app: &mut App, _: usize, tick_rate: TickRate) {
         Self::add_shared(app, tick_rate);
     }
 
