@@ -192,6 +192,7 @@ impl ClientSide {
                     route: None,
                     reset_token: Some(done.params.reset_token),
                     binding: Some(done.binding),
+                    early: Vec::new(),
                 });
                 self.finished = Some(Finished {
                     id: attempt.id,

@@ -5,6 +5,7 @@ use campfire_codec::{Toml, TomlTable};
 use campfire_common::DeclaredName;
 use campfire_declarations::SectionWriter;
 use campfire_math::Num;
+use campfire_orders::AcquireData;
 use campfire_package::UnitsFile;
 use campfire_production::{DropOffData, NodeData, ProductionData};
 
@@ -68,8 +69,13 @@ impl ImportedTypes {
                             Some((kind(slot), actions?.clone()))
                         })
                         .collect();
+                // A scan takes a weapon to attack what it finds.
+                let armed = slots.contains_key(&kind(WEAPON));
                 if !slots.is_empty() {
                     writer.section(&TypeSlotsData(slots));
+                }
+                if let Some(acquire) = imported.acquire().filter(|_| armed) {
+                    writer.patch::<AcquireData>(acquire);
                 }
                 if let Some(production) = additions.production.get(name) {
                     writer.section(production);

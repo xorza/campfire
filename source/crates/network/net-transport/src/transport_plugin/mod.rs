@@ -10,7 +10,7 @@ use campfire_net_link::{Link, LinkSystems, Linked, Unlink};
 use campfire_net_payload::UnlinkReason;
 use campfire_net_timeline::Clock;
 use campfire_net_timeline::LocalTimeline;
-use tracing::{debug, trace_span, warn};
+use tracing::{debug, trace_span};
 
 use crate::channel_registry::ChannelRegistry;
 
@@ -127,15 +127,14 @@ impl TransportPlugin {
 
 impl Plugin for TransportPlugin {
     fn build(&self, app: &mut App) {
+        // The registry is the transport's, whichever comes first, a channel's registration or
+        // the plugin.
+        app.init_resource::<ChannelRegistry>();
         app.add_observer(Self::handle_disconnection);
         app.add_observer(Transport::on_linked);
     }
 
     fn finish(&self, app: &mut App) {
-        if !app.world().contains_resource::<ChannelRegistry>() {
-            warn!("TransportPlugin: ChannelRegistry not found, adding it");
-            app.world_mut().init_resource::<ChannelRegistry>();
-        }
         app.world_mut().resource_mut::<ChannelRegistry>().seal();
         app.configure_sets(
             PreUpdate,

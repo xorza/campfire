@@ -32,6 +32,7 @@ use bytes::Bytes;
 use campfire_net_bytes::Reader;
 use campfire_net_bytes::ToBytes;
 use campfire_net_channels::ChannelMessage;
+use campfire_net_channels::ChannelReceiver;
 use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::MessageId;
 use campfire_net_connection::Client;
@@ -45,6 +46,7 @@ use campfire_net_core::NetTick;
 use campfire_net_core::PeerId;
 use campfire_net_link::Unlink;
 use campfire_net_payload::UnlinkReason;
+use campfire_net_transport::ChannelReader;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
 use campfire_net_transport::TransportSystems;
@@ -83,6 +85,7 @@ impl Plugin for MessagePlugin {
                     }
                 });
             }),
+            ParamBuilder,
             ParamBuilder,
             ParamBuilder,
             // RepliconMapParam: replicon's shared map, and the server's entity check
@@ -281,6 +284,7 @@ impl MessagePlugin {
             With<Connected>,
         >,
         registry: Res<'_, MessageRegistry>,
+        channels: Res<'_, ChannelRegistry>,
         mut commands: Commands<'_, '_>,
         replicon: RepliconMapParam<'_, '_>,
     ) {
@@ -304,7 +308,12 @@ impl MessagePlugin {
                     registry: &registry,
                     entity_map: &view,
                 };
-                for channel_receiver in transport.channel_receivers_mut() {
+                // A channel its own layer reads holds no message of the registry's
+                // (11-net-stack/transport.md, A channel has one reader).
+                let read = |receiver: &&mut ChannelReceiver| {
+                    channels.reader(receiver.channel_type_id()) == Some(ChannelReader::Messages)
+                };
+                for channel_receiver in transport.channel_receivers_mut().filter(read) {
                     let channel_type_id = channel_receiver.channel_type_id();
                     let channel_name = channel_receiver.name();
                     while let Some(ChannelMessage {

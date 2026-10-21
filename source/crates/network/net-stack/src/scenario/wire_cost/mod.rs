@@ -11,7 +11,7 @@ use campfire_net_core::LinkDirection;
 use campfire_net_emulator::DuplexModel;
 use campfire_net_endpoint::Endpoint;
 use campfire_net_messages::MessageSender;
-use campfire_net_messages::internals::StringMessage;
+use campfire_net_messages::internals::{ReceivedMessages, StringMessage};
 use campfire_net_packets::EmulatedWires;
 use campfire_net_stepper::AppId;
 use campfire_net_stepper::ClientKind;
@@ -148,6 +148,9 @@ impl WireCase {
         };
         stepper.server_app_mut().add_systems(FixedUpdate, send);
         stepper.client_app_mut(0).add_systems(FixedUpdate, send);
+        // Each end reads what it receives, as an app does.
+        ReceivedMessages::<StringMessage>::collect_in(stepper.server_app_mut());
+        ReceivedMessages::<StringMessage>::collect_in(stepper.client_app_mut(0));
         stepper.client_of_mut(0).insert(Traffic);
         if self.senders == Senders::Both {
             stepper.client_mut(0).insert(Traffic);

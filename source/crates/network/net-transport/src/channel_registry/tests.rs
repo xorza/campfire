@@ -76,6 +76,23 @@ fn directions_enter_the_hash() {
     assert_eq!(hash(&[to_client, to_server]), hash(&[LinkDirections::BOTH]));
 }
 
+/// A channel is the message layer's to read until its own layer takes it; the reader stays out
+/// of the hash, as it changes no byte between peers.
+#[test]
+fn a_channel_is_read_by_messages_until_its_owner_takes_it() {
+    let mut registry = ChannelRegistry::default();
+    let chat = ChannelTypeId::of::<Chat>();
+    assert_eq!(registry.reader(chat), None);
+    registry.register_channel::<Chat>(ChannelSetup::default());
+    assert_eq!(registry.reader(chat), Some(ChannelReader::Messages));
+    let mut owned = registry.clone();
+    owned.read_by_owner::<Chat>();
+    assert_eq!(owned.reader(chat), Some(ChannelReader::Owner));
+    registry.seal();
+    owned.seal();
+    assert_eq!(registry.hash(), owned.hash());
+}
+
 #[test]
 #[should_panic(expected = "the channel registry takes a registration after its plugin finished")]
 fn a_sealed_registry_refuses_a_channel() {

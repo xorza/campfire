@@ -3,8 +3,8 @@ use std::num::NonZeroU64;
 
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_actions::{
-    ActionProgress, ActionRange, ActionSlots, ActionTarget, InProgress, OrderPhase, ProgressDues,
-    SlotAim, SlotKind, SlotsMut, TimedSlots,
+    ActionProgress, ActionRange, ActionSlots, ActionTarget, AttackTarget, InProgress, OrderPhase,
+    ProgressDues, SlotAim, SlotKind, SlotsMut, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order, Release};
@@ -41,6 +41,8 @@ use campfire_units::{
 use campfire_values::{PackagePath, PathId, Rank, Scalar, Team, TeamSet, UnitType};
 use campfire_visibility::OutView;
 use campfire_vision::Vision;
+
+mod acquire;
 
 const ONE: i64 = 1 << 24;
 /// The MOBA 3v3's creep and tower AI as they were when these tests were written: the
@@ -177,15 +179,15 @@ const fn fighter_stats() -> Armed {
 }
 
 /// A still target that never attacks and despawns when it dies.
-const fn still_target(health: i64) -> Armed {
+pub(super) const fn still_target(health: i64) -> Armed {
     Armed::unarmed(Num::from_bits(health << 24))
 }
 
-const fn meter() -> MoveStep {
+pub(super) const fn meter() -> MoveStep {
     MoveStep::new(Num::ONE).unwrap()
 }
 
-fn orders_match() -> Match {
+pub(super) fn orders_match() -> Match {
     orders_match_with_paths(Paths::default())
 }
 
@@ -195,7 +197,7 @@ fn orders_match_with_paths(paths: Paths) -> Match {
 }
 
 /// The capabilities of an orders match.
-const ORDERS: [Capability; 4] = [
+pub(super) const ORDERS: [Capability; 4] = [
     Capability::Stats,
     Capability::Combat,
     Capability::Navigation,
@@ -212,7 +214,7 @@ fn orders_match_with(paths: Paths, limits: ScriptLimits) -> Match {
 }
 
 /// The next type of the mode, armed as `armed`, walking `step` a tick when given.
-fn armed(game: &mut Match, armed: Armed, step: Option<MoveStep>) -> UnitType {
+pub(super) fn armed(game: &mut Match, armed: Armed, step: Option<MoveStep>) -> UnitType {
     let unit_type = armed.load(game);
     if let Some(step) = step {
         Units::give_type(game, unit_type, step);
@@ -786,7 +788,7 @@ fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
     // Far from everything, with a target it cannot reach.
     let lone = unit(&mut game, creep, 0, Vec3::from((0, 0, 50)));
     ProgressDues::change_unit(&mut game, lone, |progress, dues| {
-        progress.set_attack_target(Some(rival), dues);
+        progress.set_attack_target(Some(AttackTarget::ordered(rival)), dues);
     });
     assert_eq!([first, second, lone].map(StableId::get), [1, 2, 5]);
 
@@ -929,7 +931,7 @@ fn an_ai_needs_think_and_orders_its_unit_but_changes_nothing() {
         .team(Team::new(1))
         .place(&mut game);
     ProgressDues::change_unit(&mut game, ally, |progress, dues| {
-        progress.set_attack_target(Some(enemy), dues);
+        progress.set_attack_target(Some(AttackTarget::ordered(enemy)), dues);
     });
     assert_eq!(thinker.get(), 0);
 
@@ -1075,7 +1077,7 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
     game.step_with(&[]);
     assert_eq!(game.part::<Position>(chaser).get(), Vec3::from((1, 0, 0)));
     ProgressDues::change_unit(&mut game, chaser, |progress, dues| {
-        progress.set_attack_target(Some(prey), dues);
+        progress.set_attack_target(Some(AttackTarget::ordered(prey)), dues);
     });
     game.run_until(4);
     assert_eq!(game.part::<Position>(chaser).get(), Vec3::from((1, 0, 2)));
@@ -1507,7 +1509,7 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
         .team(Team::new(1))
         .place(&mut game);
     ProgressDues::change_unit(&mut game, walker, |progress, dues| {
-        progress.set_attack_target(Some(target), dues);
+        progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
     });
     game.step_with(&[]);
     assert!(Orders::strikes_at(&game, walker).is_some());

@@ -21,29 +21,38 @@ use campfire_navigation::NavigationSystems;
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::{Capability, SimSystems};
 use campfire_stats::ModifierAppliers;
-use campfire_units::{BodyUnit, Due};
+use campfire_units::{BodyUnit, Due, UnitGrid};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 use crate::ai::OnThink;
 use crate::thinking::ThinkDue;
 
+mod acquire;
+mod acquire_data;
+mod acquiring;
 mod ai;
 mod ai_data;
 mod destinations;
 mod error;
+mod next_scan;
 mod next_think;
 mod orders_api;
 mod orders_directive;
 mod orders_effect;
 mod resetting;
+mod stagger;
 mod thinking;
 mod unit_order;
 mod unit_orders;
 
+pub use crate::acquire::Acquire;
+pub use crate::acquire_data::{AcquireData, AcquirePatch};
+pub use crate::acquiring::Acquiring;
 pub use crate::ai::Ai;
 pub use crate::ai_data::AiData;
 pub use crate::destinations::Destinations;
-pub use crate::error::{AiError, OrdersRefusal};
+pub use crate::error::{AcquireError, AiError, OrdersRefusal};
+pub use crate::next_scan::NextScan;
 pub use crate::next_think::NextThink;
 pub use crate::orders_api::OrdersApi;
 pub use crate::orders_directive::OrdersDirective;
@@ -59,6 +68,8 @@ pub enum OrdersSystems {
     Commands,
     /// Units chase their targets, after path walkers walk, before attacks start.
     Chase,
+    /// The idle units due this tick scan for a target, before AI thinks.
+    Scan,
     /// AI of the units due this tick issues orders.
     Think,
 }
@@ -72,6 +83,7 @@ impl ModuleSystems for OrdersSystems {
             Self::Chase => {
                 SetPlace::at(ActionsSystems::Chase).after(NavigationSystems::FollowPaths)
             }
+            Self::Scan => SetPlace::stage(SimSystems::Think).before(Self::Think),
             Self::Think => SetPlace::stage(SimSystems::Think),
         }
     }
@@ -90,6 +102,12 @@ impl Module for Orders {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<AiData>();
+        d.section::<AcquireData>();
+        d.component::<NextScan>();
+        d.timed::<NextScan>();
+        d.observer(NextScan::revived);
+        d.part::<BodyUnit, NextScan>(|at| at.of_type::<Acquire>().map(|_| NextScan::FIRST));
+        d.book::<ByType<Acquire>>(Acquire::book);
         d.component::<NextThink>();
         d.timed::<NextThink>();
         d.observer(NextThink::revived);
@@ -107,8 +125,9 @@ impl Module for Orders {
     }
 
     /// Adds orders to a match: in Inputs, after the orders of the capabilities before it, the
-    /// tick's orders are checked and become current; in Think, the resets whose units arrived end,
-    /// then the units due this tick think; in Act, before combat starts attacks, after path walkers
+    /// tick's orders are checked and become current; in Think, on a match that computes the state,
+    /// the idle units due scan for a target, then the resets whose units arrived end, and the
+    /// units due this tick think; in Act, before combat starts attacks, after path walkers
     /// walk, units chase their targets. It builds on the core `Units` installs, on navigation and
     /// on stats. Without the core's scripts, as on a client, no unit thinks. An order's targets are
     /// checked as the server's vision sees them, or, on a predicting client, as the units it holds.
@@ -119,6 +138,10 @@ impl Module for Orders {
             Self::check_orders::<ByHolding>(),
         );
         cx.add(OrdersSystems::Chase, Destinations::chase);
+        cx.server(
+            OrdersSystems::Scan,
+            UnitGrid::before_reading(Acquiring::scan),
+        );
         cx.scripted(
             OrdersSystems::Think,
             (
@@ -150,13 +173,14 @@ pub mod internals {
     use campfire_common::{Seat, Tick};
     use campfire_declarations::ByType;
     use campfire_declarations::internals::BookLoad;
-    use campfire_script::{ScriptFailures, ScriptId};
+    use campfire_script::{Filters, MatchNames, ScriptFailures, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{MatchRate, StableId};
     use campfire_units::{ScriptBook, UnitTypeCore, Units};
-    use campfire_values::{PackagePath, Scalar, UnitType};
+    use campfire_values::{FilterData, PackagePath, Scalar, UnitType};
 
     use crate::Orders;
+    use crate::acquire::Acquire;
     use crate::ai::Ai;
     use crate::ai_data::AiData;
     use crate::error::AiError;
@@ -174,6 +198,29 @@ pub mod internals {
             let ai = Ai::of(data, script, world.resource::<ScriptBook>(), rate)?;
             ByType::<Ai>::amend(world, |_, book| book.set(unit_type, ai));
             Ok(())
+        }
+    }
+
+    impl Orders {
+        /// Gives `unit_type` its idle scan, as its `acquire` section would: each `scan_ms`, at
+        /// the match's rate, of the units any of `targets` selects.
+        pub fn load_acquire(
+            world: &mut World,
+            unit_type: UnitType,
+            scan_ms: u64,
+            targets: &[&str],
+        ) {
+            let rate = *world.resource::<MatchRate>();
+            let targets: Vec<FilterData> = targets
+                .iter()
+                .map(|text| FilterData::parse(text).expect("a test's filter"))
+                .collect();
+            let tags = world.resource::<MatchNames>().tags();
+            let acquire = Acquire {
+                period: rate.duration(scan_ms).expect("a test's period"),
+                targets: Filters::resolve(&targets, tags).expect("a test's tags"),
+            };
+            ByType::<Acquire>::amend(world, |_, book| book.set(unit_type, acquire));
         }
     }
 

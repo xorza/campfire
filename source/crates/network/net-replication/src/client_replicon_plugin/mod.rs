@@ -126,17 +126,21 @@ impl ClientRepliconPlugin {
     /// Receive packets from transports and populate `ClientMessages` (replication data from
     /// server).
     ///
-    /// Reads from server_channels (Updates, Mutations) on each transport.
+    /// Reads from server_channels (Updates, Mutations) on each transport; a client with no
+    /// `ReplicationReceiver` applies none, so its messages are dropped, as replication alone reads
+    /// its channels (11-net-stack/transport.md, A channel has one reader).
     fn receive_client_packets(
         channel_map: Res<'_, RepliconChannelMap>,
         mut client_messages: ResMut<'_, ClientMessages>,
-        mut transports: Query<'_, '_, &mut Transport, (With<Client>, With<ReplicationReceiver>)>,
+        mut transports: Query<'_, '_, (&mut Transport, Has<ReplicationReceiver>), With<Client>>,
     ) {
-        for mut transport in transports.iter_mut() {
+        for (mut transport, receives) in transports.iter_mut() {
             for (idx, channel) in channel_map.server_channels.iter().enumerate() {
                 if let Some(receiver) = transport.channel_receiver_mut(*channel) {
                     while let Some(message) = receiver.read_message() {
-                        client_messages.insert_received(idx, message.bytes);
+                        if receives {
+                            client_messages.insert_received(idx, message.bytes);
+                        }
                     }
                 }
             }

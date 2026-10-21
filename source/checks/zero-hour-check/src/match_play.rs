@@ -8,10 +8,11 @@ use campfire_mode::SeatPick;
 use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
 use campfire_players::PlayersWorld;
+use campfire_production::Site;
 use campfire_protocol::ServerInput;
 use campfire_runner::SessionWorld;
 use campfire_sim::{Position, StableId};
-use campfire_units::{Life, Units};
+use campfire_units::{BuildTarget, GroundPoint, Life, Units};
 use campfire_values::{ResourceId, UnitType};
 
 use crate::failure::CheckFailure;
@@ -28,6 +29,22 @@ pub(crate) const STEP_LIMIT: u64 = HZ * 60 * 5;
 /// The faction every seat of a play picks, America, whose start the plays read, in place of a
 /// faction drawn (09-zero-hour.md, No pick is Random).
 const AMERICA: &str = "faction=america";
+
+/// A building player 1's dozer builds: its unit type, its build action, and its place,
+/// `[x, z, angle]`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PlannedBuilding {
+    pub(crate) unit: &'static str,
+    pub(crate) action: &'static str,
+    pub(crate) at: [i64; 3],
+}
+
+/// Player 1's dozer that builds: its unit type and its stable id.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BuildingDozer {
+    pub(crate) unit: &'static str,
+    pub(crate) id: StableId,
+}
 
 /// A match a play of the check drives a tick at a time, as player 1, the tick it runs next, and
 /// the bot it drives, if one. A part of the imported mode a play reads and does not find is a
@@ -213,6 +230,36 @@ impl MatchPlay {
             }
         }
         Err(CheckFailure::ProductionStep(directive))
+    }
+
+    /// Orders `builder` to place `building` with its build of `packages` in the tick it runs
+    /// next, then runs ticks until the building stands whole, its site done; the ticks it took.
+    pub(crate) fn build(
+        &mut self,
+        packages: &ModePackages,
+        builder: BuildingDozer,
+        building: PlannedBuilding,
+    ) -> Result<u64, CheckFailure> {
+        let [x, z, angle] = building.at.map(Num::int);
+        let build = OrdersDirective::Build {
+            slot: slot(packages, builder.unit, building.action)?,
+            target: BuildTarget::Point {
+                at: GroundPoint { x, z },
+                angle,
+            },
+        };
+        self.until(builder.id, build, |play| {
+            let built = play.owned(building.unit, 0)?;
+            let units = MatchUnits::of(play.game());
+            Ok(built.len() == 1 && !units.unit(built[0]).contains::<Site>())
+        })
+    }
+
+    /// The life of `unit`, none once it is gone.
+    pub(crate) fn life(&self, unit: StableId) -> Option<Num> {
+        let units = MatchUnits::of(self.game());
+        let unit = units.all().find(|(id, _)| *id == unit)?.1;
+        unit.get::<Life>().map(|life| life.current())
     }
 
     /// Player 1's amount of `money`.

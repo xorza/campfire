@@ -76,5 +76,13 @@ socket: its handshake, its trust, and how a server guards itself. The packet ses
   HMAC of the reset key and the connection ID, which the client gets in the handshake; the server
   answers a datagram of an ID it does not hold with a reset shorter than it, and none to a datagram
   of 21 bytes or less, so two endpoints never reset each other in a loop. Source: RFC 9000 §10.3.
+- **A pending handshake holds its early datagrams.** A sealed datagram of a pending handshake's
+  connection ID, which a link's jitter brings before the client's end, goes to that handshake,
+  which holds a client's first frame of them for its packet session, and the reset answers only
+  an ID no packet session and no handshake holds, as RFC 9001 §5.7 lets a server keep the 1-RTT
+  packets that come before its handshake's end and RFC 9000 §5.2 resets only a packet no
+  connection can claim.
+  Refused: a reset for a pending ID, which ended the connection its handshake was about to make;
+  a drop of every early datagram, which delays the session's first messages by a resend.
 - **The socket stays on `quinn-udp`, with GSO and GRO.** A send joins the datagrams of one peer
   and one length; a read splits what GRO joined.

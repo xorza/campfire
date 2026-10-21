@@ -45,6 +45,7 @@
 - **A unit's modifiers hear its combat events.** An attack, an interval, a hit, damage taken and a kill each run a hook on the modifiers of the unit concerned, in a fixed order, in the pool of the modifier source's player.
 - **A depth bound ends the pass.** A hook an event of depth `k` causes runs at `k + 1`, and one at depth 16 fails, so a chain of reactions ends within the tick; `ctx.attack_hit` marks its damage so a hook can refuse to answer it, as Dota 2 marks reflected damage.
 - **Combat's rules as data, planned.** Each comes with the slice of the game that needs it, its default today's behavior: damage stages before `calc_damage`, a bonus by tags and flat or ratio armor, closed and in data; a weapon's own values scaled by a stat; leech rows by cause and kind; what a splash procs, for each weapon, each target by default; a splash edge that the data names, `<` or `≤`; weapon choice criteria; several turrets; line attack projectiles; a clip's reload from its start or its shot, for each weapon, as Zero Hour counts from the shot.
+- **A shot streak by modifiers, planned.** A unit's shots in a row, within a coast, apply a modifier at each stage, which a weapon's period scaled by a stat reads, as OpenRA's `GrantConditionOnAttack` and `ReloadDelayMultiplier` do; the same path carries upgrades and veterancy. Refused: a weapon's own continuous-fire steps, as Zero Hour's are, a second way to change a weapon's rate; a unit's weapons share a stage's value, where Zero Hour gives each its own (research/zero-hour-continuous-fire.md).
 
 ## Network
 

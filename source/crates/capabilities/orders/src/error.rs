@@ -18,6 +18,24 @@ pub enum AiError {
     AvatarOrders,
 }
 
+/// Why a unit type's idle scan does not load. Packages are untrusted, so each is an expected
+/// failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum AcquireError {
+    /// The scan's period is too long to count in ticks.
+    #[error("scan period: {0}")]
+    Time(#[from] TimeTooLarge),
+    /// The scan names no filter, so it would take no target.
+    #[error("an `acquire` names no filter of its targets")]
+    NoTargets,
+    /// The type has no weapon to attack what it finds.
+    #[error("a type that scans has a weapon")]
+    NoWeapon,
+    /// The type builds or gathers, whose loops stand it idle between their steps.
+    #[error("a type that scans neither builds nor gathers")]
+    Works,
+}
+
 /// Why the orders capability refused a script call: a script gave it a value it does not take.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
 pub enum OrdersRefusal {

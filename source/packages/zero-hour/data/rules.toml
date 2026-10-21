@@ -61,13 +61,15 @@ damage_kinds = [
 ]
 life = "life"
 
-# The tags its rules name: of a building that counts for victory, of a structure, of a wall, and
-# of infantry.
+# The tags its rules name: of a building that counts for victory, of a structure, of a wall, of a
+# base defense, and of infantry.
 [tags.counts_for_victory]
 
 [tags.structure]
 
 [tags.wall]
+
+[tags.base_defense]
 
 [tags.infantry]
 
@@ -100,6 +102,12 @@ name = "command"
 # A unit despawns as it dies.
 [defaults.combat]
 on_death = "despawn"
+
+# A human player's idle unit takes a hostile unit, but of the structures only a base defense, as
+# `PartitionFilterRejectBuildings` keeps them; a type of `ATTACK_BUILDINGS` names every hostile
+# unit of its own.
+[defaults.acquire]
+targets = ["hostiles:!structure", "hostiles:base_defense"]
 
 # A turret turns the weapons of the weapon slot kind, and starts an attack within the original's
 # tolerance of its aim, 0.035 radians (`TurretAIAimTurretState::update`), in degrees, which reads

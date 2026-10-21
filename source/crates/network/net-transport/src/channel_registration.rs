@@ -15,6 +15,16 @@ pub struct ChannelRegistration<'a, C> {
 }
 
 impl<C: Channel> ChannelRegistration<'_, C> {
+    /// Makes the layer that registers the channel its one reader, which the message layer then
+    /// leaves (11-net-stack/transport.md, A channel has one reader).
+    pub fn read_by_owner(&mut self) -> &mut Self {
+        self.app
+            .world_mut()
+            .resource_mut::<ChannelRegistry>()
+            .read_by_owner::<C>();
+        self
+    }
+
     /// Widens the directions the channel travels in.
     pub fn add_direction(&mut self, directions: impl Into<LinkDirections>) -> &mut Self {
         let directions = directions.into();

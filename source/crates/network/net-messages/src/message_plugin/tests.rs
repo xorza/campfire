@@ -10,6 +10,7 @@ use crate::fixtures::received_messages::ReceivedMessages;
 use crate::message_receiver::MessageReceiver;
 use crate::message_sender::MessageSender;
 use crate::message_type_id::MessageTypeId;
+use crate::messages_unread::MessagesUnread;
 use crate::multi_message_sender::MultiMessageSender;
 use crate::received_message::ReceivedMessage;
 use crate::remote_event::RemoteEvent;
@@ -18,6 +19,8 @@ use bevy_ecs::event::Event;
 use bevy_ecs::prelude::ResMut;
 use bevy_ecs::prelude::Resource;
 use bevy_replicon::shared::replication::Replicated;
+use bevy_utils::prelude::DebugName;
+use campfire_log::internals::LogCheck;
 use campfire_math::TickRate;
 use campfire_net_channels::fragment_len_for_max_payload;
 use campfire_net_connection::NetworkingState;
@@ -233,8 +236,10 @@ fn a_sent_message_is_received_through_the_link() {
     );
 }
 
+/// A message no system reads is dropped at its frame's end, and the drop logs its type.
 #[test]
 fn an_unread_message_is_dropped_at_the_frame_end() {
+    let log = LogCheck::start();
     let mut app = App::new();
     app.add_plugins(TestTimelinePlugins {
         tick_rate: TickRate::try_from(100).unwrap(),
@@ -271,6 +276,11 @@ fn an_unread_message_is_dropped_at_the_frame_end() {
             .unwrap()
             .len(),
         0
+    );
+    let message_type = DebugName::type_name::<M>().to_string();
+    assert_eq!(
+        log.take::<MessagesUnread>(),
+        [MessagesUnread { message_type }]
     );
 }
 

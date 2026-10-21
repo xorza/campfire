@@ -72,6 +72,15 @@ impl PreSpawnedPlugin {
                 "a receiver pre-spawns {entity:?} outside FixedMain, where no tick is simulated: \
                  a rollback despawns it, and its replay makes it again only in FixedMain"
             );
+            // Two candidates of one hash are a caller's logic error: Replicon keeps the first and
+            // the other never matches.
+            debug_assert!(
+                receiver.unmatched.iter().all(|&(_, other)| {
+                    query.get(other).ok().and_then(PreSpawned::hash) != Some(hash)
+                }),
+                "{entity:?} pre-spawns the hash {hash:#018x}, which an unmatched pre-spawn holds \
+                 already: give each pre-spawn its own hash"
+            );
             receiver.register_unmatched_entity(tick.unwrap(), entity);
         }
 

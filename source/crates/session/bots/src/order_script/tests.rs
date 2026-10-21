@@ -63,6 +63,14 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
         ),
         OrderScriptError::Unordered { tick: 8 }
     );
+    // Orders given whole make the script their text reads, which never ends, by the same rule.
+    let given = OrderScript::of_orders(script.orders().iter().cloned()).unwrap();
+    assert_eq!(given, script);
+    let stop = |tick| order(tick, Directive::Orders(OrdersDirective::Stop));
+    assert_eq!(
+        OrderScript::of_orders([stop(9), stop(8)]),
+        Err(OrderScriptError::Unordered { tick: 8 })
+    );
     // A coordinate past what a sim number holds, a directive no capability has, two directives,
     // no directive, a filter of no set of relations, and a unit type no mode may declare, fail the
     // read.

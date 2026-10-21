@@ -90,4 +90,8 @@ pub struct Established {
     pub reset_token: Option<[u8; stateless_reset::TOKEN_LEN]>,
     /// The binding of the TLS packet session that made the packet session.
     pub binding: Option<ChannelBinding>,
+    /// The peer's datagrams that came before the packet session was made, in the order they came,
+    /// which it reads as it opens (11-net-stack/udp.md, A pending handshake holds its early
+    /// datagrams).
+    pub early: Vec<Datagram>,
 }

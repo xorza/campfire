@@ -17,6 +17,7 @@ use campfire_package_disk::PackageDir;
 use campfire_production::{DropOffData, NodeData};
 use tracing::info;
 
+use crate::defense_play::DefensePlay;
 use crate::error::CheckError;
 use crate::failure::{CheckFailure, Differs};
 use crate::golden::{Golden, Measured};
@@ -389,6 +390,22 @@ impl ImportCheck<'_> {
                 money = supply.built_money,
                 deliveries = ?supply.deliveries,
                 "player 1 built a supply center as China, and its free truck delivered its loads"
+            );
+        }
+        let played = self
+            .game
+            .mode_packages(Some(self.map))
+            .map_err(CheckError::Load)?;
+        if let Some(defense) = DefensePlay::run(played, rate, &mut self.failures) {
+            let expected = self.pinned(|golden| golden.defense, defense);
+            self.failures
+                .extend(Differs::of(defense, expected).map(CheckFailure::Defense));
+            self.measured.defense = Some(defense);
+            info!(
+                built = ?defense.built,
+                hit = defense.hit,
+                death = defense.death,
+                "player 1's ranger, ordered nothing, killed the bot's dozer"
             );
         }
         if let Some(drive) = StartDrive::run(self.packages, rate, &mut self.failures) {

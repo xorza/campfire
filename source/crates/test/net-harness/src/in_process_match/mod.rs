@@ -66,6 +66,8 @@ pub struct InProcessSetup {
     pub server_frames: u32,
     /// How each link carries packets, both ways, on the stack's emulator.
     pub link: LinkModel,
+    /// The stepper's seed, from which each link's draws follow.
+    pub seed: u64,
     /// The seed chain the server commits to.
     pub seed_chain: SeedChain,
     /// How long the server waits for a player whose link fails, and restores a stopped session.
@@ -137,6 +139,7 @@ impl InProcessSetup {
             rollbacks: [rollback; Self::MAX_PLAYERS],
             server_frames,
             link: LinkModel::perfect(),
+            seed: 0,
             seed_chain,
             times: SessionTimes::DEFAULT,
             rules: PlayersData::DEFAULT,
@@ -182,8 +185,6 @@ pub struct InProcessMatch {
     clock: UnixClock,
     /// What the last step cost each end, kept from step to step.
     step_cost: StepCost,
-    /// Last, so it drops after the apps and sees what they log as they drop.
-    log: LogCheck,
 }
 
 impl InProcessMatch {
@@ -243,7 +244,8 @@ impl InProcessMatch {
     /// A match of `packages` at their default rate, its clients connected and synced: the
     /// clients run a frame a tick, and the server `setup.server_frames`.
     pub fn of_mode(setup: InProcessSetup, packages: ModePackages) -> Self {
-        let log = LogCheck::start();
+        // The check the stepper holds, started before the packages' load, which logs too.
+        let _log = LogCheck::start();
         assert!(
             setup.players <= InProcessSetup::MAX_PLAYERS,
             "a setup holds at most {} players",
@@ -287,6 +289,7 @@ impl InProcessMatch {
                 tick_rate: rate.rate(),
                 init: Init::Deferred,
                 link: DuplexModel::symmetric(setup.link.clone()),
+                seed: setup.seed,
                 identity: Self::server_identity,
                 alpn: UdpLinks::ALPN,
                 ..StepperSetup::with_clients(vec![ClientKind::Udp; players])
@@ -301,7 +304,6 @@ impl InProcessMatch {
             pace,
             clock,
             step_cost: StepCost::default(),
-            log,
         };
         local.stepper.connect();
         local.lay_out_links();
@@ -864,7 +866,7 @@ impl InProcessMatch {
 
     /// The events at Warn and Error that the match logged and no test took yet.
     pub const fn log(&self) -> &LogCheck {
-        &self.log
+        self.stepper.log()
     }
 
     /// The packages of the session's mode.

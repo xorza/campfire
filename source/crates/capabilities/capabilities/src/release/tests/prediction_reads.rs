@@ -158,8 +158,9 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     // The server builds each system that computes its own state, and the client none: the pay of
     // ability and attack toggles, the slow weapons' hits, the hits, the damage and the deaths,
     // the forgetting of attackers, the despawns of the dead and of empty nodes, the trades, the
-    // supply's count, the rallies, the trains' finish, the sight, the areas' landings, at their
-    // two places, and triggers, and the projectiles' shots, launches and flight.
+    // idle scans, the supply's count, the rallies, the trains' finish, the sight, the areas'
+    // landings, at their two places, and triggers, and the projectiles' shots, launches and
+    // flight.
     let mut server = World::new();
     Release::build(
         &mut server,
@@ -184,6 +185,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_combat::dying::Dying::die",
         "campfire_combat::dying::Dying::forget_attackers",
         "campfire_items::trade_orders::TradeOrders::trade_items",
+        "campfire_orders::acquiring::Acquiring::scan",
         "campfire_production::gather_loop::GatherLoop::despawn_empty_nodes",
         "campfire_production::player_supply::PlayerSupply::refresh",
         "campfire_production::production_orders::ProductionOrders::set_rallies",
@@ -191,7 +193,9 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_projectiles::flying::Flying::fly",
         "campfire_projectiles::launching::Launching::launch",
         "campfire_projectiles::launching::Launching::take_shots",
-        // The refresh of the unit grid before the area trigger, the hits and the flight.
+        // The refresh of the unit grid before the area trigger, the hits, the flight and the
+        // scan.
+        "campfire_units::unit_grid::UnitGrid::refresh",
         "campfire_units::unit_grid::UnitGrid::refresh",
         "campfire_units::unit_grid::UnitGrid::refresh",
         "campfire_units::unit_grid::UnitGrid::refresh",

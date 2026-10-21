@@ -8,8 +8,8 @@ use campfire_combat::{ModeCombatData, ModeCombatPatch};
 use campfire_common::{DeclaredName, Version};
 use campfire_declarations::SectionWriter;
 use campfire_mode::{
-    ChoiceData, ListEntry, ModeData, ModeParam, ModePatch, Offers, OptionData, TeamData,
-    TeamManifest,
+    ChoiceData, ListEntry, ModeData, ModeParam, ModePatch, Offers, OptionData, RelationData,
+    TeamData, TeamManifest,
 };
 use campfire_package::{
     Dependency, DependencyPath, Language, ModeManifest, PackageHeader, PackageName, ScriptOrder,
@@ -17,7 +17,7 @@ use campfire_package::{
 };
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
-use campfire_values::{PackagePath, Scalar, Speed, TextId};
+use campfire_values::{PackagePath, Relation, Scalar, Speed, TextId};
 
 use crate::zero_hour::ZeroHour;
 use crate::zero_hour::combat_import::CombatImport;
@@ -175,11 +175,20 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         package: PackageName::new(ZeroHour::RULES).expect("the rules package's name"),
         path: PackagePath::parse("scripts/mode.rhai").expect("the rules' mode script's path"),
     };
+    // Each player regards the neutral team as neutral, as `PlayerList::newGame` sets every
+    // player's relation to the neutral player (09-zero-hour.md, Players regard the
+    // neutral team as neutral).
+    let relations = (1..=SLOTS).map(|player| RelationData {
+        teams: [declared(&format!("player_{player}")), declared("neutral")],
+        relation: Relation::Neutral,
+        vision: false,
+    });
     let mut writer = SectionWriter::default();
     writer.key(ScriptOrder::KEY, &ScriptOrder::one(rules));
     writer.own::<ModeData>(&ModePatch {
         name: Some(text("mode-name")),
         teams: Some(teams),
+        relations: Some(relations.collect()),
         params: Some(params),
         options: Some(BTreeMap::from([(declared("start_money"), money)])),
         choices: Some(BTreeMap::from([(declared("faction"), faction)])),

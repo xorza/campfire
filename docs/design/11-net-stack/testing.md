@@ -11,7 +11,15 @@ How the stack is tested over an emulated network; the clocks are in [Time](time.
 - **The stepper runs Campfire's strict schedules.** Each stepper app makes `Update` and
   `FixedUpdate` strict through `schedule`, so an ambiguity among a layer's systems fails the
   layer's own test, as it fails a server's build (02-engine-core.md, The server's frame declares
-  its order). Refused: the stepper setting the schedules' build settings past their proxy.
+  its order), and gives each other schedule the hierarchy check, so a redundant set edge fails it
+  too. Refused: the stepper setting the schedules' build settings past their proxy; the
+  ambiguity check in every schedule, which would hold the stack to the orders of systems it does
+  not own.
+- **The stepper checks what its apps log.** A stepper holds the process's log check, started
+  before its apps and dropped after them, so a stack test fails on each event at Warn or Error it
+  did not take, as a `Match` and the LAN check do; a test that causes one takes it as a typed event.
+  Refused: a check in each test that wants one, which the next test forgets, as four tests that
+  left messages unread showed.
 - **A discrete-event stepper holds the time.** Each app has its own frame interval, clock drift
   and stalls, and `run_for` runs the next due frame of whichever app; `frame_step` keeps moving
   every app together. Refused: lockstep alone, which cannot express different frame rates, drift,

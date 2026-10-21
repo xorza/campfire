@@ -308,6 +308,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `use` | interaction | since 1.0 |
 | `uses` | interaction | since 1.0 |
 | `orders` | orders | since 1.0 |
+| `acquire` | orders | since 1.0 |
 
 ### `data/mode.toml`
 

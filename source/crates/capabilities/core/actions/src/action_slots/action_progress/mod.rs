@@ -14,6 +14,7 @@ use crate::action_book::ActionBook;
 use crate::action_call::{ResolvedCast, StartedOrder};
 use crate::action_kind::ActionKind;
 use crate::action_slots::ActionSlots;
+use crate::action_slots::action_progress::attack_target::{AttackTarget, TargetSource};
 use crate::action_slots::action_progress::progress_dues::ProgressDues;
 use crate::action_target::ActionTarget;
 use crate::channel_call::{ChannelCall, ChannelStep};
@@ -22,6 +23,7 @@ use crate::in_progress::{InProgress, OrderPhase};
 use crate::rank_values::RankValues;
 use crate::slot_aim::SlotAim;
 
+pub(crate) mod attack_target;
 pub(crate) mod progress_dues;
 
 /// What a unit's actions have under way, beside its slots, whose table it keys on: the action it
@@ -32,7 +34,7 @@ pub(crate) mod progress_dues;
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionProgress {
     underway: Option<InProgress>,
-    attack_target: Option<StableId>,
+    attack_target: Option<AttackTarget>,
     interrupted: Option<ChannelCall>,
 }
 
@@ -197,7 +199,9 @@ impl ActionProgress {
     /// Starts an attack with the weapon in `slot` at the attack target, to resolve in
     /// `resolves_at`: its unit is due then in `dues`.
     pub fn schedule_attack(&mut self, slot: u8, resolves_at: Tick, dues: &mut ProgressDues<'_>) {
-        let target = self.attack_target.expect("an attack starts at its target");
+        let target = self
+            .attack_target()
+            .expect("an attack starts at its target");
         self.underway = Some(InProgress::Attack {
             slot,
             target,
@@ -347,7 +351,18 @@ impl ActionProgress {
 
     /// The unit its attacks aim at.
     pub const fn attack_target(&self) -> Option<StableId> {
-        self.attack_target
+        match self.attack_target {
+            Some(target) => Some(target.unit),
+            None => None,
+        }
+    }
+
+    /// What gave it its attack target.
+    pub const fn target_source(&self) -> Option<TargetSource> {
+        match self.attack_target {
+            Some(target) => Some(target.source),
+            None => None,
+        }
     }
 
     /// The target of the attack in its windup, if one is.
@@ -360,8 +375,9 @@ impl ActionProgress {
 
     /// Attacks `target` from now on, its unit due in `dues` while it has one; another target than
     /// the current one cancels an attack in its windup and spends nothing.
-    pub fn set_attack_target(&mut self, target: Option<StableId>, dues: &mut ProgressDues<'_>) {
-        if target != self.attack_target && self.attacking().is_some() {
+    pub fn set_attack_target(&mut self, target: Option<AttackTarget>, dues: &mut ProgressDues<'_>) {
+        let unit = target.map(|target| target.unit);
+        if unit != self.attack_target() && self.attacking().is_some() {
             self.underway = None;
         }
         self.attack_target = target;

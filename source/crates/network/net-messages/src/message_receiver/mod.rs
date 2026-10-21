@@ -5,6 +5,7 @@ use crate::message_error::MessageError;
 use crate::message_receive_cx::MessageReceiveCx;
 use crate::message_receive_cx::ReceivedMessageHeader;
 use crate::message_type_id::MessageTypeId;
+use crate::messages_unread::MessagesUnread;
 use crate::received_message::ReceivedMessage;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
@@ -12,8 +13,8 @@ use bevy_ecs::system::Commands;
 use bevy_ecs::world::FilteredEntityMut;
 use bevy_ecs::world::World;
 use bevy_utils::prelude::DebugName;
+use campfire_log::LogEvent;
 use tracing::trace;
-use tracing::warn;
 
 /// The messages of type `M` a link received this frame, which [`receive`](Self::receive) drains
 /// and `Last` clears.
@@ -182,10 +183,8 @@ impl<M: Message> MessageReceiver<M> {
             .get_mut::<Self>()
             .expect("a link holds each receiver it lists");
         if receiver.has_messages() {
-            warn!(
-                "Unhandled messages {:?}. Clearing to avoid accumulating messages...",
-                DebugName::type_name::<M>()
-            );
+            let message_type = DebugName::type_name::<M>().to_string();
+            MessagesUnread { message_type }.log();
             receiver.ready_mut().clear();
         }
     }

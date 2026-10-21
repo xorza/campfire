@@ -290,7 +290,7 @@ pub mod internals {
     use campfire_actions::internals::TestAction;
     use campfire_actions::{
         ActionBook, ActionData, ActionKind, ActionProgress, ActionRange, ActionSlots, Actions, Aim,
-        ByAction, InProgress, LoadedAction, ProgressDues, SlotKind, SlotTimes,
+        AttackTarget, ByAction, InProgress, LoadedAction, ProgressDues, SlotKind, SlotTimes,
     };
     use campfire_common::{DeclaredName, Tick, Ticks};
     use campfire_declarations::ServerForm;
@@ -715,7 +715,7 @@ pub mod internals {
 
         pub fn attack(world: &mut World, attacker: StableId, target: StableId) {
             ProgressDues::change_unit(world, attacker, |progress, dues| {
-                progress.set_attack_target(Some(target), dues);
+                progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
             });
         }
 

@@ -489,6 +489,7 @@ impl Bound {
             route: None,
             reset_token: None,
             binding: Some(BINDING),
+            early: Vec::new(),
         }
     }
 }

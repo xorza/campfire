@@ -2,7 +2,9 @@ use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::world::World;
 use campfire_abilities::Abilities;
 use campfire_abilities::internals::{MANA, RAGE};
-use campfire_actions::{ActionData, ActionSlots, Actions, ProgressDues, SlotKind, TimedSlots};
+use campfire_actions::{
+    ActionData, ActionSlots, Actions, AttackTarget, ProgressDues, SlotKind, TimedSlots,
+};
 use campfire_combat::OnDeath;
 use campfire_common::Seat;
 use campfire_declarations::MatchFacts;
@@ -139,7 +141,7 @@ impl AbilitiesFixtures for Abilities {
     ) -> StableId {
         let id = Spawn::of(unit_type, position).team(team).place(world);
         ProgressDues::change_unit(world, id, |progress, dues| {
-            progress.set_attack_target(Some(target), dues);
+            progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
         });
         id
     }

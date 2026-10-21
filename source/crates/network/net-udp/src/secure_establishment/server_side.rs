@@ -33,6 +33,10 @@ use crate::used_tokens::UsedTokens;
 /// The longest stateless reset a server sends, whatever the packet it answers.
 const MAX_RESET_LEN: usize = 64;
 
+/// The most sealed datagrams a pending handshake holds for its packet session: a client's first
+/// frame, past which the session's loss recovery sends again what it dropped.
+const EARLY_DATAGRAMS: usize = 8;
+
 /// A pending handshake's client: its address, and the handshake ID it chose.
 type PendingKey = (SocketAddr, [u8; ID_LEN]);
 
@@ -48,6 +52,9 @@ pub(crate) struct ServerSide {
     /// How long a handshake waits for its client before it goes.
     patience: Duration,
     pending: BTreeMap<PendingKey, Pending>,
+    /// The pending handshake of each connection ID one holds, which a datagram that comes before
+    /// the handshake's end finds.
+    pending_ids: BTreeMap<ConnectionId, PendingKey>,
     /// When each pending handshake's timer is due, the earlier of its resend and its patience's
     /// end, and the handshake: a set, so a handshake that goes takes its timer with it.
     timers: BTreeSet<(Instant, PendingKey)>,
@@ -85,6 +92,8 @@ struct Pending {
     one_rtt: Option<Keys>,
     /// The server's flight, which goes again until the client's end arrives.
     flight: Vec<Bytes>,
+    /// The client's sealed datagrams that came before the handshake's end, for its packet session.
+    early: Vec<Datagram>,
     started: Instant,
     resend: ResendTimer,
 }
@@ -117,6 +126,7 @@ impl ServerSide {
             admission: None,
             patience,
             pending: BTreeMap::new(),
+            pending_ids: BTreeMap::new(),
             timers: BTreeSet::new(),
             holders: BTreeMap::new(),
             counts: BTreeMap::new(),
@@ -164,6 +174,7 @@ impl ServerSide {
     /// Takes the pending handshake of `key` out, with its timer.
     fn take_pending(&mut self, key: PendingKey) -> Option<Pending> {
         let pending = self.pending.remove(&key)?;
+        self.pending_ids.remove(&pending.connection_id);
         self.timers.remove(&(pending.deadline(self.patience), key));
         Some(pending)
     }
@@ -217,6 +228,7 @@ impl ServerSide {
             handshake_keys: None,
             one_rtt: None,
             flight: Vec::new(),
+            early: Vec::new(),
             started: now,
             resend: ResendTimer::start(now),
         };
@@ -236,6 +248,7 @@ impl ServerSide {
         self.hold(connection_id, from.ip());
         self.timers
             .insert((pending.deadline(self.patience), (from, id)));
+        self.pending_ids.insert(connection_id, (from, id));
         self.pending.insert((from, id), pending);
     }
 
@@ -356,6 +369,7 @@ impl Establish for ServerSide {
                         route: Some(pending.connection_id),
                         reset_token: None,
                         binding: Some(binding(&pending.tls)),
+                        early: pending.early,
                     });
                 }
             }
@@ -403,11 +417,15 @@ impl ServerEstablish for ServerSide {
         self.accepting = accepting;
     }
 
-    /// Answers a packet session datagram whose connection ID no packet session holds with a
-    /// stateless reset of that ID's token, shorter than the datagram, which a datagram of
-    /// `MIN_RESET_LEN` bytes or less gets none of.
-    fn unknown(&mut self, _now: Instant, datagram: &Datagram, out: &mut Establishing) {
-        let Datagram { from, payload } = datagram;
+    /// Takes a packet session datagram whose connection ID no packet session holds: one of a
+    /// pending handshake's ID goes to that handshake, which holds `EARLY_DATAGRAMS` of them for its
+    /// packet session and drops the rest, as RFC 9001 §5.7 lets a server keep the 1-RTT packets
+    /// that come before its handshake's end; any other gets a stateless reset of that ID's token,
+    /// shorter than the datagram, which a datagram of `MIN_RESET_LEN` bytes or less gets none of,
+    /// as RFC 9000 §5.2 resets only a packet no connection can claim (11-net-stack/udp.md, A
+    /// pending handshake holds its early datagrams).
+    fn unknown(&mut self, _now: Instant, received: &Datagram, out: &mut Establishing) {
+        let Datagram { from, payload } = received;
         let datagram: &[u8] = payload;
         let Some(id) = datagram
             .first_chunk()
@@ -415,6 +433,16 @@ impl ServerEstablish for ServerSide {
         else {
             return;
         };
+        if let Some(key) = self.pending_ids.get(&id) {
+            let pending = self
+                .pending
+                .get_mut(key)
+                .expect("a pending ID's handshake is pending");
+            if pending.early.len() < EARLY_DATAGRAMS {
+                pending.early.push(received.clone());
+            }
+            return;
+        }
         if datagram.len() <= MIN_RESET_LEN {
             return;
         }

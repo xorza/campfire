@@ -88,6 +88,7 @@ mod confirmed_history;
 mod history_state;
 mod interpolated;
 mod predicted;
+mod targets_overlap;
 
 pub use crate::app_component_ext::AppComponentExt;
 pub use crate::client_replication_plugins::ClientReplicationPlugins;

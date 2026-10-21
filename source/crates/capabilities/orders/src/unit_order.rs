@@ -1,6 +1,6 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::query::QueryData;
-use campfire_actions::{ActionProgress, ActionTarget, ProgressDues};
+use campfire_actions::{ActionProgress, ActionTarget, AttackTarget, ProgressDues};
 use campfire_common::Tick;
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
@@ -112,7 +112,7 @@ impl UnitOrder {
             Self::Attack { target } => {
                 if let Some(underway) = &mut underway {
                     underway.cancel_charge();
-                    underway.set_attack_target(Some(target), dues);
+                    underway.set_attack_target(Some(AttackTarget::ordered(target)), dues);
                 }
                 return kind;
             }

@@ -126,31 +126,32 @@ impl OrderScript {
             directive: Directive<NamedRefs>,
         }
         let file: File = Toml::parse(text).map_err(OrderScriptError::Toml)?;
-        let mut orders: Vec<ScriptedOrder> = Vec::with_capacity(file.order.len());
-        for Entry {
-            tick,
-            units,
-            directive,
-        } in file.order
-        {
-            let tick = Tick::new(tick);
-            if orders.last().is_some_and(|last| last.tick > tick) {
-                return Err(OrderScriptError::Unordered { tick: tick.get() });
-            }
-            orders.push(ScriptedOrder {
-                tick,
-                units: units.map_or(ScriptedUnits::Avatar, ScriptedUnits::Typed),
-                directive,
-            });
-        }
-        let mut inputs: Vec<ScriptedInput> = Vec::with_capacity(file.input.len());
-        for InputEntry { tick, name, value } in file.input {
-            let tick = Tick::new(tick);
-            if inputs.last().is_some_and(|last| last.tick > tick) {
-                return Err(OrderScriptError::Unordered { tick: tick.get() });
-            }
-            inputs.push(ScriptedInput { tick, name, value });
-        }
+        let orders: Vec<ScriptedOrder> = file
+            .order
+            .into_iter()
+            .map(
+                |Entry {
+                     tick,
+                     units,
+                     directive,
+                 }| ScriptedOrder {
+                    tick: Tick::new(tick),
+                    units: units.map_or(ScriptedUnits::Avatar, ScriptedUnits::Typed),
+                    directive,
+                },
+            )
+            .collect();
+        Self::growing(orders.iter().map(|order| order.tick))?;
+        let inputs: Vec<ScriptedInput> = file
+            .input
+            .into_iter()
+            .map(|InputEntry { tick, name, value }| ScriptedInput {
+                tick: Tick::new(tick),
+                name,
+                value,
+            })
+            .collect();
+        Self::growing(inputs.iter().map(|input| input.tick))?;
         let end = file.end.map(Tick::new);
         let last = orders
             .last()
@@ -166,6 +167,31 @@ impl OrderScript {
             inputs,
             end,
         })
+    }
+
+    /// The script of `orders` alone, which never ends; an error when their ticks do not grow.
+    pub fn of_orders(
+        orders: impl IntoIterator<Item = ScriptedOrder>,
+    ) -> Result<Self, OrderScriptError> {
+        let orders: Vec<ScriptedOrder> = orders.into_iter().collect();
+        Self::growing(orders.iter().map(|order| order.tick))?;
+        Ok(Self {
+            orders,
+            inputs: Vec::new(),
+            end: None,
+        })
+    }
+
+    /// An error at the first of `ticks` below the one before it.
+    fn growing(ticks: impl Iterator<Item = Tick>) -> Result<(), OrderScriptError> {
+        let mut last = None;
+        for tick in ticks {
+            if last.is_some_and(|last| last > tick) {
+                return Err(OrderScriptError::Unordered { tick: tick.get() });
+            }
+            last = Some(tick);
+        }
+        Ok(())
     }
 
     pub fn orders(&self) -> &[ScriptedOrder] {

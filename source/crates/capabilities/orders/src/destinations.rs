@@ -1,9 +1,10 @@
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res};
 use campfire_actions::{
-    ActionBook, ActionProgress, ActionRange, ActionSlots, ProgressIndexes, Targets,
+    ActionBook, ActionProgress, ActionRange, ActionSlots, ProgressIndexes, TargetSource, Targets,
 };
 use campfire_geometry::Placed;
+use campfire_math::Num;
 use campfire_sim::{DueUnit, Position};
 use campfire_units::{ArrivedShort, Body, Dead, Destination};
 use campfire_values::Team;
@@ -16,7 +17,9 @@ impl Destinations {
     /// Walks each unit that can move to its attack target while out of the range of the weapon it
     /// attacks it with, of those the index of the attack targets holds, and stops it in range or
     /// in its windup; a cast that walks in range walks the unit instead. A unit whose target is
-    /// gone, dead, no longer an enemy or one no weapon of it selects drops it and stops.
+    /// gone, dead, no longer an enemy or one no weapon of it selects drops it and stops, and so
+    /// does one, that walks or stands, whose scan gave it a target out of that range, which it
+    /// does not chase (04-capabilities/control.md, A scanned target holds only in reach).
     pub(super) fn chase(
         book: Res<'_, ActionBook>,
         targets: Targets<'_, '_>,
@@ -27,7 +30,7 @@ impl Destinations {
                 &Position,
                 &Team,
                 (&ActionSlots, &mut ActionProgress),
-                &mut Destination,
+                Option<&mut Destination>,
                 Option<&ArrivedShort>,
                 Option<&Body>,
             ),
@@ -55,21 +58,27 @@ impl Destinations {
                 let slot = slots.weapon_in(&book, Some(selected))?;
                 Some((unit, slots.range_in(&book, slot)))
             });
-            match aimed {
+            let reached = |unit, range: Num| {
+                let from = Placed::new(position.get(), Body::shape_of(body));
+                targets.reaches(from, range, unit)
+            };
+            let walk = match aimed {
+                Some((unit, ActionRange::Meters(range))) if !reached(&unit, range.get()) => {
+                    if progress.target_source() == Some(TargetSource::Scan) {
+                        progress.set_attack_target(None, &mut indexes.of(id, entity));
+                        None
+                    } else {
+                        Some(unit.position)
+                    }
+                }
+                Some(_) => None,
                 None => {
                     progress.set_attack_target(None, &mut indexes.of(id, entity));
-                    Destination::walk_to(&mut destination, arrived, None);
+                    None
                 }
-                Some((unit, ActionRange::Meters(range)))
-                    if !targets.reaches(
-                        Placed::new(position.get(), Body::shape_of(body)),
-                        range.get(),
-                        &unit,
-                    ) =>
-                {
-                    Destination::walk_to(&mut destination, arrived, Some(unit.position));
-                }
-                Some(_) => Destination::walk_to(&mut destination, arrived, None),
+            };
+            if let Some(destination) = &mut destination {
+                Destination::walk_to(destination, arrived, walk);
             }
         }
     }

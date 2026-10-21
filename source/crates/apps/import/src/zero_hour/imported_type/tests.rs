@@ -115,6 +115,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         turret: None,
         bounty: None,
         projectile: None,
+        acquire: None,
     };
     let stands = |body| ImportedType {
         pools: None,
@@ -125,6 +126,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         turret: None,
         bounty: None,
         projectile: None,
+        acquire: None,
     };
     // A structure stands of the tag of its kind.
     let structure = |body| ImportedType {
@@ -207,7 +209,7 @@ const LIVING: &str = "Object Soldier
   End
 End
 Object Center
-  KindOf = STRUCTURE MP_COUNT_FOR_VICTORY
+  KindOf = STRUCTURE MP_COUNT_FOR_VICTORY FS_BASE_DEFENSE
   BuildCost = 2000
   Body = StructureBody ModuleTag_02
     MaxHealth = 5000.0
@@ -230,6 +232,8 @@ Object Gunner
       TurretTurnRate = 60
       ControlledWeaponSlots = SECONDARY
     End
+    AutoAcquireEnemiesWhenIdle = Yes ATTACK_BUILDINGS
+    MoodAttackCheckRate = 250
   End
 End
 Object Idle
@@ -237,6 +241,7 @@ Object Idle
     Turret
       TurretTurnRate = 60
     End
+    AutoAcquireEnemiesWhenIdle = Yes Stealthed
   End
 End
 Object Fixed
@@ -245,6 +250,8 @@ Object Fixed
       TurretTurnRate = 0
       ControlledWeaponSlots = PRIMARY
     End
+    AutoAcquireEnemiesWhenIdle = No NotWhileAttacking
+    MoodAttackCheckRate = 250
   End
 End
 Object Ghost
@@ -287,6 +294,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         turret: None,
         bounty: None,
         projectile: None,
+        acquire: None,
     };
     // The soldier lives by its active body, 180, in the armor of its set of no condition,
     // the second it gives, by the name the mode declares; a reskin keeps its base's body,
@@ -296,10 +304,10 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         lives(180, Some("humanarmor"), vec![INFANTRY])
     );
     assert_eq!(of("Veteran"), of("Soldier"));
-    // A structure that counts for victory lives by its structure body, of no armor, and of
-    // no geometry stands as the game's sphere of radius 1, 1 m tall, of the tags of both;
-    // an object of the kind that is no structure, of an armor of `None`, counts for none,
-    // and of a fence's width is a wall.
+    // A structure that counts for victory and defends a base lives by its structure body, of no
+    // armor, and of no geometry stands as the game's sphere of radius 1, 1 m tall, of the tags
+    // of the three; an object of the kind that is no structure, of an armor of `None`, counts
+    // for none, and of a fence's width is a wall.
     let form = BodyForm::circle(Num::ONE)
         .unwrap()
         .raised(Num::ONE)
@@ -311,7 +319,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
             resource: declared(MONEY),
             pays: Pays::Cost(2000),
         }),
-        ..lives(5000, None, vec![VICTORY, STRUCTURE])
+        ..lives(5000, None, vec![VICTORY, STRUCTURE, BASE_DEFENSE])
     };
     assert_eq!(of("Center"), center);
     assert_eq!(of("Wall"), lives(10, None, vec![WALL]));
@@ -332,6 +340,19 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
     };
     assert_eq!(of("Gunner").turret, Some(turret));
     assert_eq!((of("Idle").turret, of("Fixed").turret), (None, None));
+    // The gunner scans each 250 ms, ⌈250 × 0.03⌉ = 8 frames, written as ⌊8 × 100 / 3⌋ = 266 ms,
+    // for every hostile unit, as it attacks buildings; the idle turret each 2,000 ms, 60 frames,
+    // by default, and for the targets of the rules data's defaults; a `No` scans for none.
+    let hostiles = FilterData::parse("hostiles").unwrap();
+    let scan = |ms, targets| {
+        Some(AcquirePatch {
+            scan_ms: Some(ms),
+            targets,
+        })
+    };
+    assert_eq!(of("Gunner").acquire, scan(266, Some(vec![hostiles])));
+    assert_eq!(of("Idle").acquire, scan(2000, None));
+    assert_eq!(of("Fixed").acquire, None);
 }
 
 #[test]

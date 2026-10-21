@@ -7,6 +7,7 @@ use bevy_ecs::schedule::Schedules;
 use bevy_ecs::system::{Commands, Query};
 use bevy_ecs::world::{EntityRef, EntityWorldMut, World};
 use bevy_time::{Real, Time, TimePlugin, TimeUpdateStrategy};
+use campfire_log::internals::LogCheck;
 use campfire_math::TickRate;
 use campfire_net_connection::{
     Client, Connect, Connected, Connecting, Disconnect, Disconnected, Start,
@@ -79,6 +80,10 @@ struct ServerApp {
 /// the order their frames fall. Each app's stack clock is on its default `ClockSource::Auto`,
 /// which follows the time the stepper hands to its `TimeUpdateStrategy`, so every endpoint runs
 /// its pass in the frame.
+///
+/// It holds the process's log check, started before its apps and dropped after them, so a test
+/// fails on each event at Warn or Error its apps logged and it did not take (11-net-stack/testing.md,
+/// The stepper checks what its apps log).
 #[derive(Debug)]
 pub struct Stepper<S> {
     stack: S,
@@ -107,10 +112,13 @@ pub struct Stepper<S> {
     /// The ALPN of every sealed link.
     alpn: &'static [u8],
     server_state: ServerState,
+    /// Last, so it drops after the apps and sees what they log as they drop.
+    log: LogCheck,
 }
 
 impl<S: Stack> Stepper<S> {
     pub fn new(stack: S, setup: StepperSetup) -> Self {
+        let log = LogCheck::start();
         assert!(
             setup.frame_interval > Duration::ZERO && setup.server_frame_interval > Duration::ZERO,
             "a frame interval is positive"
@@ -142,6 +150,7 @@ impl<S: Stack> Stepper<S> {
             identity: setup.identity,
             alpn: setup.alpn,
             server_state: ServerState::Built,
+            log,
         };
         let ServerApp { app, entity } = stepper.build_server();
         stepper.server_app = app;
@@ -279,14 +288,17 @@ impl<S: Stack> Stepper<S> {
     }
 
     /// Makes `app`'s `Update` and `FixedUpdate` strict, so an ambiguity of the stack or a test
-    /// fails the build of its schedule (11-net-stack/testing.md, The stepper runs Campfire's strict
-    /// schedules), and runs each of its schedules on one thread, so systems with no order between
-    /// them keep one order in every run: again here, as a test adds systems after the app finished,
-    /// and a system of a new label makes a schedule `OneThreadPlugins` never saw.
+    /// fails the build of its schedule, and each of its other schedules fails on a redundant edge
+    /// (11-net-stack/testing.md, The stepper runs Campfire's strict schedules), and runs each of
+    /// its schedules on one thread, so systems with no order between them keep one order in every
+    /// run: again here, as a test adds systems after the app finished, and a system of a new label
+    /// makes a schedule `OneThreadPlugins` never saw.
     fn run_strictly(app: &mut App) {
         app.edit_schedule(Update, StrictSchedule::apply);
         app.edit_schedule(FixedUpdate, StrictSchedule::apply);
-        OneThreadSchedule::apply_all(&mut app.world_mut().resource_mut::<Schedules>());
+        let mut schedules = app.world_mut().resource_mut::<Schedules>();
+        StrictSchedule::apply_hierarchy_all(&mut schedules);
+        OneThreadSchedule::apply_all(&mut schedules);
     }
 
     /// A new emulated link for remote client `client_id`, its models seeded by the index.
@@ -639,6 +651,12 @@ impl<S: Stack> Stepper<S> {
 impl<S> Stepper<S> {
     pub const fn stack(&self) -> &S {
         &self.stack
+    }
+
+    /// The check of what its apps log at Warn and Error, from which a test takes the events it
+    /// causes.
+    pub const fn log(&self) -> &LogCheck {
+        &self.log
     }
 
     /// The stack, to change what it gives the apps it adds from now on.

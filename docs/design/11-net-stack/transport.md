@@ -24,6 +24,11 @@ send costs.
   Refused: a receiver on every link from its link's start, which lets a peer before its admission
   fill the channel to the receive budget; a check in the app's systems, which runs after the bytes
   were held.
+- **A channel has one reader.** The message layer reads each channel by the message types its
+  bytes name, but one registered with `read_by_owner`, which its own layer reads alone and drains on
+  a link it no longer applies it to, as replication drains replicon's channels on a client with no
+  `ReplicationReceiver`. Refused: the message layer reading every channel, which decoded a
+  replication message as whatever message its first bytes named once its layer stopped reading.
 - **A received packet ends one of three ways.** It is admitted, and accepted, so its packet session
   acknowledges it; refused when the budget is full, so it gets no ACK and its sender finds it lost
   and sends its reliable messages again (GameNetworkingSockets' "do not ack", ENet); or a protocol

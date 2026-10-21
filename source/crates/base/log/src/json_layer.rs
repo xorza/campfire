@@ -25,8 +25,9 @@ pub(crate) mod internals {
     use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
     use std::thread;
 
-    use tracing::level_filters::LevelFilter;
+    use tracing::Level;
     use tracing::subscriber;
+    use tracing_subscriber::filter::{self, FilterFn};
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
     use tracing_subscriber::{Layer, Registry};
@@ -104,7 +105,7 @@ pub(crate) mod internals {
                 let lines = Arc::clone(&lines);
                 move || Captured(Arc::clone(&lines))
             };
-            let layer = json(writer).without_time().with_filter(LevelFilter::WARN);
+            let layer = json(writer).without_time().with_filter(warnings());
             let value = subscriber::with_default(tracing_subscriber::registry().with(layer), body);
             Scoped {
                 value,
@@ -152,7 +153,14 @@ pub(crate) mod internals {
             "a process holds one capture"
         );
         let writer = move || Captured(Arc::clone(&lines));
-        Box::new(json(writer).without_time().with_filter(LevelFilter::WARN))
+        Box::new(json(writer).without_time().with_filter(warnings()))
+    }
+
+    /// The events at Warn and Error, and no span: a check reads an event's own fields alone, and
+    /// a span it enabled would format its fields at each entry, an allocation in every frame of
+    /// an app that runs in one, as the stepper runs each app's frame.
+    fn warnings() -> FilterFn {
+        filter::filter_fn(|metadata| metadata.is_event() && *metadata.level() <= Level::WARN)
     }
 
     impl Drop for Kept {

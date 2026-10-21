@@ -5,6 +5,7 @@
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Res, ResMut};
+use tracing::warn;
 
 use super::*;
 use crate::connection_stack::ConnectionStack;
@@ -203,4 +204,19 @@ fn a_restarted_server_takes_its_client_again_and_a_fixed_run_comes_before_the_ti
     stepper.server_fixed_update(|world| world.insert_resource(Marked));
     stepper.frame_step(1);
     assert!(stepper.server_world().resource::<SawMark>().0);
+}
+
+fn warn_each_frame() {
+    warn!("a test app's warning");
+}
+
+/// A warning an app logs fails its test as the stepper drops, as no test took it.
+#[test]
+#[should_panic(expected = "the test logged events at Warn or Error that it did not take")]
+fn an_untaken_warning_of_an_app_fails_as_the_stepper_drops() {
+    let mut stepper = Stepper::new(ConnectionStack, StepperSetup::single());
+    stepper
+        .server_app_mut()
+        .add_systems(Update, warn_each_frame);
+    stepper.frame_step(1);
 }

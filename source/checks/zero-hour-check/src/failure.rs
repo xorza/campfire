@@ -5,8 +5,8 @@ use campfire_orders::OrdersDirective;
 use derive_more::Display;
 
 use crate::pins::{
-    BotBase, FactorySteps, FightSteps, Fingerprints, FoughtCounts, LookCounts, MapCounts,
-    ProducedCounts, ProductionSteps, SuppliedCounts, SupplySteps, TerrainDrawn,
+    BotBase, DefenseTicks, FactorySteps, FightSteps, Fingerprints, FoughtCounts, LookCounts,
+    MapCounts, ProducedCounts, ProductionSteps, SuppliedCounts, SupplySteps, TerrainDrawn,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -81,6 +81,15 @@ pub(crate) enum CheckFailure {
     /// The supply play's ticks or money differ from the expected.
     #[display("it played supply as {_0}")]
     Supply(Box<Differs<SupplySteps>>),
+    /// The defense play's ticks differ from the pinned.
+    #[display("it defended as {_0}")]
+    Defense(Box<Differs<DefenseTicks>>),
+    /// The ranger did not stand still within the limit after it left the barracks.
+    #[display("the ranger's walk from the barracks did not end")]
+    RangerWalk,
+    /// The ranger did not kill the bot's dozer within the limit.
+    #[display("the ranger did not kill the dozer within the limit")]
+    Undefended,
     /// The supply center freed no truck as it completed.
     #[display("the supply center freed no truck")]
     NoTruck,

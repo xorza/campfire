@@ -7,7 +7,9 @@ use campfire_navigation::ModeNavigationData;
 
 use super::*;
 use crate::zero_hour::format::ini::damage_type::DamageType;
-use crate::zero_hour::imported_type::{INFANTRY, LIFE, MONEY, STRUCTURE, VICTORY, WALL};
+use crate::zero_hour::imported_type::{
+    BASE_DEFENSE, INFANTRY, LIFE, MONEY, STRUCTURE, VICTORY, WALL,
+};
 use crate::zero_hour::map_import::START;
 
 #[test]
@@ -69,7 +71,7 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
         .unwrap();
     assert_eq!((life, resources), (declared(LIFE), vec![declared(MONEY)]));
     assert!(stats.holds(LIFE) && pools.holds(LIFE));
-    for tag in [VICTORY, STRUCTURE, WALL, INFANTRY] {
+    for tag in [VICTORY, STRUCTURE, WALL, BASE_DEFENSE, INFANTRY] {
         assert!(tags.holds(tag), "{tag}");
     }
     assert_eq!(navigation.spawn_tags, [declared(START)]);

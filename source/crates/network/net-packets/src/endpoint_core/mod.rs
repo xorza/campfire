@@ -542,6 +542,7 @@ impl<C: Carrier> EndpointCore<C> {
             route,
             reset_token,
             binding,
+            early,
         } = established;
         let slot = self.free.pop().unwrap_or_else(|| {
             self.peers.push(None);
@@ -581,6 +582,9 @@ impl<C: Carrier> EndpointCore<C> {
         let replaced = self.routes.insert(peer.route_key(), slot);
         debug_assert!(replaced.is_none(), "one packet session holds each route");
         self.peers[slot] = Some(peer);
+        for datagram in early {
+            self.deliver(now, datagram, out);
+        }
     }
 
     /// Takes what the peer's path check came to: an answered candidate is its address now, and a

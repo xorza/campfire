@@ -98,7 +98,10 @@ fn a_stop_closes_each_link_and_exits_with_its_code() {
     let capabilities = MODE.packages().manifest().capabilities;
     let mut client =
         ProtocolClient::connect(Endpoint::from(socket.endpoint()), &listening, capabilities);
-    until("the link", || client.update().linked.then_some(()));
+    until("the session's offer", || {
+        let state = client.update();
+        (state.linked && state.offered).then_some(())
+    });
     StopSignals::stop(&server.0);
     // The server's close, not the idle timeout of 5 s, which `PATIENCE` does not reach.
     let end = until("the client's unlink", || client.update().end);

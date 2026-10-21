@@ -47,8 +47,9 @@ pub(crate) struct IniObject {
 /// object a build clears, which is fluff, the client's too, unless it is a fence, and a wall a unit
 /// walks on top of, which the game spawns with the bridges; a structure, which routes block when it
 /// is not small; an object that counts for a multiplayer victory, which a structure of it keeps
-/// its player in the match by (09-zero-hour.md, Defeat by the last building that counts); and
-/// infantry, which a weapon may scatter more at.
+/// its player in the match by (09-zero-hour.md, Defeat by the last building that counts); a base
+/// defense, which a human player's idle unit takes as a target among structures; and infantry,
+/// which a weapon may scatter more at.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ObjectKinds {
     optimized_tree: bool,
@@ -57,6 +58,7 @@ pub(crate) struct ObjectKinds {
     walk_on_top_of_wall: bool,
     structure: bool,
     mp_count_for_victory: bool,
+    fs_base_defense: bool,
     infantry: bool,
 }
 
@@ -178,6 +180,7 @@ const CLEARED_BY_BUILD: &str = "cleared_by_build";
 const WALK_ON_TOP_OF_WALL: &str = "walk_on_top_of_wall";
 const STRUCTURE: &str = "structure";
 const MP_COUNT_FOR_VICTORY: &str = "mp_count_for_victory";
+const FS_BASE_DEFENSE: &str = "fs_base_defense";
 const INFANTRY: &str = "infantry";
 
 /// The locomotor set an object moves by, of `TheLocomotorSetNames`.
@@ -388,6 +391,7 @@ impl ObjectKinds {
             WALK_ON_TOP_OF_WALL => &mut self.walk_on_top_of_wall,
             STRUCTURE => &mut self.structure,
             MP_COUNT_FOR_VICTORY => &mut self.mp_count_for_victory,
+            FS_BASE_DEFENSE => &mut self.fs_base_defense,
             INFANTRY => &mut self.infantry,
             _ => return,
         };
@@ -688,6 +692,11 @@ impl IniObject {
     /// Whether it is a structure, of `KindOf`.
     pub(crate) const fn is_structure(&self) -> bool {
         self.kinds.structure
+    }
+
+    /// Whether it is a base defense, of `KindOf`'s `FS_BASE_DEFENSE`.
+    pub(crate) const fn is_base_defense(&self) -> bool {
+        self.kinds.fs_base_defense
     }
 
     /// Whether it is infantry, of `KindOf`.

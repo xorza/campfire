@@ -8,6 +8,7 @@ use crate::interpolated::Interpolated;
 use crate::predicted::Predicted;
 use crate::replication_mode::ReplicationMode;
 use crate::replication_sender::ReplicationSender;
+use crate::targets_overlap::TargetsOverlap;
 use crate::visibility_ext::VisibilityExt;
 use campfire_net_channels::internals::ChannelCounts;
 use campfire_net_channels::internals::TransportCounts;
@@ -739,7 +740,8 @@ fn a_frame_that_changes_1000_entities_sends_exact_bytes() {
 }
 
 /// A client that both targets name receives `Predicted` alone, and `Interpolated` in its place
-/// once the server removes the prediction target.
+/// once the server removes the prediction target. The spawn logs the overlap once for each
+/// target it inserts, as each target's observer checks the other.
 #[test]
 fn a_client_in_both_targets_is_predicted_alone() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
@@ -751,6 +753,11 @@ fn a_client_in_both_targets_is_predicted_alone() {
             InterpolationTarget::to_clients(NetworkTarget::All),
         ))
         .id();
+    let overlap = TargetsOverlap {
+        entity: source.to_bits(),
+        link: stepper.client_of_entity(0).to_bits(),
+    };
+    assert_eq!(stepper.log().take::<TargetsOverlap>(), [overlap, overlap]);
     stepper.frame_step(PROPAGATION_FRAMES);
     let markers = |stepper: &Stepper<ReplicationStack>| {
         let copy = stepper

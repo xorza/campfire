@@ -83,53 +83,15 @@ fn distinct_salts_give_distinct_hashes_on_one_tick() {
     );
 }
 
-/// Duplicate active pre-spawn hashes are a serious user error. Replicon's
-/// SignatureMap keeps the first matching candidate.
+/// Two unmatched pre-spawns of one hash are a caller's logic error, as only one of them could
+/// match: the second fails its spawn.
 #[test]
-fn a_duplicate_pre_spawn_hash_keeps_the_first_candidate() {
+#[should_panic(expected = "which an unmatched pre-spawn holds already")]
+fn a_duplicate_pre_spawn_hash_breaks_the_contract() {
     let mut stepper = Stepper::new(PredictionStack, StepperSetup::single());
-
-    let client_tick = stepper.client_tick(0).0 as usize;
-    let server_tick = stepper.server_tick().0 as usize;
-    let [client_pre_spawn_a, client_pre_spawn_b] = stepper.client_fixed_update(0, |world| {
+    stepper.client_fixed_update(0, |world| {
         [(); 2].map(|()| world.spawn(PreSpawned::new(1)).id())
     });
-    // we want to advance by the tick difference, so that the server pre-spawned is spawned on the
-    // same tick as the client pre-spawned (i.e. entity is spawned on tick client_tick = X on
-    // client, and spawned on tick server_tick = X on server, so that the Histories match)
-    for _ in server_tick + 1..client_tick {
-        stepper.frame_step(1);
-    }
-    let server_pre_spawn = stepper
-        .server_world_mut()
-        .spawn((
-            PreSpawned::new(1),
-            Replicate::to_clients(NetworkTarget::All),
-            PredictionTarget::to_clients(NetworkTarget::All),
-        ))
-        .id();
-    stepper.frame_step(1);
-    stepper.frame_step(1);
-
-    let matched = stepper
-        .client_copy(0, server_pre_spawn)
-        .expect("entity is not present in entity map");
-
-    assert_eq!(matched, client_pre_spawn_a);
-    assert!(
-        stepper
-            .client_world(0)
-            .get::<Predicted>(client_pre_spawn_a)
-            .is_some(),
-        "the first pre-spawn candidate should be matched"
-    );
-    assert!(
-        stepper
-            .client_world(0)
-            .get::<Predicted>(client_pre_spawn_b)
-            .is_none(),
-        "the duplicate pre-spawn candidate should be ignored"
-    );
 }
 
 /// A sender-scoped pre-spawn mapping must only claim the matching local entity

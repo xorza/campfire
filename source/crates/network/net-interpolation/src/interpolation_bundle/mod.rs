@@ -4,7 +4,6 @@
 use crate::frame_interpolate::FrameInterpolate;
 use crate::frame_interpolation_history::FrameInterpolationHistory;
 use crate::frame_interpolation_rules::{FrameSampler, frame_sample};
-use crate::frame_interpolation_systems::FrameInterpolationSystems;
 use crate::frame_phase_systems::FramePhaseSystems;
 use crate::frame_source::{FrameSamples, FrameSource};
 use crate::history_component::HistoryComponent;
@@ -548,7 +547,6 @@ macro_rules! impl_interpolation_bundle {
                 app.add_systems(
                     PostUpdate,
                     system
-                        .in_set(FrameInterpolationSystems::Interpolate)
                         .in_set(FramePhaseSystems::Run),
                 );
             }

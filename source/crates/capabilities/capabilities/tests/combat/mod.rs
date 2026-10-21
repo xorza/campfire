@@ -17,8 +17,8 @@ use bevy_ecs::system::{ResMut, RunSystemOnce};
 use bevy_ecs::world::World;
 use campfire_actions::internals::LooseDues;
 use campfire_actions::{
-    ActionProgress, ActionRange, ActionSlot, ActionSlots, Actions, InProgress, ProgressDues,
-    SlotKind, SlotTimes, Targets, TimedSlots,
+    ActionProgress, ActionRange, ActionSlot, ActionSlots, Actions, AttackTarget, InProgress,
+    ProgressDues, SlotKind, SlotTimes, Targets, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
@@ -777,7 +777,7 @@ fn every_combat_type_is_state_and_restores() {
         let slots = restored.part::<ActionSlots>(fighter).clone();
         let mut progress = *restored.part::<ActionProgress>(fighter);
         let loose = &mut LooseDues::default();
-        progress.set_attack_target(Some(doomed), &mut loose.dues());
+        progress.set_attack_target(Some(AttackTarget::ordered(doomed)), &mut loose.dues());
         progress.schedule_attack(0, Tick::new(resolves_at), &mut loose.dues());
         let mut times = restored.part::<SlotTimes>(fighter).clone();
         times.cool_down(0, Tick::new(ready_at));
@@ -799,7 +799,7 @@ fn every_combat_type_is_state_and_restores() {
         let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(rank))]);
         let mut progress = ActionProgress::default();
         let loose = &mut LooseDues::default();
-        progress.set_attack_target(Some(doomed), &mut loose.dues());
+        progress.set_attack_target(Some(AttackTarget::ordered(doomed)), &mut loose.dues());
         progress.schedule_attack(0, Tick::new(2), &mut loose.dues());
         slots.check(&restored, entity) && progress.check_against(&slots, &restored)
     };
@@ -1355,7 +1355,7 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
     let rolls = |game: &mut Match| {
         for &attacker in &attackers {
             ProgressDues::change_unit(game, attacker, |progress, dues| {
-                progress.set_attack_target(Some(dummy), dues);
+                progress.set_attack_target(Some(AttackTarget::ordered(dummy)), dues);
                 progress.schedule_attack(0, Tick::new(0), dues);
             });
         }

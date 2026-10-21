@@ -24,6 +24,7 @@ impl Plugin for RepliconChannelRegistrationPlugin {
             priority: 10.0,
             ..Default::default()
         })
+        .read_by_owner()
         .add_direction(LinkDirection::ServerToClient);
 
         // ServerChannel::Mutations - Unreliable
@@ -36,6 +37,7 @@ impl Plugin for RepliconChannelRegistrationPlugin {
             retry_unsent_messages: false,
             ..Default::default()
         })
+        .read_by_owner()
         .add_direction(LinkDirection::ServerToClient);
 
         // ClientChannel::MutationAcks - Ordered Reliable
@@ -45,6 +47,7 @@ impl Plugin for RepliconChannelRegistrationPlugin {
             priority: 10.0,
             ..Default::default()
         })
+        .read_by_owner()
         .add_direction(LinkDirection::ClientToServer);
     }
 

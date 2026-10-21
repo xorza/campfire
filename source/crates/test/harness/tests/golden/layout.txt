@@ -1,5 +1,5 @@
-data_version 42
-actions.progress 714365e16aeea80d
+data_version 43
+actions.progress be234b61b1d41b26
 actions.slot_times 776040a47152d129
 actions.slots 8792f8e9f8e71af6
 actions.use_group dbfe58d458cf8fc1
@@ -32,6 +32,7 @@ navigation.path_walker 54c6412a9193bc13
 navigation.progress 14cdbaa7734a8def
 navigation.route ad26555d27c3bd33
 navigation.route_cursor 7b11c189debaa159
+orders.next_scan fb747c460faeb1b7
 orders.next_think c59a3a94d26a91f2
 orders.resetting 6f07fc05a6a4e4ce
 players.held_out 6f07fc05a6a4e4ce

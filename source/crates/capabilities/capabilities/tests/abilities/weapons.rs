@@ -4,8 +4,8 @@ use std::sync::Arc;
 use campfire_abilities::internals::scaling_stats;
 use campfire_abilities::*;
 use campfire_actions::{
-    ActionData, ActionRange, ActionSlots, ActionTarget, EffectData, EffectTo, LaunchLists,
-    ListedEffect, ProgressDues, RangeField, SlotKind, Targeting, TimedSlots,
+    ActionData, ActionRange, ActionSlots, ActionTarget, AttackTarget, EffectData, EffectTo,
+    LaunchLists, ListedEffect, ProgressDues, RangeField, SlotKind, Targeting, TimedSlots,
 };
 use campfire_areas::{Area, AreaData, AreaInsideData, Areas, LandEffectData};
 use campfire_capabilities::internals::*;
@@ -139,7 +139,7 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
                 TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]));
             let attacker = Abilities::fighter(&mut game, fighter, slots);
             ProgressDues::change_unit(&mut game, attacker, |progress, dues| {
-                progress.set_attack_target(Some(target), dues);
+                progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
             });
             attacker
         };
@@ -228,7 +228,7 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
         Abilities::spawn_combatant(&mut game, position, Team::new(1), ())
     });
     ProgressDues::change_unit(&mut game, attacker, |progress, dues| {
-        progress.set_attack_target(Some(target), dues);
+        progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
     });
     // Tick 0: the attack deals 40 in Resolve, and its list launches the blast on the target,
     // 1 m out, which lands then. Tick 1: the blast triggers in Hit, a tick after it landed; it
@@ -267,7 +267,7 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
     );
     let target = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
     ProgressDues::change_unit(&mut game, attacker, |progress, dues| {
-        progress.set_attack_target(Some(target), dues);
+        progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
     });
     game.step();
     let entity = game.unit_entity(attacker);

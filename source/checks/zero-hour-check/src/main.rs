@@ -50,6 +50,7 @@ use crate::import_check::ImportCheck;
 use crate::pins::{Fingerprints, MAP};
 
 mod command_line;
+mod defense_play;
 mod error;
 mod failure;
 mod golden;

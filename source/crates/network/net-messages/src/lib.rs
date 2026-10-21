@@ -29,6 +29,7 @@ mod message_registry;
 mod message_sender;
 mod message_systems;
 mod message_type_id;
+mod messages_unread;
 mod multi_message_sender;
 mod receive_entity_map;
 mod receive_map_view;

@@ -1,12 +1,12 @@
 use crate::zero_hour::format::ini::error::IniError;
-use crate::zero_hour::format::ini::ini_text::IniLine;
+use crate::zero_hour::format::ini::ini_text::{FlagSet, IniLine};
 use crate::zero_hour::format::ini::object_ini::SLOTS;
 
 /// What an object gives combat, as `ThingTemplate` and its modules read it: its body, none with
 /// none, its weapon sets and armor sets in the order it gives them, each appended as
 /// `parseWeaponTemplateSet` and `parseArmorTemplateSet` append them, its shell's flight, of a
-/// `DumbProjectileBehavior`, and the first turret of its AI module. A reskin keeps its base's,
-/// as its table sets none of them.
+/// `DumbProjectileBehavior`, and the first turret and the idle scan of its AI module. A reskin
+/// keeps its base's, as its table sets none of them.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct FightData {
     pub(crate) body: Option<IniBody>,
@@ -14,6 +14,17 @@ pub(crate) struct FightData {
     pub(crate) armor_sets: Vec<ArmorSet>,
     pub(crate) shell: Option<IniShell>,
     pub(crate) turret: Option<IniTurret>,
+    pub(crate) scan: IniScan,
+}
+
+/// An AI module's idle scan, as `AIUpdateModuleData` reads it: whether `AutoAcquireEnemiesWhenIdle`
+/// holds `YES` and `ATTACK_BUILDINGS`, neither by default, and its `MoodAttackCheckRate` in
+/// milliseconds, 2,000 by default, the 60 frames of `LOGICFRAMES_PER_SECOND * 2`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct IniScan {
+    pub(crate) idle: bool,
+    pub(crate) attack_buildings: bool,
+    pub(crate) check_rate_ms: i32,
 }
 
 /// A projectile object's `DumbProjectileBehavior`, as `DumbProjectileBehaviorModuleData` reads it,
@@ -84,6 +95,35 @@ pub(crate) enum FightBlock {
     Ai,
     /// An AI module's first `Turret`.
     Turret,
+}
+
+impl Default for IniScan {
+    fn default() -> Self {
+        Self {
+            idle: false,
+            attack_buildings: false,
+            check_rate_ms: 2000,
+        }
+    }
+}
+
+/// The names of `TheAutoAcquireEnemiesNames`, of either case, as `parseBitString32` reads them:
+/// a name it does not list fails the read.
+impl FlagSet for IniScan {
+    fn clear(&mut self) {
+        self.idle = false;
+        self.attack_buildings = false;
+    }
+
+    fn set(&mut self, name: &str, on: bool) -> bool {
+        match name.to_ascii_lowercase().as_str() {
+            "yes" => self.idle = on,
+            "attack_buildings" => self.attack_buildings = on,
+            "stealthed" | "no" | "notwhileattacking" => {}
+            _ => return false,
+        }
+        true
+    }
 }
 
 impl IniShell {
@@ -204,6 +244,8 @@ impl FightData {
                     _ => {}
                 }
             }
+            (FightBlock::Ai, "autoacquireenemieswhenidle") => at.set_flags(&mut self.scan)?,
+            (FightBlock::Ai, "moodattackcheckrate") => self.scan.check_rate_ms = at.int()?,
             // `parseTurret` reads the first turret; an `AltTurret` is a second, which the import
             // leaves.
             (FightBlock::Ai, "turret") if at.tokens.len() == 1 && self.turret.is_none() => {

@@ -1,4 +1,5 @@
-use bevy_ecs::schedule::ScheduleLabel;
+use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleLabel, SystemSet};
+use bevy_ecs::world::World;
 
 use super::*;
 
@@ -28,4 +29,42 @@ fn a_strict_schedule_fails_on_ambiguity_and_redundant_edges_and_keeps_its_other_
     assert_eq!(applied.ambiguity_detection, LogLevel::Error);
     assert_eq!(applied.hierarchy_detection, LogLevel::Error);
     assert!(!applied.auto_insert_apply_deferred);
+}
+
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ProbeSystems {
+    Outer,
+    Inner,
+}
+
+fn probe() {}
+
+/// The hierarchy check alone fails a system that joins a set and the set's parent, and leaves the
+/// ambiguity check and the sync points as they were; a system in the inner set alone builds.
+#[test]
+fn the_hierarchy_check_alone_fails_a_redundant_edge() {
+    let build = |redundant: bool| {
+        let mut schedules = Schedules::new();
+        let mut schedule = Schedule::new(Probe);
+        schedule.configure_sets(ProbeSystems::Inner.in_set(ProbeSystems::Outer));
+        if redundant {
+            schedule.add_systems(
+                probe
+                    .in_set(ProbeSystems::Inner)
+                    .in_set(ProbeSystems::Outer),
+            );
+        } else {
+            schedule.add_systems(probe.in_set(ProbeSystems::Inner));
+        }
+        schedules.insert(schedule);
+        StrictSchedule::apply_hierarchy_all(&mut schedules);
+        let mut schedule = schedules.remove(Probe).unwrap();
+        let settings = schedule.get_build_settings();
+        assert_eq!(settings.hierarchy_detection, LogLevel::Error);
+        assert_eq!(settings.ambiguity_detection, LogLevel::Ignore);
+        assert!(settings.auto_insert_apply_deferred);
+        schedule.initialize(&mut World::new()).is_ok()
+    };
+    assert!(build(false));
+    assert!(!build(true));
 }

@@ -15,6 +15,7 @@ use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 use crate::ai::Ai;
+use crate::stagger;
 
 /// The tick a unit that thinks is due in again, a part of each unit of a type with AI from its
 /// spawn: none before its first think, which comes in the first tick that leaves the remainder of
@@ -43,12 +44,7 @@ impl NextThink {
     /// `now` starts: its next, or before its first, the first tick from `now` that leaves the
     /// remainder of its stable id when divided by the period.
     pub(crate) const fn due_at(self, id: StableId, period: Ticks, now: Tick) -> Tick {
-        if let Some(next) = self.0 {
-            return next;
-        }
-        let period = period.get();
-        let wait = (id.get() % period + period - now.get() % period) % period;
-        Tick::new(now.get() + wait)
+        stagger::due_at(self.0, id, period, now)
     }
 
     /// Pushes its unit into the index of the thinks, at its due tick, in a match that thinks.

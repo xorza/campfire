@@ -55,6 +55,7 @@ impl ServerEstablish for RoutedEstablishment {
             route: Some(ID),
             reset_token: None,
             binding: None,
+            early: Vec::new(),
         });
     }
 
@@ -66,6 +67,59 @@ impl ServerEstablish for RoutedEstablishment {
 }
 
 impl PathCheck for RoutedEstablishment {
+    fn challenge(&mut self) -> [u8; 8] {
+        [3; 8]
+    }
+}
+
+/// A server's establishment that holds each datagram of an unknown peer as a pending handshake's,
+/// and establishes the packet session of `ID` at its next poll with the datagrams it held, as a
+/// handshake whose client's sealed datagrams came before its end.
+#[derive(Debug, Default)]
+struct PendingEstablishment {
+    held: Vec<Datagram>,
+}
+
+impl Establish for PendingEstablishment {
+    fn receive(&mut self, _: Instant, _: Datagram, _: &mut Establishing) -> ReadCost {
+        ReadCost::Light
+    }
+
+    fn poll(&mut self, _: Instant, out: &mut Establishing) {
+        let Some(first) = self.held.first() else {
+            return;
+        };
+        out.established.push(Established {
+            peer: first.from,
+            protection: Protection::Plain,
+            prefix: None,
+            route: Some(ID),
+            reset_token: None,
+            binding: None,
+            early: core::mem::take(&mut self.held),
+        });
+    }
+
+    fn next_deadline(&self) -> Option<Instant> {
+        None
+    }
+
+    fn ended(&mut self, _: Option<ConnectionId>) {}
+}
+
+impl ServerEstablish for PendingEstablishment {
+    fn unknown(&mut self, _: Instant, datagram: &Datagram, _: &mut Establishing) {
+        self.held.push(datagram.clone());
+    }
+
+    fn set_accepting(&mut self, _: bool) {}
+
+    fn path_check(&mut self) -> Option<&mut dyn PathCheck> {
+        Some(self)
+    }
+}
+
+impl PathCheck for PendingEstablishment {
     fn challenge(&mut self) -> [u8; 8] {
         [3; 8]
     }
@@ -119,6 +173,45 @@ fn a_hand_over_sizes_its_payload_by_the_carried_mtu() {
         core.hand_over(key, &mut queues);
         assert_eq!(queues.max_payload(), mtu - Header::MAX_LEN);
     }
+}
+
+/// A datagram that came before its packet session was established is its first: the session
+/// opens with it and reads its payload in the same pass.
+#[test]
+fn a_packet_session_reads_the_datagrams_that_came_before_it() {
+    let mut core = EndpointCore::<u32>::new(
+        PacketSessionSetup::default(),
+        EndpointSide::Server {
+            establish: Box::new(PendingEstablishment::default()),
+        },
+        None,
+    );
+    let mut client = PacketSession::new(
+        Protection::Plain,
+        Some(ID),
+        PacketSessionSetup::default(),
+        at(0),
+    );
+    let payload = client_payload(&mut client, at(0));
+    core.set_time(EndpointTime::Driven(at(0)));
+    core.pass(
+        &mut vec![Datagram {
+            from: address(1),
+            payload,
+        }],
+        &mut Vec::new(),
+    );
+    let Some(News::Linked { key, .. }) = core.next_news() else {
+        panic!("the establishment opens a packet session");
+    };
+    core.carry(key, 1, 1200);
+    let mut queues = PacketSessionQueues::default();
+    core.hand_over(key, &mut queues);
+    let opened: Vec<Vec<u8>> = queues
+        .opened()
+        .map(|opened| opened.payload.freeze().to_vec())
+        .collect();
+    assert_eq!(opened, [b"data".to_vec()]);
 }
 
 /// A server that routes by address checks no path: a packet from a new address is a new peer's,
@@ -277,6 +370,7 @@ impl ClientEstablish for ResetEstablishment {
             route: None,
             reset_token: Some(TOKEN),
             binding: None,
+            early: Vec::new(),
         });
     }
 }

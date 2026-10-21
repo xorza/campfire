@@ -1,18 +1,14 @@
 use std::num::NonZeroU32;
 
-use campfire_harness::{FixedSession, MatchUnits};
-use campfire_math::Num;
+use campfire_harness::FixedSession;
 use campfire_mode::{OptionPicks, OptionValue, SeatPick};
-use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
-use campfire_production::Site;
 use campfire_protocol::{InputRules, SeatPlan};
 use campfire_script::MatchNames;
-use campfire_units::{BuildTarget, GroundPoint};
 use campfire_values::ResourceId;
 
 use crate::failure::CheckFailure;
-use crate::match_play::{self, MatchPlay, STEP_LIMIT};
+use crate::match_play::{BuildingDozer, MatchPlay, PlannedBuilding, STEP_LIMIT};
 use crate::pins::{DELIVERIES, SupplyDelivery, SupplySteps};
 
 /// China's start, and the supply center's free truck.
@@ -31,26 +27,18 @@ const START_MONEY: &str = "start_money=50000";
 /// builds its own, and the center halfway from the start toward the supply dock at (632, −127),
 /// 294 m from the dock's center, each clear of the cliffs, at China's `PlacementViewAngle` of
 /// −45°.
-const BUILDINGS: [Building; 2] = [
-    Building {
+const BUILDINGS: [PlannedBuilding; 2] = [
+    PlannedBuilding {
         unit: "chinapowerplant",
         action: "build_chinapowerplant",
         at: [855, -584, -45],
     },
-    Building {
+    PlannedBuilding {
         unit: "chinasupplycenter",
         action: "build_chinasupplycenter",
         at: [818, -355, -45],
     },
 ];
-
-/// A building the dozer builds: its unit type, its build action, and its place, `[x, z, angle]`.
-#[derive(Debug, Clone, Copy)]
-struct Building {
-    unit: &'static str,
-    action: &'static str,
-    at: [i64; 3],
-}
 
 /// The supply on Tournament Desert, in a match of player 1 alone, as China (09-zero-hour.md,
 /// A box is money): its dozer builds a power plant and a supply center, whose free truck gathers
@@ -112,21 +100,13 @@ impl SupplyPlay {
         let [dozer] = play.owned(DOZER, 0)?[..] else {
             return Err(CheckFailure::ProductionStart);
         };
+        let builder = BuildingDozer {
+            unit: DOZER,
+            id: dozer,
+        };
         let mut built = [0; BUILDINGS.len()];
-        for (building, ticks) in BUILDINGS.iter().zip(&mut built) {
-            let [x, z, angle] = building.at.map(Num::int);
-            let build = OrdersDirective::Build {
-                slot: match_play::slot(packages, DOZER, building.action)?,
-                target: BuildTarget::Point {
-                    at: GroundPoint { x, z },
-                    angle,
-                },
-            };
-            *ticks = play.until(dozer, build, |play| {
-                let built = play.owned(building.unit, 0)?;
-                let units = MatchUnits::of(play.game());
-                Ok(built.len() == 1 && !units.unit(built[0]).contains::<Site>())
-            })?;
+        for (&building, ticks) in BUILDINGS.iter().zip(&mut built) {
+            *ticks = play.build(packages, builder, building)?;
         }
         // The center frees its truck as it completes.
         let [_truck] = play.owned(TRUCK, 0)?[..] else {

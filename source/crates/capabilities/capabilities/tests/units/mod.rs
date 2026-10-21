@@ -4,7 +4,7 @@ use std::panic::{self, AssertUnwindSafe};
 use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::change_detection::{CHECK_TICK_THRESHOLD, DetectChangesMut};
 use bevy_ecs::component::ComponentId;
-use campfire_actions::{ActionSlots, ProgressDues};
+use campfire_actions::{ActionSlots, AttackTarget, ProgressDues};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_combat::internals::Armed;
@@ -423,7 +423,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let bare = spawn_named(&mut game, "bare", (9, 0, 2), Team::new(1));
     let entity = game.unit_entity(of);
     ProgressDues::change_unit(&mut game, of, |progress, dues| {
-        progress.set_attack_target(Some(near), dues);
+        progress.set_attack_target(Some(AttackTarget::ordered(near)), dues);
     });
 
     // At 30 ticks a second, 2000 ms is 60 ticks: in tick 100, a strike in tick 40 is recent, and

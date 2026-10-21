@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
 use campfire_actions::internals::LooseDues;
-use campfire_actions::{ActionProgress, SlotCharges, SlotTimes, TimedSlots};
+use campfire_actions::{ActionProgress, AttackTarget, SlotCharges, SlotTimes, TimedSlots};
 use campfire_codec::Binary;
 use campfire_common::Tick;
 use campfire_deliveries::DashDelivering;
@@ -122,7 +122,10 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(!ordered.check_against(&slots(strike, 1), &game));
     // A death ends what is under way and the attack target, so a dead grunt holds neither.
     let mut aiming = ActionProgress::default();
-    aiming.set_attack_target(Some(id), &mut LooseDues::default().dues());
+    aiming.set_attack_target(
+        Some(AttackTarget::ordered(id)),
+        &mut LooseDues::default().dues(),
+    );
     assert_eq!(checked_with(&mut game, grunt, aiming), Ok(()));
     game.entity_mut(grunt).insert(Dead);
     assert_eq!(

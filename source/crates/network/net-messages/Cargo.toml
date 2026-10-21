@@ -11,6 +11,7 @@ kind = "glue"
 internals = [
     "dep:campfire-measure",
     "campfire-codec/internals",
+    "campfire-log/internals",
     "dep:criterion",
     "dep:campfire-net-stepper",
     "campfire-net-transport/internals",
@@ -25,6 +26,7 @@ internals = [
 campfire-math = { workspace = true, optional = true }
 campfire-codec.workspace = true
 campfire-common.workspace = true
+campfire-log.workspace = true
 campfire-net-channels.workspace = true
 campfire-net-bytes.workspace = true
 campfire-net-core.workspace = true

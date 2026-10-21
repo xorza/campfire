@@ -10,8 +10,9 @@ use campfire_combat::{
     SplashData, TurretData, WeaponValue,
 };
 use campfire_common::{ContentHash, DeclaredName};
-use campfire_mode::{ChoiceData, ListEntry, ModeParam, Offers, OptionData};
+use campfire_mode::{ChoiceData, ListEntry, ModeParam, Offers, OptionData, RelationData};
 use campfire_navigation::ModeNavigationData;
+use campfire_orders::AcquireData;
 use campfire_production::{
     BuildData, BuildStart, ConstructData, FramePoint, ProductionData, RequiresData, TrainData,
 };
@@ -20,7 +21,9 @@ use campfire_sim::Capability;
 use campfire_stats::{StatsData, TypePoolsData};
 use campfire_store::internals::TestDir;
 use campfire_units::TypeTagsData;
-use campfire_values::{FilterData, Number, Ranked, RelationSet, Scalar, Share, Stat, TextId};
+use campfire_values::{
+    FilterData, Number, Ranked, Relation, RelationSet, Scalar, Share, Stat, TextId,
+};
 
 use super::*;
 use crate::texture::samples::ktx2;
@@ -171,6 +174,16 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             OptionData::new(money, Scalar::Int(10000)).unwrap()
         )])
     );
+    // Each of the eight players regards the neutral team as neutral, as the original's players
+    // regard its neutral player.
+    let neutral: Vec<RelationData> = (1..=8)
+        .map(|player| RelationData {
+            teams: [declared(&format!("player_{player}")), declared("neutral")],
+            relation: Relation::Neutral,
+            vision: false,
+        })
+        .collect();
+    assert_eq!(data.relations, neutral);
     let slots = data.section::<SlotKinds>().unwrap().kinds();
     let slots: Vec<&str> = slots.iter().map(|kind| kind.name.as_str()).collect();
     assert_eq!(slots, ["weapon", "command"]);
@@ -351,6 +364,17 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         all_declared(&["weapon_tankcannon", "weapon_rangerrifle"])
     );
     assert_eq!(weapons("americavehicledozer"), Vec::<DeclaredName>::new());
+    // The crusader scans each 250 ms, written as 266, for the rules data's targets: a hostile unit
+    // that is no structure, and a hostile base defense; the dozer's AI says `Yes` too, but it
+    // has no weapon, so it scans for none.
+    let filters = ["hostiles:!structure", "hostiles:base_defense"];
+    let acquire = AcquireData {
+        scan_ms: 266,
+        targets: filters.map(|text| FilterData::parse(text).unwrap()).into(),
+    };
+    let scan = |name: &str| unit(name).section::<AcquireData>().cloned();
+    assert_eq!(scan("americatankcrusader"), Some(acquire));
+    assert_eq!(scan("americavehicledozer"), None);
     let life_stat = Stat::named("life").unwrap();
     let life = |name: &str| {
         let unit = unit(name);

@@ -3,7 +3,6 @@
 
 use crate::frame_interpolate::FrameInterpolate;
 use crate::frame_interpolation_history::FrameInterpolationHistory;
-use crate::frame_interpolation_systems::FrameInterpolationSystems;
 use crate::frame_phase_systems::FramePhaseSystems;
 use crate::frame_source::{FrameSamples, FrameSamplesFn, FrameSource};
 use crate::history_component::HistoryComponent;
@@ -80,9 +79,7 @@ pub(crate) fn install_frame_history<C: HistoryComponent>(
 ) {
     app.add_systems(
         FixedPostUpdate,
-        FrameInterpolationHistory::<C>::update
-            .in_set(FrameInterpolationSystems::Update)
-            .in_set(FramePhaseSystems::Run),
+        FrameInterpolationHistory::<C>::update.in_set(FramePhaseSystems::Run),
     );
     let sampler = FrameSampler::<C>::new(source.as_ref());
     let restore = move |timeline: Option<Res<'_, LocalTimeline>>,
@@ -145,12 +142,7 @@ pub(crate) fn install_frame_history<C: HistoryComponent>(
     )
         .build_state(app.world_mut())
         .build_system(restore);
-    app.add_systems(
-        RunFixedMainLoop,
-        restore
-            .in_set(FrameInterpolationSystems::Restore)
-            .in_set(FramePhaseSystems::Run),
-    );
+    app.add_systems(RunFixedMainLoop, restore.in_set(FramePhaseSystems::Run));
 }
 
 /// Installs the system that applies the component rule `rule_id` of `C` to the frame, with
@@ -255,12 +247,7 @@ pub(crate) fn install_component_frame_interpolation<C: HistoryComponent>(
     )
         .build_state(app.world_mut())
         .build_system(system);
-    app.add_systems(
-        PostUpdate,
-        system
-            .in_set(FrameInterpolationSystems::Interpolate)
-            .in_set(FramePhaseSystems::Run),
-    );
+    app.add_systems(PostUpdate, system.in_set(FramePhaseSystems::Run));
 }
 
 /// The context a frame's blend reads: the fixed overstep and the fixed timestep.

@@ -19,6 +19,7 @@ internals = [
     "campfire-math/internals",
     "campfire-mode/internals",
     "campfire-navigation/internals",
+    "campfire-orders/internals",
     "campfire-package/internals",
     "campfire-package-disk/internals",
     "campfire-production/internals",
@@ -43,6 +44,7 @@ campfire-math.workspace = true
 campfire-geometry.workspace = true
 campfire-mode.workspace = true
 campfire-navigation.workspace = true
+campfire-orders.workspace = true
 campfire-package.workspace = true
 campfire-package-disk.workspace = true
 campfire-production.workspace = true

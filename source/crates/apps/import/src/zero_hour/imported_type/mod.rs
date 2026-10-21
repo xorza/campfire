@@ -4,6 +4,7 @@ use campfire_declarations::SectionWriter;
 use campfire_geometry::BodyBox;
 use campfire_math::Num;
 use campfire_mode::{BountyData, Pays};
+use campfire_orders::AcquirePatch;
 use campfire_projectiles::{CurveData, ProjectileData, ProjectileHits};
 use campfire_stats::{StatValue, StatsData, TypePoolsData};
 use campfire_units::{BodyForm, CollisionData, TypeTagsData};
@@ -47,6 +48,10 @@ pub(crate) struct ImportedType {
     turret: Option<TurretPatch>,
     bounty: Option<BountyData>,
     projectile: Option<ProjectileData>,
+    /// The period of its AI module's idle scan, and every hostile unit for one that attacks
+    /// buildings, as the install gives them, completed from the rules data's defaults, for a type
+    /// of a weapon (09-zero-hour.md, A scan follows `AutoAcquireEnemiesWhenIdle`).
+    acquire: Option<AcquirePatch>,
 }
 
 /// The player resource every cost is in.
@@ -59,9 +64,11 @@ pub(crate) const LIFE: &str = "life";
 /// building that counts).
 pub(crate) const VICTORY: &str = "counts_for_victory";
 
-/// The tags of a structure, a wall and infantry, of the objects' `KindOf` and `FenceWidth`.
+/// The tags of a structure, a wall, a base defense and infantry, of the objects' `KindOf` and
+/// `FenceWidth`.
 pub(crate) const STRUCTURE: &str = "structure";
 pub(crate) const WALL: &str = "wall";
+pub(crate) const BASE_DEFENSE: &str = "base_defense";
 pub(crate) const INFANTRY: &str = "infantry";
 
 /// The widest a driving type's circle is, 25 m: the original's largest pathfinding footprint, 2
@@ -136,6 +143,7 @@ impl ImportedType {
             (object.counts_for_victory(), VICTORY),
             (object.is_structure(), STRUCTURE),
             (object.is_wall(), WALL),
+            (object.is_base_defense(), BASE_DEFENSE),
             (object.is_infantry(), INFANTRY),
         ];
         let tags: Vec<DeclaredName> = kinds
@@ -158,6 +166,19 @@ impl ImportedType {
                     .ok_or(TypeError::Turret)
             })
             .transpose()?;
+        let scan = fight.scan;
+        let acquire = scan
+            .idle
+            .then(|| {
+                let scan_ms = weapon_drop::game_ms(scan.check_rate_ms);
+                let scan_ms = scan_ms.map_err(|_| TypeError::Number)?;
+                let hostiles = FilterData::parse("hostiles").expect("the filter of the hostile");
+                Ok::<_, TypeError>(AcquirePatch {
+                    scan_ms: Some(scan_ms),
+                    targets: scan.attack_buildings.then(|| vec![hostiles]),
+                })
+            })
+            .transpose()?;
         let cost = object.build().cost;
         let bounty = (life.is_some() && cost > 0).then(|| BountyData {
             resource: declared(MONEY),
@@ -172,7 +193,13 @@ impl ImportedType {
             turret,
             bounty,
             projectile: None,
+            acquire,
         })
+    }
+
+    /// Its idle scan, which a type of a weapon gives.
+    pub(crate) const fn acquire(&self) -> Option<&AcquirePatch> {
+        self.acquire.as_ref()
     }
 
     /// Writes each section it gives into `writer`, a unit type's table: whole, or the patch of
@@ -215,6 +242,7 @@ impl ImportedType {
             turret: None,
             bounty: None,
             projectile: Some(projectile),
+            acquire: None,
         }
     }
 

@@ -10,6 +10,8 @@ use campfire_net_core::RegistrySeal;
 use campfire_net_core::TypeMapper;
 use campfire_net_core::{RegistryHash, RegistryHasher};
 
+use crate::channel_reader::ChannelReader;
+
 /// The tag of the channel registry's hash.
 const HASH_DOMAIN: HashDomain<RegistryHash> = HashDomain::new("campfire/channel-registry/v1");
 
@@ -29,11 +31,12 @@ pub struct ChannelRegistry {
     seal: RegistrySeal,
 }
 
-/// A registered channel: its setup, and the directions it travels in.
+/// A registered channel: its setup, the directions it travels in, and the layer that reads it.
 #[derive(Clone, Copy, Debug)]
 struct RegisteredChannel {
     setup: ChannelSetup,
     directions: LinkDirections,
+    reader: ChannelReader,
 }
 
 impl ChannelRegistry {
@@ -48,6 +51,7 @@ impl ChannelRegistry {
         self.channels.push(RegisteredChannel {
             setup,
             directions: LinkDirections::default(),
+            reader: ChannelReader::default(),
         });
         self.net_id(type_id).unwrap()
     }
@@ -60,6 +64,15 @@ impl ChannelRegistry {
             .expect("a channel is registered before its direction");
         let channel = &mut self.channels[usize::from(net_id.get())];
         channel.directions = channel.directions.union(directions);
+    }
+
+    /// Makes the layer that registered `C` its reader.
+    pub(crate) fn read_by_owner<C: Channel>(&mut self) {
+        self.open();
+        let net_id = self
+            .net_id(ChannelTypeId::of::<C>())
+            .expect("a channel is registered before its reader");
+        self.channels[usize::from(net_id.get())].reader = ChannelReader::Owner;
     }
 
     fn open(&self) {
@@ -93,6 +106,12 @@ impl ChannelRegistry {
         self.channels
             .get(usize::from(net_id.get()))
             .map(|channel| &channel.setup)
+    }
+
+    /// The layer that reads the channel `type_id`, if it is registered.
+    pub fn reader(&self, type_id: ChannelTypeId) -> Option<ChannelReader> {
+        let net_id = self.net_id(type_id)?;
+        Some(self.channels[usize::from(net_id.get())].reader)
     }
 
     /// The type_id of the channel `net_id`, if it is registered.

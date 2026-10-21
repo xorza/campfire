@@ -2,10 +2,11 @@ use crate::replication_mode::ReplicationMode;
 use crate::replication_target::InterpolatedSend;
 use crate::replication_target::InterpolationTarget;
 use crate::replication_target::PredictionTarget;
+use crate::targets_overlap::TargetsOverlap;
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::{ScopeLifetime, SingleComponent, VisibilityFilter};
+use campfire_log::LogEvent;
 use campfire_net_connection::{NetworkTarget, RemoteId};
-use tracing::warn;
 
 /// Hides [`InterpolatedSend`] on each link the entity's [`PredictionTarget`] names, so a client
 /// that both targets name gets `Predicted` alone: Replicon shows a component where every filter of
@@ -79,12 +80,11 @@ impl InterpolationYield {
             if prediction.is_visible_for(link, Some(remote))
                 && interpolation.is_visible_for(link, Some(remote))
             {
-                warn!(
-                    ?entity,
-                    ?link,
-                    peer = ?remote.0,
-                    "the prediction and interpolation targets both name a link, which gets Predicted alone"
-                );
+                let overlap = TargetsOverlap {
+                    entity: entity.to_bits(),
+                    link: link.to_bits(),
+                };
+                overlap.log();
             }
         }
     }

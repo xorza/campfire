@@ -6,6 +6,7 @@ use campfire_common::DeclaredName;
 use campfire_declarations::NamesListError;
 use campfire_mode::{ChoiceId, MarkerTag, ModeDataError, ModeError, TimerId};
 use campfire_navigation::NavigationDataError;
+use campfire_orders::AcquireError;
 use campfire_package::{LoadProblem, Place};
 use campfire_production::ProductionDataError;
 use campfire_script::Filter;
@@ -111,6 +112,54 @@ pub(super) static MAP_FLAWS: &[Flaw] = &[
             rule_at(problem, &Place::Section("navigation"), &ground)
         },
     ),
+    // A type's idle scan names a filter of its targets at least, of the match's tags, and needs a
+    // weapon and no build or gather (04-capabilities/control.md, A unit that scans neither builds
+    // nor gathers).
+    Flaw::of(
+        UNITS,
+        Edit::Set("units.tower.acquire", "{ scan_ms = 250, targets = [] }"),
+        MODE,
+        |problem| rule_at(problem, &unit_type("tower"), &AcquireError::NoTargets),
+    ),
+    Flaw::of(
+        UNITS,
+        Edit::Set(
+            "units.tower.acquire",
+            r#"{ scan_ms = 250, targets = ["enemies:flying"] }"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: Filter::NAMES, at: Place::UnitType(unit), name } if unit == "tower" && name == "enemies:flying"),
+    ),
+    Flaw::of(
+        UNITS,
+        Edit::Set(
+            "units.inhibitor.acquire",
+            r#"{ scan_ms = 250, targets = ["enemies"] }"#,
+        ),
+        MODE,
+        |problem| rule_at(problem, &unit_type("inhibitor"), &AcquireError::NoWeapon),
+    ),
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            r#"slots = { weapon = ["tower_attack"] }"#,
+            r#"slots = { weapon = ["tower_attack", "mine"] }
+acquire = { scan_ms = 250, targets = ["enemies"] }"#,
+        ),
+        also: &[
+            (MANIFEST, PRODUCTION),
+            (UNITS, GOLD_MINE),
+            (
+                MODE_DATA,
+                Edit::Replace(
+                    "[actions.melee_creep_attack]",
+                    "[actions.mine]\nkind = \"gather\"\nrange = \"1\"\nwindup_ms = 1000\ntargeting = \"neutrals\"\nresource = \"gold\"\ntake = 5\n\n[actions.melee_creep_attack]",
+                ),
+            ),
+        ],
+        package: MODE,
+        refused: |problem| rule_at(problem, &unit_type("tower"), &AcquireError::Works),
+    },
     Flaw::of(
         UNITS,
         Edit::Set("units.melee_creep.collision.layer", r#""air""#),

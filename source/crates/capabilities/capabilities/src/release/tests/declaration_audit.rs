@@ -484,13 +484,13 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats', the players' and the
     // mode's five parts of a player, its bounty share among them, the mode's three of the match,
-    // the 30 of a unit, items' `UseGroup`, orders' `NextThink`, production's `StatusTags` and
-    // combat's `TurretAngle` among them, and the 57 books, 14 of the core's, interaction's two,
-    // combat's armors, turrets and weapons, production's trains and gathers, the mode's victory
-    // and bounty, and progression's experience among them.
+    // the 31 of a unit, items' `UseGroup`, orders' `NextThink` and `NextScan`, production's
+    // `StatusTags` and combat's `TurretAngle` among them, and the 58 books, 14 of the core's,
+    // interaction's two, combat's armors, turrets and weapons, orders' scans, production's trains
+    // and gathers, the mode's victory and bounty, and progression's experience among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 40);
-    assert_eq!(audit.books.len(), 57);
+    assert_eq!(audit.parts.len(), 41);
+    assert_eq!(audit.books.len(), 58);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 14);
     // The observers, the runs out of the schedule and the parts a server derives, which the
@@ -518,6 +518,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "ShopIndex::typed",
             "ShopIndex::untyped",
             "UseOrders::ordered",
+            "NextScan::revived",
             "NextThink::revived",
         ]
     );

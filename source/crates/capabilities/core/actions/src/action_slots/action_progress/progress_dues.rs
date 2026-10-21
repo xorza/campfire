@@ -287,6 +287,7 @@ mod tests {
     use campfire_values::ActionStart;
 
     use super::*;
+    use crate::action_slots::action_progress::attack_target::AttackTarget;
     use crate::action_target::ActionTarget;
     use crate::internals::LooseDues;
 
@@ -300,7 +301,7 @@ mod tests {
         let [attack, cast, moved, gone, ordered] = [(); 5].map(|()| ids.allocate());
         let loose = &mut LooseDues::default();
         let mut attacking = ActionProgress::default();
-        attacking.set_attack_target(Some(cast), &mut loose.dues());
+        attacking.set_attack_target(Some(AttackTarget::ordered(cast)), &mut loose.dues());
         attacking.schedule_attack(0, Tick::new(2), &mut loose.dues());
         let mut waiting = ActionProgress::default();
         waiting.order(0, ActionTarget::None, &mut loose.dues());

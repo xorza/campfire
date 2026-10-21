@@ -405,6 +405,42 @@ fn an_unknown_connection_id_gets_a_reset_of_its_token() {
     assert!(exchange.server_out.outbound.is_empty());
 }
 
+/// A sealed datagram of a pending handshake's connection ID, as a link's jitter brings the
+/// client's first before its handshake's end, gets no reset: the handshake holds the first 8, in
+/// the order they came, and its packet session takes them as the client's end arrives.
+#[test]
+fn a_pending_handshake_holds_its_early_datagrams() {
+    let mut exchange = Exchange::new(&pinned(), &identity(), roomy());
+    // The client's end, its third datagram, waits.
+    exchange.drop = [vec![2], Vec::new()];
+    exchange.connect(at(0));
+    let [client, server] = exchange.run(at(0));
+    assert!(server.is_empty(), "the server waits for the client's end");
+    let id = client[0].prefix.unwrap();
+    let from = exchange.client_address;
+    for fill in 0..9 {
+        let mut early = id.to_bytes().to_vec();
+        early.resize(40, fill);
+        let payload = BytesMut::from(&*early);
+        exchange
+            .server
+            .unknown(at(1), &Datagram { from, payload }, &mut exchange.server_out);
+    }
+    assert!(exchange.server_out.outbound.is_empty(), "no reset");
+    let end = BytesMut::from(&*exchange.datagrams[0][2]);
+    exchange.server.receive(
+        at(2),
+        Datagram { from, payload: end },
+        &mut exchange.server_out,
+    );
+    let [server] = &*exchange.server_out.established else {
+        panic!("the client's end establishes the server's packet session");
+    };
+    assert_eq!(server.route, Some(id));
+    let fills: Vec<u8> = server.early.iter().map(|early| early.payload[39]).collect();
+    assert_eq!(fills, [0, 1, 2, 3, 4, 5, 6, 7]);
+}
+
 /// A lost `Initial` goes again at the handshake's timer, 999 ms, and a lost end of the client's
 /// goes again when the server sends its flight again at its own; the packet session then opens.
 #[test]

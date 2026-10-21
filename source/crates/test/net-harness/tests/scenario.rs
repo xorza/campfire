@@ -61,12 +61,10 @@ impl Downtime {
     }
 }
 
-/// Plays the match through `link` and checks it; gives each client's rollbacks.
-fn play(link: &LinkModel) -> [u32; 2] {
-    let mut local = InProcessMatch::new(InProcessSetup::duo(
-        link.clone(),
-        InProcessMatch::SEED_CHAIN,
-    ));
+/// Plays the match of `setup` and checks it; gives each client's rollbacks.
+fn play(setup: InProcessSetup) -> [u32; 2] {
+    let link = setup.link.clone();
+    let mut local = InProcessMatch::new(setup);
     local.start_match();
     let heroes = [local.avatar(0), local.avatar(1)];
     let teams = local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
@@ -581,14 +579,20 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
 #[test]
 fn a_1v1_through_perfect_links() {
     // Each client corrects once, when it learns its own hero died.
-    assert_eq!(play(&LinkModel::perfect()), [1, 1]);
+    let setup = InProcessSetup::duo(LinkModel::perfect(), InProcessMatch::SEED_CHAIN);
+    assert_eq!(play(setup), [1, 1]);
 }
 
 #[test]
 fn a_1v1_through_delayed_links() {
     // 3 steps each way and up to 2 more: the orders still land in time, and each client still
-    // corrects only for its hero's death.
-    let rollbacks = play(&InProcessSetup::DELAYED_LINK);
+    // corrects only for its hero's death. Seed 5's jitter brings a client's first sealed datagram
+    // to the server before its handshake's end, which the server holds for the packet session.
+    let setup = InProcessSetup {
+        seed: 5,
+        ..InProcessSetup::duo(InProcessSetup::DELAYED_LINK, InProcessMatch::SEED_CHAIN)
+    };
+    let rollbacks = play(setup);
     assert_eq!(rollbacks, [1, 1]);
 }
 

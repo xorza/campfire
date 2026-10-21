@@ -101,6 +101,7 @@ pub use crate::action_parts::ActionParts;
 pub use crate::action_range::ActionRange;
 pub use crate::action_ranks::ActionRanks;
 pub use crate::action_slots::action_progress::ActionProgress;
+pub use crate::action_slots::action_progress::attack_target::{AttackTarget, TargetSource};
 pub use crate::action_slots::action_progress::progress_dues::{
     AttackTargets, ChannelSteps, ProgressDues, ProgressIndexes, ResolveKind, Resolves,
 };

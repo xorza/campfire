@@ -1,4 +1,4 @@
-use bevy_ecs::schedule::{LogLevel, Schedule, ScheduleBuildSettings, ScheduleLabel};
+use bevy_ecs::schedule::{LogLevel, Schedule, ScheduleBuildSettings, ScheduleLabel, Schedules};
 
 /// A schedule whose build fails on two systems with conflicting access and no order, as either
 /// order could win, and on a set membership that a longer path already implies, so a redundant
@@ -22,6 +22,18 @@ impl StrictSchedule {
             hierarchy_detection: LogLevel::Error,
             ..schedule.get_build_settings()
         });
+    }
+
+    /// Gives each schedule of `schedules` the hierarchy check alone, its other build settings
+    /// kept: a set membership that a longer path already implies fails its build, which no order
+    /// another plugin's systems leave open can cause, as an ambiguity can.
+    pub fn apply_hierarchy_all(schedules: &mut Schedules) {
+        for (_, schedule) in schedules.iter_mut() {
+            schedule.set_build_settings(ScheduleBuildSettings {
+                hierarchy_detection: LogLevel::Error,
+                ..schedule.get_build_settings()
+            });
+        }
     }
 }
 

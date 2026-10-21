@@ -74,9 +74,8 @@ pub enum SupplyDropCause {
 /// gatherer docks as a dozer builds).
 pub(crate) const DOCK_RANGE: Num = Num::int(10);
 
-/// What a gather aims at: every unit, as the docks stand on the neutral team, which the mode's
-/// players regard as hostile; the node book picks the docks among them (09-zero-hour.md, A
-/// gatherer docks as a dozer builds).
+/// What a gather aims at: every unit, as the docks stand on the neutral team; the node book picks
+/// the docks among them (09-zero-hour.md, A gatherer docks as a dozer builds).
 const DOCKS: &str = "all";
 
 impl SupplyImport {

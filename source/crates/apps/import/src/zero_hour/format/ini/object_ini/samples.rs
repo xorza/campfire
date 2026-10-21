@@ -147,6 +147,8 @@ Turret\r
   TurretTurnRate = 180\r
   ControlledWeaponSlots = PRIMARY\r
 End\r
+AutoAcquireEnemiesWhenIdle = Yes\r
+MoodAttackCheckRate = 250\r
   End\r
   Geometry = BOX\r
   GeometryMajorRadius = 4.0\r
@@ -212,6 +214,9 @@ MaxHealth = 250.0\r
 InitialHealth = 200.0\r
   End\r
   Locomotor = SET_NORMAL TankTreads\r
+  Behavior = DozerAIUpdate ModuleTag_03\r
+AutoAcquireEnemiesWhenIdle = Yes\r
+  End\r
   Geometry = SPHERE\r
   GeometryMajorRadius = 2.0\r
   BuildCost = 1000\r
