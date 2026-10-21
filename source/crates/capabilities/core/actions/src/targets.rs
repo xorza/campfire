@@ -13,6 +13,7 @@ use campfire_values::{Block, Distance, Relation, Relations, TagSet, Team, UnitTa
 
 use crate::action_range::ActionRange;
 use crate::range_fit::RangeFit;
+use crate::rank_values::RankValues;
 
 /// The units an attack may target: units with a life that live by `stats`' living test, whose
 /// tags let them be targets, those a client holds and does not predict among them, where the
@@ -92,10 +93,27 @@ impl Targets<'_, '_> {
         RangeFit::Within
     }
 
+    /// Where the body `from` walks to bring the body `to`, which lies `fit` from it, within the
+    /// reach of `values`: to `to`'s place beyond its range, and straight away from it to halfway
+    /// between its minimum and its range nearer than its minimum; none within reach.
+    pub fn walk_to(
+        &self,
+        from: Placed,
+        to: Placed,
+        values: &RankValues,
+        fit: RangeFit,
+    ) -> Option<Vec3> {
+        match fit {
+            RangeFit::Within => None,
+            RangeFit::Far => Some(to.position),
+            RangeFit::Near => values.midway().map(|gap| self.away(from, to, gap)),
+        }
+    }
+
     /// The point the body `from` walks to straight away from the body `to`, so that their bounds
     /// lie `gap` apart, as Zero Hour's `computeApproachTarget` steps a unit back from a victim
     /// within its weapon's minimum range; along the first axis from bodies at one place.
-    pub fn away(&self, from: Placed, to: Placed, gap: Num) -> Vec3 {
+    fn away(&self, from: Placed, to: Placed, gap: Num) -> Vec3 {
         let metric = self.map.metric();
         let way = metric
             .direction(metric.offset(to.position, from.position))

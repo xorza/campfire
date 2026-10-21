@@ -68,8 +68,7 @@ impl Destinations {
                         progress.set_attack_target(None, &mut indexes.of(id, entity));
                         None
                     }
-                    RangeFit::Far => Some(unit.position),
-                    RangeFit::Near => values.midway().map(|gap| targets.away(from, to, gap)),
+                    fit => targets.walk_to(from, to, &values, fit),
                 }
             } else {
                 progress.set_attack_target(None, &mut indexes.of(id, entity));

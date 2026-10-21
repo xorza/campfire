@@ -128,14 +128,8 @@ impl CheckedAction<'_> {
         let Aimed::At(to) = self.aimed(targets) else {
             return None;
         };
-        match reach {
-            RangeFit::Within => None,
-            RangeFit::Far => Some(to.position),
-            RangeFit::Near => {
-                let from = Placed::new(from, Body::shape_of(body));
-                Some(targets.away(from, to, self.values.midway()?))
-            }
-        }
+        let from = Placed::new(from, Body::shape_of(body));
+        targets.walk_to(from, to, &self.values, reach)
     }
 
     /// What it aims at, as `targets` hold it.

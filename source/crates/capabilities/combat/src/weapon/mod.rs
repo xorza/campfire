@@ -1,7 +1,7 @@
 use std::num::NonZeroU16;
 
 use campfire_common::Ticks;
-use campfire_geometry::{MAX_BOUND, Volume};
+use campfire_geometry::Volume;
 use campfire_math::{Num, Rounding, SinCos, Vec3};
 use campfire_units::StatId;
 use campfire_values::{DamageKind, ModifierId, NameId, Rank, RelationSet, Speed, Tag, TagSet};
@@ -254,12 +254,46 @@ impl Weapon {
     }
 }
 
+impl Splash {
+    /// The farthest it reaches: its outer ring's radius, or its own.
+    pub(crate) fn reach(&self) -> Num {
+        self.outer
+            .as_ref()
+            .map_or(self.radius, |outer| outer.radius)
+    }
+}
+
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_common::Ticks;
-    use campfire_values::ModifierId;
+    use campfire_geometry::MAX_BOUND;
+    use campfire_math::Num;
+    use campfire_values::{ModifierId, RelationSet};
 
-    use crate::weapon::{Streak, StreakStage};
+    use crate::weapon::{OuterRing, Splash, Streak, StreakStage};
+
+    impl Splash {
+        /// A splash of `radius` to the units of `affects`, and to its source unless
+        /// `spares_source`; `None` for a radius below 0 or past `MAX_BOUND`.
+        pub fn new(radius: Num, affects: RelationSet, spares_source: bool) -> Option<Self> {
+            (Num::ZERO..=MAX_BOUND).contains(&radius).then_some(Self {
+                radius,
+                affects,
+                spares_source,
+                outer: None,
+            })
+        }
+
+        /// The same splash with an outer ring of `radius` dealing `amounts` at each rank; `None`
+        /// for a ring not past its radius or past `MAX_BOUND`.
+        #[must_use]
+        pub fn with_outer(self, radius: Num, amounts: Box<[Num]>) -> Option<Self> {
+            (self.radius < radius && radius <= MAX_BOUND).then_some(Self {
+                outer: Some(OuterRing { radius, amounts }),
+                ..self
+            })
+        }
+    }
 
     impl Streak {
         /// A streak of `coast` and of `stages`, each its shots and its modifier, their shots
@@ -277,36 +311,6 @@ pub(crate) mod internals {
                 stages: stages.collect(),
             }
         }
-    }
-}
-
-impl Splash {
-    /// A splash of `radius` to the units of `affects`, and to its source unless `spares_source`;
-    /// `None` for a radius below 0 or past `MAX_BOUND`.
-    pub fn new(radius: Num, affects: RelationSet, spares_source: bool) -> Option<Self> {
-        (Num::ZERO..=MAX_BOUND).contains(&radius).then_some(Self {
-            radius,
-            affects,
-            spares_source,
-            outer: None,
-        })
-    }
-
-    /// The same splash with an outer ring of `radius` dealing `amounts` at each rank; `None` for
-    /// a ring not past its radius or past `MAX_BOUND`.
-    #[must_use]
-    pub fn with_outer(self, radius: Num, amounts: Box<[Num]>) -> Option<Self> {
-        (self.radius < radius && radius <= MAX_BOUND).then_some(Self {
-            outer: Some(OuterRing { radius, amounts }),
-            ..self
-        })
-    }
-
-    /// The farthest it reaches: its outer ring's radius, or its own.
-    pub(crate) fn reach(&self) -> Num {
-        self.outer
-            .as_ref()
-            .map_or(self.radius, |outer| outer.radius)
     }
 }
 
