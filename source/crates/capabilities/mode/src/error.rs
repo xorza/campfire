@@ -188,8 +188,8 @@ pub enum ModeRefusal {
     NegativeAmount,
     /// A slot the unit has no ability in.
     NoAbilitySlot,
-    /// A box with no room where it would spawn: past the bounds, or over a wall or a body that
-    /// stands.
+    /// A body with no room where it would spawn: past the bounds, or over a wall, a body that
+    /// stands or one the call spawns.
     NoRoom,
     /// A `calc_damage` or a `calc_heal` that returns no number.
     NotAnAmount,
@@ -208,6 +208,8 @@ pub enum ModeRefusal {
     NegativeShare,
     /// A bounty share in a mode of no `[bounty]`.
     NoBounty,
+    /// A search for room of a gap not above 0, or of steps below 0 or past `MAX_STEPS`.
+    RoomSearch,
     /// A unit to respawn that is alive.
     RespawnAlive,
     /// A unit to respawn whose type despawns when it dies.
@@ -240,7 +242,8 @@ impl CapabilityRefusal for ModeRefusal {
             Self::NegativeAmount => "resource amount is below 0",
             Self::NoAbilitySlot => "unit has no ability in that slot",
             Self::NoRoom => {
-                "the box has no room there: past the bounds, or over a wall or a body that stands"
+                "the body has no room there: past the bounds, or over a wall, a body that stands \
+                 or one the call spawns"
             }
             Self::NotAnAmount => "calc_damage or calc_heal returns no number",
             Self::OutOfBounds => "point is outside the map's bounds",
@@ -250,6 +253,9 @@ impl CapabilityRefusal for ModeRefusal {
             Self::ResourceShort => "player holds less of the resource",
             Self::NegativeShare => "bounty share is below 0",
             Self::NoBounty => "the mode gives no [bounty]",
+            Self::RoomSearch => {
+                "a search for room takes a gap above 0 and a range of 0 to 128 gaps"
+            }
             Self::RespawnAlive => "unit to respawn is alive",
             Self::RespawnDespawns => "unit to respawn despawns when it dies",
             Self::RulesScript => "only the mode's own script ends the match or records a choice",

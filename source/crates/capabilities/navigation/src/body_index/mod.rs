@@ -5,9 +5,7 @@ use std::ops::{ControlFlow, Range};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declarations::Cache;
-use campfire_geometry::{
-    BodyBox, CellLevels, Grid, MAX_BOUND, Placed, RowEntries, RowIndex, Shape,
-};
+use campfire_geometry::{CellLevels, Grid, MAX_BOUND, Placed, RowEntries, RowIndex, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 use campfire_units::{Body, Layer};
@@ -156,13 +154,9 @@ impl IndexedBody {
         Placed::new(self.position, self.shape).comes_closer(segment.start(), segment.end(), reach)
     }
 
-    /// Whether the insides of the body and of `body`, a box at `position`, share a point: touching
-    /// is not overlap.
-    pub fn overlaps_box(&self, position: Vec3, body: &BodyBox) -> bool {
-        match &self.shape {
-            Shape::Circle(radius) => body.closer(position, self.position, radius.get()),
-            Shape::Box(other) => body.overlaps(position, other, self.position),
-        }
+    /// Whether the insides of the body and of `other` share a point: touching is not overlap.
+    pub fn overlaps(&self, other: Placed) -> bool {
+        Placed::new(self.position, self.shape).overlaps(other)
     }
 
     /// Calls `mark` with each row's run of the cells of `grid` whose centers come closer than

@@ -79,16 +79,17 @@ fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_on
     }
     let cinder = local.avatar(0);
 
-    // The north's heroes stand at x = -1, 0 and 1 of z = -28, Cinder, Husk and Gale; the
-    // south's at z = -22, Kensho, Veil and Rime. Cinder first walks out of Gale's aura, 8 m, to
-    // 10 m off her, clear of every body: a walk that sets off touching a unit its client does
+    // The north's heroes stand at the room nearest its spawn, (0, -28), a meter clear of each
+    // other: Cinder there, Gale at x = 2, Husk at z = -30; the south's round (0, -22), Kensho,
+    // Rime at x = 2, and Veil at z = -24. Cinder first walks out of Gale's aura, 8 m, to 10 m off
+    // her, clear of every body: a walk that sets off touching a unit its client does
     // not predict may steer round it there, and correct once, as the cast scenario shows.
     local.order(
         0,
         OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::int(-8),
-                z: Num::int(-33),
+                z: Num::int(-28),
             },
         },
     );
@@ -103,7 +104,7 @@ fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_on
         OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::int(-4),
-                z: Num::int(-31),
+                z: Num::int(-28),
             },
         },
     );
@@ -126,7 +127,7 @@ fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_on
         0,
         OrdersDirective::Move {
             to: GroundPoint {
-                x: Num::int(-1),
+                x: Num::int(3),
                 z: Num::int(-24),
             },
         },

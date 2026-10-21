@@ -21,8 +21,8 @@ use crate::player_states::PlayerStates;
 /// the players' state, which every call reads and writes back; as a call of the mode's scripts
 /// sees them, the players' choices and how the match ended, before the call or in it; as a call of
 /// the mode's own script sees it, the mode's state, which it writes and reads back, and which
-/// commits with the choices it makes before its effects apply; and the boxes the batch's calls
-/// spawned, which a box spawned next needs room from, as the batch's view holds none of them.
+/// commits with the choices it makes before its effects apply; and the bodies the batch's calls
+/// spawned, which a body spawned next needs room from, as the batch's view holds none of them.
 #[derive(Debug)]
 pub(crate) struct ModeCall {
     book: Arc<ModeSpec>,
@@ -37,10 +37,10 @@ pub(crate) struct ModeCall {
     all: Vec<StateValue>,
     pub(crate) choices: Choices,
     pub(crate) result: Option<MatchResult>,
-    /// The boxes the batch's committed calls spawned, then the running call's.
-    pub(crate) boxes: Vec<IndexedBody>,
+    /// The bodies the batch's committed calls spawned, then the running call's.
+    pub(crate) bodies: Vec<IndexedBody>,
     pub(crate) players: PlayerStates,
-    /// How many of `boxes` the batch's committed calls spawned.
+    /// How many of `bodies` the batch's committed calls spawned.
     committed: usize,
 }
 
@@ -48,10 +48,10 @@ impl CallExtension for ModeCall {
     /// Before the effects, as an effect may read the mode's state and the choices.
     const COMMITS: Commit = Commit::BeforeEffects;
 
-    /// A batch holds no box an earlier batch's calls spawned, which the batch's view holds; an
+    /// A batch holds no body an earlier batch's calls spawned, which the batch's view holds; an
     /// earlier call of the batch changes the mode's state and the choices.
     fn begin_batch(&mut self, world: &World) {
-        self.boxes.clear();
+        self.bodies.clear();
         self.committed = 0;
         let players = self.book.teams.players();
         self.players.read(world, &self.book.schema.players, players);
@@ -74,7 +74,7 @@ impl CallExtension for ModeCall {
         }
         self.choices.clone_from(world.resource::<Choices>());
         self.result = world.match_end().map(MatchEnd::result);
-        self.boxes.truncate(self.committed);
+        self.bodies.truncate(self.committed);
         Ok(())
     }
 
@@ -85,7 +85,7 @@ impl CallExtension for ModeCall {
         if self.running.is_none() {
             return;
         }
-        self.committed = self.boxes.len();
+        self.committed = self.bodies.len();
         if !self.holds_mode() {
             return;
         }
@@ -124,7 +124,7 @@ impl ModeCall {
             all: Vec::new(),
             choices: Choices::default(),
             result: None,
-            boxes: Vec::new(),
+            bodies: Vec::new(),
             committed: 0,
             players: PlayerStates::default(),
         }

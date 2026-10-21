@@ -1,4 +1,4 @@
-use campfire_geometry::Radius;
+use campfire_geometry::{BodyBox, Radius};
 use campfire_sim::IdAllocator;
 
 use super::*;

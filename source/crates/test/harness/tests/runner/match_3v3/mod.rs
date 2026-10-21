@@ -352,11 +352,19 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run<'_>) -> UnitType {
     );
 
     // The map's 14 structures and 2 fountains from the start; at the pick's end, the 6 heroes at
-    // their teams' spawns, slots 0 to 2 north and 3 to 5 south, and the 5 neutral camps.
+    // the room nearest their teams' spawns, slots 0 to 2 north and 3 to 5 south, and the 5
+    // neutral camps. A hero of 0.5 m a meter clear of the others stands 2 m from them: the first
+    // at the spawn, the second at the nearest such point, 2 m along +x, and the third at the next
+    // by angle, 2 m along -z.
     let hero = |slot: u32| {
         let team = u8::from(slot >= 3);
         let z = if team == 0 { -60 } else { 60 };
-        (Team::new(team), Vec3::from((0, 0, z)), Some(slot))
+        let off = [(0, 0), (2, 0), (0, -2)][(slot % 3) as usize];
+        (
+            Team::new(team),
+            Vec3::from((off.0, 0, z + off.1)),
+            Some(slot),
+        )
     };
     let heroes: Vec<_> = run.at_pick_end[16..22]
         .iter()

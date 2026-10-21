@@ -86,7 +86,7 @@ pub use crate::mode_navigation_data::ModeNavigationData;
 pub use crate::move_effect_data::MoveEffectData;
 pub use crate::navigation_api::NavigationApi;
 pub use crate::navigation_book::NavigationBook;
-pub use crate::navigation_column::NavigationColumn;
+pub use crate::navigation_column::{NavigationColumn, RoomAsk, RoomSearch};
 pub use crate::navigation_effect::NavigationEffect;
 pub use crate::on_path::OnPath;
 pub use crate::party::{Party, PartyKey, PartyOrder};

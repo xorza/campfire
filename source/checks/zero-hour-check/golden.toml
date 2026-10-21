@@ -1,10 +1,10 @@
 # What the Zero Hour check measured, which it pins: `CAMPFIRE_BLESS=1 cargo drive run zero-hour` writes it again.
 
-drive_ticks = 1717
+drive_ticks = 1715
 
 [fingerprints]
 game = "fa62d5e96d9640c29122cee8d16a7c6eeddbc23452408055e9d296542b41d446"
-rules = "67c543837b0ffc42e8fba5f40a74cb7904b0b6295215aa8e9996dd095ecc7712"
+rules = "5c8ed8d75504b9f4a11074a6d1e067c209f1ec8d3dda98c1c7022e12bdc635f8"
 
 [map]
 heights = [270, 340]
@@ -46,37 +46,37 @@ unliving = 38
 wounded = 0
 
 [skirmish]
-barracks = 706
-factory = [483, 688, 1091]
+barracks = 698
+factory = [482, 682, 1091]
 shot = 816
 hit = 827
 fight = 2567
 
 [supply]
-built = [483, 437]
+built = [482, 437]
 deliveries = [447, 901, 1355]
 
 [defense]
-built = [483, 1050]
-hit = 1012
-death = 1530
+built = [482, 1050]
+hit = 997
+death = 1515
 
 [patriot]
-built = [488, 1020]
-hit = 1037
-death = 1201
+built = [484, 1020]
+hit = 1017
+death = 1181
 
 [stinger]
-built = [822, 627]
-hit = 1013
-death = 1247
+built = [452, 966]
+hit = 996
+death = 1230
 
 [missile]
-built = 721
+built = 718
 trained = 150
-shot = 1136
-hit = 1155
-death = 1333
+shot = 1139
+hit = 1156
+death = 1336
 
 [bot]
 built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]

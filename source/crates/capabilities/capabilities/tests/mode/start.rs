@@ -273,6 +273,140 @@ fn take_input(ctx, player, name, value) {
 }
 
 #[test]
+fn a_unit_spawns_at_the_room_nearest_a_point_clear_of_every_body() {
+    // Crates of 2 by 2 m, a scout of 0.5 m that walks, and a wall of the square from (−7, −4) to
+    // (−5, −2). A probe spawns a grunt, which has no body, where `room_near` finds room for a
+    // crate, or records `none` (12-test-matches.md, A script finds room near a point;
+    // 12-test-matches.md, Every body is tested for room).
+    let script = r#"
+fn probe(ctx, x, z, gap, steps) {
+    let at = ctx.room_near("crate", vector(x, 0, z), gap, steps);
+    if at == () {
+        ctx.state.phase = "none";
+    } else {
+        ctx.spawn_unit("grunt", "a", at);
+    }
+}
+
+fn take_input(ctx, player, name, value) {
+    if value == "clear" || value == "near" {
+        probe(ctx, 0, 0, 1, 4);
+    } else if value == "gap" {
+        probe(ctx, 0, 0, 2, 4);
+    } else if value == "steps" {
+        probe(ctx, 0, 0, 1, 2);
+    } else if value == "wall" {
+        probe(ctx, -6, -3, 1, 4);
+    } else if value == "crate" {
+        ctx.spawn_unit("crate", "a", vector(0, 0, 0));
+    } else if value == "pair" {
+        for i in 0..2 {
+            ctx.spawn_unit("crate", "a", ctx.room_near("crate", vector(7, 0, 3), 1, 4));
+        }
+    } else if value == "scouts" {
+        for i in 0..2 {
+            ctx.spawn_unit("scout", "a", ctx.room_near("scout", vector(-6, 0, 3), 1, 4));
+        }
+    } else if value == "stacked" {
+        ctx.spawn_unit("scout", "a", vector(6, 0, -3));
+        ctx.spawn_unit("scout", "a", vector(6, 0, -3));
+    } else if value == "over" {
+        ctx.spawn_unit("scout", "a", vector(0, 0, 0));
+    } else if value == "wide" {
+        ctx.room_near("crate", vector(0, 0, 0), 1, 129);
+    }
+}
+"#;
+    let mut set = mode_packages(&format!("{script}{PICKING}"));
+    set.units.push_str(
+        "\n[units.scout]\ntags = [\"scout\"]\npools = [\"health\"]\n\
+         stats = { health = { base = 10 }, move_speed = { base = 10 } }\n\
+         combat = { on_death = \"stay\" }\ncollision = { radius = \"0.5\" }\n",
+    );
+    set.map
+        .push_str("\n[[navigation.walls]]\npoints = [[-7, -4], [-5, -4], [-5, -2], [-7, -2]]\n");
+    let mut game = started(&set, ScriptLimits::ROOMY).unwrap();
+    let ground = |x: i64, z: i64| Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
+    let at = |game: &mut Match, shape: fn(Option<&Body>) -> bool| {
+        let mut at: Vec<Vec3> = game
+            .query_filtered::<(&Position, Option<&Body>), With<UnitType>>()
+            .iter(game)
+            .filter(|(_, body)| shape(*body))
+            .map(|(position, _)| position.get())
+            .collect();
+        at.sort_unstable_by_key(|position| (position.x, position.z));
+        at
+    };
+    let grunts = |game: &mut Match| at(game, |body| body.is_none());
+    let crates = |game: &mut Match| {
+        at(game, |body| {
+            body.is_some_and(|body| body.half_edges().is_some())
+        })
+    };
+    let scouts = |game: &mut Match| {
+        at(game, |body| {
+            body.and_then(|body| body.radius()) == Some(Num::HALF)
+        })
+    };
+    let probe = |game: &mut Match, value| {
+        Mode::tick_inputs(game, &[(0, input("phase", value))]);
+        assert!(Mode::failures(game).is_empty(), "{value}");
+    };
+
+    // Clear, the point itself.
+    probe(&mut game, "clear");
+    assert_eq!(grunts(&mut game), [ground(0, 0)]);
+    // A crate at (0, 0): a crate 1 m clear of it, its 4 m square grown by the gap, stands 3 m off
+    // along x or z, first at angle 0, along +x; with a gap of 2, on a grid of 2, 4 m off; and none
+    // within 2 steps.
+    probe(&mut game, "crate");
+    probe(&mut game, "near");
+    probe(&mut game, "gap");
+    assert_eq!(
+        grunts(&mut game),
+        [ground(0, 0), ground(3, 0), ground(4, 0)]
+    );
+    probe(&mut game, "steps");
+    assert_eq!(Mode::field(&game, "phase"), StateValue::Text("none".into()));
+    // Inside the wall: every point within 2 m along each axis overlaps it, grown; the first at
+    // 3 m, along +x, touches the crate at (0, 0) and has room.
+    probe(&mut game, "wall");
+    assert_eq!(
+        grunts(&mut game),
+        [ground(-3, -3), ground(0, 0), ground(3, 0), ground(4, 0)]
+    );
+    // Two crates of one call: the first at (7, 3); the second clear of it, the first at 3 m,
+    // (10, 3), past the bounds at x = 10, so the next by angle, along −z, (7, 0).
+    probe(&mut game, "pair");
+    assert_eq!(
+        crates(&mut game),
+        [ground(0, 0), ground(7, 0), ground(7, 3)]
+    );
+    // Two scouts of one call, which walk: the second 2 m off the first, its 0.5 m and 1 m of gap
+    // past the first's 0.5 m.
+    probe(&mut game, "scouts");
+    assert_eq!(scouts(&mut game), [ground(-6, 3), ground(-4, 3)]);
+
+    // Two scouts of one call on one point, and a scout over a crate: refused, and the refused
+    // call spawns nothing.
+    for value in ["stacked", "over"] {
+        Mode::tick_inputs(&mut game, &[(0, input("phase", value))]);
+        assert_eq!(
+            Mode::failures(&game),
+            [FailureKind::Api(ModeRefusal::NoRoom.refused())],
+            "{value}"
+        );
+    }
+    assert_eq!(scouts(&mut game), [ground(-6, 3), ground(-4, 3)]);
+    // A search past 128 steps is refused.
+    Mode::tick_inputs(&mut game, &[(0, input("phase", "wide"))]);
+    assert_eq!(
+        Mode::failures(&game),
+        [FailureKind::Api(ModeRefusal::RoomSearch.refused())]
+    );
+}
+
+#[test]
 fn a_placed_unit_stands_at_its_height_and_faces_its_angle() {
     // The tower placed 3 m above the ground at (-8, 0), turned by -90°: it faces 270°, and every
     // unit the start spawns faces 0°.

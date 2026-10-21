@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use campfire_math::{Direction, Flat, Num, RoundedRoot, Rounding, SinCos, Vec3};
+use campfire_math::{Direction, Flat, FloorRoot, Num, RoundedRoot, Rounding, SinCos, Vec3};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -115,6 +115,32 @@ impl BodyBox {
         let farthest = (a + b).length_squared().max((a - b).length_squared());
         let bound = Num::from_bits(i64::try_from(farthest.ceil_root()).ok()?);
         (bound <= MAX_BOUND).then_some(Self { half, bound })
+    }
+
+    /// It grown by `by` at each side: each half edge lengthened by `by` along itself, from its
+    /// length rounded down, each component rounded away from the position, so it holds the box
+    /// grown exactly, which holds every point within `by` of a rectangle's edges. `None` for a
+    /// box whose corners would reach past `MAX_BOUND`.
+    pub fn grown(&self, by: Num) -> Option<Self> {
+        debug_assert!(by >= Num::ZERO, "a box grows by a length");
+        let mut half = self.half;
+        for edge in &mut half {
+            let bits = edge.map(|num| i128::from(num.to_bits()));
+            let square = (bits[0] * bits[0] + bits[1] * bits[1]).cast_unsigned();
+            // A half edge is at least half the least size long, and at most `MAX_BOUND`.
+            let length = i64::try_from(square.floor_root()).expect("a half edge's length fits");
+            let length = Num::from_bits(length);
+            let grown = length.checked_add(by)?;
+            for component in edge.iter_mut() {
+                let away = if *component < Num::ZERO {
+                    Rounding::Floor
+                } else {
+                    Rounding::Ceiling
+                };
+                *component = component.checked_mul_div(grown, length, away)?;
+            }
+        }
+        Self::of_halves(half)
     }
 
     pub const fn half_edges(&self) -> [[Num; 2]; 2] {

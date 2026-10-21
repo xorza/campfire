@@ -134,7 +134,7 @@ fn item(moba: &ScriptedMode<Moba3v3>, name: &str) -> ItemId {
     items.named(name).unwrap()
 }
 
-/// The farm: every hero reaches level 6, Gale and Rime 8 and Veil 7, and learns every ability,
+/// The farm: every hero reaches level 6, Cinder and Veil 8 and Gale 7, and learns every ability,
 /// its ultimate, the fourth, at rank 1, so its points left are its level less its ranks.
 pub(crate) fn assert_farm(showcase: &Showcase) {
     let mut farmed = Vec::new();
@@ -152,12 +152,12 @@ pub(crate) fn assert_farm(showcase: &Showcase) {
     assert_eq!(
         farmed,
         [
-            learned(6, [2, 2, 1, 1]),
-            learned(8, [3, 2, 2, 1]),
-            learned(6, [2, 2, 1, 1]),
-            learned(6, [2, 2, 1, 1]),
             learned(8, [3, 2, 2, 1]),
             learned(7, [2, 2, 2, 1]),
+            learned(6, [2, 2, 1, 1]),
+            learned(6, [2, 2, 1, 1]),
+            learned(6, [2, 2, 1, 1]),
+            learned(8, [3, 2, 2, 1]),
         ]
     );
 }
@@ -310,8 +310,8 @@ pub(crate) fn assert_casts(
     // Cyclone, Gale's first, charges as its first cast starts and starts its cooldown as the
     // second releases it; the toggles, Dread and Chill Arrows, start as they turn on; Night Step
     // spends a charge. Kensho walks to Cinder for Flicker Strike, Cinder to Veil for Wildfire,
-    // and Rime from her post at (0, -20) toward (0, 15) for Snow Owl, whose second rank, which
-    // her level 7 gives, reaches 32.5 m of the 35.
+    // and Rime from her post at (0, -20) toward (0, 15) for Snow Owl, whose first rank, which
+    // her farm leaves it at, reaches 25 m of the 35.
     let expected = [
         (0, 2, INVENTORY, false),
         (7, 5, 0, false),
@@ -333,8 +333,8 @@ pub(crate) fn assert_casts(
         (26, 3, 1, false),
         (27, 0, 2, true),
         (30, 2, 0, false),
-        (31, 4, 2, true),
         (32, 3, 2, false),
+        (31, 4, 2, true),
         (33, 2, 3, false),
         (34, 0, 3, false),
         (35, 4, 3, false),

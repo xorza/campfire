@@ -1,7 +1,9 @@
 // A skirmish's start, as the original's `placeNetworkBuildingsForPlayer` places it: each player's
 // faction building at its start waypoint, `Player_<n>_Start` of slot `n`, and each starting unit
-// at its rally waypoint, `Player_<n>_Rally`, or on a map with none at the building's point moved
-// its faction's `start_offset` along +z. A player's faction is the one its host picked, or one
+// at the room nearest its rally waypoint, `Player_<n>_Rally`, or on a map with none the
+// building's point moved its faction's `start_offset` along +z, on a grid of the original's
+// pathfind cell, 10, as clear of each body, as the building may cover the rally; a unit with no
+// room within 20 cells is left out. A player's faction is the one its host picked, or one
 // drawn of the mode's factions, as the original draws a slot's Random, which then counts as its
 // pick. A slot no player or bot held as the match started, and a player whose start the map
 // lacks, start with no unit. Every player starts with the skirmish's money, `start_money`, as
@@ -36,7 +38,10 @@ fn on_match_start(ctx) {
             rallies[0].position
         };
         for unit in ctx.params[`start_units_${faction}`] {
-            ctx.spawn_unit(unit, team, rally, player);
+            let at = ctx.room_near(unit, rally, 10, 20);
+            if at != () {
+                ctx.spawn_unit(unit, team, at, player);
+            }
         }
     }
 }

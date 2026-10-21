@@ -23,6 +23,15 @@ impl Shape {
         }
     }
 
+    /// It grown by `by` at each side: a circle's radius, or a box as `BodyBox::grown` grows it;
+    /// `None` past `MAX_BOUND`.
+    pub fn grown(&self, by: Num) -> Option<Self> {
+        match self {
+            Self::Circle(radius) => Radius::new(radius.get().checked_add(by)?).map(Self::Circle),
+            Self::Box(body) => body.grown(by).map(Self::Box),
+        }
+    }
+
     /// How far it reaches from the position along x and along z.
     pub fn extent(&self) -> [Num; 2] {
         match self {

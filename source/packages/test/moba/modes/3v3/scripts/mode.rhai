@@ -115,14 +115,16 @@ fn spawn_heroes(ctx) {
     }
 }
 
-// A player who chose a hero gets it at their team's spawn, with the spells they chose.
+// A player who chose a hero gets it at the room nearest their team's spawn, a meter clear of the
+// heroes spawned with it, with the spells they chose.
 fn spawn_hero(ctx, player) {
     let hero = ctx.chosen(player, "hero");
     if hero.is_empty() {
         return;
     }
     let team = player.team;
-    let unit = ctx.spawn_unit(hero[0], team, spawn_marker(ctx, team).position, player);
+    let at = ctx.room_near(hero[0], spawn_marker(ctx, team).position, 1, 8);
+    let unit = ctx.spawn_unit(hero[0], team, at, player);
     ctx.grant(unit, "spell", ctx.chosen(player, "spells"));
 }
 

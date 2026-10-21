@@ -2,7 +2,7 @@ use campfire_actions::{ActionSlots, ActionsColumn, SlotKind, SlotKindData};
 use campfire_combat::CombatColumn;
 use campfire_common::Seat;
 use campfire_math::{Num, Vec3};
-use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd};
+use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd, RoomAsk, RoomSearch};
 use campfire_players::{PlayerResources, PlayersCall, SeatHolder};
 use campfire_script::{
     ApiBuilder, ApiError, ApiHolder, ApiVersion, ArgCtx, CapabilityRefusal, Checked, Ctx,
@@ -11,7 +11,7 @@ use campfire_script::{
     ScriptTicks, ScriptValue, StateField, StateType, StateValue, Status, TextArg, Unit, UnitAt,
 };
 use campfire_sim::{Capability, StableId};
-use campfire_units::{SpawnAt, Units};
+use campfire_units::{Body, SpawnAt, Units};
 use campfire_values::{
     ActionId, NameId, Named, PathId, Rank, Relation, ResourceId, Tag, Team, UnitType,
 };
@@ -290,8 +290,16 @@ impl ModeApi {
                 &["type", "team", "position", "player"],
             ],
             "spawns a unit of `type` on `team` at `position`, within the map's bounds, owned by \
-             `player` if given, who plays on `team`, when the call ends; the new unit, for \
+             `player` if given, who plays on `team`, when the call ends, refused where its body \
+             would overlap a wall, a body that stands or one the call spawns; the new unit, for \
              `grant` and its `.state`",
+        );
+        let room_near = MemberDecl::mode_call(
+            "room_near",
+            &[&["type", "position", "gap", "steps"]],
+            "the nearest point to `position`, of the grid of `gap` round it, within `steps` gaps, \
+             at most 128, where a unit of `type` spawns `gap` clear of each body and wall; by \
+             distance, then by angle from +x as a facing turns; `()` with none",
         );
         let grant = MemberDecl::mode_call(
             "grant",
@@ -314,6 +322,12 @@ impl ModeApi {
              position: ScriptPosition,
              player: Seat| {
                 Self::spawn_unit(ctx, unit_type, team, position.get(), Some(player))
+            },
+        )
+        .call(
+            room_near,
+            |ctx: &mut Ctx, unit_type: UnitType, position: ScriptPosition, gap: Num, steps: i64| {
+                Self::room_near(ctx, unit_type, position.get(), gap, steps)
             },
         )
         .call(
@@ -658,13 +672,17 @@ impl ModeApi {
             return Err(ModeRefusal::OutOfBounds.fail().into());
         }
         let unit_type = Self::spawnable(&book, unit_type)?;
-        let boxed = book.body(unit_type).filter(|form| form.is_box());
-        let body = boxed.map(|form| form.at(Num::ZERO));
+        let body = book.body(unit_type).map(|form| form.at(Num::ZERO));
         if let Some(body) = body {
+            let ask = RoomAsk {
+                position,
+                shape: body.shape(),
+                layer: body.layer(),
+                gap: Num::ZERO,
+            };
             let room = {
                 let frame = ctx.frame();
-                let spawning = &ModeCall::of(&frame).boxes;
-                NavigationColumn::room_for(ctx.view(), position, body, spawning)
+                NavigationColumn::room_for(ctx.view(), ask, &ModeCall::of(&frame).bodies)
             };
             if !room {
                 return Err(ModeRefusal::NoRoom.fail().into());
@@ -676,7 +694,7 @@ impl ModeApi {
         let id = ctx.write()?.take_id();
         if let Some(body) = body {
             let spawning = IndexedBody::of(id, position, &body);
-            ModeCall::of_mut(&mut *ctx.write()?).boxes.push(spawning);
+            ModeCall::of_mut(&mut *ctx.write()?).bodies.push(spawning);
         }
         let spawn = SpawnAt {
             id,
@@ -691,6 +709,35 @@ impl ModeApi {
             grants: Vec::new(),
         })?;
         Ok(Unit::created(id, unit_type, ctx.view().clone()))
+    }
+
+    /// The nearest point to `position` where a unit of `unit_type` has room, `gap` clear of each
+    /// body and wall, on the grid of `gap` round it, within `steps` gaps, as `spawn_unit` then
+    /// spawns it there; `()` with none. A unit with no body takes the room of a point.
+    fn room_near(
+        ctx: &Ctx,
+        unit_type: UnitType,
+        position: Vec3,
+        gap: Num,
+        steps: i64,
+    ) -> Checked<ScriptValue> {
+        let book = ctx.mode_spec_or_fail()?;
+        let unit_type = Self::spawnable(&book, unit_type)?;
+        let steps = u32::try_from(steps)
+            .ok()
+            .filter(|&steps| steps <= RoomSearch::MAX_STEPS && gap > Num::ZERO)
+            .ok_or_else(|| ModeRefusal::RoomSearch.fail())?;
+        let body = book.body(unit_type).map(|form| form.at(Num::ZERO));
+        let search = RoomSearch {
+            position,
+            shape: Body::shape_of(body.as_ref()),
+            layer: Body::layer_of(body.as_ref()),
+            gap,
+            steps,
+        };
+        let frame = ctx.frame();
+        let found = NavigationColumn::room_near(ctx.view(), search, &ModeCall::of(&frame).bodies);
+        Ok(found.map_or(ScriptValue::UNIT, ScriptValue::of))
     }
 
     /// Queues the actions `ids` into the slot kind `kind` of `id`, which has `slots` slots

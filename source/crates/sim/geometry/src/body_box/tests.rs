@@ -1,5 +1,4 @@
 use campfire_codec::Binary;
-use campfire_math::FloorRoot;
 use campfire_math::SplitMix64;
 
 use super::*;
@@ -204,6 +203,43 @@ fn a_box_holds_its_inside_and_its_edge() {
     let upright = made("4", "2", "90");
     assert!(upright.holds(center, at("11", "7")));
     assert!(!upright.holds(center, at("12", "6")));
+}
+
+#[test]
+fn a_grown_box_grows_each_side_by_its_growth() {
+    // A box of 4 by 2 grown by 1 is 6 by 4, exactly, as its half edges are whole; by 0, a box at
+    // any angle is itself.
+    assert_eq!(
+        made("4", "2", "0").grown(num("1")),
+        Some(made("6", "4", "0"))
+    );
+    let turned = made("4", "2", "30");
+    assert_eq!(turned.grown(Num::ZERO), Some(turned));
+    // Turned by 30°, each side moves out by 1 m and at most 4 bits, which its two rounded
+    // components and its length rounded down give: a point 1 m and 4 bits out from a side's
+    // middle lies outside it.
+    let center = at("10", "5");
+    let grown = turned.grown(num("1")).unwrap();
+    for edge in turned.half_edges() {
+        let length = edge.map(|num| i128::from(num.to_bits()));
+        let length = (length[0] * length[0] + length[1] * length[1])
+            .cast_unsigned()
+            .floor_root();
+        let length = Num::from_bits(i64::try_from(length).unwrap());
+        let out = num("1") + Num::from_bits(4);
+        let off = edge.map(|component| {
+            component
+                + component
+                    .checked_mul_div(out, length, Rounding::Ceiling)
+                    .unwrap()
+        });
+        let probe = Vec3::new(center.x + off[0], Num::ZERO, center.z + off[1]);
+        assert!(!grown.holds(center, probe), "{edge:?}");
+        assert_eq!(distance(&turned, center, probe) >> 24, 1, "{edge:?}");
+    }
+    // Past the bound, none.
+    let widest = BodyBox::new([num("2000"), num("2000")], Num::ZERO).unwrap();
+    assert_eq!(widest.grown(MAX_BOUND), None);
 }
 
 #[test]
@@ -646,6 +682,15 @@ fn check_point(body: &BodyBox, center: Vec3, probe: Vec3, reach: Num) {
     let reach_bits = i128::from(reach.to_bits());
     let within = Closer::new(body.frame(), reach_bits).holds_point(flat(probe) - flat(center));
     assert_eq!(within, expected == Ordering::Less, "{body:?} {probe:?}");
+    // The box grown by the reach holds every point closer than it; a grown box is none only past
+    // the bound, which its corner, at most √2 times the reach farther, would pass.
+    match body.grown(reach) {
+        Some(grown) if within => {
+            assert!(grown.holds(center, probe), "{body:?} {probe:?} {reach:?}");
+        }
+        Some(_) => {}
+        None => assert!(body.bound() + reach * 2 > MAX_BOUND, "{body:?} {reach:?}"),
+    }
     // At both scales the shared terms decide as each edge's own measures do.
     let off = flat(probe) - flat(center);
     for (frame, off, reach) in [
