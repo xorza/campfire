@@ -86,6 +86,12 @@ pub enum ApiError {
     /// A time of 0 where something must last.
     #[error("time is 0")]
     ZeroTime,
+    /// A list of units with a value that is no unit.
+    #[error("value is no unit")]
+    NotAUnit,
+    /// A bot's order whose table reads as no directive, as an order script's `directive` reads.
+    #[error("table is no directive")]
+    NotADirective,
     /// A capability's own refusal, which its own enum of refusals gives.
     #[error("{0}")]
     Refused(Refusal),

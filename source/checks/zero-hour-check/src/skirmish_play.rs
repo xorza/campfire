@@ -62,10 +62,10 @@ const FACTORY_CHAIN: [PlannedBuilding; 3] = [
     },
 ];
 
-/// The builder bot's orders, which the play's bot plays and a host gives a local server's bot
-/// (09-zero-hour.md, A bot that builds and does not fight).
-pub(crate) const BUILDER: &str =
-    include_str!("../../../bots/zero-hour/tournament_desert/start2-america-builder.toml");
+/// The builder bot's orders, which the play's bot plays, a fixture of the check
+/// (09-zero-hour.md, A bot that builds and does not fight; 04-capabilities/control.md, Order
+/// scripts stay as test fixtures).
+const BUILDER: &str = include_str!("../fixtures/builder.toml");
 
 /// The skirmish on Tournament Desert of `START_MONEY` against the builder bot (designs 18 and 19;
 /// 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
@@ -129,7 +129,7 @@ impl SkirmishPlay {
         let names = playing.game().resource::<MatchNames>();
         let Some(money) = names.named::<ResourceId>("money") else {
             failures.push(CheckFailure::NoMoney);
-            playing.end();
+            failures.extend(playing.end().err());
             return None;
         };
         let play = Play {
@@ -137,8 +137,8 @@ impl SkirmishPlay {
             money,
         };
         let played = play.steps(&mut playing, bot);
-        playing.end();
-        match played {
+        let ended = playing.end();
+        match played.and_then(|played| ended.map(|()| played)) {
             Ok(played) => Some(played),
             Err(failure) => {
                 failures.push(failure);

@@ -50,6 +50,14 @@ impl ScriptOrder {
 }
 
 impl ScriptSource {
+    /// The script at `path` of `package`, the mode's own with none.
+    fn of(package: Option<PackageName>, path: PackagePath) -> Self {
+        match package {
+            Some(package) => Self::Rules { package, path },
+            None => Self::Own(path),
+        }
+    }
+
     /// The script's path in its package.
     pub(crate) const fn path(&self) -> &PackagePath {
         match self {
@@ -64,6 +72,49 @@ impl ScriptSource {
             Self::Rules { package, .. } => Some(package),
         }
     }
+}
+
+/// A script by itself, as a mode's bot names its: a path alone, or `{ package, path }`, which
+/// `Deserialize` reads back to it.
+impl Serialize for ScriptSource {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Own(path) => path.serialize(serializer),
+            Self::Rules { package, path } => Source {
+                package: Some(package.clone()),
+                path: path.clone(),
+            }
+            .serialize(serializer),
+        }
+    }
+}
+
+/// A script by itself, as a mode's bot names its: a path alone, or a table of an optional
+/// package and a path.
+impl<'de> Deserialize<'de> for ScriptSource {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match WrittenSource::deserialize(deserializer)? {
+            WrittenSource::Own(path) => Self::Own(path),
+            WrittenSource::Table(Source { package, path }) => Self::of(package, path),
+        })
+    }
+}
+
+/// A script by itself as a file writes it: a path alone, or a table.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum WrittenSource {
+    Own(PackagePath),
+    Table(Source),
+}
+
+/// A script by itself in its table's form, which reads and writes the same keys.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Source {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    package: Option<PackageName>,
+    path: PackagePath,
 }
 
 /// An entry of the list: a path alone, or a table of an optional package, a path and an
@@ -128,10 +179,7 @@ impl<'de> Deserialize<'de> for ScriptOrder {
                     package,
                     path,
                     mode,
-                }) => match package {
-                    Some(package) => (ScriptSource::Rules { package, path }, mode),
-                    None => (ScriptSource::Own(path), mode),
-                },
+                }) => (ScriptSource::of(package, path), mode),
             };
             if scripts.contains(&source) {
                 return Err(D::Error::custom(format_args!(

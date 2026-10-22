@@ -1,4 +1,6 @@
 use campfire_common::DeclaredName;
+use campfire_geometry::GridSearch;
+use campfire_math::Num;
 use campfire_script::UnknownName;
 use campfire_units::MapPointError;
 use serde::{Deserialize, Serialize};
@@ -15,6 +17,8 @@ pub enum OrderUnsent {
     NoSlot,
     /// Its filter selects no living unit that may be a target.
     NoTarget,
+    /// Its build finds no place within its search where the build passes.
+    NoPlace,
 }
 
 /// Why a bot's script does not start in a match.
@@ -30,4 +34,13 @@ pub enum BotScriptError {
     /// is an order a player may give too, which the sim brings onto it.
     #[error("a point of the script fits no map of its metric")]
     Point(#[source] MapPointError),
+    /// It names a search for a place where no build places its building.
+    #[error("a search for a place outside a build's place")]
+    NearOutsideBuild,
+    /// It names a search for a place of a gap not above 0.
+    #[error("a search for a place of gap {0}, not above 0")]
+    NearGap(Num),
+    /// It names a search for a place of more steps than a search reaches.
+    #[error("a search for a place of {0} steps, past the {max} a search reaches", max = GridSearch::MAX_STEPS)]
+    NearSteps(u32),
 }

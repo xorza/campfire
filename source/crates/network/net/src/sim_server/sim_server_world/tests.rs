@@ -1,4 +1,4 @@
-use crate::sim_server::server_bots::SeatBot;
+use crate::sim_server::server_bots::{BotPlay, SeatBot};
 use crate::sim_server::sim_server_world::internals::SimServerWorldInternals;
 use std::num::{NonZeroU8, NonZeroU32};
 
@@ -91,7 +91,7 @@ fn a_plan_bot_plays_its_script_until_its_slot_changes_hands() {
     let planned = |fixed: &FixedMatch| {
         let slots = vec![SeatBot {
             seat,
-            script: script.clone(),
+            play: BotPlay::Orders(script.clone()),
         }];
         fixed.game().planned_bots(slots, Tick::new(0))
     };

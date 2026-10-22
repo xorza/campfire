@@ -1,13 +1,11 @@
-use std::cmp::Ordering;
-
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
-use campfire_geometry::{Placed, Shape};
+use campfire_geometry::{GridSearch, Placed, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_script::{AnyKeptRows, Checked, KeptRows, MaybeName, RowFill, Unit, View, ViewColumn};
 use campfire_sim::StableId;
 use campfire_units::{Body, Layer, MoveStep, WallBook};
-use campfire_values::PathId;
+use campfire_values::{PathId, Team};
 
 use crate::body_index::IndexedBody;
 use crate::on_path::OnPath;
@@ -39,15 +37,13 @@ pub struct RoomAsk {
     pub gap: Num,
 }
 
-/// A search for room for a body of `shape` on `layer` near `position`: on a grid of `gap` round
-/// it, `gap` clear of each other body and wall, within `steps` gaps.
+/// A search for room for a body of `shape` on `layer` on the points of `grid`, each a gap of the
+/// grid clear of each other body and wall.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RoomSearch {
-    pub position: Vec3,
+    pub grid: GridSearch,
     pub shape: Shape,
     pub layer: Layer,
-    pub gap: Num,
-    pub steps: u32,
 }
 
 /// A unit's row of the navigation column.
@@ -74,12 +70,11 @@ impl ViewColumn for NavigationColumn {
         }
         false
     }
-}
 
-impl RoomSearch {
-    /// The most steps of its gap a search reaches: its points, about `π` times its square, stay
-    /// within a mode call's work.
-    pub const MAX_STEPS: u32 = 128;
+    /// None: it reads no team's sight.
+    fn hides(&self, _: usize, _: Team) -> bool {
+        false
+    }
 }
 
 impl NavigationColumn {
@@ -130,78 +125,20 @@ impl NavigationColumn {
         room.unwrap_or(true)
     }
 
-    /// The nearest point within `search`'s steps of its position, of the grid of its gap round
-    /// the position, where its shape has room as `room_for` tests it, with that gap, against
-    /// `view` and `spawning`; by distance, then by angle from `+x`, as a facing turns, each
-    /// compared exactly; none when no point has room (04-capabilities/navigation.md, A script
-    /// finds room near a point). The grid points are visited in bands of square distance, each
-    /// twice the last, so a search that ends near the position orders few.
+    /// The nearest point of `search`'s grid where its shape has room as `room_for` tests it, with
+    /// the grid's gap, against `view` and `spawning`; none when no point has room
+    /// (04-capabilities/navigation.md, A script finds room near a point).
     pub fn room_near(view: &View, search: RoomSearch, spawning: &[IndexedBody]) -> Option<Vec3> {
-        let RoomSearch {
-            position,
-            shape,
-            layer,
-            gap,
-            steps,
-        } = search;
-        debug_assert!(
-            gap > Num::ZERO && steps <= RoomSearch::MAX_STEPS,
-            "a search of a positive gap, within its steps"
-        );
-        let gap_bits = i128::from(gap.to_bits());
-        let most = i64::from(steps) * i64::from(steps);
-        let mut points = Vec::new();
-        let mut low = 0;
-        while low <= most {
-            let high = (low * 2).max(64).min(most + 1);
-            let reach = ((high - 1).cast_unsigned().isqrt()).cast_signed();
-            points.clear();
-            for i in -reach..=reach {
-                for j in -reach..=reach {
-                    if (low..high).contains(&(i * i + j * j)) {
-                        points.push([i, j]);
-                    }
-                }
-            }
-            points.sort_unstable_by(|&a, &b| {
-                let square = |[i, j]: [i64; 2]| i * i + j * j;
-                square(a).cmp(&square(b)).then_with(|| Self::by_angle(a, b))
-            });
-            for &[i, j] in &points {
-                let step = |count: i64| {
-                    i64::try_from(i128::from(count) * gap_bits)
-                        .ok()
-                        .map(Num::from_bits)
-                };
-                let at = step(i)
-                    .zip(step(j))
-                    .and_then(|(x, z)| position.checked_add(Vec3::new(x, Num::ZERO, z)));
-                let Some(at) = at.filter(|at| at.within_bound()) else {
-                    continue;
-                };
-                let ask = RoomAsk {
-                    position: at,
-                    shape,
-                    layer,
-                    gap,
-                };
-                if Self::room_for(view, ask, spawning) {
-                    return Some(at);
-                }
-            }
-            low = high;
-        }
-        None
-    }
-
-    /// How two grid steps `[x, z]` of one length order by angle from `+x`, as a facing turns,
-    /// toward `−z`: the half from `+x` through `−z`, then the other, each by the sign of the
-    /// cross product.
-    fn by_angle(a: [i64; 2], b: [i64; 2]) -> Ordering {
-        let half = |[x, z]: [i64; 2]| u8::from(!(z < 0 || (z == 0 && x > 0)));
-        half(a)
-            .cmp(&half(b))
-            .then_with(|| (a[1] * b[0] - a[0] * b[1]).cmp(&0).reverse())
+        let RoomSearch { grid, shape, layer } = search;
+        grid.nearest(|position| {
+            let ask = RoomAsk {
+                position,
+                shape,
+                layer,
+                gap: grid.gap,
+            };
+            Self::room_for(view, ask, spawning)
+        })
     }
 
     /// `unit.path`: the name of the path `unit` walks or stands on, `()` with none, or in a view

@@ -3,6 +3,7 @@ use std::fmt;
 use std::ops::Range;
 
 use bevy_ecs::world::World;
+use campfire_values::Team;
 
 use crate::scripts::typed_list::{TypedItem, TypedList};
 use crate::scripts::view::kept_rows::AnyKeptRows;
@@ -19,6 +20,12 @@ pub trait ViewColumn: Any + fmt::Debug {
     /// Takes what its rows derive from besides the units' parts, as a read of `world` starts.
     /// Whether every row must be filled again, as that changed.
     fn begin(&mut self, world: &World) -> bool;
+
+    /// Whether it hides the unit of row `row` from `team`: a column of what each team sees hides
+    /// what a team does not see, and any other column hides nothing, so a view with no such
+    /// column shows every unit to every team (06-script-api.md, What a team sees is one rule of
+    /// the view).
+    fn hides(&self, row: usize, team: Team) -> bool;
 }
 
 /// A column of any type, as the view holds it: what the view does with every column's rows.
@@ -39,6 +46,9 @@ trait AnyColumn: TypedItem + fmt::Debug {
 
     /// Whether the rows of the running read equal those of the read before.
     fn same_as_kept(&self) -> bool;
+
+    /// Whether it hides the unit of row `row` from `team`.
+    fn hides(&self, row: usize, team: Team) -> bool;
 }
 
 impl<C: ViewColumn> AnyColumn for C {
@@ -61,6 +71,10 @@ impl<C: ViewColumn> AnyColumn for C {
     fn same_as_kept(&self) -> bool {
         self.kept().same_as_kept()
     }
+
+    fn hides(&self, row: usize, team: Team) -> bool {
+        ViewColumn::hides(self, row, team)
+    }
 }
 
 /// The columns of the view, each of its own type, in the order they were added.
@@ -70,6 +84,11 @@ pub struct ViewColumns(TypedList<dyn AnyColumn>);
 impl ViewColumns {
     pub fn add<C: ViewColumn>(&mut self, column: C) {
         self.0.add(Box::new(column));
+    }
+
+    /// Whether `team` sees the unit of row `row`: no column hides it.
+    pub fn sees(&self, row: usize, team: Team) -> bool {
+        self.0.iter().all(|column| !column.hides(row, team))
     }
 
     /// The place of the column of type `C`, when one was added.

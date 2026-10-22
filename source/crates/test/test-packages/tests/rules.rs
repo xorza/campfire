@@ -1,13 +1,14 @@
 //! A mode that runs a rules package's script as its own.
 
 use campfire_common::DeclaredName;
+use campfire_mode::ModeParam;
 use campfire_package::{
     DataOverride, LoadError, LoadProblem, ModePackages, PackageName, PackageRef, ScriptProblem,
 };
 use campfire_script::{ListPlace, ModeScripts, ScriptId, StateValue};
 use campfire_sim::Capability;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_values::{Named, Param};
+use campfire_values::{Named, Param, Scalar};
 
 const MODE_DATA: &str = "modes/ruled/data/mode.toml";
 /// The ruled mode's list: the rules package's script alone.
@@ -63,6 +64,66 @@ fn a_mode_runs_its_rules_package_s_script_and_fails_on_one_it_does_not_hold() {
         refused,
         LoadProblem::Script { path, problem: ScriptProblem::Unreferenced } if path.as_str() == "scripts/mode.rhai"
     ));
+}
+
+#[test]
+fn a_mode_names_its_bots_each_a_script_of_a_rules_package_or_its_own() {
+    const BOT: &str = "rules/scripts/bot.rhai";
+    let problem = |result: Result<ModePackages, LoadError>| *result.unwrap_err().problem;
+    let bot = |script: &str, rest: &str| {
+        format!("[bots.raider]\nscript = {script}\nthink_ms = 250\n{rest}")
+    };
+    let rules = "{ package = \"test-rules\", path = \"scripts/bot.rhai\" }";
+    let think = |body: &'static str| (BOT, Edit::Create(body));
+    // The rules package's `bot.rhai`, which the match compiles before its `mode.rhai`, and which
+    // no data but the bot names: the mode names it `raider`, with its period and its param
+    // `army`, which its script reads.
+    let army = think("fn on_bot_think(ctx) { let army = ctx.params.army; }");
+    let named = bot(rules, "params = { army = 4 }\n");
+    let packages = ruled(&[army, (MODE_DATA, Edit::Append(&named))]).unwrap();
+    let raider = packages.bot(&DeclaredName::new("raider").unwrap()).unwrap();
+    assert_eq!(raider.script, ScriptId::nth(0));
+    assert_eq!(packages.mode_scripts(), ModeScripts::one(ScriptId::nth(1)));
+    assert_eq!(raider.think_ms.get(), 250);
+    let army = DeclaredName::new("army").unwrap();
+    assert_eq!(raider.params[&army], ModeParam::Value(Scalar::Int(4)));
+    assert!(
+        packages
+            .bot(&DeclaredName::new("walker").unwrap())
+            .is_none()
+    );
+    // A param the bot lacks, and a hook of the mode's, fail the script's load.
+    let unknown = think("fn on_bot_think(ctx) { let navy = ctx.params.navy; }");
+    let refused = problem(ruled(&[unknown, (MODE_DATA, Edit::Append(&named))]));
+    assert!(
+        matches!(&refused, LoadProblem::Unknown { of: Param::NAMES, name, .. } if name == "navy"),
+        "{refused:?}"
+    );
+    let mode_hook = think("fn on_match_start(ctx) {}");
+    let refused = problem(ruled(&[mode_hook, (MODE_DATA, Edit::Append(&named))]));
+    assert!(
+        matches!(&refused, LoadProblem::Script { problem: ScriptProblem::UnknownHook(name), .. } if name == "on_match_start"),
+        "{refused:?}"
+    );
+    // A bot of a package the mode does not depend on is none to run, and a bot of no period, or
+    // of a key a bot lacks, fails the mode's data.
+    let other = bot(
+        "{ package = \"test-other\", path = \"scripts/bot.rhai\" }",
+        "",
+    );
+    let refused = problem(ruled(&[(MODE_DATA, Edit::Append(&other))]));
+    assert!(matches!(refused, LoadProblem::ScriptPackage(name) if name == "test-other"));
+    let still = think("fn on_bot_think(ctx) {}");
+    for named in [
+        bot(rules, "").replace("think_ms = 250", "think_ms = 0"),
+        bot(rules, "army = 4\n"),
+    ] {
+        let refused = problem(ruled(&[still, (MODE_DATA, Edit::Append(&named))]));
+        assert!(
+            matches!(refused, LoadProblem::Content(_)),
+            "{named}: {refused:?}"
+        );
+    }
 }
 
 #[test]

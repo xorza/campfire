@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use serde::de::Error as DeError;
 use thiserror::Error;
-use toml::de;
+use toml::{de, ser};
 
 /// Why bytes are no postcard value of a type. Bytes from a file, a log or the network are
 /// untrusted, so each is an expected failure.
@@ -44,6 +44,12 @@ pub enum TaggedError {
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[error(transparent)]
 pub struct TomlError(#[from] de::Error);
+
+/// Why a value is none TOML holds, as `TomlValue::try_of` gives it: TOML's own error, which names
+/// what it refused.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error(transparent)]
+pub struct TomlWriteError(#[from] ser::Error);
 
 /// Why a text is no JSON of the type asked for, as `Json::parse` gives it: JSON's own error,
 /// which names the line and column.

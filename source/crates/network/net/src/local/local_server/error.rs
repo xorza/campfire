@@ -1,9 +1,9 @@
-use campfire_bots::BotScriptError;
 use campfire_store::DataDirError;
 use thiserror::Error;
 
 use crate::key_file::error::KeyFileError;
 use crate::sim_server::lobby::error::LobbyOpenError;
+use crate::sim_server::server_bots::error::ServerBotsError;
 use crate::sim_server::session_dir::error::{AbortError, WaitingError};
 
 /// Why a local server does not start.
@@ -24,7 +24,8 @@ pub enum LocalServerError {
     /// it keeps no files.
     #[error(transparent)]
     Open(LobbyOpenError),
-    /// A bot's script names what the match does not have.
-    #[error("a bot's script")]
-    Bots(#[source] BotScriptError),
+    /// A bot's order script names what the match does not have, or the mode names no bot of a
+    /// bot's name.
+    #[error("a bot")]
+    Bots(#[source] ServerBotsError),
 }

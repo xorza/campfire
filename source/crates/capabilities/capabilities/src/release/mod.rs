@@ -22,7 +22,7 @@ use campfire_players::Players;
 use campfire_production::Production;
 use campfire_progression::Progression;
 use campfire_projectiles::Projectiles;
-use campfire_script::{ApiBuilder, Hook, ScriptApi, ScriptHost, ScriptId};
+use campfire_script::{ApiBuilder, Ctx, Hook, ScriptApi, ScriptHost, ScriptId};
 use campfire_sim::{Capability, SimWorldBuilder, StateRewritten, Unpredicted};
 use campfire_states::StateTypes;
 use campfire_stats::Stats;
@@ -33,6 +33,8 @@ use campfire_vision::Vision;
 use crate::books::Books;
 use crate::books::leftover_books::LeftoverBooks;
 use crate::books::units_seed::UnitsSeed;
+use crate::bot::bot_api::{BotApi, OnBotThink};
+use crate::bot::bot_call::BotCall;
 use crate::release::api_binder::ApiBinder;
 use crate::release::called_registries::CalledRegistries;
 use crate::release::capability_rows::CapabilityRows;
@@ -152,6 +154,7 @@ impl Release {
     pub fn hooks() -> Vec<Hook> {
         let mut list = HookList::default();
         Self::declare(Self::capabilities(), &mut list);
+        list.0.push(Hook::of::<OnBotThink>());
         list.0
     }
 
@@ -196,7 +199,9 @@ impl Release {
     /// Binds the script API of the release into `host`, as `script_api` records it, so `host`
     /// compiles a script as a match's engine does: with the engine enums' modules.
     pub fn bind_script_api(host: &mut ScriptHost) -> ScriptApi {
-        ScriptApi::release(host, Self::bind_api)
+        ScriptApi::release(host, |builder| {
+            Self::bind(Self::capabilities(), builder);
+        })
     }
 
     /// Visits, with `d`, the declarations of a match of `set`: each module's of the list that the
@@ -229,17 +234,19 @@ impl Release {
         Self::declare(Self::capabilities(), &mut KindsOnly(v));
     }
 
-    /// Binds into `builder` the script API of every module the release runs, as the load check
-    /// reads it.
-    fn bind_api(builder: &mut ApiBuilder<'_>) {
-        Self::declare(Self::capabilities(), &mut ApiBinder(builder));
+    /// Binds, with `builder`, the script API of a match of `set`: each module's, then the bots'
+    /// think, which reads through theirs.
+    fn bind(set: CapabilitySet, builder: &mut ApiBuilder<'_>) {
+        Self::declare(set, &mut ApiBinder(builder));
+        builder.module(None);
+        BotApi::register(builder);
     }
 
     /// Builds the match of `spec` in the world, a new world, of `books`, as `start` says: prepares
     /// it for the sim, keeps its facts, puts in the declarations of each module of the list the
     /// match runs, in order, its books among them, then adds the systems of each, so each install
-    /// reads every book; binds the script API of the match's modules into the script host the
-    /// core's install puts in, and the mode's names into the script view; then starts the match, as
+    /// reads every book; binds the script API of the match's modules and of the bots' think into
+    /// the script host the core's install puts in, gives its frame the bots' call, and the mode's names into the script view; then starts the match, as
     /// `start` says, and builds its schedule once. A match that ended runs no stage. The world then
     /// holds the match whole: its schedule, its state registry, and its facts.
     pub fn build(world: &mut World, match_setup: MatchSetup, books: Books, kind: MatchKind<'_>) {
@@ -281,8 +288,12 @@ impl Release {
         if facts.role.scripts() {
             let world = sim.fields().world;
             ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), |builder| {
-                Self::declare(set, &mut ApiBinder(builder));
+                Self::bind(set, builder);
             });
+            world
+                .non_send::<Ctx>()
+                .frame()
+                .add_params(BotCall::default());
         }
         #[cfg(feature = "internals")]
         if match_setup.end.leaves_open() {

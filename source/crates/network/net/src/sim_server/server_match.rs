@@ -232,7 +232,7 @@ impl ServerMatch {
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start, next));
         world.insert_resource(FrameStart(next));
-        let driver = BotDriver::new(bots, next, world.resource::<Session>().log());
+        let driver = BotDriver::new(bots, next, world);
         world.insert_resource(driver);
     }
 }

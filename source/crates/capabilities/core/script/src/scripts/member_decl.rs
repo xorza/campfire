@@ -59,7 +59,7 @@ impl MemberDecl {
     /// The most arguments a form takes, the receiver aside.
     pub(crate) const ARGS: usize = 5;
 
-    /// A value of `ctx`, for every role and of the core until said otherwise.
+    /// A value of `ctx`, for every role of the sim's calls and of the core until said otherwise.
     pub const fn value(name: &'static str, description: &'static str) -> Self {
         Self::new(ApiHolder::CTX, name, MemberKind::Value, &[], description)
     }
@@ -109,7 +109,7 @@ impl MemberDecl {
             holder,
             name,
             kind,
-            roles: RoleSet::ALL,
+            roles: kind.every_role(),
             capability: None,
             planned_in: None,
             forms,

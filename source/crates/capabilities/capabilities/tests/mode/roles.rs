@@ -1,4 +1,4 @@
-use campfire_script::{CapabilityRefusal, ScriptList, ScriptValue};
+use campfire_script::{CapabilityRefusal, RoleSet, ScriptList, ScriptValue};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_values::Named;
 
@@ -41,7 +41,7 @@ fn every_role_reads_the_match_and_all_but_the_ai_deal_damage_heal_and_restore() 
         resources.unwrap().amount(resource("gold").unwrap())
     };
     let mut at = 0;
-    for role in ScriptRole::ALL {
+    for role in RoleSet::SIM.iter() {
         let changes = if role == ScriptRole::Ai { "" } else { changes };
         let probe = format!("fn probe(ctx, unit) {{ {changes} {reads} }}");
         let before = gold(&game);
@@ -95,6 +95,15 @@ fn every_role_reads_the_match_and_all_but_the_ai_deal_damage_heal_and_restore() 
         ),
         (r#"ctx.reveal(unit.position, 1, 100, "a")"#, ScriptRole::Ai),
         ("ctx.players[0].state.kills = 1", ScriptRole::Ai),
+        // A bot's think runs outside the sim: it changes nothing, and reads only what its own
+        // spec and the shared reads give it.
+        (r#"ctx.damage(unit, "true", 10)"#, ScriptRole::Bot),
+        (r#"ctx.reveal(unit.position, 1, 100, "a")"#, ScriptRole::Bot),
+        ("ctx.avatars()", ScriptRole::Bot),
+        (
+            r#"ctx.find_visible(unit, unit.position, 1, "allies")"#,
+            ScriptRole::Bot,
+        ),
     ];
     for (call, role) in refused {
         let source = format!("fn probe(ctx, unit) {{ {call} }}");
@@ -107,10 +116,7 @@ fn every_role_reads_the_match_and_all_but_the_ai_deal_damage_heal_and_restore() 
     }
     // A reveal that names its team serves every role that changes the match, the mode's among
     // them.
-    for role in ScriptRole::ALL
-        .into_iter()
-        .filter(|role| *role != ScriptRole::Ai)
-    {
+    for role in RoleSet::SIM.iter().filter(|role| *role != ScriptRole::Ai) {
         let source = r#"fn probe(ctx, unit) { ctx.reveal(unit.position, 1, 100, "a") }"#;
         let revealed = Mode::probe_as(&mut game, source, role, actor, actor);
         assert!(revealed.is_ok(), "{role:?}: {revealed:?}");

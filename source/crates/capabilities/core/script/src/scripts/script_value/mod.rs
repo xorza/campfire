@@ -1,7 +1,10 @@
 use std::any::{Any, TypeId};
 
+use campfire_math::{Num, Vec3};
 use campfire_values::Scalar;
-use rhai::{Dynamic, Variant};
+use rhai::{Array, Dynamic, ImmutableString, Map, Variant};
+use serde::ser::Error;
+use serde::{Serialize, Serializer};
 
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::script_list::ScriptList;
@@ -104,6 +107,48 @@ impl ScriptValue {
 
     pub(super) fn into_engine(self) -> Dynamic {
         self.0
+    }
+}
+
+/// The value as data holds it, so a script's table reads as the type a data file's table reads
+/// as: a flag, an integer, a text, a `Num` and a point as each writes itself, a list as a sequence
+/// and a table as a map; `()` as no value. Any other value, a handle among them, holds no data,
+/// and fails.
+impl Serialize for ScriptValue {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value = &self.0;
+        if value.is_unit() {
+            return serializer.serialize_unit();
+        }
+        if let Ok(flag) = value.as_bool() {
+            return serializer.serialize_bool(flag);
+        }
+        if let Ok(int) = value.as_int() {
+            return serializer.serialize_i64(int);
+        }
+        if let Some(text) = value.read_lock::<ImmutableString>() {
+            return serializer.serialize_str(&text);
+        }
+        if let Some(num) = value.read_lock::<Num>() {
+            return num.serialize(serializer);
+        }
+        if let Some(point) = value.read_lock::<Vec3>() {
+            return point.serialize(serializer);
+        }
+        if let Some(list) = value.read_lock::<Array>() {
+            let list = list.iter().map(|item| Self(item.clone()));
+            return serializer.collect_seq(list);
+        }
+        if let Some(map) = value.read_lock::<Map>() {
+            let entries = map
+                .iter()
+                .map(|(name, item)| (name.as_str(), Self(item.clone())));
+            return serializer.collect_map(entries);
+        }
+        Err(S::Error::custom(format_args!(
+            "a {} holds no data",
+            value.type_name()
+        )))
     }
 }
 

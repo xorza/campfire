@@ -222,9 +222,7 @@ macro_rules! script_fn {
                 let each = Rc::new(self);
                 let int = Rc::clone(&each);
                 engine.register_fn(name, move |ctx: &mut Ctx, $($arg: $arg::Raw),*| -> Checked<Dynamic> {
-                    if roles != RoleSet::ALL {
-                        ctx.require(roles)?;
-                    }
+                    ctx.admit(roles)?;
                     let args = ArgCtx::Ctx(ctx);
                     $(let $arg = $arg::take($arg, &args)?;)*
                     each(ctx, $($arg),*).map(R::into_engine)
@@ -237,9 +235,7 @@ macro_rules! script_fn {
                 }
                 if [$($arg::NUMBER),*].contains(&true) {
                     engine.register_fn(name, move |ctx: &mut Ctx, $($arg: $arg::Int),*| -> Checked<Dynamic> {
-                        if roles != RoleSet::ALL {
-                            ctx.require(roles)?;
-                        }
+                        ctx.admit(roles)?;
                         let args = ArgCtx::Ctx(ctx);
                         $(let $arg = $arg::take_int($arg, &args)?;)*
                         int(ctx, $($arg),*).map(R::into_engine)

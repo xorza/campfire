@@ -10,7 +10,7 @@ use campfire_script::{
 };
 use campfire_sim::StableId;
 use campfire_units::{Life, Meter, PoolId, StatId};
-use campfire_values::{ActionId, ModifierId, NameId, Rank};
+use campfire_values::{ActionId, ModifierId, NameId, Rank, Team};
 
 use crate::error::StatsRefusal;
 use crate::level::Level;
@@ -108,6 +108,11 @@ impl ViewColumn for StatsColumn {
         if !book.same(&self.modifier_book) {
             self.modifier_book = book.clone();
         }
+        false
+    }
+
+    /// None: it reads no team's sight.
+    fn hides(&self, _: usize, _: Team) -> bool {
         false
     }
 }

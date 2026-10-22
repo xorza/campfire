@@ -6,7 +6,7 @@ version = "0.1.0"
 api = "1.0"
 language = "en"
 kind = "mode"
-capabilities = ["stats", "combat", "navigation"]
+capabilities = ["stats", "combat", "navigation", "orders", "production"]
 tick_hz = { min = 30, max = 30, default = 30 }
 teams = [{ name = "player_1", seats = 1 }, { name = "player_2", seats = 1 }, { name = "player_3", seats = 1 }, { name = "neutral", seats = 0 }]
 max_move_speed = "1.0"

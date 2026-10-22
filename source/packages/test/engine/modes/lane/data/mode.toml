@@ -114,3 +114,9 @@ spawn_tags = ["spawn"]
 [experience]
 track = "level"
 to = "killer"
+
+# A bot that walks its hero to (to, 2), its param `to`, every think.
+[bots.walk]
+script = "scripts/walk_bot.rhai"
+think_ms = 100
+params = { to = 3 }

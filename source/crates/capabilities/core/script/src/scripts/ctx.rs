@@ -2,6 +2,7 @@ use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
 use bevy_ecs::world::World;
+use campfire_common::Seat;
 use campfire_sim::StableId;
 use rhai::{Dynamic, NativeCallContext};
 
@@ -63,10 +64,11 @@ impl Ctx {
     }
 
     /// The frame to change the match through, as `frame`; a pure hook's call fails, and so does
-    /// an AI's, which reads, orders and draws (06-script-api.md, An AI reads and orders).
+    /// an AI's, which reads, orders and draws (06-script-api.md, An AI reads and orders), and a
+    /// bot's, which runs outside the sim.
     pub fn write(&self) -> Checked<RefMut<'_, Frame>> {
         let frame = self.drawing()?;
-        if frame.role() == Some(ScriptRole::Ai) {
+        if matches!(frame.role(), Some(ScriptRole::Ai | ScriptRole::Bot)) {
             return Err(ApiError::NotForRole.fail().into());
         }
         Ok(frame)
@@ -79,6 +81,33 @@ impl Ctx {
             return Err(ApiError::PureCall.fail().into());
         }
         Ok(frame)
+    }
+
+    /// Fails a call of a name for `roles` that its role may not make: one for every role passes,
+    /// one for the sim's fails a bot's call alone, as a call outside any role, a test's probe,
+    /// makes those, and one for some roles fails any other's.
+    pub(crate) fn admit(&self, roles: RoleSet) -> Checked<()> {
+        if roles == RoleSet::ALL {
+            return Ok(());
+        }
+        if roles == RoleSet::SIM {
+            if self.frame().role() == Some(ScriptRole::Bot) {
+                return Err(ApiError::NotForRole.fail().into());
+            }
+            return Ok(());
+        }
+        self.require(roles)
+    }
+
+    /// Fails a bot's call that reads what only the player of `seat`, or no player's units, hold,
+    /// unless it is the bot's own seat, as a bot sees what its player sees (03-game-scripting.md,
+    /// A bot decides from what it sees, each think).
+    pub fn admit_seat(&self, seat: Option<Seat>) -> Checked<()> {
+        let frame = self.frame();
+        if frame.role() == Some(ScriptRole::Bot) && (seat.is_none() || frame.payer() != seat) {
+            return Err(ApiError::NotForRole.fail().into());
+        }
+        Ok(())
     }
 
     /// Fails the call unless its role is one of `roles`: a call given to some roles reads or

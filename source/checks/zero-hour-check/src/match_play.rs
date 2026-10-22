@@ -3,20 +3,24 @@ use std::mem;
 use std::num::NonZeroU32;
 
 use campfire_bots::{
-    BotBuffers, BotNames, BotScript, BotSink, HeldBotView, Location, NamedRefs, OrderScript,
-    OrderUnsent, ScriptedOrder, ScriptedUnits,
+    BotBuffers, BotNames, BotScript, BotSink, HeldBotView, OrderScript, OrderUnsent, PacedBot,
+    ScriptedOrder, ScriptedUnits, Think, ThinkError, ThinkingBot,
 };
-use campfire_capabilities::{Directive, Match, Order};
+use campfire_capabilities::{Books, Directive, GroundLocation, Location, Match, NamedRefs, Order};
 use campfire_common::{DeclaredName, Seat, Tick};
+use campfire_declarations::MatchFacts;
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
 use campfire_math::{Num, Vec3};
-use campfire_mode::{MatchEnd, OptionPicks, OptionValue, SeatPick};
+use campfire_mode::internals::MarkerOf;
+use campfire_mode::{MatchEnd, Mode, OptionPicks, OptionValue, SeatPick};
 use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
 use campfire_players::PlayersWorld;
 use campfire_production::Site;
 use campfire_protocol::{InputRules, SeatPlan, ServerInput};
 use campfire_runner::SessionWorld;
+use campfire_script::Budget;
+use campfire_sim::MatchRate;
 use campfire_sim::{Position, StableId};
 use campfire_units::{BuildTarget, GroundPoint, Life, MapPoint, MoveStep, Units, UnitsWorld};
 use campfire_values::{ResourceId, UnitType};
@@ -62,28 +66,39 @@ pub(crate) struct BuildingDozer {
     pub(crate) id: StableId,
 }
 
-/// A match a play of the check drives a tick at a time, as player 1, the tick it runs next, and
-/// the bots it drives. A part of the imported mode a play reads and does not find is a failure of
-/// the import.
+/// A match a play of the check drives a tick at a time, as player 1, the tick it runs next, the
+/// bots it drives, the books a bot's think resolves its orders' names in, once one thinks, and
+/// the first think that failed. A part of the imported mode a play reads and does not find is a
+/// failure of the import.
 #[derive(Debug)]
 pub(crate) struct MatchPlay {
     fixed: FixedMatch,
     tick: Tick,
     bots: Vec<MatchBot>,
+    books: Option<Books>,
+    failed: Option<ThinkError>,
 }
 
-/// A bot a play drives by the step a server's bot driver takes: its seat, its script, the view of
-/// the match its step reads, as the driver's does, and the step's buffers, the payloads a step
-/// gives, its home, and the farthest any of its units stood from there.
+/// A bot a play drives as a server's bot driver does: its seat, what plays it, the view of the
+/// match it reads, as the driver's does, and its buffers, the payloads it gives, its home, and the
+/// farthest any of its units stood from there.
 #[derive(Debug)]
 struct MatchBot {
     seat: u32,
-    script: BotScript,
+    plays: MatchBotPlays,
     view: HeldBotView,
     buffers: BotBuffers,
     due: DuePayloads,
     home: Vec3,
     farthest: Num,
+}
+
+/// What plays a play's bot: an order script, by its step; or a bot of the mode, at its pace, as
+/// the server's driver plays it.
+#[derive(Debug)]
+enum MatchBotPlays {
+    Orders(BotScript),
+    Thinks(PacedBot),
 }
 
 /// The payloads a bot's step gives in a tick, which the play serves once the step, which reads
@@ -145,8 +160,10 @@ impl AgainstAmerica {
             .seat_picked(&[player, bot]);
         let mut play = MatchPlay::new(session.start());
         let played = steps(&mut play, session.packages());
-        play.end();
-        played
+        let ended = play.end();
+        let played = played?;
+        ended?;
+        Ok(played)
     }
 }
 
@@ -157,21 +174,58 @@ impl MatchPlay {
             fixed,
             tick: Tick::new(0),
             bots: Vec::new(),
+            books: None,
+            failed: None,
         }
     }
 
     /// Drives player `seat` by `script` from the tick it runs next, as a server drives its bot,
     /// beside the bots it drives already, and keeps the farthest its units stand from `home`.
     pub(crate) fn drive_bot(&mut self, seat: u32, script: BotScript, home: Vec3) {
+        self.drive(seat, MatchBotPlays::Orders(script), home);
+    }
+
+    /// Drives player `seat` by the bot `name` of `packages` from the tick it runs next, as a
+    /// server drives a bot of its mode, beside the bots it drives already, and keeps the farthest
+    /// its units stand from `home`; a failure when the mode names no such bot.
+    pub(crate) fn drive_mode_bot(
+        &mut self,
+        packages: &ModePackages,
+        seat: u32,
+        name: &'static str,
+        home: Vec3,
+    ) -> Result<(), CheckFailure> {
+        let declared = DeclaredName::new(name).expect("a bot's name");
+        let bot = packages.bot(&declared).ok_or(CheckFailure::NoBot(name))?;
+        let rate = *self.game().resource::<MatchRate>();
+        let bot = PacedBot::new(ThinkingBot::new(bot), rate);
+        self.books.get_or_insert_with(|| packages.name_books());
+        self.drive(seat, MatchBotPlays::Thinks(bot), home);
+        Ok(())
+    }
+
+    /// Drives player `seat` by `plays`, keeping the farthest its units stand from `home`.
+    fn drive(&mut self, seat: u32, plays: MatchBotPlays, home: Vec3) {
         self.bots.push(MatchBot {
             seat,
-            script,
+            plays,
             view: HeldBotView::new(self.fixed.game_mut()),
             buffers: BotBuffers::default(),
             due: DuePayloads::default(),
             home,
             farthest: Num::ZERO,
         });
+    }
+
+    /// The point of the start waypoint `Player_<n>_Start`; a failure on a map with none.
+    pub(crate) fn start(&self, n: u32) -> Result<Vec3, CheckFailure> {
+        let name = format!("Player_{n}_Start");
+        let of = MarkerOf {
+            tag: "start",
+            param: "name",
+            value: &name,
+        };
+        Mode::marker_point(self.game(), of).ok_or(CheckFailure::NoStarts)
     }
 
     /// Where America's command center of player `seat` stands; a failure when the player has no
@@ -198,7 +252,7 @@ impl MatchPlay {
             tick: self.tick,
             units: ScriptedUnits::Typed(DeclaredName::new(DOZER).expect("the dozer's name")),
             directive: Directive::Orders(OrdersDirective::Move {
-                to: Location::At(to),
+                to: GroundLocation::At(Location::At(to)),
             }),
         };
         let script = OrderScript::of_orders([drive]).map_err(CheckFailure::BotOrders)?;
@@ -285,20 +339,47 @@ impl MatchPlay {
         }
     }
 
-    /// Logs what `bot`'s script has due by the tick it runs next, as the server's bot driver's
-    /// step gives it: its mode inputs, then its orders, each for the bot's units it names.
+    /// Logs what `bot` has due by the tick it runs next, as the server's bot driver gives it: an
+    /// order script's mode inputs, then its orders, each for the bot's units it names; a bot's
+    /// orders of its think, when it thinks, from a pool of the mode's `think` limit, as a tick's
+    /// thinks share one. The first think that fails the play keeps.
     fn serve_bot(&mut self, bot: &mut MatchBot) {
         let MatchBot {
             seat,
-            script,
+            plays,
             view,
             buffers,
             due,
             ..
         } = bot;
         let seat = Seat::new(*seat);
-        let view = view.get(self.fixed.game());
-        script.step(self.tick, seat, &view, buffers, due);
+        match plays {
+            MatchBotPlays::Orders(script) => {
+                let view = view.get(self.fixed.game());
+                script.step(self.tick, seat, &view, buffers, due);
+            }
+            MatchBotPlays::Thinks(bot) => {
+                let world = self.fixed.game_mut();
+                let pools = world.resource::<MatchFacts>().role.pools();
+                let pool = pools.expect("a check's match runs scripts").limits.think;
+                let books = self
+                    .books
+                    .as_ref()
+                    .expect("a bot of the mode keeps the books");
+                let think = Think {
+                    seat,
+                    now: self.tick,
+                    budget: &mut Budget::new(pool),
+                    names: &BotNames::new(books),
+                    view,
+                    buffers,
+                    sink: due,
+                };
+                if let Err(error) = bot.play(world, think) {
+                    self.failed.get_or_insert(error);
+                }
+            }
+        }
         for payload in due.0.drain(..) {
             let input = ServerInput::Bot {
                 seat,
@@ -393,9 +474,11 @@ impl MatchPlay {
     }
 
     /// Ends the match: it takes the log's events while it lives, as its harness checks them, so
-    /// it ends before the check logs again.
-    pub(crate) fn end(mut self) {
+    /// it ends before the check logs again; the first think of a bot that failed, as a failure.
+    pub(crate) fn end(mut self) -> Result<(), CheckFailure> {
         self.fixed.end();
+        self.failed
+            .map_or(Ok(()), |error| Err(CheckFailure::BotThink(error)))
     }
 }
 

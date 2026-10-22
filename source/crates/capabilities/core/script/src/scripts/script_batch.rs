@@ -92,6 +92,21 @@ impl ScriptBatch<'_> {
         call_in::<H>(self.host, &mut Budget::new(u64::MAX), script, args)
     }
 
+    /// Calls the hook `H` of `script` with `args` in the running call, which reads, from
+    /// `budget`, a caller's own, as a bot's think draws from its driver's.
+    pub fn call_from<H: HookDecl>(
+        &mut self,
+        budget: &mut Budget,
+        script: ScriptId,
+        args: H::Args,
+    ) -> Result<ScriptValue, CallError> {
+        debug_assert!(
+            self.ctx.frame().is_pure(),
+            "a call from its caller's budget reads"
+        );
+        call_in::<H>(self.host, budget, script, args)
+    }
+
     /// Records that a call of `hook`, for `id` if any, failed with `error`.
     pub fn record(&mut self, id: Option<StableId>, hook: Hook, error: &CallError) {
         self.world

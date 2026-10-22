@@ -34,6 +34,8 @@ impl ApiReference<'_> {
         let roles = |roles: RoleSet| {
             if roles == RoleSet::ALL {
                 "every role".to_owned()
+            } else if roles == RoleSet::SIM {
+                "every role of the sim".to_owned()
             } else {
                 let names: Vec<_> = roles.iter().map(ScriptRole::name).collect();
                 names.join(", ")

@@ -26,8 +26,9 @@ pub enum LoadProblem {
     /// depends on.
     #[error("not a package of the kind its place needs")]
     WrongKind,
-    /// The mode's script names a package that is no rules package the mode depends on.
-    #[error("the mode's script names {0}, no rules package it depends on")]
+    /// A script of the mode's list or of its bots names a package that is no rules package the
+    /// mode depends on.
+    #[error("a script the mode names is of {0}, no rules package it depends on")]
     ScriptPackage(PackageName),
     /// A rules package's data gives a key that only a mode's own data gives: its script or its
     /// content.

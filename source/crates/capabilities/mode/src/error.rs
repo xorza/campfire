@@ -208,7 +208,7 @@ pub enum ModeRefusal {
     NegativeShare,
     /// A bounty share in a mode of no `[bounty]`.
     NoBounty,
-    /// A search for room of a gap not above 0, or of steps below 0 or past `MAX_STEPS`.
+    /// A search for room of a gap not above 0, or of steps below 0 or past `GridSearch::MAX_STEPS`.
     RoomSearch,
     /// A unit to respawn that is alive.
     RespawnAlive,

@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use campfire_math::Vec3;
+use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 use campfire_values::ItemId;
 use serde::Serialize;
@@ -69,6 +69,9 @@ pub trait RefMap<From: OrderRefs, To: OrderRefs> {
     fn slot(&mut self, slot: From::Slot) -> Result<To::Slot, Self::Error>;
 
     fn ground(&mut self, ground: From::Ground) -> Result<To::Ground, Self::Error>;
+
+    /// The point a build places its building at, whose box turns `angle` degrees.
+    fn place(&mut self, place: From::Ground, angle: Num) -> Result<To::Ground, Self::Error>;
 
     fn point(&mut self, point: From::Point) -> Result<To::Point, Self::Error>;
 

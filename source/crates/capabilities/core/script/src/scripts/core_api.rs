@@ -8,6 +8,7 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
 use crate::scripts::member_decl::MemberDecl;
 use crate::scripts::player_handle::PlayerHandle;
+use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::api_builder::ApiBuilder;
 use crate::scripts::script_call::ScriptCall;
 use crate::scripts::script_value::ScriptValue;
@@ -30,8 +31,9 @@ impl CoreApi {
             .call(
                 MemberDecl::value(
                     "params",
-                    "the params: an ability's at its rank, a modifier's then its ability's, or the mode's",
-                ),
+                    "the params: an ability's at its rank, a modifier's then its ability's, the mode's, or a bot's then the mode's",
+                )
+                .roles(RoleSet::SIM.and(RoleSet::BOT)),
                 |ctx: &mut Ctx| Ok(Params(ctx.clone())),
             )
             .call(chance, |ctx: &mut Ctx, p: Num| Self::chance(ctx, p))

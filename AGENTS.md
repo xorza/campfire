@@ -8,7 +8,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
 - `docs/research/` — what the design is taken from: measurements and sources read, facts only.
 - `PLAN.md` — the one plan: every open step, in the order it is done, in batches of one commit each, and the foundations ([Workflow](#workflow)). It lists open items only.
 - `.notes/ISSUES.md` — the issue log: every open problem ([Issue log](#issue-log)).
-- `source/` — engine and game code ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, by game: `engine/` the generic heroes, modes and rules, `moba/` the MOBA test content; `source/packages/<game>/` an imported game's rules package; `source/bots/<game>/<map>/` the sample bot scripts a host gives a local server's bots, `start<n>-<faction>-<role>.toml`, each of which a check plays.
+- `source/` — engine and game code ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, by game: `engine/` the generic heroes, modes and rules, `moba/` the MOBA test content; `source/packages/<game>/` an imported game's rules package, its bot scripts among its scripts.
 - `../GeneralsX/` — beside this repository, not in it: [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS: the reference for Zero Hour's formats and rules. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/09-zero-hour.md#decisions)).
 
 When code and design disagree, fix one of them, and state which one.

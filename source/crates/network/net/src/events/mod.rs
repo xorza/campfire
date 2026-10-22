@@ -2,6 +2,7 @@
 
 pub(crate) mod bot_order_unsent;
 pub(crate) mod bot_payload_dropped;
+pub(crate) mod bot_think_failed;
 pub(crate) mod checkpoint_failed;
 pub(crate) mod checkpoint_taken;
 pub(crate) mod client_frame;

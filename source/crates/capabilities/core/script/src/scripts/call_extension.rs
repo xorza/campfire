@@ -142,12 +142,20 @@ impl CallExtensions {
         }
     }
 
-    /// The running call's param `name` of `scope`; an error when no extension holds the scope's
-    /// params, or its extension declares no such param.
+    /// The running call's param `name` of `scope`, else of the scope it falls back to, as a
+    /// bot's params lie over the mode's; an error when no extension holds the scope's params, or
+    /// none it falls back to declares such a param.
     pub(crate) fn param(&self, scope: ParamScope, name: &str) -> Result<ScriptValue, ApiError> {
-        let source = self.params[scope.index()].ok_or_else(|| scope.missing())?;
-        let value = (source.param)(self.extensions.at(source.at).as_any(), name);
-        value.ok_or(ApiError::Unknown(Param::NAMES))
+        let own = self.params[scope.index()]
+            .and_then(|source| (source.param)(self.extensions.at(source.at).as_any(), name));
+        if let Some(value) = own {
+            return Ok(value);
+        }
+        match scope.falls_back() {
+            Some(under) => self.param(under, name),
+            None if self.params[scope.index()].is_none() => Err(scope.missing()),
+            None => Err(ApiError::Unknown(Param::NAMES)),
+        }
     }
 
     /// The param `name` of `extension`, an extension of type `P`.

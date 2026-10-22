@@ -26,6 +26,9 @@ pub enum OrdersDirective<R: OrderRefs = Ids> {
     Stop,
     /// Use the object `target` with the use slot: its action runs from that slot.
     Use { target: R::Unit },
+    /// Walk to a point on the ground plane as a move does, attacking each enemy the scan finds on
+    /// the way, then walking on (04-capabilities/control.md, An army attack-moves).
+    AttackMove { to: R::Ground },
 }
 
 impl Copy for OrdersDirective {}
@@ -46,6 +49,9 @@ impl<R: OrderRefs> OrdersDirective<R> {
             },
             Self::Attack { target } => OrdersDirective::Attack {
                 target: refs.unit(target)?,
+            },
+            Self::AttackMove { to } => OrdersDirective::AttackMove {
+                to: refs.ground(to)?,
             },
             Self::Slot { slot, target } => OrdersDirective::Slot {
                 slot: refs.slot(slot)?,

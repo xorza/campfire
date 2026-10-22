@@ -29,7 +29,7 @@ mod toml_table;
 mod toml_value;
 
 pub use crate::binary::{Binary, Decoded};
-pub use crate::error::{BinaryError, JsonError, TaggedError, TomlError};
+pub use crate::error::{BinaryError, JsonError, TaggedError, TomlError, TomlWriteError};
 pub use crate::json::Json;
 pub use crate::json_value::JsonValue;
 pub use crate::sink::Sink;

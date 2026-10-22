@@ -136,6 +136,11 @@ impl Holdings {
         self.sums_mut(seat).used += u64::from(cost);
     }
 
+    /// Whether a follow counted the units, as each tick's first does.
+    pub(crate) const fn followed(&self) -> bool {
+        self.followed.is_some()
+    }
+
     /// Whether `owner`, who holds `modifiers`, holds what `required` needs, a unit of one type of
     /// each of its entries: one with no `requires` needs nothing, and a unit no player owns meets
     /// no need.

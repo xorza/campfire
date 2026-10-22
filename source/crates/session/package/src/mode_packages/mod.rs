@@ -1,10 +1,12 @@
+use std::collections::BTreeMap;
 use std::iter;
+use std::num::NonZeroU32;
 
 use campfire_capabilities::{BookInput, Books, PackageContent, PackageScript, Release};
 use campfire_codec::TomlTable;
-use campfire_common::{MapName, PackageFingerprint};
+use campfire_common::{DeclaredName, MapName, PackageFingerprint};
 use campfire_declarations::{ScriptAt, SourceKind, SourcePackage};
-use campfire_mode::{MapData, ModeData};
+use campfire_mode::{MapData, ModeData, ModeParam};
 use campfire_script::{ModeScripts, ScriptApi, ScriptHost, ScriptId, ScriptUses};
 use campfire_sim::{Capability, MatchRate};
 use campfire_units::{HeightGrid, ScriptBook};
@@ -15,6 +17,7 @@ use crate::dependent::{Dependent, DependentKind, OpenedDependent};
 use crate::error::load_problem::LoadProblem;
 use crate::error::{ContentError, LoadError};
 use crate::file_index::FileIndex;
+use crate::files::bot_list::BotList;
 use crate::files::map_file::MapFile;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
@@ -38,6 +41,8 @@ pub struct ModePackages {
     pub(crate) manifest: ModeManifest,
     /// The scripts it runs, in order, and which is its own.
     pub(crate) list: ScriptOrder,
+    /// The bots it names, by name.
+    pub(crate) bots: BotList,
     pub(crate) data: ModeData,
     /// The name of the map it loaded, which its session plays.
     map_name: MapName,
@@ -53,6 +58,15 @@ pub struct ModePackages {
     /// What each script uses of the data, in the same order.
     uses: ScriptUses,
     overrides: Vec<DataOverride>,
+}
+
+/// A bot a mode names, as a match runs it: its script, by its place among the scripts a match
+/// compiles, the period of its think, and its params, which lie over the mode's.
+#[derive(Debug, Clone, Copy)]
+pub struct ModeBot<'a> {
+    pub script: ScriptId,
+    pub think_ms: NonZeroU32,
+    pub params: &'a BTreeMap<DeclaredName, ModeParam>,
 }
 
 impl ModePackages {
@@ -144,6 +158,17 @@ impl ModePackages {
             .collect()
     }
 
+    /// The bot `name`: its script, by its place among the scripts a match compiles, the period of
+    /// its think, and its params; none for a bot the mode does not name.
+    pub fn bot(&self, name: &DeclaredName) -> Option<ModeBot<'_>> {
+        let bot = self.bots.get(name)?;
+        Some(ModeBot {
+            script: self.script_id(&bot.script),
+            think_ms: bot.think_ms,
+            params: &bot.params,
+        })
+    }
+
     /// The scripts the mode's list names, in its order, each by its place among the scripts a
     /// match compiles.
     pub fn mode_scripts(&self) -> ModeScripts {
@@ -151,8 +176,8 @@ impl ModePackages {
         ModeScripts::new(ids, self.list.mode())
     }
 
-    /// The script `source` of the mode's list, by its place among the scripts a match compiles:
-    /// past every script of the packages before the one that holds it.
+    /// The script `source` of the mode's list or of a bot, by its place among the scripts a match
+    /// compiles: past every script of the packages before the one that holds it.
     fn script_id(&self, source: &ScriptSource) -> ScriptId {
         let mut before = 0;
         for view in self.packages() {
@@ -160,12 +185,12 @@ impl ModePackages {
                 let at = view
                     .package
                     .script_index(source.path())
-                    .expect("the load checked each script of the mode's list");
+                    .expect("the load checked each script of the mode's list and its bots");
                 return ScriptId::nth(before + at);
             }
             before += view.package.scripts.len();
         }
-        panic!("the load checked the package of each script of the mode's list")
+        panic!("the load checked the package of each script of the mode's list and its bots")
     }
 
     /// The paths of the scripts of the mode's list that the package at `view` holds.
@@ -335,6 +360,7 @@ impl ModePackages {
         let laid = Self::lay_data(own, &manifest.header.name, &opened, &mut overrides);
         let ModeFile {
             scripts: list,
+            bots,
             defaults,
             data,
             mut content,
@@ -358,7 +384,12 @@ impl ModePackages {
             .into_iter()
             .map(|opened| opened.read(&parser, &api, &defaults))
             .collect::<Result<_, _>>()?;
-        for name in list.iter().filter_map(ScriptSource::package) {
+        let bot_scripts = bots.iter().map(|(_, bot)| &bot.script);
+        for name in list
+            .iter()
+            .chain(bot_scripts)
+            .filter_map(ScriptSource::package)
+        {
             let rules = dependencies.iter().any(|dependent| {
                 dependent.package.header.name == *name
                     && matches!(dependent.kind, DependentKind::Rules(_))
@@ -374,6 +405,7 @@ impl ModePackages {
             mode,
             manifest,
             list,
+            bots,
             data,
             map_name,
             map,

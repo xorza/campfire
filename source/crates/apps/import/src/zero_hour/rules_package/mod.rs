@@ -12,8 +12,8 @@ use campfire_mode::{
     TeamData, TeamManifest,
 };
 use campfire_package::{
-    Dependency, DependencyPath, Language, ModeManifest, PackageHeader, PackageName, ScriptOrder,
-    ScriptSource, TickRange,
+    BotData, BotList, Dependency, DependencyPath, Language, ModeManifest, PackageHeader,
+    PackageName, ScriptOrder, ScriptSource, TickRange,
 };
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
@@ -33,7 +33,7 @@ const BASE_COUNT: i64 = 2;
 
 /// Zero Hour's rules package as the importer ships it, `source/packages/zero-hour/`: each file but
 /// its index, by its path, which the import writes beside the imported package.
-pub(crate) const RULES_FILES: [(&str, &[u8]); 3] = [
+pub(crate) const RULES_FILES: [(&str, &[u8]); 4] = [
     (
         "manifest.toml",
         include_bytes!("../../../../../../packages/zero-hour/manifest.toml"),
@@ -46,7 +46,54 @@ pub(crate) const RULES_FILES: [(&str, &[u8]); 3] = [
         "scripts/mode.rhai",
         include_bytes!("../../../../../../packages/zero-hour/scripts/mode.rhai"),
     ),
+    (
+        "scripts/bot.rhai",
+        include_bytes!("../../../../../../packages/zero-hour/scripts/bot.rhai"),
+    ),
 ];
+
+/// The mode's bots, both of the rules package's bot script, each thinking every 10 s, as a move
+/// each second restarts the army's paths before it gets far, and each keeping 3 gatherers for
+/// each drop-off: the `builder`, which builds its base and trains no army, and the `attacker`,
+/// which also sends an army of 30 at the enemy, as 12 die against a base's defenses, guarding 400
+/// round its start while it gathers, going at the nearest enemy it sees within 5,000, all of a map
+/// with no vision, and attacking within 300 of it; each searches its builds' places on a grid of
+/// the pathfind cell, 10, within 64 cells, as the mode's script finds a start's room
+/// (09-zero-hour.md, A builder and an attacker; 04-capabilities/control.md, A bot gathers).
+fn bots() -> BotList {
+    let declared = |name: &str| DeclaredName::new(name).expect("a name the import gives");
+    let script = ScriptSource::Rules {
+        package: PackageName::new(ZeroHour::RULES).expect("the rules package's name"),
+        path: PackagePath::parse("scripts/bot.rhai").expect("the rules' bot script's path"),
+    };
+    let bot = |params: &[(&str, i64)]| BotData {
+        script: script.clone(),
+        think_ms: NonZeroU32::new(10000).expect("10 s is no zero"),
+        params: params
+            .iter()
+            .map(|&(name, value)| (declared(name), ModeParam::Value(Scalar::Int(value))))
+            .collect(),
+    };
+    let builder = [
+        ("army", 0),
+        ("gatherers", 3),
+        ("place_gap", 10),
+        ("place_steps", 64),
+    ];
+    let attacker = [
+        ("army", 30),
+        ("gatherers", 3),
+        ("guard", 400),
+        ("sight", 5000),
+        ("reach", 300),
+        ("place_gap", 10),
+        ("place_steps", 64),
+    ];
+    BotList::new(BTreeMap::from([
+        (declared("builder"), bot(&builder)),
+        (declared("attacker"), bot(&attacker)),
+    ]))
+}
 
 /// The imported package's manifest: a mode of eight players, each on a team of its own, beside the
 /// `neutral` team every placed object stands on, whose units drive, are made and fight with shells and
@@ -164,6 +211,9 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
             ),
             (param("base_buildings", faction), list(&base.buildings)),
             (param("base_units", faction), list(&base.units)),
+            (param("army_units", faction), list(&base.army)),
+            (param("gatherers", faction), list(&base.gatherers)),
+            (param("drop_offs", faction), list(&base.drop_offs)),
         ]
     });
     let base_count = (
@@ -211,6 +261,7 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     });
     let mut writer = SectionWriter::default();
     writer.key(ScriptOrder::KEY, &ScriptOrder::one(rules));
+    writer.key(BotList::KEY, &bots());
     writer.own::<ModeData>(&ModePatch {
         name: Some(text("mode-name")),
         teams: Some(teams),

@@ -30,6 +30,8 @@ impl Pool {
             return None;
         }
         Some(match (start.role, start.payer, start.acting) {
+            // A bot's call reads, from the bot driver's own budget.
+            (ScriptRole::Bot, _, _) => return None,
             (ScriptRole::Ai, _, _) => Self::Think,
             (_, Some(slot), _) => Self::Player(slot),
             (ScriptRole::Mode, None, _)

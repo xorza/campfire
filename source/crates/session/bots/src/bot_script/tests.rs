@@ -1,12 +1,11 @@
 use campfire_actions::{ActionBook, ActionTarget};
 use campfire_capabilities::Books;
 use campfire_common::DeclaredName;
-use campfire_math::Num;
 use campfire_orders::OrdersDirective;
 use campfire_script::UnknownName;
 use campfire_sim::IdAllocator;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::{MapPointError, UnitTypeBook};
+use campfire_units::{BuildTarget, MapPointError, UnitTypeBook};
 use campfire_values::{ActionId, FilterData};
 
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
@@ -89,7 +88,9 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
     for (order, to) in [(&east, ground(0, 2)), (&point, ground(3, -4))] {
         assert_eq!(
             order.directive,
-            Directive::Orders(OrdersDirective::Move { to })
+            Directive::Orders(OrdersDirective::Move {
+                to: LoadedGround::At(to)
+            })
         );
         assert_eq!(order.slot, None);
     }
@@ -127,7 +128,7 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
     ] {
         assert_eq!(unknown(&text), refused, "{text}");
     }
-    let refused = |text| bot(text).unwrap_err();
+    let refused = |text: &str| bot(text).unwrap_err();
     assert_eq!(
         refused("directive.orders.move.to.marker = \"camp\""),
         BotScriptError::NoPoint(DeclaredName::new("camp").unwrap())
@@ -142,11 +143,51 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
     );
     assert_eq!(
         walk("directive.orders.move.to = [21, 0]").directive,
-        Directive::Orders(OrdersDirective::Move { to: ground(21, 0) })
+        Directive::Orders(OrdersDirective::Move {
+            to: LoadedGround::At(ground(21, 0))
+        })
     );
     assert_eq!(
         refused("directive.orders.move.to = [1, 0, 1]"),
         BotScriptError::Point(MapPointError::Shape)
+    );
+    // A search for a place is a build's alone, of a gap above 0, within 128 steps.
+    let build = |near: &str| {
+        format!(
+            "directive.orders.build = {{ slot = \"first\", target.point = {{ at = {near}, angle = 0 }} }}"
+        )
+    };
+    for (text, error) in [
+        (
+            "directive.orders.move.to = { near = [0, 0], gap = 1, steps = 2 }".to_owned(),
+            BotScriptError::NearOutsideBuild,
+        ),
+        (
+            build("{ near = [0, 0], gap = 0, steps = 2 }"),
+            BotScriptError::NearGap(Num::ZERO),
+        ),
+        (
+            build("{ near = [0, 0], gap = 1, steps = 129 }"),
+            BotScriptError::NearSteps(129),
+        ),
+    ] {
+        assert_eq!(refused(&text), error, "{text}");
+    }
+    let near = first(&bot(&build("{ near = [0, 0], gap = 1, steps = 128 }")).unwrap());
+    let Directive::Orders(OrdersDirective::Build { target, .. }) = near.directive else {
+        panic!("a build");
+    };
+    let searched = LoadedGround::Near {
+        near: ground(0, 0),
+        gap: Num::ONE,
+        steps: 128,
+    };
+    assert_eq!(
+        target,
+        BuildTarget::Point {
+            at: searched,
+            angle: Num::ZERO
+        }
     );
 }
 
@@ -178,9 +219,9 @@ fn a_due_order_of_a_slot_goes_to_its_units_by_the_place_each_holds_the_action_at
 
 /// What a bot's step gave: each payload sent, and why each unsent order went unsent.
 #[derive(Debug, Default)]
-struct Heard {
-    sent: Vec<Vec<u8>>,
-    unsent: Vec<OrderUnsent>,
+pub(crate) struct Heard {
+    pub(crate) sent: Vec<Vec<u8>>,
+    pub(crate) unsent: Vec<OrderUnsent>,
 }
 
 impl BotSink for Heard {
@@ -200,8 +241,8 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
     // as an order may aim only at what its team sees: the cast goes unsent. In tick 1 the
     // walker's team sees the runner, 4 m off, and the cast goes to it, as the walker holds the
     // ability in its slot 0. Then it orders the creeps' attack, which the walker does not hold;
-    // attacks a stunned enemy hero, and none is; and moves its tower bolts, of which it owns
-    // none.
+    // attacks a stunned enemy hero, and none is; moves its tower bolts, of which it owns none;
+    // and builds by its first ability near the origin, which builds nothing, so finds no place.
     let session = FixedSession::new(TestMode::Lane.packages(), 2);
     let mut fixed = session.start();
     let units = MatchUnits::of(fixed.game());
@@ -211,7 +252,9 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
         "[[order]]\ntick = 0\n{cast}\n[[order]]\ntick = 1\n{cast}\n\
          [[order]]\ntick = 1\ndirective.orders.slot = {{ slot = \"creep_attack\", target = \"none\" }}\n\
          [[order]]\ntick = 1\ndirective.orders.attack.target = \"enemies:avatar:stunned\"\n\
-         [[order]]\ntick = 1\nunits = \"tower_bolt\"\ndirective.orders.move.to = [1, 1]\n"
+         [[order]]\ntick = 1\nunits = \"tower_bolt\"\ndirective.orders.move.to = [1, 1]\n\
+         [[order]]\ntick = 1\ndirective.orders.build = {{ slot = \"first\", target.point = \
+         {{ at = {{ near = [0, 0], gap = 1, steps = 2 }}, angle = 0 }} }}\n"
     );
     let books = session.packages().name_books();
     let names = BotNames::new(&books);
@@ -250,7 +293,8 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
         [
             OrderUnsent::NoSlot,
             OrderUnsent::NoTarget,
-            OrderUnsent::NoUnit
+            OrderUnsent::NoUnit,
+            OrderUnsent::NoPlace
         ]
     );
 }

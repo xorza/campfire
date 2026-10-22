@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use campfire_common::{DeclaredName, MapName, Seat, TlsKey};
 use campfire_mode::{OptionValue, SeatPick};
-use campfire_net::{JoinRole, SeatBotFile};
+use campfire_net::{JoinRole, SeatBotArg};
 use clap::Parser;
 use secp256k1::XOnlyPublicKey;
 
@@ -41,7 +41,7 @@ pub(crate) enum PlayedServer {
     /// `options` picks of the mode's options and `seat_picks` of its seats' choices, its data in
     /// the data directory `data`, which it needs.
     Local {
-        bots: Vec<SeatBotFile>,
+        bots: Vec<SeatBotArg>,
         options: Vec<OptionValue>,
         seat_picks: Vec<SeatPick>,
         data: PathBuf,
@@ -82,14 +82,24 @@ pub(crate) struct CommandLine {
         value_parser = CommandLine::team
     )]
     watch: Vec<DeclaredName>,
-    /// A bot of the local server, in a slot other than the player's 0, or in any slot of a
-    /// client that watches
+    /// A bot of the mode, by its name, on the local server, in a slot other than the player's 0,
+    /// or in any slot of a client that watches
     #[arg(
         long = "server-bot",
-        value_name = "SLOT=ORDERS FILE",
-        requires = "local"
+        value_name = "SLOT=BOT",
+        requires = "local",
+        value_parser = SeatBotArg::mode
     )]
-    server_bots: Vec<SeatBotFile>,
+    server_bots: Vec<SeatBotArg>,
+    /// The order script of a bot of the local server, its orders at their ticks, in a slot as
+    /// `--server-bot` takes one
+    #[arg(
+        long = "server-orders",
+        value_name = "SLOT=ORDERS FILE",
+        requires = "local",
+        value_parser = SeatBotArg::orders
+    )]
+    server_orders: Vec<SeatBotArg>,
     /// A value of one of the mode's options for the local server's session, as name=value; an
     /// option not named takes its default
     #[arg(long = "option", value_name = "NAME=VALUE", requires = "local")]
@@ -135,7 +145,12 @@ impl TryFrom<CommandLine> for Args {
         } else {
             JoinRole::Play
         };
-        if role == JoinRole::Play && line.server_bots.iter().any(|bot| bot.seat == Seat::new(0)) {
+        let bots: Vec<_> = line
+            .server_bots
+            .into_iter()
+            .chain(line.server_orders)
+            .collect();
+        if role == JoinRole::Play && bots.iter().any(|bot| bot.seat == Seat::new(0)) {
             return Err(ArgsError::ClientSlot);
         }
         let server = match line.remote {
@@ -147,7 +162,7 @@ impl TryFrom<CommandLine> for Args {
                 data: line.data,
             },
             None => PlayedServer::Local {
-                bots: line.server_bots,
+                bots,
                 options: line.options,
                 seat_picks: line.seat_picks,
                 data: line.data.expect("clap takes --local only with --data"),

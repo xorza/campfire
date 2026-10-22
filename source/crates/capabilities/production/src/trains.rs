@@ -27,7 +27,7 @@ use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::holdings::{Holdings, OwnedUnits};
 use crate::node_book::NodeBook;
 use crate::producer_spec::ProducerSpec;
-use crate::production_books::ProductionBooks;
+use crate::production_books::{ProductionBooks, TrainAdmission, TrainAsk};
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
 use crate::train_queue::{QueueDues, QueueIndex, Queued, TrainQueue};
@@ -97,14 +97,7 @@ impl Trains {
         mut holdings: ResMut<'_, Holdings>,
         (mut indexes, mut queues): (ProgressIndexes<'_>, QueueIndex<'_>),
     ) {
-        let ProductionBooks {
-            actions: book,
-            producers,
-            requirements,
-            trains: specs,
-            costs,
-            rules,
-        } = books;
+        let book = &books.actions;
         let now = tick.start();
         holdings.follow(&units.p0());
         let trains = {
@@ -113,7 +106,7 @@ impl Trains {
                 .iter()
                 .filter_map(|(entity, &id, _, (slots, progress), ..)| {
                     progress
-                        .ordered(slots, &book, ActionKind::Train)
+                        .ordered(slots, book, ActionKind::Train)
                         .map(|_| Keyed { id, entity })
                 });
             order.sort(ordered)
@@ -121,7 +114,6 @@ impl Trains {
         if trains.is_empty() {
             return;
         }
-        let max = rules.0.map(|rules| u64::from(rules.max));
         let mut training = units.p1();
         for &Keyed { id, entity } in trains {
             let (
@@ -137,7 +129,7 @@ impl Trains {
             ) = training.get_mut(entity).expect("a unit in the order");
             let pools = pools.of(life.as_deref().and_then(PoolBook::life));
             let ordered = progress
-                .ordered(slots, &book, ActionKind::Train)
+                .ordered(slots, book, ActionKind::Train)
                 .expect("an ordered train");
             progress.end(&mut indexes.of(id, entity));
             let purse = Purse::of(pools.read(), resources.of(held_by));
@@ -145,7 +137,7 @@ impl Trains {
             let no_target = |_| Relation::Friendly;
             let started = times.start(
                 ActionCheck {
-                    book: &book,
+                    book,
                     now,
                     caster: Caster::of(tags, Motion::Own, None),
                     slots,
@@ -159,21 +151,15 @@ impl Trains {
             let Some(StartChecked { checked, .. }) = started else {
                 continue;
             };
-            let capacity = producers.get(unit_type).map(|production| production.queue);
-            if !capacity.is_some_and(|capacity| queue.has_room(capacity)) {
-                continue;
-            }
-            let modifiers = held_modifiers.of(held_by);
-            if !holdings.meet(owner, modifiers, requirements.of(checked.id)) {
-                continue;
-            }
-            let made = specs
-                .get(checked.id)
-                .expect("a train's action trains")
-                .unit_type;
-            let cost = costs.cost(made);
-            let counts = max.zip(owner);
-            if counts.is_some_and(|(max, owner)| !holdings.has_room(owner, cost, max)) {
+            let ask = TrainAsk {
+                unit_type,
+                queue: &queue,
+                owner,
+                modifiers: held_modifiers.of(held_by),
+                action: checked.id,
+            };
+            let admission = books.admits(&holdings, ask);
+            if admission == TrainAdmission::Refused {
                 continue;
             }
             let values = checked.values;
@@ -197,8 +183,8 @@ impl Trains {
                 toggle: None,
             });
             queue.push(queued, paid, now, &mut queues.of(id, entity));
-            if let Some((_, owner)) = counts {
-                holdings.reserve(entity, owner, cost);
+            if let TrainAdmission::Holds { owner, supply } = admission {
+                holdings.reserve(entity, owner, supply);
             }
         }
     }

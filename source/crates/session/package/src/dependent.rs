@@ -1,5 +1,3 @@
-use std::iter;
-
 use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
 use campfire_declarations::UnitDefaults;
@@ -9,6 +7,7 @@ use crate::avatar_unit::AvatarUnit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::{ContentError, LoadError, PackageRef};
 use crate::files::avatar_file::{AvatarFile, AvatarSeed};
+use crate::files::bot_list::BotList;
 use crate::files::loadout_file::{LoadoutFile, LoadoutSeed};
 use crate::files::manifest::Manifest;
 use crate::files::package_name::PackageName;
@@ -74,7 +73,9 @@ impl Dependent {
                 };
                 let readers = Release::sections();
                 let content_keys = PackageContent::keys(&readers);
-                let own = iter::once(ScriptOrder::KEY).chain(content_keys);
+                let own = [ScriptOrder::KEY, BotList::KEY]
+                    .into_iter()
+                    .chain(content_keys);
                 if let Some(key) = own.into_iter().find(|&key| data.holds(key)) {
                     return Err(fail(LoadProblem::RulesKey(key.to_owned())));
                 }

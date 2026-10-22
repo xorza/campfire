@@ -118,6 +118,15 @@ impl<'a> LoadCheck<'a> {
         for path in packages.listed_in(view) {
             names.serve(path, ScriptRole::Mode, mode_params.iter().copied());
         }
+        for (_, bot) in packages
+            .bots
+            .iter()
+            .filter(|(_, bot)| view.holds(&bot.script))
+        {
+            let own = bot.params.keys().map(DeclaredName::as_str);
+            let params = own.chain(mode_params.iter().copied());
+            names.serve(bot.script.path(), ScriptRole::Bot, params);
+        }
         for named in self.names.scripts() {
             if !of_package(named.package) {
                 continue;

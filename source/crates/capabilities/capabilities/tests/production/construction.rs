@@ -1,5 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
+use bevy_ecs::system::SystemState;
 
 use crate::halves;
 use campfire_codec::Toml;
@@ -12,7 +13,7 @@ use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position};
 use campfire_units::{BuildTarget, GroundPoint, Layer, Life, MapBook, SeenBy, Wall};
 use campfire_values::{RelationSet, Share, TeamSet};
-use campfire_vision::{Sight, Vision};
+use campfire_vision::{ByVision, Sight, Vision};
 use serde::Deserialize;
 
 use super::*;
@@ -855,6 +856,81 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         Production::build_at(&mut game, builder, 0, 0);
         assert_eq!(shop.depots(&mut game).len(), depots, "{case}");
     }
+}
+
+#[test]
+fn a_place_search_takes_the_nearest_point_of_its_grid_where_its_build_passes() {
+    // The depot's box, 4 by 2 m, unturned covers (x − 2, z − 1) to (x + 2, z + 1) at (x, z), and
+    // turned 90 degrees (x − 1, z − 2) to (x + 1, z + 2). The search starts at the origin on a 1 m
+    // grid, by square distance, then by angle from +x toward −z: (0, 0); (1, 0), (0, −1), (−1, 0),
+    // (0, 1); (1, −1) ...; (2, 0), (0, −2), (−2, 0), (0, 2).
+    // A tick runs first, in which the unit grid takes the units the case placed.
+    let search = |game: &mut Match, builder, steps, angle| {
+        game.step();
+        let mut places = SystemState::<BuildPlaces<'_, '_, ByVision>>::new(game);
+        places.get(game).unwrap().nearest(PlaceSearch {
+            builder,
+            slot: 0,
+            near: GroundPoint::new(Num::ZERO, Num::ZERO),
+            gap: Num::ONE,
+            steps,
+            angle: Num::int(angle),
+        })
+    };
+    let point = |x: i64, z: i64| Some(GroundPoint::new(Num::int(x), Num::int(z)));
+    // A wall of (−1, −1) to (1, 1): the unturned box leaves it at |x| = 3 or |z| = 2, so (2, 0)
+    // fails and (0, −2) passes; the turned one at |x| = 2, so (2, 0) passes; within 1 step, none.
+    let wall = Wall {
+        layer: Layer::FIRST,
+        area: Polygon::new([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(|point| point.map(Num::int)))
+            .unwrap(),
+    };
+    let Building { mut game, yard, .. } = Building::new(Rules {
+        walls: vec![wall],
+        ..Rules::of(Style::Alone)
+    });
+    let builder = yard.builder(&mut game, halves(-12, 0), Team::new(0), 0);
+    assert_eq!(search(&mut game, builder, 8, 0), point(0, -2));
+    assert_eq!(search(&mut game, builder, 8, 90), point(2, 0));
+    assert_eq!(search(&mut game, builder, 1, 0), None);
+    // With nothing there, the origin; a seen enemy's walker of a half meter at (0.5, 0.5) holds
+    // the box off until it only touches it, at (0, −1); one its own team alone sees, none.
+    let Building {
+        mut game,
+        yard,
+        shop,
+    } = Building::new(Rules::of(Style::Alone));
+    let builder = yard.builder(&mut game, halves(-12, 0), Team::new(0), 0);
+    assert_eq!(search(&mut game, builder, 8, 0), point(0, 0));
+    // The builder may start its build of 15 gold with its player's 100, and not with 14.
+    let may_start = |game: &mut Match| {
+        let now = game.resource::<SimTick>().end();
+        let mut checks = SystemState::<StartChecks<'_, '_>>::new(game);
+        checks.get(game).unwrap().may_start(builder, 0, now)
+    };
+    assert!(may_start(&mut game));
+    let mut held = game.player_resources_mut(Seat::new(0)).unwrap();
+    held.add(shop.gold, -86).unwrap();
+    assert!(!may_start(&mut game));
+    for (seen, found) in [
+        (TeamSet::of(Team::new(0)), point(0, -1)),
+        (TeamSet::of(Team::new(1)), point(0, 0)),
+    ] {
+        let Building { mut game, yard, .. } = Building::new(Rules::of(Style::Alone));
+        Production::yard_walker(&mut game, halves(1, 1), Team::new(1), Some(seen));
+        let builder = yard.builder(&mut game, halves(-12, 0), Team::new(0), 0);
+        assert_eq!(search(&mut game, builder, 8, 0), found, "{seen:?}");
+    }
+    // A static body, a circle of 1 m at (1, 0), leaves the unturned box at (0, −2), where it
+    // touches its lowest point.
+    let Building { mut game, yard, .. } = Building::new(Rules::of(Style::Alone));
+    let body = BodyForm::circle(Num::ONE).unwrap();
+    Navigation::walker_at(&mut game, halves(2, 0))
+        .team(Team::new(2))
+        .body(body)
+        .place(&mut game);
+    let builder = yard.builder(&mut game, halves(-12, 0), Team::new(0), 0);
+    assert_eq!(search(&mut game, builder, 8, 0), point(0, -2));
 }
 
 #[test]

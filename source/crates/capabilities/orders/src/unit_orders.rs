@@ -6,7 +6,7 @@ use campfire_actions::{
     ActionBook, ActionKind, ActionSlots, ActionTarget, ProgressIndexes, Targets,
 };
 use campfire_declarations::{Role, Scratch};
-use campfire_math::Vec3;
+use campfire_math::{Num, Vec3};
 use campfire_navigation::{GroupBox, Party, PartyKey, Route, RouteDues};
 use campfire_players::TickCommands;
 use campfire_sim::{DueIndex, EntityIndex, Position, SimTick};
@@ -39,6 +39,24 @@ pub(super) struct Mover {
     position: Vec3,
 }
 
+/// How a walk of a group's order walks: as a move, or as an attack-move, whose units' scans look
+/// on the way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Walk {
+    Move,
+    AttackMove,
+}
+
+impl Walk {
+    /// The order of one unit to walk to `x`, `z` so, as one of `party` when a group walks.
+    const fn order(self, x: Num, z: Num, party: Option<Party>) -> UnitOrder {
+        match self {
+            Self::Move => UnitOrder::Move { x, z, party },
+            Self::AttackMove => UnitOrder::AttackMove { x, z, party },
+        }
+    }
+}
+
 /// The orders of `orders` among the tick's inputs: each unit's checked, then applied.
 #[derive(Debug)]
 pub struct UnitOrders;
@@ -51,8 +69,9 @@ impl UnitOrders {
     /// other than a cast, a train or a gather, a gather at no unit, a build of a slot that holds
     /// none, and an order whose unit target its player's vision group does not see: a client can
     /// send anything. A use goes on to `interaction`, which drops one by a unit with no use slot or
-    /// that the object's users do not select. A move to two units or more that walk moves them as a
-    /// group: each walks to its own goal by the group's box, as one party, the order's.
+    /// that the object's users do not select. A move or an attack-move to two units or more that
+    /// walk moves them as a group: each walks to its own goal by the group's box, as one party,
+    /// the order's.
     pub(super) fn check_player_orders<S: TeamSight>(
         (tick, map, index): (Res<'_, SimTick>, Res<'_, MapBook>, Res<'_, EntityIndex>),
         mut orders: TickCommands<'_, '_, OrdersDirective>,
@@ -73,10 +92,12 @@ impl UnitOrders {
                     Some((entity, units.get(entity).ok()?))
                 })
                 .filter(|(_, (owner, ..))| order.controls(**owner));
-            if let OrdersDirective::Move {
-                to: GroundPoint { x, z },
-            } = order.directive
-            {
+            let walk = match order.directive {
+                OrdersDirective::Move { to } => Some((to, Walk::Move)),
+                OrdersDirective::AttackMove { to } => Some((to, Walk::AttackMove)),
+                _ => None,
+            };
+            if let Some((GroundPoint { x, z }, walk)) = walk {
                 movers.clear();
                 movers.extend(controlled.filter(|(_, (.., walks, _))| *walks).map(
                     |(entity, (_, _, &at, ..))| Mover {
@@ -88,9 +109,7 @@ impl UnitOrders {
                     return;
                 };
                 if let &[Mover { entity, .. }] = movers.as_slice() {
-                    checked
-                        .0
-                        .push((entity, UnitOrder::Move { x, z, party: None }));
+                    checked.0.push((entity, walk.order(x, z, None)));
                     return;
                 }
                 let goal = map.bounds.clamp_ground([x, z]);
@@ -109,14 +128,7 @@ impl UnitOrders {
                         key,
                         goal: map.bounds.ground_point(goal, at),
                     };
-                    checked.0.push((
-                        entity,
-                        UnitOrder::Move {
-                            x,
-                            z,
-                            party: Some(party),
-                        },
-                    ));
+                    checked.0.push((entity, walk.order(x, z, Some(party))));
                 }
                 return;
             }
@@ -157,7 +169,9 @@ impl UnitOrders {
                         sees(target).then_some(UnitOrder::Use { target })
                     }
                     OrdersDirective::Stop => Some(UnitOrder::Stop),
-                    OrdersDirective::Move { .. } => unreachable!("a move was checked as a group"),
+                    OrdersDirective::Move { .. } | OrdersDirective::AttackMove { .. } => {
+                        unreachable!("a walk was checked as a group")
+                    }
                 };
                 checked.0.extend(unit_order.map(|order| (entity, order)));
             }

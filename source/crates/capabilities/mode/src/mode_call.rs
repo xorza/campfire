@@ -62,6 +62,10 @@ impl CallExtension for ModeCall {
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
         self.players.begin();
         self.running = start.listed.filter(|_| start.role == ScriptRole::Mode);
+        // A bot's think reads the choices as the match holds them, between its ticks.
+        if start.role == ScriptRole::Bot {
+            self.choices.clone_from(world.resource::<Choices>());
+        }
         if self.running.is_none() {
             return Ok(());
         }

@@ -1,11 +1,16 @@
 use bevy_ecs::system::{Res, SystemParam};
 use campfire_actions::{ActionBook, ByAction};
+use campfire_common::Seat;
 use campfire_declarations::ByType;
+use campfire_stats::PlayerModifiers;
+use campfire_values::{ActionId, UnitType};
 
+use crate::holdings::Holdings;
 use crate::producer_spec::ProducerSpec;
 use crate::requirement_book::RequirementBook;
 use crate::supply_book::SupplyBook;
 use crate::supply_cost_book::SupplyCostBook;
+use crate::train_queue::TrainQueue;
 use crate::train_spec::TrainSpec;
 
 /// The books a train is checked and paid by: the actions, each producer's data, what a train
@@ -19,4 +24,64 @@ pub(crate) struct ProductionBooks<'w> {
     pub(crate) trains: Res<'w, ByAction<TrainSpec>>,
     pub(crate) costs: Res<'w, SupplyCostBook>,
     pub(crate) rules: Res<'w, SupplyBook>,
+}
+
+/// A train, as what its start checks beyond the core's checks of its slot reads it: its
+/// producer's type and queue, the producer's owner and the modifiers the owner holds, and its
+/// action.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TrainAsk<'a> {
+    pub(crate) unit_type: UnitType,
+    pub(crate) queue: &'a TrainQueue,
+    pub(crate) owner: Option<Seat>,
+    pub(crate) modifiers: Option<&'a PlayerModifiers>,
+    pub(crate) action: ActionId,
+}
+
+/// Whether a train passes what its start checks beyond the core's checks of its slot, and the
+/// supply it then holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TrainAdmission {
+    Refused,
+    /// It passes, of an owner whose supply does not count.
+    Free,
+    /// It passes, and holds `supply` of `owner`'s.
+    Holds {
+        owner: Seat,
+        supply: u32,
+    },
+}
+
+impl ProductionBooks<'_> {
+    /// Whether the train of `ask` passes what its start checks beyond the core's checks of its
+    /// slot, by `holdings`: its queue has room, its owner meets its `requires` and, in a match
+    /// with supply, has room under its cap for what it uses.
+    pub(crate) fn admits(&self, holdings: &Holdings, ask: TrainAsk<'_>) -> TrainAdmission {
+        let TrainAsk {
+            unit_type,
+            queue,
+            owner,
+            modifiers,
+            action,
+        } = ask;
+        let capacity = self
+            .producers
+            .get(unit_type)
+            .map(|production| production.queue);
+        let room = capacity.is_some_and(|capacity| queue.has_room(capacity));
+        if !room || !holdings.meet(owner, modifiers, self.requirements.of(action)) {
+            return TrainAdmission::Refused;
+        }
+        let made = self.trains.get(action).expect("a train's action trains");
+        let cost = self.costs.cost(made.unit_type);
+        let max = self.rules.0.map(|rules| u64::from(rules.max));
+        match max.zip(owner) {
+            Some((max, owner)) if holdings.has_room(owner, cost, max) => TrainAdmission::Holds {
+                owner,
+                supply: cost,
+            },
+            Some(_) => TrainAdmission::Refused,
+            None => TrainAdmission::Free,
+        }
+    }
 }

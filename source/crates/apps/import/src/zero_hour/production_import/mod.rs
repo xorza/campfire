@@ -45,11 +45,17 @@ pub(crate) struct ProductionImport {
 /// A faction's base, which a seat that starts with one gets beside its start (09-zero-hour.md,
 /// A base start): each type its start builders build but its faction building, once each, in
 /// their command sets' order, and each type those buildings and its faction building train, once
-/// each, in that order.
+/// each, in that order; its army, those units that neither build nor gather, which a bot trains
+/// and sends (09-zero-hour.md, A builder and an attacker); its gatherers, those units that
+/// gather; and its drop-offs, its faction building and base buildings that take a load, which a
+/// bot counts its gatherers by (04-capabilities/control.md, A bot gathers).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FactionBase {
     pub(crate) buildings: Vec<DeclaredName>,
     pub(crate) units: Vec<DeclaredName>,
+    pub(crate) army: Vec<DeclaredName>,
+    pub(crate) gatherers: Vec<DeclaredName>,
+    pub(crate) drop_offs: Vec<DeclaredName>,
 }
 
 /// A train or a build as the mode's data writes it, `[actions.<id>]`: the pipeline's keys it
@@ -134,7 +140,50 @@ impl ProductionImport {
                 }
             }
         }
-        FactionBase { buildings, units }
+        let army = units
+            .iter()
+            .filter(|unit| self.fights(unit))
+            .cloned()
+            .collect();
+        let gatherers = units
+            .iter()
+            .filter(|unit| self.gathers(unit))
+            .cloned()
+            .collect();
+        let drop_offs = [building]
+            .into_iter()
+            .chain(&buildings)
+            .filter(|building| {
+                let name = ImportName::of(building.as_str().as_bytes());
+                self.supply.drop_offs.contains_key(&name)
+            })
+            .cloned()
+            .collect();
+        FactionBase {
+            buildings,
+            units,
+            army,
+            gatherers,
+            drop_offs,
+        }
+    }
+
+    /// Whether `unit`'s command set holds a gather.
+    fn gathers(&self, unit: &DeclaredName) -> bool {
+        let commands = self.commands.get(&ImportName::of(unit.as_str().as_bytes()));
+        commands
+            .into_iter()
+            .flatten()
+            .any(|id| self.supply.gathers.contains_key(id))
+    }
+
+    /// Whether `unit`'s command set holds trains alone: none of its actions builds or gathers.
+    fn fights(&self, unit: &DeclaredName) -> bool {
+        let commands = self.commands.get(&ImportName::of(unit.as_str().as_bytes()));
+        commands.into_iter().flatten().all(|id| {
+            let action = self.actions.get(id);
+            action.is_some_and(|action| matches!(action.made, MadeSection::Train(_)))
+        })
     }
 
     /// The unit types the actions of `kind` of `producer`'s command set make, in its order.

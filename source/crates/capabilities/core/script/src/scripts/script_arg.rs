@@ -1,7 +1,7 @@
 use campfire_common::Seat;
 use campfire_math::{Num, Vec3};
 use campfire_values::{EngineEnum, Relation};
-use rhai::{Array, Dynamic, ImmutableString, Variant};
+use rhai::{Array, Dynamic, ImmutableString, Map, Variant};
 
 use crate::script_host::error::{NumError, Raised};
 use crate::scripts::api_holder::ScriptHandle;
@@ -11,6 +11,7 @@ use crate::scripts::player_handle::PlayerHandle;
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
+use crate::scripts::script_value::script_map::ScriptMap;
 use crate::scripts::view::filter::Filter;
 use crate::scripts::view::unit::Unit;
 use campfire_values::{NameKind, Named};
@@ -216,6 +217,7 @@ engine_script_arg!(
     ScriptValue: Dynamic => ScriptValue::of_engine, "any",
     ScriptText: ImmutableString => ScriptText::of_engine, "text",
     ScriptList: Array => ScriptList::of_engine, "array",
+    ScriptMap: Map => ScriptMap::of_engine, "map",
 );
 
 /// A filter a script gives, its tags among the match's.

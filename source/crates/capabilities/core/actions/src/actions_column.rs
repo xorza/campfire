@@ -8,7 +8,7 @@ use campfire_script::{
     AnyKeptRows, ColumnRows, Filter, KeptRows, RowFill, RunMove, UnitRow, View, ViewColumn,
 };
 use campfire_sim::StableId;
-use campfire_values::{ActionId, Rank};
+use campfire_values::{ActionId, Rank, Team};
 
 use crate::action::Action;
 use crate::action_book::ActionBook;
@@ -84,6 +84,11 @@ impl ViewColumn for ActionsColumn {
         }
         self.book = book.clone();
         true
+    }
+
+    /// None: it reads no team's sight.
+    fn hides(&self, _: usize, _: Team) -> bool {
+        false
     }
 }
 

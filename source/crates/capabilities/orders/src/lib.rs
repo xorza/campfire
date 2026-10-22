@@ -32,6 +32,7 @@ mod acquire_data;
 mod acquiring;
 mod ai;
 mod ai_data;
+mod attack_move;
 mod destinations;
 mod error;
 mod next_scan;
@@ -50,6 +51,7 @@ pub use crate::acquire_data::{AcquireData, AcquirePatch};
 pub use crate::acquiring::Acquiring;
 pub use crate::ai::Ai;
 pub use crate::ai_data::AiData;
+pub use crate::attack_move::AttackMove;
 pub use crate::destinations::Destinations;
 pub use crate::error::{AcquireError, AiError, OrdersRefusal};
 pub use crate::next_scan::NextScan;
@@ -107,6 +109,8 @@ impl Module for Orders {
         d.timed::<NextScan>();
         d.observer(NextScan::revived);
         d.part::<BodyUnit, NextScan>(|at| at.of_type::<Acquire>().map(|_| NextScan::FIRST));
+        d.component::<AttackMove>();
+        d.part::<BodyUnit, AttackMove>(|at| at.of_type::<Acquire>().map(|_| AttackMove::NONE));
         d.book::<ByType<Acquire>>(Acquire::book);
         d.component::<NextThink>();
         d.timed::<NextThink>();
@@ -126,7 +130,8 @@ impl Module for Orders {
 
     /// Adds orders to a match: in Inputs, after the orders of the capabilities before it, the
     /// tick's orders are checked and become current; in Think, on a match that computes the state,
-    /// the idle units due scan for a target, then the resets whose units arrived end, and the
+    /// the units that attack-move and stand walk on and the idle units due scan for a target, then
+    /// the resets whose units arrived end, and the
     /// units due this tick think; in Act, before combat starts attacks, after path walkers
     /// walk, units chase their targets. It builds on the core `Units` installs, on navigation and
     /// on stats. Without the core's scripts, as on a client, no unit thinks. An order's targets are
@@ -140,7 +145,11 @@ impl Module for Orders {
         cx.add(OrdersSystems::Chase, Destinations::chase);
         cx.server(
             OrdersSystems::Scan,
-            UnitGrid::before_reading(Acquiring::scan),
+            (
+                AttackMove::walk_on,
+                UnitGrid::before_reading(Acquiring::scan),
+            )
+                .chain(),
         );
         cx.scripted(
             OrdersSystems::Think,

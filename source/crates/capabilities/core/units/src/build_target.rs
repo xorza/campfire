@@ -22,7 +22,7 @@ impl<R: OrderRefs> BuildTarget<R> {
     ) -> Result<BuildTarget<T>, M::Error> {
         Ok(match self {
             Self::Point { at, angle } => BuildTarget::Point {
-                at: refs.ground(at)?,
+                at: refs.place(at, angle)?,
                 angle,
             },
             Self::Site(site) => BuildTarget::Site(refs.unit(site)?),

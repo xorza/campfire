@@ -209,6 +209,7 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_common::{Seat, Tick};
     use campfire_runner::SessionWorld;
+    use campfire_sim::MatchRate;
 
     use crate::faults::WorkerFaults;
     use crate::faults::fault::Fault;
@@ -258,7 +259,8 @@ pub(crate) mod internals {
         }
 
         fn planned_bots(&self, seats: Vec<SeatBot>, next: Tick) -> Vec<Seat> {
-            let planned = BotDriver::planned(seats, self.session().log(), next);
+            let rate = *self.resource::<MatchRate>();
+            let planned = BotDriver::planned(seats, self.session().log(), next, rate);
             planned.iter().map(|driven| driven.seat).collect()
         }
 

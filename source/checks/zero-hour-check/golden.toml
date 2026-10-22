@@ -3,8 +3,8 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "58d797a074076f5bc229bc1f02a1135954561b3af452e0bfdea57f4f064fc358"
-rules = "8990d94af12647868bd13d0cf65d663446a198e5b62836449772a6dbe03b5331"
+game = "308221eb329296dc6a5f89713ee7f0e673d03b9333b1c60b11e3d857bcc2d6ce"
+rules = "7bf0a0974efd598268cd53d596960151f0638d5faa1760e6d9ac2da6778b8965"
 
 [map]
 heights = [270, 340]
@@ -83,7 +83,11 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 310
 
 [base]
-standing = [7, 10]
+standing = [9, 8]
 
 [attack]
-standing = [5, 3]
+ended = 26198
+standing = [6, 0]
+
+[attack.result]
+Won = 0

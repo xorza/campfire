@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_common::Tick;
+use campfire_common::{Seat, Tick};
 use campfire_sim::{IdAllocator, StableId};
 use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, PackageIndex, Rank, Scalar};
 
@@ -52,6 +52,11 @@ impl Frame {
 
     pub fn acting(&self) -> Option<StableId> {
         self.call?.acting
+    }
+
+    /// The seat whose player pays for the running call, or whose bot thinks in it.
+    pub fn payer(&self) -> Option<Seat> {
+        self.call?.payer
     }
 
     pub fn action(&self) -> Option<ActionId> {

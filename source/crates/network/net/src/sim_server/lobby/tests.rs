@@ -23,7 +23,7 @@ use crate::net_protocol::join::{Join, JoinRole};
 use crate::os::Os;
 use crate::session_times::SessionTimes;
 use crate::sim_server::offering::Offered;
-use crate::sim_server::server_bots::SeatScript;
+use crate::sim_server::server_bots::PlannedBot;
 use crate::unix_clock::UnixClock;
 
 /// A session of the lane mode's 2 seats, with bots in seats `bots` and seats `open` open.
@@ -43,7 +43,7 @@ fn opening(bots: &[u32], open: &[u32]) -> LobbyOpening {
     let packages = TestMode::Lane.packages();
     let seats = bots
         .iter()
-        .map(|&seat| SeatScript::new(seat, script.clone()));
+        .map(|&seat| PlannedBot::orders(seat, script.clone()));
     LobbyOpening {
         bots: ServerBots::new(seats, None, &packages).unwrap(),
         packages: Arc::new(packages),

@@ -255,7 +255,7 @@ impl LanMatch<'_> {
                 .arg("--local")
                 .arg("--data")
                 .arg(self.dir.join(LOCAL_DATA))
-                .arg("--server-bot")
+                .arg("--server-orders")
                 .arg(format!("1={}", self.scripts[1].display()))
                 .arg("--bot")
                 .arg(&self.scripts[0])

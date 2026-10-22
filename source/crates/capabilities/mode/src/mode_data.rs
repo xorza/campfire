@@ -198,8 +198,8 @@ pub enum InputType {
     StringList,
 }
 
-/// A mode param: a value, a list, or a text, as `ctx.params` reads it in the mode's and the AI's
-/// scripts, and as a marker's params hold it.
+/// A mode param: a value, a list, or a text, as `ctx.params` reads it in the mode's, the AI's
+/// and the bots' scripts, and as a marker's params and a bot's own hold it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ModeParam {

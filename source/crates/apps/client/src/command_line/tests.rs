@@ -2,7 +2,7 @@ use std::error::Error;
 use std::ffi::OsString;
 
 use campfire_common::NotHex;
-use campfire_net::SeatBotFileError;
+use campfire_net::{BotArg, SeatBotArgError};
 use clap::error::ErrorKind;
 
 use super::*;
@@ -49,14 +49,14 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
 
     // The flags in any order, before and after the mode.
     let local = read(&[
-        "--server-bot",
+        "--server-orders",
         "1=a.toml",
         "--local",
         "mode",
         "--data",
         "d",
         "--server-bot",
-        "2=b.toml",
+        "2=builder",
         "--map",
         "lane",
         "--option",
@@ -77,11 +77,13 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
     assert_eq!(options, ["start_money=50000".parse().unwrap()]);
     assert_eq!(seat_picks, ["0:faction=china".parse().unwrap()]);
     assert_eq!(data, PathBuf::from("d"));
-    let bots: Vec<(u32, PathBuf)> = bots
+    // The bots of the mode first, then the order scripts.
+    let bots: Vec<(u32, BotArg)> = bots
         .into_iter()
-        .map(|bot| (bot.seat.get(), bot.path))
+        .map(|bot| (bot.seat.get(), bot.bot))
         .collect();
-    assert_eq!(bots, [(1, "a.toml".into()), (2, "b.toml".into())]);
+    let builder = BotArg::Mode(DeclaredName::new("builder").unwrap());
+    assert_eq!(bots, [(2, builder), (1, BotArg::Orders("a.toml".into()))]);
 
     for (args, kind) in [
         (&["--local", "mode"][..], ErrorKind::MissingRequiredArgument),
@@ -91,7 +93,7 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         ),
         (
             &[
-                "--server-bot",
+                "--server-orders",
                 "1=a.toml",
                 "mode",
                 "10.0.0.2:4433",
@@ -145,16 +147,20 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
 #[test]
 fn a_value_its_parser_refuses_gives_that_parsers_error_and_the_help_is_no_refusal() {
     let (key, tls_key) = (KEY, tls_key());
-    let bot = |text: &str| {
-        let error = invalid(&["--local", "--data", "d", "--server-bot", text, "mode"]);
+    let bot = |flag: &str, text: &str| {
+        let error = invalid(&["--local", "--data", "d", flag, text, "mode"]);
         error
             .source()
             .and_then(|error| error.downcast_ref())
             .cloned()
     };
     assert_eq!(
-        bot("a.toml"),
-        Some(SeatBotFileError::NotPair("a.toml".to_owned()))
+        bot("--server-orders", "a.toml"),
+        Some(SeatBotArgError::NotPair("a.toml".to_owned()))
+    );
+    assert_eq!(
+        bot("--server-bot", "1=a.toml"),
+        Some(SeatBotArgError::Name("a.toml".to_owned()))
     );
     let wrong_tls_key = invalid(&["mode", "10.0.0.2:4433", "03", key, "30"]);
     assert_eq!(
@@ -233,7 +239,14 @@ fn a_spectator_watches_a_remote_or_a_local_server_and_names_teams_only_as_one() 
     }
 
     // A local server's watcher leaves slot 0 to a bot, which a player keeps for itself.
-    let local = ["--local", "--data", "d", "--server-bot", "0=a.toml", "mode"];
+    let local = [
+        "--local",
+        "--data",
+        "d",
+        "--server-orders",
+        "0=a.toml",
+        "mode",
+    ];
     let watcher = read(&[&["--spectate"], &local[..]].concat());
     let PlayedServer::Local { bots, .. } = watcher.server else {
         panic!("a local server");

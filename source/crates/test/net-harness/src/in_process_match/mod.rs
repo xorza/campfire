@@ -9,7 +9,7 @@ use bevy_ecs::world::World;
 use bevy_time::{Time, Virtual};
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::{Directive, Order};
-use campfire_common::{Seat, Tick, TlsKey};
+use campfire_common::{DeclaredName, Seat, Tick, TlsKey};
 use campfire_harness::HashTrail;
 use campfire_log::internals::LogCheck;
 use campfire_mode::{PlayersData, SaveBy, SavesData};
@@ -17,7 +17,7 @@ use campfire_net::internals::TickHashes;
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
     ClientDir, JoinState, Lobby, LobbyOpening, LobbySetup, LobbyStart, MatchClock, Os, Pace,
-    PendingOrders, PendingRestore, SeatScript, ServerBots, ServerDir, ServerSetup, SessionDir,
+    PendingOrders, PendingRestore, PlannedBot, ServerBots, ServerDir, ServerSetup, SessionDir,
     SessionOpening, SessionTimes, SimServerWorld, UdpLinks, UncheckedRestore, UnixClock,
 };
 use campfire_net_connection::Connected;
@@ -78,6 +78,8 @@ pub struct InProcessSetup {
     pub saves: SavesData,
     /// The order script of the server's bot in each slot after the players', in slot order.
     pub bots: &'static [&'static str],
+    /// The name of the mode's bot that plays each slot after those of `bots`, in slot order.
+    pub mode_bots: &'static [&'static str],
     /// The script of the server's bot in a slot its player left, when it plays one.
     pub takeover: Option<&'static str>,
     /// The host's visibility settings, as `--visibility` gives them.
@@ -134,6 +136,10 @@ impl InProcessSetup {
         .with_latency(Duration::from_nanos(133_333_333))
         .with_jitter(Duration::from_nanos(33_333_333));
 
+    /// The seats of the match: its players', its order scripts' bots' and the mode's bots'.
+    pub const fn seats(&self) -> usize {
+        self.players + self.bots.len() + self.mode_bots.len()
+    }
     /// One player, through perfect links.
     pub const fn solo(rollback: RollbackMode, server_frames: u32, seed_chain: SeedChain) -> Self {
         Self {
@@ -151,6 +157,7 @@ impl InProcessSetup {
                 autosave_ms: None,
             },
             bots: &[],
+            mode_bots: &[],
             takeover: None,
             visibility: &[],
             max_spectators: 0,
@@ -236,7 +243,7 @@ impl InProcessMatch {
     /// A match of the test lane mode at its default rate, its clients connected and synced.
     pub fn new(setup: InProcessSetup) -> Self {
         assert!(
-            (1..=2).contains(&(setup.players + setup.bots.len())),
+            (1..=2).contains(&setup.seats()),
             "the lane mode takes 1 or 2 seats"
         );
         let packages = PackageTree::of(TestMode::Lane)
@@ -445,14 +452,20 @@ impl InProcessMatch {
         }
     }
 
-    /// The bots of the setup: its bots in the slots after the players', and its takeover bot.
+    /// The bots of the setup: its order scripts' bots in the slots after the players', the mode's
+    /// bots after those, and its takeover bot.
     fn server_bots(&self) -> ServerBots {
         let script = |text| OrderScript::parse(text).expect("a test's bot script reads");
-        let slots = (self.setup.players..)
+        let slot = |slot| u32::try_from(slot).expect("a small count");
+        let mode_bots = self.setup.players + self.setup.bots.len();
+        let orders = (self.setup.players..)
             .zip(self.setup.bots)
-            .map(|(slot, &text)| {
-                SeatScript::new(u32::try_from(slot).expect("a small count"), script(text))
-            });
+            .map(|(at, &text)| PlannedBot::orders(slot(at), script(text)));
+        let mode = (mode_bots..).zip(self.setup.mode_bots).map(|(at, &name)| {
+            let name = DeclaredName::new(name).expect("a test's bot is a name");
+            PlannedBot::mode(slot(at), name)
+        });
+        let slots = orders.chain(mode);
         let takeover = self.setup.takeover.map(script);
         ServerBots::new(slots, takeover.as_ref(), &self.packages)
             .expect("a test's bots name what its mode has")
@@ -585,7 +598,7 @@ impl InProcessMatch {
             tick_hz: packages.manifest().tick_hz.default(),
             seed_chain: self.setup.seed_chain.clone(),
             inputs: InputRules::LAN,
-            seats: self.setup.players + self.setup.bots.len(),
+            seats: self.setup.seats(),
         })
         .expect("the lane mode runs at its default rate");
         if let Some(data) = self.stepper.server_world().get_resource::<ServerDir>() {

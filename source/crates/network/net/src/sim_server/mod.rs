@@ -84,7 +84,7 @@ pub(crate) mod offering;
 pub(crate) mod pending_restore;
 pub(crate) mod player_link;
 pub(crate) mod receipts;
-pub(crate) mod seat_bot_file;
+pub(crate) mod seat_bot_arg;
 pub(crate) mod seat_links;
 pub(crate) mod server_bots;
 pub(crate) mod server_dir;

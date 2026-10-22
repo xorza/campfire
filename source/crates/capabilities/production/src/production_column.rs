@@ -10,7 +10,7 @@ use campfire_script::{
     View, ViewColumn,
 };
 use campfire_units::Owner;
-use campfire_values::{ActionId, UnitType};
+use campfire_values::{ActionId, Team, UnitType};
 
 use crate::gatherer::Gatherer;
 use crate::mode_supply_data::ModeSupplyData;
@@ -161,6 +161,11 @@ impl ViewColumn for ProductionColumn {
         }
         self.costs = costs.clone();
         true
+    }
+
+    /// None: it reads no team's sight.
+    fn hides(&self, _: usize, _: Team) -> bool {
+        false
     }
 }
 

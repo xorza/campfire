@@ -1,4 +1,5 @@
 use campfire_actions::ActionTarget;
+use campfire_capabilities::{GroundLocation, Location, MarkerLocation, NearLocation};
 use campfire_items::ItemsDirective;
 use campfire_math::Num;
 use campfire_orders::OrdersDirective;
@@ -7,7 +8,6 @@ use campfire_units::{BuildTarget, MapPoint};
 use campfire_values::FilterData;
 
 use super::*;
-use crate::location::{Location, MarkerLocation};
 
 /// The order of `directive`, with names, at `tick`, to the avatar.
 const fn order(tick: u64, directive: Directive<NamedRefs>) -> ScriptedOrder {
@@ -36,7 +36,11 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
     )
     .unwrap();
     let num = |value| Num::from_int(value).unwrap();
-    let walk = |to| Directive::Orders(OrdersDirective::Move { to });
+    let walk = |to| {
+        Directive::Orders(OrdersDirective::Move {
+            to: GroundLocation::At(to),
+        })
+    };
     assert_eq!(
         script.orders(),
         [
@@ -145,7 +149,10 @@ fn an_order_names_its_units_by_type_its_slot_and_item_by_name_its_target_by_a_fi
          [[order]]\ntick = 3\ndirective.orders.slot = { slot = \"bolt\", target.point = { marker = \"west_spawn\" } }\n\
          [[order]]\ntick = 4\ndirective.progression.learn.slot = \"bolt\"\n\
          [[order]]\ntick = 5\ndirective.items.buy = { item = \"potion\", shop = \"allies:shop\" }\n\
-         [[order]]\ntick = 6\ndirective.orders.move.to.marker = \"east_spawn\"\n",
+         [[order]]\ntick = 6\ndirective.orders.move.to.marker = \"east_spawn\"\n\
+         [[order]]\ntick = 7\nunits = \"dozer\"\ndirective.orders.build = { slot = \"barracks\", target.point = \
+         { at = { near = { marker = \"west_spawn\" }, gap = \"2.5\", steps = 8 }, angle = 0 } }\n\
+         [[order]]\ntick = 8\ndirective.orders.attack_move.to = [10, \"-2.5\"]\n",
     )
     .unwrap();
     let num = |value| Num::from_int(value).unwrap();
@@ -155,8 +162,19 @@ fn an_order_names_its_units_by_type_its_slot_and_item_by_name_its_target_by_a_fi
     let build = OrdersDirective::Build {
         slot: name("barracks"),
         target: BuildTarget::Point {
-            at: at(num(10), num(-3) + Num::HALF),
+            at: GroundLocation::At(at(num(10), num(-3) + Num::HALF)),
             angle: num(45),
+        },
+    };
+    let near = OrdersDirective::Build {
+        slot: name("barracks"),
+        target: BuildTarget::Point {
+            at: GroundLocation::Near(NearLocation {
+                near: marker("west_spawn"),
+                gap: num(2) + Num::HALF,
+                steps: 8,
+            }),
+            angle: Num::ZERO,
         },
     };
     let attack = OrdersDirective::Attack {
@@ -199,7 +217,17 @@ fn an_order_names_its_units_by_type_its_slot_and_item_by_name_its_target_by_a_fi
         order(
             6,
             Directive::Orders(OrdersDirective::Move {
-                to: marker("east_spawn"),
+                to: GroundLocation::At(marker("east_spawn")),
+            }),
+        ),
+        ScriptedOrder {
+            units: typed("dozer"),
+            ..order(7, Directive::Orders(near))
+        },
+        order(
+            8,
+            Directive::Orders(OrdersDirective::AttackMove {
+                to: GroundLocation::At(at(num(10), num(-3) + Num::HALF)),
             }),
         ),
     ];

@@ -53,12 +53,12 @@ impl StartDrive {
         };
         let (Some(start), Some(goal)) = (start("Player_1_Start"), start("Player_2_Start")) else {
             failures.push(CheckFailure::NoStarts);
-            play.end();
+            failures.extend(play.end().err());
             return None;
         };
         let drive = Self::play(&mut play, [start, goal], failures);
-        play.end();
-        match drive {
+        let ended = play.end();
+        match drive.and_then(|drive| ended.map(|()| drive)) {
             Ok(drive) => Some(drive),
             Err(failure) => {
                 failures.push(failure);

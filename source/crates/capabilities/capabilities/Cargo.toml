@@ -53,7 +53,7 @@ campfire-geometry = { workspace = true, optional = true }
 campfire-interaction.workspace = true
 campfire-items.workspace = true
 campfire-log = { workspace = true, optional = true }
-campfire-math = { workspace = true, optional = true }
+campfire-math.workspace = true
 campfire-mode.workspace = true
 campfire-navigation.workspace = true
 campfire-orders.workspace = true

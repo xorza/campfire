@@ -1,6 +1,6 @@
 use campfire_math::Vec3;
 use campfire_script::{
-    ApiBuilder, ApiError, ApiHolder, ApiVersion, Checked, Ctx, Filter, MemberDecl, ScriptLasting,
+    ApiBuilder, ApiError, ApiHolder, ApiVersion, Checked, Ctx, MemberDecl, ScriptLasting,
     ScriptPosition, ScriptRadius, Status, Unit,
 };
 use campfire_values::{TagProperty, Team};
@@ -65,7 +65,7 @@ impl VisionApi {
         })
     }
 
-    /// `unit.can_see`, `ctx.find_visible` and `ctx.nearest_visible`.
+    /// `unit.can_see`.
     fn register_queries(api: &mut ApiBuilder<'_>) {
         let can_see = MemberDecl::method(
             ApiHolder::of::<Unit>(),
@@ -76,31 +76,5 @@ impl VisionApi {
         api.method(can_see, |unit: Unit, other: Unit| {
             VisionColumn::can_see(&unit, &other)
         });
-        let visible = MemberDecl::call(
-            "find_visible",
-            &[&["of", "position", "radius", "filter"]],
-            "as `find`, of the units `of`'s team sees",
-        );
-        api.call(
-            visible,
-            |_: &mut Ctx,
-             of: Unit,
-             position: ScriptPosition,
-             radius: ScriptRadius,
-             filter: Filter| {
-                VisionColumn::find(&of, position.get(), radius, &filter)
-            },
-        );
-        let nearest = MemberDecl::call(
-            "nearest_visible",
-            &[&["of", "radius", "filter"]],
-            "the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none",
-        );
-        api.call(
-            nearest,
-            |_: &mut Ctx, of: Unit, radius: ScriptRadius, filter: Filter| {
-                VisionColumn::nearest(&of, radius, &filter)
-            },
-        );
     }
 }

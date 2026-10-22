@@ -149,10 +149,17 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         data.params,
         BTreeMap::from([
             (
+                declared("army_units_america"),
+                texts(&["americainfantryranger", "americainfantrypathfinder"])
+            ),
+            (
                 declared("base_buildings_america"),
                 texts(&["americabarracks"])
             ),
             (declared("base_count"), ModeParam::Value(Scalar::Int(2))),
+            // The sample's dozer builds and does not gather, and no building takes a load.
+            (declared("drop_offs_america"), texts(&[])),
+            (declared("gatherers_america"), texts(&[])),
             (
                 declared("base_units_america"),
                 texts(&[

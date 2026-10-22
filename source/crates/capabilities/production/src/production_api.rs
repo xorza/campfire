@@ -113,6 +113,7 @@ impl ProductionApi {
 
     /// `player`'s supply as the view read the match: the count `count` names.
     fn supply(ctx: &Ctx, player: Seat, count: SupplyCount) -> Checked<i64> {
+        ctx.admit_seat(Some(player))?;
         let view = ctx.view();
         let supply = ProductionColumn::supply(view, player)
             .ok_or_else(|| ProductionRefusal::NoSupply.fail())?;

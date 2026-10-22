@@ -34,7 +34,7 @@ use crate::sim_client::server_pin::ServerPin;
 use crate::sim_server::ServerFrameSystems;
 use crate::sim_server::lobby::{Lobby, LobbyOpening, LobbyStart};
 use crate::sim_server::pending_restore::{PendingRestore, UncheckedRestore};
-use crate::sim_server::server_bots::{SeatScript, ServerBots};
+use crate::sim_server::server_bots::{PlannedBot, ServerBots};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{Publisher, SessionDir};
@@ -93,7 +93,7 @@ pub struct LocalServerSetup {
     pub data: PathBuf,
     /// The bots it plays; one in seat 0 while its client plays leaves no seat to it, which the
     /// lobby refuses.
-    pub bots: Vec<SeatScript>,
+    pub bots: Vec<PlannedBot>,
     /// Whether its client plays seat 0, or watches with no seat (08-sessions.md, A local
     /// watcher takes no seat and sees every unit).
     pub role: JoinRole,

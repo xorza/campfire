@@ -68,12 +68,12 @@ impl SupplyPlay {
         let names = play.game().resource::<MatchNames>();
         let Some(money) = names.named::<ResourceId>("money") else {
             failures.push(CheckFailure::NoMoney);
-            play.end();
+            failures.extend(play.end().err());
             return None;
         };
         let played = Self::steps(&mut play, session.packages(), money);
-        play.end();
-        match played {
+        let ended = play.end();
+        match played.and_then(|played| ended.map(|()| played)) {
             Ok(played) => Some(played),
             Err(failure) => {
                 failures.push(failure);

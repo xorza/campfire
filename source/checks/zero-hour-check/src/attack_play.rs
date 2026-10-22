@@ -1,28 +1,22 @@
 use std::num::NonZeroU32;
 
 use campfire_harness::FixedSession;
-use campfire_mode::internals::MarkerOf;
-use campfire_mode::{Mode, OptionPicks, OptionValue};
+use campfire_mode::{OptionPicks, OptionValue, SeatPick};
 use campfire_package::ModePackages;
 use campfire_protocol::{InputRules, SeatPlan};
 
 use crate::failure::CheckFailure;
-use crate::match_play::{self, MatchPlay, START_MONEY, america};
+use crate::match_play::{MatchPlay, START_MONEY};
 use crate::pins::{BotMatchEnd, HZ};
-use crate::skirmish_play::BUILDER;
-
-/// The attacker bot's orders, which the play's first bot plays and a host gives a local server's
-/// bot (09-zero-hour.md, A bot that builds and attacks).
-const ATTACKER: &str =
-    include_str!("../../../bots/zero-hour/tournament_desert/start1-america-attacker.toml");
 
 /// The most ticks the play's match runs.
-const ATTACK_LIMIT: u64 = HZ * 60 * 15;
+const ATTACK_LIMIT: u64 = HZ * 60 * 20;
 
-/// The attack play on Tournament Desert of `START_MONEY`: two bots of America, the attacker at
-/// `Player_1_Start`, which builds its base and sends its army at the other start every minute,
-/// and the builder at `Player_2_Start`, which builds its own and attacks nothing; the play pins how
-/// their match stands as it ends or `ATTACK_LIMIT` passes, so both scripts keep working.
+/// The attack play on Tournament Desert of `START_MONEY`: two bots from standard starts, the
+/// mode's attacker of China at `Player_1_Start` and its builder of GLA at `Player_2_Start`, whose
+/// gatherers walk (09-zero-hour.md, A builder and an attacker); the play
+/// pins how their match stands as it ends or `ATTACK_LIMIT` passes, so both bots keep working
+/// (09-zero-hour.md, A bots' match that ends).
 #[derive(Debug)]
 pub(crate) struct AttackPlay;
 
@@ -42,38 +36,32 @@ impl AttackPlay {
                 return None;
             }
         };
-        let mut bots = Vec::with_capacity(2);
-        for text in [ATTACKER, BUILDER] {
-            match match_play::bot_script(&packages, text) {
-                Ok(bot) => bots.push(bot),
-                Err(failure) => {
-                    failures.push(failure);
-                    return None;
-                }
-            }
-        }
+        let factions: Vec<SeatPick> = ["0:faction=china", "1:faction=gla"]
+            .map(|pick| pick.parse().expect("a seat's pick reads"))
+            .into();
         let session = FixedSession::planned(packages, InputRules::ROOMY, [SeatPlan::Bot; 2])
             .rate(rate)
             .picked(picks.places())
-            .seat_picked(&america(2));
+            .seat_picked(&factions);
         let mut play = MatchPlay::new(session.start());
-        for (seat, (bot, start)) in
-            (0..).zip(bots.into_iter().zip(["Player_1_Start", "Player_2_Start"]))
-        {
-            let of = MarkerOf {
-                tag: "start",
-                param: "name",
-                value: start,
-            };
-            let Some(home) = Mode::marker_point(play.game(), of) else {
-                failures.push(CheckFailure::NoStarts);
-                play.end();
-                return None;
-            };
-            play.drive_bot(seat, bot, home);
+        let fought = Self::fight(&mut play, session.packages());
+        let ended = play.end();
+        match fought.and_then(|fought| ended.map(|()| fought)) {
+            Ok(fought) => Some(fought),
+            Err(failure) => {
+                failures.push(failure);
+                None
+            }
         }
-        let ended = play.fight(ATTACK_LIMIT);
-        play.end();
-        Some(ended)
+    }
+
+    /// The attacker in seat 0 and the builder in seat 1 of `play`, of `packages`, each from its
+    /// start, until their match ends or its limit passes.
+    fn fight(play: &mut MatchPlay, packages: &ModePackages) -> Result<BotMatchEnd, CheckFailure> {
+        for (seat, bot) in [(0, "attacker"), (1, "builder")] {
+            let home = play.start(seat + 1)?;
+            play.drive_mode_bot(packages, seat, bot, home)?;
+        }
+        Ok(play.fight(ATTACK_LIMIT))
     }
 }

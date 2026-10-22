@@ -484,13 +484,14 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats', the players' and the
     // mode's five parts of a player, its bounty share among them, the mode's three of the match,
-    // the 31 of a unit, items' `UseGroup`, orders' `NextThink` and `NextScan`, production's
+    // the 32 of a unit, items' `UseGroup`, orders' `NextThink`, `NextScan` and `AttackMove`,
+    // production's
     // `StatusTags` and combat's `TurretAngle` among them, and the 59 books, 14 of the core's,
     // interaction's two, combat's armors, turrets, weapons and streaks' modifiers, orders' scans,
     // production's trains and gathers, the mode's victory and bounty, and progression's
     // experience among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 41);
+    assert_eq!(audit.parts.len(), 42);
     assert_eq!(audit.books.len(), 59);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 14);

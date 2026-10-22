@@ -5,17 +5,15 @@
 mod bot_script;
 mod bot_view;
 mod loaded;
-mod location;
-mod named;
 mod order_script;
+mod thinking_bot;
 
 pub use crate::bot_script::bot_names::BotNames;
 pub use crate::bot_script::error::{BotScriptError, OrderUnsent};
 pub use crate::bot_script::{BotBuffers, BotOrder, BotScript, BotSink, BotUnits, OrderScratch};
 pub use crate::bot_view::{BotView, HeldBotView};
-pub use crate::location::{Location, MarkerLocation};
-pub use crate::named::NamedRefs;
 pub use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
 pub use crate::order_script::{
     OrderScript, ScriptedInput, ScriptedOrder, ScriptedUnits, ScriptedValue,
 };
+pub use crate::thinking_bot::{PacedBot, Think, ThinkError, ThinkingBot};

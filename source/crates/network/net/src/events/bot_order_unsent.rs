@@ -1,5 +1,5 @@
-use campfire_bots::{NamedRefs, OrderUnsent};
-use campfire_capabilities::Directive;
+use campfire_bots::OrderUnsent;
+use campfire_capabilities::{Directive, NamedRefs};
 use campfire_common::Seat;
 use campfire_log::{JsonText, LogEvent, LogLine};
 use serde::Deserialize;

@@ -65,6 +65,32 @@ impl PlayerUnits<'_, '_> {
         );
         out.sort_unstable();
     }
+
+    /// Puts into `out`, cleared first, the living units `seat` owns, by stable id, rising.
+    pub fn owned(&self, seat: Seat, out: &mut Vec<StableId>) {
+        out.clear();
+        out.extend(
+            self.living
+                .iter()
+                .filter(|&(_, owner, _)| owner.seat() == seat)
+                .map(|(&id, ..)| id),
+        );
+        out.sort_unstable();
+    }
+
+    /// Puts into `out`, cleared first, the living units of `ids`, rising, that `seat` owns, by
+    /// stable id, rising: of a bot's think, the units it names that are its own.
+    pub fn listed(&self, seat: Seat, ids: &[StableId], out: &mut Vec<StableId>) {
+        debug_assert!(ids.is_sorted(), "the listed ids rise");
+        out.clear();
+        out.extend(
+            self.living
+                .iter()
+                .filter(|&(id, owner, _)| owner.seat() == seat && ids.binary_search(id).is_ok())
+                .map(|(&id, ..)| id),
+        );
+        out.sort_unstable();
+    }
 }
 
 impl Commanded {

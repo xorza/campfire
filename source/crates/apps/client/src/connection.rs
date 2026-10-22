@@ -10,7 +10,7 @@ use campfire_math::TickRate;
 use campfire_mode::{OptionValue, SeatPick};
 use campfire_net::{
     ClientDir, JoinRole, LocalPacePlugin, LocalRelinkPlugin, LocalServer, LocalServerSetup, Os,
-    Pace, SeatBotFile, ServerPin, UdpLinks,
+    Pace, SeatBotArg, ServerPin, UdpLinks,
 };
 use campfire_net_endpoint::Endpoint;
 use campfire_net_socket::ClientSocket;
@@ -42,7 +42,7 @@ pub(crate) enum Connection {
 struct LocalStart<'a> {
     data: &'a ClientDir,
     packages: &'a Arc<ModePackages>,
-    bots: &'a [SeatBotFile],
+    bots: &'a [SeatBotArg],
     options: &'a [OptionValue],
     seat_picks: &'a [SeatPick],
     role: JoinRole,
@@ -174,7 +174,7 @@ impl Connection {
         } = start;
         let slots = bots
             .iter()
-            .map(SeatBotFile::read)
+            .map(SeatBotArg::read)
             .collect::<Result<_, _>>()
             .map_err(|error| {
                 error!(error = %ErrorReport::of(&error), "a server bot's orders file does not read");

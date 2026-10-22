@@ -6,7 +6,7 @@ use campfire_script::{
     AnyKeptRows, ApiError, Audience, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptValue,
     StateField, StateSchema, StateValue, View, ViewColumn,
 };
-use campfire_values::{NameId, UnitType};
+use campfire_values::{NameId, Team, UnitType};
 
 use crate::unit_state::{
     AudienceAll, AudienceNone, AudienceOwner, AudienceTeam, StateAudience, UnitState,
@@ -58,6 +58,11 @@ impl ViewColumn for UnitsColumn {
         if !book.same(&self.book) {
             self.book = book.clone();
         }
+        false
+    }
+
+    /// None: it reads no team's sight.
+    fn hides(&self, _: usize, _: Team) -> bool {
         false
     }
 }

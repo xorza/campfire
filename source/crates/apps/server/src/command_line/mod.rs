@@ -5,7 +5,7 @@ use std::time::Duration;
 use campfire_bots::{OrderScript, OrderScriptReadError};
 use campfire_common::MapName;
 use campfire_mode::{OptionValue, SeatPick};
-use campfire_net::{SeatBotFile, SeatScript, SessionTimes};
+use campfire_net::{PlannedBot, SeatBotArg, SessionTimes};
 use campfire_visibility::{HostVisibility, SettingValue};
 use clap::Parser;
 
@@ -17,7 +17,7 @@ use clap::Parser;
 pub(crate) struct Args {
     pub(crate) data: PathBuf,
     pub(crate) times: SessionTimes,
-    pub(crate) bots: Vec<SeatBotFile>,
+    pub(crate) bots: Vec<SeatBotArg>,
     pub(crate) takeover: Option<PathBuf>,
     pub(crate) mode: PathBuf,
     pub(crate) map: Option<MapName>,
@@ -42,9 +42,12 @@ pub(crate) struct CommandLine {
     /// How long a player whose link failed keeps their seat
     #[arg(long, value_name = "SECONDS", default_value_t = SessionTimes::DEFAULT.grace.as_secs())]
     grace: u64,
-    /// A bot of the session, in a seat of its plan
-    #[arg(long = "server-bot", value_name = "SEAT=ORDERS FILE")]
-    server_bots: Vec<SeatBotFile>,
+    /// A bot of the mode, by its name, in a seat of the session's plan
+    #[arg(long = "server-bot", value_name = "SEAT=BOT", value_parser = SeatBotArg::mode)]
+    server_bots: Vec<SeatBotArg>,
+    /// The order script of a bot in a seat of the session's plan, its orders at their ticks
+    #[arg(long = "server-orders", value_name = "SEAT=ORDERS FILE", value_parser = SeatBotArg::orders)]
+    server_orders: Vec<SeatBotArg>,
     /// The orders of the seats that become bots after a leaver, counted from that tick
     #[arg(long, value_name = "ORDERS FILE")]
     takeover: Option<PathBuf>,
@@ -86,7 +89,11 @@ impl From<CommandLine> for Args {
                 grace: Duration::from_secs(line.grace),
                 restore_window: Duration::from_secs(line.restore_window),
             },
-            bots: line.server_bots,
+            bots: line
+                .server_bots
+                .into_iter()
+                .chain(line.server_orders)
+                .collect(),
             takeover: line.takeover,
             mode: line.mode,
             map: line.map,
@@ -102,22 +109,23 @@ impl From<CommandLine> for Args {
     }
 }
 
-/// The scripts of the server's bots as their files read, their names not resolved yet: one for
-/// each seat the command line gives a bot, and the takeover script.
+/// The server's bots as the command line plans them, their order scripts read from their files,
+/// their names not resolved yet: one for each seat the command line gives a bot, and the
+/// takeover script.
 #[derive(Debug)]
 pub(crate) struct BotScripts {
-    pub(crate) seats: Vec<SeatScript>,
+    pub(crate) seats: Vec<PlannedBot>,
     pub(crate) takeover: Option<OrderScript>,
 }
 
 impl Args {
-    /// The scripts of the server's bots, read from their files; an error naming a file that does
-    /// not read.
+    /// The server's bots, their order scripts read from their files; an error naming a file
+    /// that does not read.
     pub(crate) fn bot_scripts(&self) -> Result<BotScripts, OrderScriptReadError> {
         let seats = self
             .bots
             .iter()
-            .map(SeatBotFile::read)
+            .map(SeatBotArg::read)
             .collect::<Result<_, _>>()?;
         let takeover = self
             .takeover

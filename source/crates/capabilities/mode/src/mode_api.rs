@@ -1,6 +1,7 @@
 use campfire_actions::{ActionSlots, ActionsColumn, SlotKind, SlotKindData};
 use campfire_combat::CombatColumn;
 use campfire_common::Seat;
+use campfire_geometry::GridSearch;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd, RoomAsk, RoomSearch};
 use campfire_players::{PlayerResources, PlayersCall, SeatHolder};
@@ -118,7 +119,8 @@ impl ModeApi {
     /// and, for the mode's calls, the players and its state.
     fn register_reads(api: &mut ApiBuilder<'_>) {
         api.call(
-            MemberDecl::value("teams", "the playing teams' names, the teams with slots"),
+            MemberDecl::value("teams", "the playing teams' names, the teams with slots")
+                .roles(RoleSet::SIM.and(RoleSet::BOT)),
             |ctx: &mut Ctx| -> Checked<IdNames<Team>> {
                 let book = ctx.mode_spec_or_fail()?;
                 let teams = &book.teams;
@@ -131,7 +133,8 @@ impl ModeApi {
             MemberDecl::value(
                 "players",
                 "the session's players, by slot, whatever controls each",
-            ),
+            )
+            .roles(RoleSet::SIM.and(RoleSet::BOT)),
             |ctx: &mut Ctx| -> Checked<ScriptList> {
                 let players = ctx.mode_spec_or_fail()?.teams.players();
                 let player = |slot| ScriptValue::of(PlayerHandle::new(Seat::new(slot)));
@@ -151,7 +154,8 @@ impl ModeApi {
             },
         )
         .call(
-            MemberDecl::value("map", "the map: its paths and its markers"),
+            MemberDecl::value("map", "the map: its paths and its markers")
+                .roles(RoleSet::SIM.and(RoleSet::BOT)),
             |ctx: &mut Ctx| ctx.mode_map_or_fail(),
         )
         .call(
@@ -168,7 +172,8 @@ impl ModeApi {
                 "enemies",
                 &[&["team"]],
                 "the playing teams' names that `team` may attack, hostile or neutral, in order",
-            ),
+            )
+            .roles(RoleSet::SIM.and(RoleSet::BOT)),
             |ctx: &mut Ctx, team: Team| -> Checked<IdNames<Team>> {
                 let book = ctx.mode_spec_or_fail()?;
                 let view = ctx.view();
@@ -252,11 +257,12 @@ impl ModeApi {
             },
         )
         .call(
-            MemberDecl::mode_call(
+            MemberDecl::call(
                 "chosen",
                 &[&["player", "choice"]],
                 "the values `player` chose of `choice`, in order; empty before the player chose",
-            ),
+            )
+            .roles(RoleSet::MODE.and(RoleSet::BOT)),
             |ctx: &mut Ctx, player: Seat, choice: ChoiceId| Self::chosen(ctx, player, choice),
         )
         .call(
@@ -271,12 +277,13 @@ impl ModeApi {
             },
         )
         .call(
-            MemberDecl::mode_call(
+            MemberDecl::call(
                 "offers",
                 &[&["choice"]],
                 "the values `choice` offers, in order: the avatars in the order of the mode's \
                  dependencies, the loadout entries by id, or the values it lists",
-            ),
+            )
+            .roles(RoleSet::MODE.and(RoleSet::BOT)),
             |ctx: &mut Ctx, choice: ChoiceId| Self::offers(ctx, choice),
         );
     }
@@ -725,15 +732,17 @@ impl ModeApi {
         let unit_type = Self::spawnable(&book, unit_type)?;
         let steps = u32::try_from(steps)
             .ok()
-            .filter(|&steps| steps <= RoomSearch::MAX_STEPS && gap > Num::ZERO)
+            .filter(|&steps| steps <= GridSearch::MAX_STEPS && gap > Num::ZERO)
             .ok_or_else(|| ModeRefusal::RoomSearch.fail())?;
         let body = book.body(unit_type).map(|form| form.at(Num::ZERO));
         let search = RoomSearch {
-            position,
+            grid: GridSearch {
+                position,
+                gap,
+                steps,
+            },
             shape: Body::shape_of(body.as_ref()),
             layer: Body::layer_of(body.as_ref()),
-            gap,
-            steps,
         };
         let frame = ctx.frame();
         let found = NavigationColumn::room_near(ctx.view(), search, &ModeCall::of(&frame).bodies);
@@ -905,9 +914,11 @@ impl ModeApi {
     }
 
     /// The living units of player `seat`, by stable id.
-    fn units_of(ctx: &Ctx, seat: Seat) -> ScriptList {
-        ctx.view()
-            .units_where(|row| row.alive && row.owner == Some(seat))
+    fn units_of(ctx: &Ctx, seat: Seat) -> Checked<ScriptList> {
+        ctx.admit_seat(Some(seat))?;
+        Ok(ctx
+            .view()
+            .units_where(|row| row.alive && row.owner == Some(seat)))
     }
 
     /// Queues player `seat` held out of play, or no more.
@@ -978,6 +989,7 @@ impl ModeApi {
                 "the amount of the player resource `name` it holds, with the call's changes",
             ),
             |ctx: &Ctx, player: Seat, resource: ResourceId| {
+                ctx.admit_seat(Some(player))?;
                 let frame = ctx.frame();
                 let players = frame
                     .extension::<PlayersCall>()

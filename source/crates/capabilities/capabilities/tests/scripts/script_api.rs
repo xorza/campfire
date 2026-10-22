@@ -156,7 +156,7 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
     assert_eq!(
         (damage.decl.roles, damage.decl.capability, damage.status),
         (
-            RoleSet::ALL,
+            RoleSet::SIM,
             Some(Capability::Combat),
             Status::Runs(ApiVersion::FIRST)
         )

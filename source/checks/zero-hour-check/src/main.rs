@@ -18,9 +18,9 @@
 //! then its dozer builds a power plant, a supply center and a war factory, the factory trains
 //! three crusaders, and their shells destroy the bot's command center, in the ticks of the first
 //! shot, the first damage and the center's death, and the match goes on, as the bot's other
-//! buildings count for its victory. The bot plays the builder's orders,
-//! `source/bots/zero-hour/tournament_desert/start2-america-builder.toml`: it
-//! builds its base, trains its units, each counted and pinned, and attacks nothing, its units no
+//! buildings count for its victory. The bot plays the builder's orders, the check's fixture
+//! `fixtures/builder.toml`: it builds its base, trains its units, each counted and pinned, and
+//! attacks nothing, its units no
 //! farther from its center than the pinned distance. In a third match, player 1 plays China: its
 //! dozer builds a power plant and a supply center, whose free truck gathers at the nearest dock,
 //! and the money after each of its first deliveries is pinned. In a fourth, player 1 plays China
@@ -32,12 +32,10 @@
 //! America's bot: its dozer builds a barracks, which trains a Tank Hunter, and the hunter, ordered
 //! nothing, fires steered missiles at the bot's dozer, which drives within its reach, and kills
 //! it. In a sixth, two bots, China and America, start with their factions' bases, every base
-//! building whole and two of each base unit, no body on another or on a wall, and fight by the
-//! orders the check makes of the imported mode, which the sample bots
-//! `start1-china-base-attacker.toml` and `start2-america-base-attacker.toml` keep, for 20
-//! minutes, after which the buildings each holds are pinned. In a seventh, the attacker bot,
-//! `start1-america-attacker.toml`, builds its base and sends its army at the builder bot every
-//! minute, and the buildings each holds after 15 minutes are pinned.
+//! building whole and two of each base unit, no body on another or on a wall, and the mode's
+//! attacker plays each, until one side's last building that counts falls or 20 minutes pass, and
+//! how the match ended and the buildings each holds are pinned. In a seventh, the mode's attacker
+//! and its builder play America from standard starts, for at most 15 minutes, pinned so.
 //! Every other map the game lists loads in the imported mode. It fails when `GENERALSZH_DATA`
 //! names no install, so a machine with no copy never passes as one that checked.
 //!

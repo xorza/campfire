@@ -9,7 +9,7 @@ use campfire_script::{
     ScriptWindow, Unit, ViewColumn,
 };
 use campfire_units::{Dead, Life};
-use campfire_values::{UnitTags, UnitType};
+use campfire_values::{Team, UnitTags, UnitType};
 
 use crate::on_death::OnDeath;
 use crate::recent_attack::RecentAttack;
@@ -57,6 +57,11 @@ impl ViewColumn for CombatColumn {
         let types = deaths.into_iter().flat_map(ByType::iter);
         let staying = types.filter(|&(_, &on_death)| on_death == OnDeath::Stay);
         self.staying.extend(staying.map(|(unit_type, _)| unit_type));
+        false
+    }
+
+    /// None: it reads no team's sight.
+    fn hides(&self, _: usize, _: Team) -> bool {
         false
     }
 }

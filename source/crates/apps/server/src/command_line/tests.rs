@@ -1,9 +1,9 @@
 use std::error::Error;
 use std::ffi::OsString;
 
-use campfire_common::Seat;
+use campfire_common::{DeclaredName, Seat};
 use campfire_mode::OptionValueError;
-use campfire_net::SeatBotFileError;
+use campfire_net::{BotArg, SeatBotArgError};
 use clap::error::ErrorKind;
 
 use super::*;
@@ -16,8 +16,10 @@ fn read(args: &[&str]) -> Result<Args, clap::Error> {
 #[test]
 fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
     let args = read(&[
-        "--server-bot",
+        "--server-orders",
         "1=bot.toml",
+        "--server-bot",
+        "0=attacker",
         "--grace",
         "5",
         "--data",
@@ -40,12 +42,15 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
         (args.times.grace, args.times.restore_window),
         (Duration::from_secs(5), Duration::from_secs(9))
     );
-    let bots: Vec<(Seat, PathBuf)> = args
+    // The bots of the mode first, then the order scripts.
+    let attacker = BotArg::Mode(DeclaredName::new("attacker").unwrap());
+    let orders = BotArg::Orders(PathBuf::from("bot.toml"));
+    let bots: Vec<(Seat, BotArg)> = args
         .bots
         .into_iter()
-        .map(|bot| (bot.seat, bot.path))
+        .map(|bot| (bot.seat, bot.bot))
         .collect();
-    assert_eq!(bots, [(Seat::new(1), PathBuf::from("bot.toml"))]);
+    assert_eq!(bots, [(Seat::new(0), attacker), (Seat::new(1), orders)]);
     assert_eq!(args.takeover, Some(PathBuf::from("takeover.toml")));
     assert_eq!(args.mode, PathBuf::from("mode"));
     assert_eq!(args.map, MapName::parse("lane"));
@@ -106,11 +111,16 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
         source(&["--data", "d", "mode", "nowhere"]).as_deref(),
         Some("invalid socket address syntax")
     );
-    let bot = invalid(&["--data", "d", "--server-bot", "1", "mode", "0.0.0.0:4433"]);
-    assert_eq!(
-        bot.source().and_then(|error| error.downcast_ref()),
-        Some(&SeatBotFileError::NotPair("1".to_owned()))
-    );
+    let bot = |flag: &str, value: &str| {
+        let error = invalid(&["--data", "d", flag, value, "mode", "0.0.0.0:4433"]);
+        let source = error.source().and_then(|error| error.downcast_ref());
+        source.cloned()
+    };
+    let not_pair = SeatBotArgError::NotPair("1".to_owned());
+    assert_eq!(bot("--server-orders", "1"), Some(not_pair.clone()));
+    assert_eq!(bot("--server-bot", "1"), Some(not_pair));
+    let name = SeatBotArgError::Name("Attacker".to_owned());
+    assert_eq!(bot("--server-bot", "1=Attacker"), Some(name));
     let option = invalid(&["--data", "d", "--option", "money", "mode", "0.0.0.0:4433"]);
     assert_eq!(
         option.source().and_then(|error| error.downcast_ref()),

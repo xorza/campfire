@@ -31,6 +31,14 @@ base_buildings_base = ["center"]
 base_units_base = ["dozer"]
 base_buildings_outpost = []
 base_units_outpost = []
+# What each faction's attacker trains and sends: none of the base's dozers.
+army_units_base = []
+army_units_outpost = []
+# What gathers for each faction, and the buildings it delivers to.
+gatherers_base = []
+gatherers_outpost = []
+drop_offs_base = []
+drop_offs_outpost = []
 base_count = 2
 
 # The faction each player plays, which the session's host picks for a seat, and a seat with no
@@ -51,3 +59,14 @@ values = ["standard", "base"]
 [options.start_money]
 values = [100, 5000]
 default = 100
+
+# Zero Hour's bots, as the import names them.
+[bots.builder]
+script = { package = "zero-hour", path = "scripts/bot.rhai" }
+think_ms = 10000
+params = { army = 0, gatherers = 3, place_gap = 10, place_steps = 64 }
+
+[bots.attacker]
+script = { package = "zero-hour", path = "scripts/bot.rhai" }
+think_ms = 10000
+params = { army = 30, gatherers = 3, guard = 400, sight = 5000, reach = 300, place_gap = 10, place_steps = 64 }

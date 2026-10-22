@@ -1,9 +1,11 @@
 use campfire_actions::ActionBook;
-use campfire_capabilities::Books;
+use campfire_capabilities::{
+    Books, GroundLocation, Location, MarkerLocation, NamedRefs, NearLocation,
+};
 use campfire_common::DeclaredName;
-use campfire_geometry::Bounds;
+use campfire_geometry::{Bounds, GridSearch};
 use campfire_items::ItemBook;
-use campfire_math::Vec3;
+use campfire_math::{Num, Vec3};
 use campfire_mode::MarkerSpec;
 use campfire_script::{Filter, UnknownName};
 use campfire_units::{GroundPoint, MapBook, RefMap, UnitTypeBook};
@@ -12,9 +14,7 @@ use campfire_values::{
 };
 
 use crate::bot_script::error::BotScriptError;
-use crate::loaded::{ActionName, Loaded};
-use crate::location::{Location, MarkerLocation};
-use crate::named::NamedRefs;
+use crate::loaded::{ActionName, Loaded, LoadedGround};
 
 /// The kind of a map marker's name, which a bot's script names a location by.
 const MARKERS: NameKind = NameKind::new("marker", Article::A, NameScope::Match);
@@ -91,8 +91,31 @@ impl RefMap<NamedRefs, Loaded> for LoadRefs<'_, '_> {
         Ok(name)
     }
 
-    fn ground(&mut self, ground: Location) -> Result<GroundPoint, BotScriptError> {
-        self.point(ground).map(GroundPoint::under)
+    /// A location's point; a search for a place, which only a build makes, fails.
+    fn ground(&mut self, ground: GroundLocation) -> Result<LoadedGround, BotScriptError> {
+        match ground {
+            GroundLocation::At(at) => Ok(LoadedGround::At(GroundPoint::under(self.point(at)?))),
+            GroundLocation::Near(_) => Err(BotScriptError::NearOutsideBuild),
+        }
+    }
+
+    /// A location's point, or a search round one of a positive gap within the steps a search
+    /// reaches.
+    fn place(&mut self, place: GroundLocation, _: Num) -> Result<LoadedGround, BotScriptError> {
+        let GroundLocation::Near(NearLocation { near, gap, steps }) = place else {
+            return self.ground(place);
+        };
+        if gap <= Num::ZERO {
+            return Err(BotScriptError::NearGap(gap));
+        }
+        if steps > GridSearch::MAX_STEPS {
+            return Err(BotScriptError::NearSteps(steps));
+        }
+        Ok(LoadedGround::Near {
+            near: GroundPoint::under(self.point(near)?),
+            gap,
+            steps,
+        })
     }
 
     fn point(&mut self, point: Location) -> Result<Vec3, BotScriptError> {

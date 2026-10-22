@@ -75,7 +75,7 @@ impl CallStart {
     /// no player causes, waits; an action's, a modifier's and a mode input's call fails.
     pub const fn when_spent(&self) -> Spent {
         match (self.role, self.payer) {
-            (ScriptRole::Ai, _) | (ScriptRole::Mode, None) => Spent::Waits,
+            (ScriptRole::Ai | ScriptRole::Bot, _) | (ScriptRole::Mode, None) => Spent::Waits,
             (ScriptRole::Mode, Some(_)) | (ScriptRole::Action | ScriptRole::Modifier, _) => {
                 Spent::Fails
             }
@@ -96,6 +96,17 @@ impl CallStart {
         Self {
             purity: Purity::Reads,
             ..Self::listed(place, now)
+        }
+    }
+
+    /// The think of the bot of `seat` before tick `now`, outside the sim: a call that reads,
+    /// whose payer is the bot's seat, as it orders the seat's units (03-game-scripting.md, A bot
+    /// decides from what it sees, each think).
+    pub const fn bot(seat: Seat, now: Tick) -> Self {
+        Self {
+            purity: Purity::Reads,
+            payer: Some(seat),
+            ..Self::mode(ScriptRole::Bot, now)
         }
     }
 

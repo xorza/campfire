@@ -1,3 +1,4 @@
+use bevy_ecs::system::SystemState;
 use campfire_stats::{PlayerModifiers, StatsWorld};
 use campfire_values::ModifierId;
 
@@ -174,4 +175,69 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     step(&mut game, 1, 4);
     Production::owned(&mut game, shop.depot, player);
     step(&mut game, 2, 5);
+}
+
+#[test]
+fn a_producer_may_start_a_train_only_as_its_order_would_start_it() {
+    // Player 0's barracks trains grunts of 3 supply and 5 gold, in its queue of 3, each needing a
+    // forge of its player's; it gives `provides` supply of a most of 20. A tick runs before each
+    // read, in which the holdings follow the units. With 10 gold, a forge, an empty queue and 4
+    // supply given, it may start one; each case lacks one thing the train needs.
+    let scene = |gold: i64, forge: bool, queued: &[u64], provides: u32, dead: bool| {
+        let mut game = shop_match();
+        let shop = Shop::place(&mut game);
+        let cost = ResourceAmount {
+            resource: shop.gold,
+            amount: 5,
+        };
+        let train = Production::add_train(&mut game, shop.grunt, Ticks::new(9), Some(cost));
+        let mut requirements = RequirementBook::default();
+        requirements.push(train, [[shop.forge]], []);
+        game.insert_resource(requirements);
+        Production::count_supply(
+            &mut game,
+            20,
+            &[
+                (shop.grunt, supply(3, 0)),
+                (shop.barracks, supply(0, provides)),
+            ],
+        );
+        let player = Seat::new(0);
+        Players::spawn(&mut game, 1, 1);
+        let mut held = game.player_resources_mut(player).unwrap();
+        held.add(shop.gold, gold).unwrap();
+        if forge {
+            Production::owned(&mut game, shop.forge, player);
+        }
+        let producer = Production::allocate_id(&mut game);
+        let queue = queue(train, queued);
+        shop.producer(
+            &mut game,
+            producer,
+            10,
+            Team::new(1),
+            Some(player),
+            train,
+            queue,
+        );
+        if dead {
+            game.insert_parts(producer, Dead);
+        }
+        game.step();
+        let now = game.resource::<SimTick>().end();
+        let mut checks = SystemState::<StartChecks<'_, '_>>::new(&mut game);
+        checks.get(&game).unwrap().may_start(producer, 0, now)
+    };
+    assert!(scene(10, true, &[], 4, false));
+    for (case, gold, forge, queued, provides, dead) in [
+        ("4 gold", 4, true, &[][..], 4, false),
+        ("no forge", 10, false, &[], 4, false),
+        ("3 + 3 used of 4", 10, true, &[9], 4, false),
+        ("a full queue", 10, true, &[9, 9, 9], 20, false),
+        ("dead", 10, true, &[], 4, true),
+    ] {
+        assert!(!scene(gold, forge, queued, provides, dead), "{case}");
+    }
+    // A queue of two leaves it room, 6 + 3 of 20.
+    assert!(scene(10, true, &[9, 9], 20, false));
 }

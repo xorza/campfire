@@ -6,78 +6,83 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 
 | Name | Form | Roles | Capability | Status | What it is |
 | --- | --- | --- | --- | --- | --- |
-| `add_charge` | `(unit: Unit, id: text)`, `id` an action | every role | abilities | since 1.0 | gives `unit`'s ability `id`, of the script's package, a charge, up to its most |
-| `add_modifier` | `(unit: Unit, id: text)` or `(unit: Unit, id: text, duration_ms: ms)`, `id` a modifier | every role | stats | since 1.0 | applies the modifier `id` of the script's package to `unit` from the acting unit, with the call's action at its rank, which gives each param the modifier reads and does not declare, and returns its handle |
-| `add_player_modifier` | `(player: Player, id: text)`, `id` a modifier | every role | stats | since 1.0 | gives `player` the modifier `id` of the script's package, which every living unit it owns that the modifier's `affects` selects holds from no source and with no action, so the modifier declares each param it reads |
-| `add_resource` | `(player: Player, name: text, amount: int)`, `name` a player resource | every role | core | since 1.0 | adds `amount`, at least 0, of the player resource `name`, one the mode declares, to `player` |
-| `add_xp` | `(unit: Unit, track: text, amount: Num)`, `track` a track | every role | progression | since 1.0 | gives `unit` `amount` of experience on `track`, one of its unit type's |
+| `add_charge` | `(unit: Unit, id: text)`, `id` an action | every role of the sim | abilities | since 1.0 | gives `unit`'s ability `id`, of the script's package, a charge, up to its most |
+| `add_modifier` | `(unit: Unit, id: text)` or `(unit: Unit, id: text, duration_ms: ms)`, `id` a modifier | every role of the sim | stats | since 1.0 | applies the modifier `id` of the script's package to `unit` from the acting unit, with the call's action at its rank, which gives each param the modifier reads and does not declare, and returns its handle |
+| `add_player_modifier` | `(player: Player, id: text)`, `id` a modifier | every role of the sim | stats | since 1.0 | gives `player` the modifier `id` of the script's package, which every living unit it owns that the modifier's `affects` selects holds from no source and with no action, so the modifier declares each param it reads |
+| `add_resource` | `(player: Player, name: text, amount: int)`, `name` a player resource | every role of the sim | core | since 1.0 | adds `amount`, at least 0, of the player resource `name`, one the mode declares, to `player` |
+| `add_xp` | `(unit: Unit, track: text, amount: Num)`, `track` a track | every role of the sim | progression | since 1.0 | gives `unit` `amount` of experience on `track`, one of its unit type's |
 | `after` | `(name: text, ms: ms)` or `(name: text, ms: ms, data: any)`, `name` a timer | mode | core | since 1.0 | calls `on_timer` with `name`, one the mode declares, and `data`, `()` if not given, `ms` from the call, rounded up to whole ticks, at least one |
-| `all_avatars` | `()` or `(team: text)`, `team` a team | every role | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
-| `all_units_tagged` | `(tag: text)`, `tag` a tag | every role | core | since 1.0 | the units of a tag, living or dead, by stable id |
+| `all_avatars` | `()` or `(team: text)`, `team` a team | every role of the sim | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
+| `all_units_tagged` | `(tag: text)`, `tag` a tag | every role of the sim | core | since 1.0 | the units of a tag, living or dead, by stable id |
 | `attack_hit` | `(target: Unit)` | action, modifier, AI | combat | since 1.0 | an extra attack of the acting unit on `target`, with its first weapon whose filter selects `target`, struck at once: no crit, no `on_attack`, and nothing when no weapon selects it |
-| `avatars` | `()` or `(team: text)`, `team` a team | every role | core | since 1.0 | the living avatars of every team or of `team`, by stable id |
+| `avatars` | `()` or `(team: text)`, `team` a team | every role of the sim | core | since 1.0 | the living avatars of every team or of `team`, by stable id |
 | `can_choose` | `(player: Player, choice: text, value: text)`, `choice` a choice | mode | core | since 1.0 | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
 | `cancel_timer` | `(name: text)`, `name` a timer | mode | core | since 1.0 | ends every timer of `name` the call's script set, those the call set before among them |
 | `carry` | read | mode | core | planned | the carry the session loaded, which the mode writes for the next session |
-| `chance` | `(p: Num)` | every role | core | since 1.0 | true with probability `p`, from 0 to 1, from the secret stream |
+| `chance` | `(p: Num)` | every role of the sim | core | since 1.0 | true with probability `p`, from 0 to 1, from the secret stream |
 | `charged` | read | action | abilities | since 1.0 | the share of its most a charged action charged, from 0 to 1 |
 | `choose` | `(player: Player, choice: text, values: array or text)`, `choice` a choice | mode's own script | core | since 1.0 | records `values`, as many as `choice` takes, each a value it offers, none twice and, in a unique choice, none another player chose, as what `player` chose of it; one value may be given alone |
-| `chosen` | `(player: Player, choice: text)`, `choice` a choice | mode | core | since 1.0 | the values `player` chose of `choice`, in order; empty before the player chose |
-| `cut_cooldown` | `(unit: Unit, action: text, ms: ms)`, `action` an action | every role | abilities | since 1.0 | takes `ms` off the cooldown of `unit`'s action `action`, of the script's package |
-| `damage` | `(unit: Unit, kind: text, amount: Num)` or `(unit: Unit, kind: text, amount: Num, source: Unit)`, `kind` a damage kind | every role | combat | since 1.0 | deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `unit`, from `source`, else from the acting unit |
-| `dash` | `(unit: Unit, to: Vector or Unit, speed: Num)` | every role | navigation | since 1.0 | moves `unit` on the ground plane at `speed` meters a second to `to`: a point, or a unit it follows until their bodies touch |
+| `chosen` | `(player: Player, choice: text)`, `choice` a choice | mode, bot | core | since 1.0 | the values `player` chose of `choice`, in order; empty before the player chose |
+| `cut_cooldown` | `(unit: Unit, action: text, ms: ms)`, `action` an action | every role of the sim | abilities | since 1.0 | takes `ms` off the cooldown of `unit`'s action `action`, of the script's package |
+| `damage` | `(unit: Unit, kind: text, amount: Num)` or `(unit: Unit, kind: text, amount: Num, source: Unit)`, `kind` a damage kind | every role of the sim | combat | since 1.0 | deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `unit`, from `source`, else from the acting unit |
+| `dash` | `(unit: Unit, to: Vector or Unit, speed: Num)` | every role of the sim | navigation | since 1.0 | moves `unit` on the ground plane at `speed` meters a second to `to`: a point, or a unit it follows until their bodies touch |
 | `draw` | `()` | mode's own script | core | since 1.0 | ends the match with no winner; a call once it ended does nothing |
-| `drop` | `(unit, slot)` | every role | items | planned | drops the item in `unit`'s inventory slot `slot` at its feet |
+| `drop` | `(unit, slot)` | every role of the sim | items | planned | drops the item in `unit`'s inventory slot `slot` at its feet |
 | `enemies` | `(team: text)`, `team` a team, gives a list of team names | every role | core | since 1.0 | the playing teams' names that `team` may attack, hostile or neutral, in order |
 | `every` | `(name: text, ms: ms)` or `(name: text, ms: ms, data: any)`, `name` a timer | mode | core | since 1.0 | calls `on_timer` as `after` does, and again each `ms` after, until its cancel |
-| `find` | `(of: Unit, position: Vector, radius: Num, filter: text)`, `filter` a filter | every role | core | since 1.0 | the living targets whose bodies come within `radius` of `position`, as an area's, that `filter` selects for `of`, seen or not, by stable id |
-| `find_visible` | `(of: Unit, position: Vector, radius: Num, filter: text)`, `filter` a filter | every role | vision | since 1.0 | as `find`, of the units `of`'s team sees |
+| `find` | `(of: Unit, position: Vector, radius: Num, filter: text)`, `filter` a filter | every role of the sim | core | since 1.0 | the living targets whose bodies come within `radius` of `position`, as an area's, that `filter` selects for `of`, seen or not, by stable id |
+| `find_visible` | `(of: Unit, position: Vector, radius: Num, filter: text)`, `filter` a filter | every role | core | since 1.0 | as `find`, of the units `of`'s team sees, every unit in a match with no vision; a bot's `of` is its own |
 | `generate` | `(region)` | mode | core | planned | builds the map's region `region` through `on_generate` |
-| `give_item` | `(unit, id)` | every role | items | planned | gives `unit` the item `id`, in its first slot that takes it |
+| `give_item` | `(unit, id)` | every role of the sim | items | planned | gives `unit` the item `id`, in its first slot that takes it |
 | `grant` | `(unit: Unit, kind: text, ids: array)`, `kind` a slot kind | mode | abilities | since 1.0 | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
-| `grant_perk` | `(unit, id)` | every role | progression | planned | gives `unit` the perk `id`, with no point and no requirement |
-| `heal` | `(unit: Unit, amount: Num)` | every role | combat | since 1.0 | heals `unit`'s life pool, times one plus its `heal_scale` stat |
+| `grant_perk` | `(unit, id)` | every role of the sim | progression | planned | gives `unit` the perk `id`, with no point and no requirement |
+| `heal` | `(unit: Unit, amount: Num)` | every role of the sim | combat | since 1.0 | heals `unit`'s life pool, times one plus its `heal_scale` stat |
+| `idle` | `(unit: Unit)` | bot | orders | since 1.0 | whether `unit`, the bot's own, stood idle as the think began: no action under way, no target, nowhere to walk, no gather and no build |
 | `kill` | `(unit: Unit)` | mode | combat | since 1.0 | takes `unit`'s life whole: it dies as the next tick's deaths find it, with no killer; nothing for a unit that does not live |
-| `knock_back` | `(unit: Unit, from: Vector, distance: Num, ms: ms)` | every role | navigation | since 1.0 | moves `unit` `distance` straight away from `from` over `ms` |
+| `knock_back` | `(unit: Unit, from: Vector, distance: Num, ms: ms)` | every role of the sim | navigation | since 1.0 | moves `unit` `distance` straight away from `from` over `ms` |
 | `land` | `(position: Vector)` | action | areas | since 1.0 | lands one more of the action's areas at `position`, its own cast; the new area, which spawns later in the tick |
 | `launch` | `(from: Vector, direction: Vector or Unit)` or `(from: Vector, unit: Vector or Unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, homing on `unit` for a homing type, or on a curve to `unit`'s center for a curve type; the new projectile, which spawns later in the tick |
 | `learn` | `(avatar: Unit, slot: int)` | mode | abilities | since 1.0 | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | since 1.0 | the map: its paths and its markers |
-| `nearest_visible` | `(of: Unit, radius: Num, filter: text)`, `filter` a filter | every role | vision | since 1.0 | the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none |
-| `offers` | `(choice: text)`, `choice` a choice | mode | core | since 1.0 | the values `choice` offers, in order: the avatars in the order of the mode's dependencies, the loadout entries by id, or the values it lists |
+| `may_start` | `(unit: Unit, action: text)` | bot | orders | since 1.0 | whether `unit`, the bot's own, may start the train or the build of its slot that holds the action `action`, of any package, as the think began, as the order's own checks find it; a build's place its order finds |
+| `nearest_visible` | `(of: Unit, radius: Num, filter: text)`, `filter` a filter | every role | core | since 1.0 | the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, every unit in a match with no vision, `()` with none; a bot's `of` is its own |
+| `offers` | `(choice: text)`, `choice` a choice | mode, bot | core | since 1.0 | the values `choice` offers, in order: the avatars in the order of the mode's dependencies, the loadout entries by id, or the values it lists |
+| `order` | `(units: array, directive: map)` | bot | orders | since 1.0 | gives `units`, a list of the bot's own, the order `directive`, a table as an order script's `directive` writes it, once the think returns |
 | `order_action` | `(slot, target)` | AI | orders | planned | the unit that thinks casts the action in its slot `slot` at `target`, as a player's action order does |
 | `order_attack` | `(target: Unit)` | AI | orders | since 1.0 | the unit that thinks attacks `target`, a living enemy that one of its weapons selects |
 | `order_follow_path` | `()` | AI | orders | since 1.0 | the unit that thinks drops its target and walks its path again |
 | `order_move` | `(position: Vector)` | AI | orders | since 1.0 | the unit that thinks drops its target and walks to `position`, within the map, off its path |
 | `order_reset` | `()` | AI | orders | since 1.0 | the unit that thinks drops its target and walks home, taking no order until there, where its pools fill |
 | `origin` | read | action | abilities | since 1.0 | where the action's unit stood as it started |
-| `params` | read | every role | core | since 1.0 | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
-| `pick` | `(list: array)` | every role | core | since 1.0 | an entry of `list`, each as likely, from the secret stream |
+| `own` | `(type: text)`, `type` a unit type | bot | orders | since 1.0 | the bot's own living units of `type`, by stable id, its sites among them |
+| `params` | read | every role | core | since 1.0 | the params: an ability's at its rank, a modifier's then its ability's, the mode's, or a bot's then the mode's |
+| `pick` | `(list: array)` | every role of the sim | core | since 1.0 | an entry of `list`, each as likely, from the secret stream |
+| `player` | read | bot | orders | since 1.0 | the bot's own player |
 | `players` | read | every role | core | since 1.0 | the session's players, by slot, whatever controls each |
-| `purge` | `(unit, tag)` | every role | stats | planned | ends every modifier on `unit` that grants `tag` |
-| `quest` | `(player, id)` | every role | quests | planned | the stage of `player`'s quest `id`, `()` before it starts |
-| `quest_stage` | `(player, id, stage)` | every role | quests | planned | sets the stage of `player`'s quest `id` |
+| `purge` | `(unit, tag)` | every role of the sim | stats | planned | ends every modifier on `unit` that grants `tag` |
+| `quest` | `(player, id)` | every role of the sim | quests | planned | the stage of `player`'s quest `id`, `()` before it starts |
+| `quest_stage` | `(player, id, stage)` | every role of the sim | quests | planned | sets the stage of `player`'s quest `id` |
 | `range` | read | action | abilities | since 1.0 | the ability's range at its rank in meters, `()` for a global one |
-| `relation` | `(a: text, b: text)`, `a` a team, `b` a team | every role | core | since 1.0 | how team `a` regards team `b`, as the match began the call |
-| `remove_modifier` | `(m: Modifier)` | every role | stats | since 1.0 | ends the modifier of `m` at once |
-| `remove_player_modifier` | `(player: Player, id: text)`, `id` a modifier | every role | stats | since 1.0 | takes the modifier `id` of the script's package from `player`, and so from each unit it owns, if it holds it |
+| `relation` | `(a: text, b: text)`, `a` a team, `b` a team | every role of the sim | core | since 1.0 | how team `a` regards team `b`, as the match began the call |
+| `remove_modifier` | `(m: Modifier)` | every role of the sim | stats | since 1.0 | ends the modifier of `m` at once |
+| `remove_player_modifier` | `(player: Player, id: text)`, `id` a modifier | every role of the sim | stats | since 1.0 | takes the modifier `id` of the script's package from `player`, and so from each unit it owns, if it holds it |
 | `respawn` | `(unit: Unit, ms: ms)` | mode | combat | since 1.0 | brings back `unit`, dead and of a type that stays, `ms` from the call |
-| `restore` | `(unit: Unit, pool: text, amount: Num)`, `pool` a pool | every role | stats | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled, when it lives |
+| `restore` | `(unit: Unit, pool: text, amount: Num)`, `pool` a pool | every role of the sim | stats | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled, when it lives |
 | `result` | read | mode | core | since 1.0 | how the match ended, before the call or by its `ctx.win` or `ctx.draw`; `()` while it runs |
-| `reveal` | `(position: Vector, radius: Num, ms: ms)` or `(position: Vector, radius: Num, ms: ms, team: text)`, `team` a team | every role | vision | since 1.0 | shows `team`'s vision group, else the acting unit's, the cells within `radius` of `position` for `ms`, from this tick's Vision stage; no hidden unit |
+| `reveal` | `(position: Vector, radius: Num, ms: ms)` or `(position: Vector, radius: Num, ms: ms, team: text)`, `team` a team | every role of the sim | vision | since 1.0 | shows `team`'s vision group, else the acting unit's, the cells within `radius` of `position` for `ms`, from this tick's Vision stage; no hidden unit |
 | `room_near` | `(type: text, position: Vector, gap: Num, steps: int)`, `type` a unit type | mode | core | since 1.0 | the nearest point to `position`, of the grid of `gap` round it, within `steps` gaps, at most 128, where a unit of `type` spawns `gap` clear of each body and wall; by distance, then by angle from +x as a facing turns; `()` with none |
 | `save` | `()` | mode | core | since 1.0 | asks for a save at the end of the tick |
-| `scale_cooldowns` | `(unit: Unit, kind: text, fraction: Num)`, `kind` a slot kind | every role | abilities | since 1.0 | takes `fraction` of what is left off the cooldowns of `unit`'s abilities in the slot kind `kind` |
+| `scale_cooldowns` | `(unit: Unit, kind: text, fraction: Num)`, `kind` a slot kind | every role of the sim | abilities | since 1.0 | takes `fraction` of what is left off the cooldowns of `unit`'s abilities in the slot kind `kind` |
 | `set_bounty_share` | `(player: Player, share: Num)` | mode | core | since 1.0 | sets `player`'s share, 0 or more, of the cost of each unit its units kill that a death pays, as a power raises it, of a mode of a `[bounty]` |
 | `set_out` | `(player: Player, out: bool)` | mode | core | since 1.0 | holds `player` out of play while `out`, as when every avatar it holds is dead |
-| `set_relation` | `(a: text, b: text, relation: Relation)`, `a` a team, `b` a team, `relation` a `Relation` | every role | core | since 1.0 | sets how teams `a` and `b` regard each other, their vision as it was |
+| `set_relation` | `(a: text, b: text, relation: Relation)`, `a` a team, `b` a team, `relation` a `Relation` | every role of the sim | core | since 1.0 | sets how teams `a` and `b` regard each other, their vision as it was |
 | `spawn_group` | `(team: text, path: text, from: PathEnd, types: array)`, `team` a team, `path` a path, `from` a `PathEnd` | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from` of `path`, walking it from there |
 | `spawn_unit` | `(type: text, team: text, position: Vector)` or `(type: text, team: text, position: Vector, player: Player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `position`, within the map's bounds, owned by `player` if given, who plays on `team`, when the call ends, refused where its body would overlap a wall, a body that stands or one the call spawns; the new unit, for `grant` and its `.state` |
 | `state` | read | mode's own script | core | since 1.0 | the mode's state fields, by name, to read and write |
-| `take_resource` | `(player: Player, name: text, amount: int)`, `name` a player resource | every role | core | since 1.0 | takes `amount`, at least 0, of the player resource `name` from `player`, which must hold it |
+| `take_resource` | `(player: Player, name: text, amount: int)`, `name` a player resource | every role of the sim | core | since 1.0 | takes `amount`, at least 0, of the player resource `name` from `player`, which must hold it |
 | `teams` | read, gives a list of team names | every role | core | since 1.0 | the playing teams' names, the teams with slots |
-| `teleport` | `(unit: Unit, position: Vector)` | every role | navigation | since 1.0 | puts `unit` at `position` at once, or at the nearest place it may stand |
-| `units_tagged` | `(tag: text)`, `tag` a tag | every role | core | since 1.0 | the living units of a tag, by stable id |
+| `teleport` | `(unit: Unit, position: Vector)` | every role of the sim | navigation | since 1.0 | puts `unit` at `position` at once, or at the nearest place it may stand |
+| `units_tagged` | `(tag: text)`, `tag` a tag | every role of the sim | core | since 1.0 | the living units of a tag, by stable id |
 | `win` | `(team: text)`, `team` a team | mode's own script | core | since 1.0 | ends the match, which `team` wins; a call once it ended does nothing |
 
 ## Damage `d`
@@ -262,6 +267,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `on_unit_death(ctx, unit, killer, assisters)` | mode | core | since 1.0 |
 | `on_unit_trained(ctx, unit, producer)` | mode | production | since 1.0 |
 | `on_think(ctx, unit)` | AI | orders | since 1.0 |
+| `on_bot_think(ctx)` | bot | core | since 1.0 |
 
 ## Tag properties
 

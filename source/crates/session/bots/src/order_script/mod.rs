@@ -1,13 +1,12 @@
 use std::path::Path;
 
-use campfire_capabilities::Directive;
+use campfire_capabilities::{Directive, NamedRefs};
 use campfire_codec::Toml;
 use campfire_common::{DeclaredName, Tick};
 use campfire_mode::{InputValue, ModeInput};
 use campfire_store::InputFile;
 use serde::Deserialize;
 
-use crate::named::NamedRefs;
 use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
 
 pub(crate) mod error;

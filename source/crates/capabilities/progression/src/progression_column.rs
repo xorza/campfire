@@ -9,7 +9,7 @@ use campfire_script::{
 };
 use campfire_sim::StableId;
 use campfire_stats::Level;
-use campfire_values::TrackId;
+use campfire_values::{Team, TrackId};
 
 use crate::error::ProgressionRefusal;
 use crate::experience::{Experience, TrackXp};
@@ -51,6 +51,11 @@ impl ViewColumn for ProgressionColumn {
 
     /// Its rows derive from the units' parts alone.
     fn begin(&mut self, _: &World) -> bool {
+        false
+    }
+
+    /// None: it reads no team's sight.
+    fn hides(&self, _: usize, _: Team) -> bool {
         false
     }
 }

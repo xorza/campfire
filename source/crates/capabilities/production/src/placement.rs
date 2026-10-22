@@ -48,7 +48,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
     /// and it meets its placement's rules. Each unit it tests is one `team` sees, as `SeenNear`
     /// finds them. Touching is not overlap (04-capabilities/production.md, A building may stand on
     /// a circle).
-    pub fn passes(&mut self, team: Team, position: Vec3, body: Body, spec: BuildSpec<'_>) -> bool {
+    pub fn passes(&self, team: Team, position: Vec3, body: Body, spec: BuildSpec<'_>) -> bool {
         let placed = Placed::new(position, body.shape());
         let bound = placed.shape.bound();
         let layer = body.layer();

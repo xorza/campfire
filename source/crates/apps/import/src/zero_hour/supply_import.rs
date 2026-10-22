@@ -322,6 +322,21 @@ impl ImportedGather {
     }
 }
 
+/// A gather of one box of one money, a near dock and no delay, for another module's tests.
+#[cfg(test)]
+impl ImportedGather {
+    pub(crate) fn of_box() -> Self {
+        let gatherer = SupplyGatherer {
+            max_boxes: 1,
+            center_delay_ms: 0,
+            warehouse_delay_ms: 0,
+            scan_distance: 100.0,
+        };
+        SupplyImport::imported(gatherer, NonZeroU32::MIN, NonZeroU32::MIN)
+            .expect("a box of one money imports")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

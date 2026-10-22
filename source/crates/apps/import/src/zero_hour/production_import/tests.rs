@@ -6,15 +6,17 @@ use campfire_values::{Distance, FilterData};
 use super::*;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::import_names::ImportNames;
-use crate::zero_hour::supply_import::SupplyDropCause;
+use crate::zero_hour::supply_import::{ImportedGather, SupplyDropCause};
 
 #[test]
 fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction_building() {
     // The dozer builds the center, which the start already holds, the barracks twice, by two
     // buttons, and gathers, which makes nothing; the worker the barracks again and the factory.
     // The center trains the dozer, the barracks the ranger and the dozer again, the factory the
-    // tank: the base is the barracks and the factory, and the dozer, the ranger and the tank, in
-    // that order (09-zero-hour.md, A base start).
+    // tank and the truck, which gathers: the base is the barracks and the factory, and the dozer,
+    // the ranger, the tank and the truck, in that order (09-zero-hour.md, A base start); its army
+    // the ranger and the tank, which neither build nor gather; its gatherers the dozer and the
+    // truck; and its drop-offs the center and the factory, which take a load.
     let name = |text: &str| DeclaredName::new(text).unwrap();
     let train = |unit: &str| ImportedAction {
         keys: ActionKeys::new(ActionKind::Train, Targeting::None),
@@ -45,6 +47,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         ("train_dozer", train("dozer")),
         ("train_ranger", train("ranger")),
         ("train_tank", train("tank")),
+        ("train_truck", train("truck")),
     ] {
         import.actions.insert(name(id), action);
     }
@@ -56,12 +59,24 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         ("worker", &["build_barracks", "build_factory"]),
         ("center", &["train_dozer"]),
         ("barracks", &["train_ranger", "train_dozer"]),
-        ("factory", &["train_tank"]),
+        ("factory", &["train_tank", "train_truck"]),
+        ("truck", &["gather"]),
     ] {
         let ids = ids.iter().map(|&id| name(id)).collect();
         import
             .commands
             .insert(ImportName::of(producer.as_bytes()), ids);
+    }
+    import
+        .supply
+        .gathers
+        .insert(name("gather"), ImportedGather::of_box());
+    let money = DropOffData {
+        resources: vec![name("money")],
+    };
+    for drop_off in ["center", "factory"] {
+        let at = ImportName::of(drop_off.as_bytes());
+        import.supply.drop_offs.insert(at, money.clone());
     }
     let base = import.base(&name("center"), &[name("dozer"), name("worker")]);
     let names = |names: &[&str]| names.iter().map(|&text| name(text)).collect::<Vec<_>>();
@@ -69,7 +84,10 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         base,
         FactionBase {
             buildings: names(&["barracks", "factory"]),
-            units: names(&["dozer", "ranger", "tank"]),
+            units: names(&["dozer", "ranger", "tank", "truck"]),
+            army: names(&["ranger", "tank"]),
+            gatherers: names(&["dozer", "truck"]),
+            drop_offs: names(&["center", "factory"]),
         }
     );
     // A start of no builder has no base buildings, and its faction building's trains alone.

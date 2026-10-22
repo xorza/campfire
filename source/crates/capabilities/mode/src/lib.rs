@@ -708,6 +708,10 @@ pub mod internals {
                     .frame()
                     .begin_alone(world, CallStart::think(actor, now))
                     .unwrap(),
+                ScriptRole::Bot => ctx
+                    .frame()
+                    .begin_alone(world, CallStart::bot(Seat::new(0), now))
+                    .unwrap(),
                 ScriptRole::Action => {
                     let strike = Actions::named(world, PackageIndex::MODE, "strike").unwrap();
                     let start =

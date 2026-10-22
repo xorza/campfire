@@ -8,6 +8,9 @@ use campfire_sim::{Capability, Command, StableId};
 use campfire_units::{Ids, OrderRefs, RefMap, SerdeRefs};
 use serde::{Deserialize, Serialize};
 
+pub(crate) mod location;
+pub(crate) mod named_refs;
+
 /// An order to the units it names: the body of a command to the capability its directive belongs
 /// to. Players, bots and AI issue the same orders, and an order to a group is one command.
 #[derive(Debug, Clone, PartialEq, Eq)]

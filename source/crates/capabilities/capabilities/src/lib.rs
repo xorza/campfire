@@ -14,6 +14,7 @@
 #![warn(clippy::float_arithmetic)]
 
 mod books;
+mod bot;
 #[cfg(feature = "internals")]
 mod fixtures;
 mod order;
@@ -23,6 +24,10 @@ pub use crate::books::Books;
 pub use crate::books::book_input::BookInput;
 pub use crate::books::load_names::LoadNames;
 pub use crate::books::package_content::{ContentSeed, PackageContent};
+pub use crate::bot::bot_api::OnBotThink;
+pub use crate::bot::bot_call::{BotCall, BotFacts, ThinkOrder};
+pub use crate::order::location::{GroundLocation, Location, MarkerLocation, NearLocation};
+pub use crate::order::named_refs::NamedRefs;
 pub use crate::order::{Directive, Order};
 pub use crate::release::Release;
 pub use crate::release::error::CapabilityError;

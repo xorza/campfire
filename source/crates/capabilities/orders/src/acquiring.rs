@@ -1,5 +1,6 @@
 use core::ops::ControlFlow;
 
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{
@@ -15,6 +16,7 @@ use campfire_values::{Team, UnitType};
 use campfire_vision::{ByVision, SeenTargets};
 
 use crate::acquire::Acquire;
+use crate::attack_move::AttackMove;
 use crate::next_scan::NextScan;
 
 /// The idle scans of the units of types that declare one (04-capabilities/control.md, An idle
@@ -28,11 +30,13 @@ type Candidate = (u128, StableId);
 
 impl Acquiring {
     /// Scans for each unit due this tick that stands idle, with no destination, nothing under way
-    /// and no attack target: it takes as its attack target, from its scan, the nearest unit its
-    /// team sees, center to center, that a filter of its type's targets selects and that the
-    /// first of its weapons that selects it reaches, the lower stable id at one distance; then it
-    /// is due a period later, idle or not (04-capabilities/control.md, The scan is the
-    /// server's).
+    /// and no attack target, or that attack-moves with nothing under way and no attack target: it
+    /// takes as its attack target, from its scan, the nearest unit its team sees, center to
+    /// center, that a filter of its type's targets selects and that the first of its weapons that
+    /// selects it reaches, the lower stable id at one distance, and one that attack-moves stops
+    /// its walk to attack it; then it is due a period later, idle or not
+    /// (04-capabilities/control.md, The scan is the server's; 04-capabilities/control.md, An army
+    /// attack-moves).
     pub(super) fn scan(
         (tick, actions, book): (
             Res<'_, SimTick>,
@@ -50,7 +54,7 @@ impl Acquiring {
             (
                 (&Position, &Team, &UnitType, &NextScan),
                 (&ActionSlots, &mut ActionProgress),
-                Option<&Destination>,
+                (Option<&mut Destination>, Option<&mut AttackMove>),
                 Option<&Body>,
             ),
             Without<Dead>,
@@ -69,7 +73,7 @@ impl Acquiring {
             let Ok((
                 (&position, &team, &unit_type, &next),
                 (slots, mut progress),
-                destination,
+                (destination, attack_move),
                 body,
             )) = units.get_mut(entity)
             else {
@@ -86,9 +90,15 @@ impl Acquiring {
             commands
                 .entity(entity)
                 .insert(NextScan::new(now.after(acquire.period)));
+            let moves = attack_move
+                .as_ref()
+                .is_some_and(|attack_move| attack_move.goal().is_some());
+            let walks = destination
+                .as_ref()
+                .is_some_and(|destination| destination.get().is_some());
             let idle = progress.in_progress().is_none()
                 && progress.attack_target().is_none()
-                && destination.is_none_or(|destination| destination.get().is_none());
+                && (moves || !walks);
             if !idle {
                 continue;
             }
@@ -129,6 +139,13 @@ impl Acquiring {
             if let Some((_, target)) = nearest {
                 let target = Some(AttackTarget::scanned(target));
                 progress.set_attack_target(target, &mut indexes.of(id, entity));
+                if let (Some(mut destination), Some(mut attack_move)) = (destination, attack_move)
+                    && walks
+                    && moves
+                {
+                    destination.set_if_neq(Destination::to(None));
+                    attack_move.stop();
+                }
             }
         }
     }

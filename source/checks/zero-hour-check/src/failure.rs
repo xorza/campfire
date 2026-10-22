@@ -1,4 +1,4 @@
-use campfire_bots::{BotScriptError, OrderScriptError};
+use campfire_bots::{BotScriptError, OrderScriptError, ThinkError};
 use campfire_math::{Num, Vec3};
 use campfire_mode::PickError;
 use campfire_orders::OrdersDirective;
@@ -163,9 +163,12 @@ pub(crate) enum CheckFailure {
     /// Bodies of the base play's seats overlap a wall, or a body, this many times.
     #[display("the bases' bodies overlap {_0} times")]
     BaseOverlaps(usize),
-    /// A base bot's file holds other than the orders the check makes of the imported mode.
-    #[display("the base bot of {_0} differs from its file")]
-    BotFile(&'static str),
+    /// The imported mode names no bot of the name.
+    #[display("the mode names no bot {_0}")]
+    NoBot(&'static str),
+    /// A think of a bot of the mode failed.
+    #[display("a bot's think: {_0}")]
+    BotThink(ThinkError),
     /// The base play's match stood otherwise than the pinned at its end or its limit.
     #[display("the bases' bots ended as {_0}")]
     Base(Box<Differs<BotMatchEnd>>),

@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use bevy_ecs::query::With;
 use campfire_common::{AfterLeave, Seat, StateHash};
+use campfire_math::{Num, Vec3};
 use campfire_mode::{ModeWorld, PlayersData};
 use campfire_net::SessionTimes;
 use campfire_net::internals::{SimServerWorldInternals, TickHashes};
@@ -141,21 +142,19 @@ const BURST: &str = "[[order]]\ntick = 10\ndirective.orders.move.to = [1, 0]\n[[
      [[order]]\ntick = 10\ndirective.orders.move.to = [5, 0]\n[[order]]\ntick = 10\ndirective.orders.move.to = [6, 0]\n\
      [[order]]\ntick = 10\ndirective.orders.move.to = [7, 0]\n";
 
-/// What a match of the bot of `BURST` ran: the bot's inputs the log holds, the state hash after
-/// each tick, and where the bot's hero walks after ticks 10 and 11.
+/// What a match of a bot ran: the bot's inputs the log holds, the state hash after each tick,
+/// and where the bot's hero walks after ticks 10 and 11.
 #[derive(Debug, PartialEq)]
-struct Burst {
+struct Played {
     payloads: Vec<Vec<u8>>,
     hashes: Vec<StateHash>,
     walks: [Destination; 2],
 }
 
-/// The match of the bot of `BURST` up to tick `end`, its server stopped and restored from its
-/// journal after tick 10 when `stop`.
-fn burst(stop: bool, end: u64) -> Burst {
+/// The match of `setup`'s bot in slot 1 up to tick `end`, its server stopped and restored from
+/// its journal after tick 10 when `stop`.
+fn played(setup: InProcessSetup, stop: bool, end: u64) -> Played {
     let test_dir = TestDir::new();
-    let mut setup = InProcessSetup::SOLO;
-    setup.bots = &[BURST];
     let mut local = InProcessMatch::new(setup);
     local.keep_data(test_dir.path("data"));
     local.start_match();
@@ -184,7 +183,7 @@ fn burst(stop: bool, end: u64) -> Burst {
     let hashes = local.server().world().resource::<TickHashes>().get()
         [..usize::try_from(end).unwrap()]
         .to_vec();
-    Burst {
+    Played {
         payloads,
         hashes,
         walks: walks.try_into().unwrap(),
@@ -196,8 +195,61 @@ fn a_restored_server_applies_the_bot_inputs_that_spilled_past_its_stop() {
     // The log takes all seven before tick 10, and the three past its four apply in tick 11, from
     // the journal when the server stopped after tick 10: both matches log the same inputs, walk
     // the bot to 4 m after tick 10 and to 7 m after tick 11, and hash alike through tick 19.
-    let whole = burst(false, 20);
+    let mut setup = InProcessSetup::SOLO;
+    setup.bots = &[BURST];
+    let whole = played(setup.clone(), false, 20);
     assert_eq!(whole.payloads.len(), 7);
     assert_ne!(whole.walks[0], whole.walks[1]);
-    assert_eq!(burst(true, 20), whole);
+    assert_eq!(played(setup, true, 20), whole);
+}
+
+/// The lane mode's bot `walk` in slot 1, after the player's slot 0.
+const WALK: InProcessSetup = {
+    let mut setup = InProcessSetup::SOLO;
+    setup.mode_bots = &["walk"];
+    setup
+};
+
+#[test]
+fn a_mode_bot_thinks_at_its_period_and_the_log_holds_its_orders_as_its_inputs() {
+    // The lane mode's 30 Hz makes the bot's 100 ms 3 ticks; slot 1 thinks a tick before slot 0
+    // would, before ticks 2, 5, 8 and 11. Each think walks its hero to (3, 2), its param `to`,
+    // one input each.
+    let mut local = InProcessMatch::new(WALK);
+    local.start_match();
+    let bot = Seat::new(1);
+    let session = local.server().world().resource::<Session>();
+    assert_eq!(session.log().controller(bot), Some(Controller::Bot));
+    let mut seen = Vec::new();
+    while local.next_tick(End::Server) < 12 {
+        let tick = local.next_tick(End::Server);
+        local.step();
+        if local.next_tick(End::Server) > tick {
+            seen.push((tick, local.server_inputs().len()));
+        }
+    }
+    let thinks = [2, 5, 8, 11];
+    let expected: Vec<_> = (2..12)
+        .map(|tick| (tick, thinks.iter().filter(|&&at| at <= tick).count()))
+        .collect();
+    assert_eq!(seen, expected);
+    assert!(
+        local
+            .server_inputs()
+            .iter()
+            .all(|input| matches!(input, ServerInput::Bot { seat, .. } if *seat == bot))
+    );
+    let to = |value| Num::from_int(value).unwrap();
+    let walk = Destination::to(Some(Vec3::new(to(3), Num::ZERO, to(2))));
+    assert_eq!(destination(&mut local, bot), walk);
+    local.assert_log_replays();
+}
+
+#[test]
+fn a_restored_server_plays_a_mode_bot_on_from_the_world_it_finds() {
+    // Stopped after tick 10, the restored server builds the bot again, which thinks before tick
+    // 11 as the bot of the whole match does: both log the same inputs and hash alike.
+    let whole = played(WALK, false, 20);
+    assert_eq!(whole.payloads.len(), 6);
+    assert_eq!(played(WALK, true, 20), whole);
 }

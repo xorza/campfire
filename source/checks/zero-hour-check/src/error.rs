@@ -42,6 +42,4 @@ pub(crate) enum CheckError {
     GoldenParse(#[source] TomlError),
     #[error("the golden file does not write")]
     GoldenWrite(#[source] PathError<DurableError>),
-    #[error("a base bot's file does not write")]
-    BotWrite(#[source] PathError<DurableError>),
 }

@@ -142,7 +142,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
 
     /// The start of the build at a point of the builder of `entity`'s `order`, when it passes
     /// its action's checks, its requirements, by the holdings, and its placement.
-    pub(super) fn start(&mut self, entity: Entity, order: BuildOrder) -> Option<StartingBuild> {
+    pub(super) fn start(&self, entity: Entity, order: BuildOrder) -> Option<StartingBuild> {
         let (_, _, &from, _, &team, owner, slots, times, pools, .., tags) =
             self.builders.get(entity).ok()?;
         let BuildTarget::Point { angle, .. } = order.target else {
@@ -193,7 +193,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
 
     /// Whether the order of the builder of `entity` passes as it applies: a point's build its
     /// checks, by the holdings, a site's the site.
-    pub(super) fn applies(&mut self, entity: Entity) -> bool {
+    pub(super) fn applies(&self, entity: Entity) -> bool {
         let Ok((_, _, &from, _, _, owner, slots, _, _, builder, ..)) = self.builders.get(entity)
         else {
             return false;
@@ -236,7 +236,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
     /// point nearest it, unless it arrived short of that point, which ends the order; in range,
     /// a point's build starts when it passes its checks, and ends else; a builder of a site
     /// builds when the site takes it.
-    pub(crate) fn step(&mut self, entity: Entity) -> Step {
+    pub(crate) fn step(&self, entity: Entity) -> Step {
         let Ok((_, &id, &from, body, _, owner, slots, _, _, builder, destination, arrived, _)) =
             self.builders.get(entity)
         else {

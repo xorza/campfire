@@ -1,9 +1,9 @@
 use std::io;
 use std::path::PathBuf;
 
-use campfire_bots::{BotScriptError, OrderScriptReadError};
+use campfire_bots::OrderScriptReadError;
 use campfire_common::ExitStatus;
-use campfire_net::{KeyFileError, LobbyOpenError};
+use campfire_net::{KeyFileError, LobbyOpenError, ServerBotsError};
 use campfire_net_socket::BindError;
 use campfire_package::LoadError;
 use campfire_store::DataDirError;
@@ -37,12 +37,12 @@ pub(crate) enum LaunchError {
     },
     #[error("the mode does not load")]
     Mode(#[from] LoadError),
-    #[error("a bot's orders name what the mode does not have")]
-    BotNames(#[from] BotScriptError),
+    #[error("a bot's orders name what the mode does not have, or the mode has no such bot")]
+    BotNames(#[from] ServerBotsError),
 }
 
 impl LaunchError {
-    /// The exit code it ends the start with: a usage error's for a bot's orders, a storage
+    /// The exit code it ends the start with: a usage error's for a bot, a storage
     /// error's for a journal that keeps no files, a failure's for any other.
     pub(crate) const fn status(&self) -> ExitStatus {
         match self {

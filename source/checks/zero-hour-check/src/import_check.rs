@@ -465,7 +465,7 @@ impl ImportCheck<'_> {
             .game
             .mode_packages(Some(self.map))
             .map_err(CheckError::Load)?;
-        if let Some(base) = BasePlay::run(played, rate, &mut self.failures)? {
+        if let Some(base) = BasePlay::run(played, rate, &mut self.failures) {
             let expected = self.pinned(|golden| golden.base, base);
             self.failures
                 .extend(Differs::of(base, expected).map(CheckFailure::Base));

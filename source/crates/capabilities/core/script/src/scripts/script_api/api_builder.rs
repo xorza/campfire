@@ -15,7 +15,6 @@ use crate::scripts::hook::{Hook, HookDecl};
 use crate::scripts::member_decl::MemberDecl;
 use crate::scripts::member_kind::{GETTER, MemberKind};
 use crate::scripts::planned_capability::PlannedCapability;
-use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_api::api_member::{ApiMember, FormOutput};
 use crate::scripts::script_api::data_field::DataField;
@@ -115,7 +114,7 @@ impl<'a> ApiBuilder<'a> {
         );
         assert_eq!(
             decl.roles,
-            RoleSet::ALL,
+            decl.kind.every_role(),
             "`{}` serves some roles only, which `call` checks",
             decl.name
         );
@@ -172,7 +171,7 @@ impl<'a> ApiBuilder<'a> {
         );
         assert_eq!(
             decl.roles,
-            RoleSet::ALL,
+            decl.kind.every_role(),
             "`{}`, a method, serves every role",
             decl.name
         );

@@ -1,7 +1,7 @@
 use serde::de::{DeserializeOwned, DeserializeSeed};
 use serde::{Deserialize, Serialize};
 
-use crate::error::TomlError;
+use crate::error::{TomlError, TomlWriteError};
 
 /// A TOML value read and kept whole, to read as a type later: a part of a data file whose type a
 /// registry picks by the key it sits at.
@@ -13,7 +13,13 @@ impl TomlValue {
     /// `value` as a TOML value, to place in a table that a writer builds. A type TOML cannot
     /// hold, as a bare `None`, is a caller's error, and panics.
     pub fn of<T: Serialize + ?Sized>(value: &T) -> Self {
-        Self(toml::Value::try_from(value).expect("a caller writes only a value TOML holds"))
+        Self::try_of(value).expect("a caller writes only a value TOML holds")
+    }
+
+    /// `value` as a TOML value, or why TOML holds none of it: a value from outside the code, as a
+    /// script gives one.
+    pub fn try_of<T: Serialize + ?Sized>(value: &T) -> Result<Self, TomlWriteError> {
+        Ok(Self(toml::Value::try_from(value)?))
     }
 
     /// The value as a `T`.
