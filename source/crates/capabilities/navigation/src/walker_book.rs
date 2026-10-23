@@ -18,7 +18,7 @@ pub struct WalkerBook {
 impl WalkerBook {
     /// The kinds of the walkers of the match's unit types, and of each variation of a type that
     /// walks, as each unit walks by its own body
-    /// (unit-variations.md, A unit type may vary its units).
+    /// (04-capabilities/00-overview.md, A unit type may vary its units).
     pub(crate) fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let walkers = cx.book_if::<ById<UnitType, Walker>>()?;
         let variations = cx.book_if::<ById<UnitType, Variations>>()?;

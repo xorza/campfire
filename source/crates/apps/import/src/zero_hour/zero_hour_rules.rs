@@ -38,10 +38,10 @@ impl ZeroHourRules {
     /// The rules of `install`; an error for a file that does not read as the game reads it.
     pub(crate) fn read(install: &Install) -> Result<Self, ZeroHourError> {
         Ok(Self {
+            objects: install.read_inis("Object", ObjectIni::default(), ObjectIni::read)?,
             terrain: install.read_inis("Terrain", TerrainIni::default(), TerrainIni::read)?,
             game_data: install.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?,
             mouse: install.read_inis("Mouse", MouseIni::default(), MouseIni::read)?,
-            objects: install.read_inis("Object", ObjectIni::default(), ObjectIni::read)?,
             locomotors: install.read_inis(
                 "Locomotor",
                 LocomotorIni::default(),

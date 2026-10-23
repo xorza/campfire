@@ -14,7 +14,7 @@ use crate::variations::Variations;
 
 /// Which of its type's variations a unit is, its place among them, as its spawn drew it: state,
 /// which every client receives once, as it draws the variation's look
-/// (unit-variations.md, A unit type may vary its units).
+/// (04-capabilities/00-overview.md, A unit type may vary its units).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 pub struct Variation(u8);
@@ -46,6 +46,13 @@ impl Variation {
         ))
     }
 
+    /// Whether it is one of the variations of `unit_type` in `world`.
+    pub(crate) fn fits(self, world: &World, unit_type: UnitType) -> bool {
+        let variations = world.get_resource::<ById<UnitType, Variations>>();
+        let of_type = variations.and_then(|book| book.get(unit_type));
+        of_type.is_some_and(|variations| usize::from(self.0) < variations.len())
+    }
+
     /// The variation of the unit `at` spawns, its core's; as a restore checks it, its own, or for
     /// a unit of a type that varies and holds none, the first, as the check reads only whether
     /// its spawn gives one, so it refuses the unit.
@@ -69,12 +76,8 @@ impl SimComponent for Variation {
 
     /// One of its type's variations, which a restore's untrusted snapshot may not name.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let variations = world.get_resource::<ById<UnitType, Variations>>();
         let unit_type = world.get::<UnitType>(entity);
-        let of_type = variations
-            .zip(unit_type)
-            .and_then(|(book, &unit_type)| book.get(unit_type));
-        of_type.is_some_and(|variations| usize::from(self.0) < variations.len())
+        unit_type.is_some_and(|&unit_type| self.fits(world, unit_type))
     }
 }
 

@@ -138,11 +138,11 @@ impl ImportCheck<'_> {
     pub(crate) fn looks(&mut self) -> Result<(), CheckError> {
         let files = &self.packages.mode().package.files;
         let unit_looks: ClientUnits = files.read_data(&ClientUnits::path())?;
-        let varied = unit_looks
-            .units
-            .values()
-            .chain(unit_looks.objects.values())
-            .filter(|look| !look.variants.is_empty())
+        let units = unit_looks.units.values().map(|look| &look.variants);
+        let objects = unit_looks.objects.values().map(|look| &look.variants);
+        let varied = units
+            .chain(objects)
+            .filter(|variants| !variants.is_empty())
             .count();
         let empty = unit_looks
             .units

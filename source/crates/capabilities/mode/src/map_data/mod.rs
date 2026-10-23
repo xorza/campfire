@@ -77,7 +77,9 @@ impl<'de> Deserialize<'de> for MapData {
 
 /// A unit that stands on the map from the start, of a team; turned by `angle` degrees if it has
 /// a box body; `height` meters above the ground beneath `position`; on a path if it guards one, and
-/// walking it from the end `from` names if it walks one.
+/// walking it from the end `from` names if it walks one; of the place among its type's variations
+/// `variation` names, if it names one, else of one its spawn draws
+/// (04-capabilities/00-overview.md, A placement may give its variation).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlacedUnitData {
@@ -92,6 +94,8 @@ pub struct PlacedUnitData {
     pub path: Option<DeclaredName>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<PathEnd>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub variation: Option<u8>,
 }
 
 /// A named place of the map, which scripts read by its tags: a point, or a box of `region`, with
@@ -231,6 +235,7 @@ pub(crate) mod internals {
                 height: Num::ZERO,
                 path: None,
                 from: None,
+                variation: None,
             }
         }
     }

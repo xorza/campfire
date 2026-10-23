@@ -5,7 +5,9 @@ use campfire_actions::{
     ActionData, ActionKeys, ActionRange, ActionsData, RangeField, SlotKinds, Targeting,
     TypeSlotsData,
 };
-use campfire_client_files::{ClientModel, ClientUnit, LookVariant, ModelScale, ModelTop, Press};
+use campfire_client_files::{
+    ClientModel, ClientUnit, LookVariant, LookVariation, ModelScale, ModelTop, ObjectLook, Press,
+};
 use campfire_combat::{
     ArmorShare, AttackData, ClipData, CombatData, ModeCombatData, OnDeath, PitchData, ScatterData,
     SplashData, TurretData, WeaponValue,
@@ -253,7 +255,6 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         let train = TrainData {
             unit_type: declared(unit_type),
             requires,
-            variants: Vec::new(),
         };
         ActionData::of(Targeting::None, train)
     };
@@ -904,14 +905,13 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         models,
     };
     let tank = || ClientUnit {
-        models: hidden(),
         variants: vec![
             variant(&["night"], vec![model("tank", &[])]),
             variant(&["snow"], hidden()),
             variant(&["night", "snow"], vec![model("tank", &[])]),
         ],
-        placement_angle: None,
         turret: Some("turret".to_owned()),
+        ..unit(hidden())
     };
     // The rock and its reskin at the rock's scale, which the reskin cannot set; the tree's
     // look as a unit of both its models, and as the client's of its tree draw module's; the
@@ -949,15 +949,39 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             ("stump", empty()),
             ("tank", tank()),
             ("tankcamo", tank()),
+            // The pair draws no model of its own, and each of its variations the look of its
+            // object, its turret's node among it
+            // (02-engine-core.md, A look varies by its unit's variation).
+            (
+                "tankpair",
+                ClientUnit {
+                    variations: vec![
+                        LookVariation {
+                            models: tank().models,
+                            variants: tank().variants,
+                            turret: tank().turret,
+                        },
+                        LookVariation {
+                            models: vec![model("tank", &[])],
+                            variants: Vec::new(),
+                            turret: None,
+                        },
+                    ],
+                    ..unit(Vec::new())
+                },
+            ),
             ("tankred", unit(vec![model("tank", &[])])),
             ("tankshell", empty()),
         ]),
-        objects: looks(vec![
-            ("bush", unit(vec![model("tank", &[])])),
-            ("oak", unit(vec![model("rock01", &[])])),
-            ("rock", rock()),
-            ("rockred", rock()),
-        ]),
+        objects: [
+            ("bush", ObjectLook::new(vec![model("tank", &[])])),
+            ("oak", ObjectLook::new(vec![model("rock01", &[])])),
+            ("rock", ObjectLook::new(rock().models)),
+            ("rockred", ObjectLook::new(rock().models)),
+        ]
+        .into_iter()
+        .map(|(name, look)| (DeclaredName::new(name).unwrap(), look))
+        .collect(),
     };
     assert_eq!(
         Toml::parse::<ClientUnits>(&test_dir.read_text("one/game/client/units.toml")).unwrap(),

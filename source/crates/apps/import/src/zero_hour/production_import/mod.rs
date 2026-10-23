@@ -17,8 +17,8 @@ use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::command_button_ini::{ButtonCommand, CommandButton};
+use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, Prerequisite};
-use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectId};
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_names::{NamedObject, ProductionNames};
 use crate::zero_hour::imported_type::ImportedType;
@@ -51,7 +51,7 @@ pub(crate) struct ProductionImport {
 /// (09-zero-hour.md, A base start): each type its start builders build but its faction building,
 /// once each, in their command sets' order, and each type those buildings and its faction building
 /// train, once each, in that order; its army, those units that neither build nor gather and that a
-/// weapon arms, or one of the variants their train makes, which a bot trains and sends
+/// weapon arms, which a bot trains and sends
 /// (09-zero-hour.md, A builder and an attacker); its gatherers, those units that gather; and its
 /// drop-offs, its faction building and base buildings that take a load, which a bot counts its
 /// gatherers by (04-capabilities/control.md, A bot gathers).
@@ -91,7 +91,7 @@ impl FactionBase {
         }
         let army = units
             .iter()
-            .filter(|unit| production.fights(unit) && production.armed(unit, combat))
+            .filter(|unit| production.fights(unit) && combat.arms(unit))
             .cloned()
             .collect();
         let gatherers = units
@@ -179,24 +179,6 @@ impl ProductionImport {
             .any(|id| self.supply.gathers.contains_key(id))
     }
 
-    /// Whether a weapon of `combat` arms `unit`, or one of the variants a train of it makes, as
-    /// the technical's chassis hold its weapons.
-    fn armed(&self, unit: &DeclaredName, combat: &CombatImport) -> bool {
-        let arms = |name: &DeclaredName| {
-            combat
-                .weapons
-                .get(name)
-                .is_some_and(|weapons| !weapons.is_empty())
-        };
-        arms(unit)
-            || self.actions.values().any(|action| match &action.made {
-                MadeSection::Train(train) => {
-                    train.unit_type == *unit && train.variants.iter().any(arms)
-                }
-                MadeSection::Build(_) => false,
-            })
-    }
-
     /// Whether `unit`'s command set holds trains alone: none of its actions builds or gathers.
     fn fights(&self, unit: &DeclaredName) -> bool {
         let commands = self.commands.get(unit);
@@ -231,7 +213,8 @@ impl ProductionImport {
     pub(crate) fn of<'r>(rules: &'r ZeroHourRules, names: &mut ProductionNames<'r>) -> Self {
         let mut import = Self::default();
         let mut queued: VecDeque<NamedObject<'r>> = names.typed_objects().into();
-        let mut seen: BTreeSet<ObjectId> = queued.iter().map(|named| named.object.id).collect();
+        // A type is visited once, by its name, as several parents may field one variation.
+        let mut seen: BTreeSet<TypeName> = queued.iter().map(|named| named.name.clone()).collect();
         while let Some(producer) = queued.pop_front() {
             let set = producer.object.build().command_set.as_deref();
             let buttons = set.and_then(|set| rules.sets.buttons(set));
@@ -243,7 +226,7 @@ impl ProductionImport {
             made.extend(import.supply_of(rules, &producer, names));
             made.extend(names.take_fresh());
             for named in made {
-                if seen.insert(named.object.id) {
+                if seen.insert(named.name.clone()) {
                     queued.push_back(named);
                 }
             }
@@ -333,25 +316,8 @@ impl ProductionImport {
         let Ok(imported) = ImportedType::of(made, rules) else {
             return drop(ButtonDropCause::NoType);
         };
-        // A train of variations makes them in its object's place, so they walk, and it need not
-        // (09-zero-hour.md, `BuildVariations` converts to a train's variants).
-        let mut variations = Vec::with_capacity(build.variations.len());
-        for name in &build.variations {
-            let Some(variation) = rules.objects.object(name.as_bytes()) else {
-                return drop(ButtonDropCause::NoObject);
-            };
-            variations.push(variation);
-        }
-        let walks = |object: &IniObject| {
-            ImportedType::of(object, rules).is_ok_and(|imported| imported.walks())
-        };
-        let trained_walk = if variations.is_empty() {
-            imported.walks()
-        } else {
-            variations.iter().all(|&variation| walks(variation))
-        };
         match making {
-            Making::Train if !trained_walk => return drop(ButtonDropCause::NoWalker),
+            Making::Train if !imported.walks() => return drop(ButtonDropCause::NoWalker),
             Making::Build if !imported.has_body() => return drop(ButtonDropCause::NoBody),
             _ => {}
         }
@@ -376,13 +342,6 @@ impl ProductionImport {
             }
             units.push(RequiredUnit::any_of(any).expect("a prerequisite line names an object"));
         }
-        let mut variants = Vec::with_capacity(variations.len());
-        for variation in variations {
-            let Ok(typed) = names.unit_type(variation, rules) else {
-                return drop(ButtonDropCause::NoType);
-            };
-            variants.push(typed.name.into());
-        }
         let Ok(typed) = names.unit_type(made, rules) else {
             return drop(ButtonDropCause::NoType);
         };
@@ -405,7 +364,6 @@ impl ProductionImport {
             Making::Train => MadeSection::Train(TrainData {
                 unit_type: typed.name.declared().clone(),
                 requires,
-                variants,
             }),
             Making::Build => MadeSection::Build(BuildData {
                 start_life: typed.imported.life().map(Self::one_life),
@@ -447,7 +405,7 @@ impl ProductionImport {
         }
         Some(NamedObject {
             name: typed.name,
-            object: made,
+            object: typed.object,
         })
     }
 

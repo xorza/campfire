@@ -154,7 +154,9 @@ impl ZeroHour {
             missing_textures,
             textures: model_textures,
         } = models.report();
-        let mut losses: Vec<ImportLoss> = skipped.into_iter().map(ImportLoss::Model).collect();
+        let variations = game.objects.variations().dropped().into_iter().cloned();
+        let mut losses: Vec<ImportLoss> = variations.map(ImportLoss::Variation).collect();
+        losses.extend(skipped.into_iter().map(ImportLoss::Model));
         losses.extend(missing_textures.into_iter().map(ImportLoss::Texture));
         let mut names = BTreeMap::<MapName, ArchivePath>::new();
         let mut maps = Vec::new();

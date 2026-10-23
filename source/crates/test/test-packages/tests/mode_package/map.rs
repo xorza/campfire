@@ -90,6 +90,14 @@ pub(super) static MAP_FLAWS: &[Flaw] = &[
             )
         },
     ),
+    // A placed unit names a variation of its type, which the tower has none of.
+    Flaw::of(MAP, Edit::Set("units.2.variation", "0"), MODE, |problem| {
+        let variation = ModeError::NoVariation {
+            unit_type: DeclaredName::new("tower").unwrap(),
+            variation: 0,
+        };
+        rule(problem, &variation)
+    }),
     Flaw::of(
         MAP,
         Edit::Set("markers.3.name", r#""camp1""#),

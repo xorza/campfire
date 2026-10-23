@@ -220,7 +220,7 @@ impl SupplyImport {
             match names.unit_type(spawned, rules) {
                 Ok(typed) => freed.push(NamedObject {
                     name: typed.name,
-                    object: spawned,
+                    object: typed.object,
                 }),
                 Err(_) => self.drop(spawned, SupplyDropCause::NoObject),
             }
@@ -264,7 +264,7 @@ impl SupplyImport {
             },
             unit: NamedObject {
                 name: typed.name,
-                object: spawned,
+                object: typed.object,
             },
         })
     }

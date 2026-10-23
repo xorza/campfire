@@ -708,6 +708,7 @@ impl ModeApi {
             position,
             owner,
             angle: Num::ZERO,
+            variation: None,
         };
         ctx.queue(ModeEffect::SpawnUnit {
             at: spawn,

@@ -1,7 +1,7 @@
 use campfire_common::DeclaredName;
-use campfire_declarations::{BookCx, BookError, BookPlace, Fact};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, Fact};
 use campfire_navigation::{MarkerPoint, NavigationBook, Paths, PlacedBody};
-use campfire_units::{BodyForm, MapPoint};
+use campfire_units::{BodyForm, MapPoint, Variation, Variations};
 use campfire_values::{
     Names, NamesError, PackageIndex, Relations, Team, TypeScope, UnitType, VisionShare,
 };
@@ -17,13 +17,15 @@ use crate::relation_data::RelationData;
 use crate::team_manifest::TeamManifest;
 
 /// What a mode's map resolves from: the map, the relations of the mode's teams, the teams' names,
-/// and the map's paths, when it has them.
+/// the map's paths, when it has them, and the variations of the mode's unit types, when a type
+/// has some.
 #[derive(Debug)]
 pub struct MapInput<'a> {
     pub map: &'a MapData,
     pub relations: &'a [RelationData],
     pub teams: Names<Team>,
     pub paths: Option<&'a Paths>,
+    pub variations: Option<&'a ById<UnitType, Variations>>,
 }
 
 /// The mode's map and the relations of its teams, every name resolved once: the teams' names, the
@@ -69,6 +71,7 @@ impl ModeMap {
             relations: &data.relations,
             teams: Names::clone(cx.names::<Team>()?),
             paths: cx.book_if::<NavigationBook>()?.map(|book| &book.paths),
+            variations: cx.book_if::<ById<UnitType, Variations>>()?,
         };
         let unit_type = |name: &str| {
             let unit_type = cx.unit_type(TypeScope::Mode, name);
@@ -81,7 +84,8 @@ impl ModeMap {
     /// The map of `input`, its placed units' types resolved by `unit_type`, which knows the mode's
     /// types that stand. An error for what it names that the mode does not have: a relation of a
     /// team to itself, of a team the mode lacks, or of a pair named before; a placed unit of a
-    /// type, team or path it lacks, or that walks from an end of no path; a marker of another's
+    /// type, team, path or variation it lacks, or that walks from an end of no path; a marker of
+    /// another's
     /// name, a team it lacks, or with a point and a region or a region outside the bounds; and
     /// any point that does not fit its metric or its bounds.
     pub fn of(
@@ -93,6 +97,7 @@ impl ModeMap {
             relations,
             teams,
             paths,
+            variations,
         } = input;
         let team = |name: &DeclaredName| {
             let team = teams.named(name.as_str());
@@ -129,12 +134,26 @@ impl ModeMap {
                 (None, Some(_)) => return Err(ModeError::NoPathToWalk(unit.unit_type.clone())),
                 (None, None) => None,
             };
+            let count = variations
+                .and_then(|book| book.get(of_type))
+                .map_or(0, Variations::len);
+            let variation = match unit.variation {
+                Some(place) if usize::from(place) < count => Some(Variation::new(place)),
+                Some(variation) => {
+                    return Err(ModeError::NoVariation {
+                        unit_type: unit.unit_type.clone(),
+                        variation,
+                    });
+                }
+                None => None,
+            };
             placed.push(PlacedUnit {
                 unit_type: of_type,
                 team: team(&unit.team)?,
                 path,
                 position: map.placed_at(&unit.position, unit.height)?,
                 angle: unit.angle,
+                variation,
             });
         }
         let markers = Self::markers(map, team)?;
@@ -195,15 +214,18 @@ impl ModeMap {
     }
 
     /// The bodies of its placed units that do not walk, whose bodies `body_of` gives by unit
-    /// type, and none for a type that walks: what a walk check takes of them.
-    pub fn placed_bodies(&self, body_of: impl Fn(UnitType) -> Option<BodyForm>) -> Vec<PlacedBody> {
+    /// type and variation, and none for a type that walks: what a walk check takes of them.
+    pub fn placed_bodies(
+        &self,
+        body_of: impl Fn(UnitType, Option<Variation>) -> Option<BodyForm>,
+    ) -> Vec<PlacedBody> {
         let placed = self.placed.iter().enumerate();
         let bodies = placed.filter_map(|(unit, placed)| {
             Some(PlacedBody {
                 unit,
                 unit_type: placed.unit_type,
                 position: placed.position,
-                body: body_of(placed.unit_type)?.at(placed.angle),
+                body: body_of(placed.unit_type, placed.variation)?.at(placed.angle),
             })
         });
         bodies.collect()

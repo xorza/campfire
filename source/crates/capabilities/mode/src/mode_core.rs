@@ -9,7 +9,7 @@ use campfire_declarations::{
 use campfire_navigation::{ModeNavigationData, NavigationBook, WalkCheck, Walker, WalkerBook};
 use campfire_script::{Audience, UnknownName};
 use campfire_sim::Capability;
-use campfire_units::{BodyForm, MapBook, WallBook};
+use campfire_units::{BodyForm, MapBook, Variation, Variations, WallBook};
 use campfire_values::{Named, PackageIndex, Team, UnitType};
 
 use crate::bounty_book::BountyBook;
@@ -177,13 +177,22 @@ impl ModeCore {
         let no_kinds = WalkerBook::default();
         let kinds = &cx.book_if::<WalkerBook>()?.unwrap_or(&no_kinds).kinds;
         let bodies = cx.book::<ById<UnitType, BodyForm>>()?;
-        let body_of = |unit_type| {
+        let variations = cx.book_if::<ById<UnitType, Variations>>()?;
+        // A placed unit of a given variation stands as its body, and one of none as its type's,
+        // which every variation fits.
+        let body_of = |unit_type, variation: Option<Variation>| {
             assert!(
                 cx.type_of(unit_type).stands(),
                 "a placed unit's type stands"
             );
             let walks = walkers.is_some_and(|walkers| walkers.get(unit_type).is_some());
-            bodies.get(unit_type).copied().filter(|_| !walks)
+            let body = match variation {
+                Some(variation) => variations
+                    .and_then(|book| book.get(unit_type))
+                    .and_then(|of_type| of_type.get(variation.get())),
+                None => bodies.get(unit_type),
+            };
+            body.copied().filter(|_| !walks)
         };
         let name_of = |unit_type: UnitType| {
             DeclaredName::new(cx.type_of(unit_type).name).expect("a type's name is declared")

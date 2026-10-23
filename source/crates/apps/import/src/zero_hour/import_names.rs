@@ -14,11 +14,14 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// with the fields its object gives, in three phases its types state, each of the stages that
 /// may run in it: the looks and the placements of the maps and the start; then production, which
 /// starts from every placed type; then the projectiles combat's weapons fire, which are none of
-/// the others; `close` gives their closed set.
+/// the others; `close` gives their closed set. Each type's stages read the object that fields it:
+/// its own, or a parent's first build variation
+/// (04-capabilities/00-overview.md, A unit type may vary its units).
 #[derive(Debug, Default)]
 pub(crate) struct ImportNames<'r> {
     taken: BTreeMap<TypeName, &'r IniObject>,
     placed: BTreeMap<TypeName, ImportedType>,
+    fields: BTreeMap<TypeName, &'r IniObject>,
 }
 
 /// The names as production makes the types its command sets make, every placement done, and the
@@ -29,7 +32,7 @@ pub(crate) struct ProductionNames<'r> {
     fresh: Vec<NamedObject<'r>>,
 }
 
-/// An object of a unit type, and the type's name.
+/// The object that fields a unit type, and the type's name.
 #[derive(Debug, Clone)]
 pub(crate) struct NamedObject<'r> {
     pub(crate) name: TypeName,
@@ -40,14 +43,16 @@ pub(crate) struct NamedObject<'r> {
 #[derive(Debug)]
 pub(crate) struct ProjectileNames<'r>(ImportNames<'r>);
 
-/// An object's unit type, by its name, and the fields its object gives.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NamedType {
+/// An object's unit type, by its name, the fields its object gives, and the object that fields
+/// it, which every stage after reads for it.
+#[derive(Debug, Clone)]
+pub(crate) struct NamedType<'r> {
     pub(crate) name: TypeName,
     pub(crate) imported: ImportedType,
+    pub(crate) object: &'r IniObject,
 }
 
-/// A unit type so far: its name, its object, and the fields its object gives.
+/// A unit type so far: its name, the object that fields it, and the fields that object gives.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TypedObject<'n, 'r> {
     pub(crate) name: &'n TypeName,
@@ -69,14 +74,20 @@ impl<'r> ImportNames<'r> {
     pub(crate) fn unit_type(
         &mut self,
         object: &'r IniObject,
-        rules: &ZeroHourRules,
-    ) -> Result<NamedType, TypeError> {
+        rules: &'r ZeroHourRules,
+    ) -> Result<NamedType<'r>, TypeError> {
         let name = self.take(object)?;
         let imported = match self.placed.entry(name.clone()) {
             Entry::Occupied(placed) => placed.get().clone(),
             Entry::Vacant(new) => new.insert(ImportedType::of(object, rules)?).clone(),
         };
-        Ok(NamedType { name, imported })
+        let fielded = rules.objects.fielded(object);
+        self.fields.entry(name.clone()).or_insert(fielded);
+        Ok(NamedType {
+            name,
+            imported,
+            object: fielded,
+        })
     }
 
     /// Ends the placements, so production starts from every placed type.
@@ -118,6 +129,7 @@ impl<'r> ImportNames<'r> {
             .into());
         }
         self.placed.insert(name.clone(), imported);
+        self.fields.insert(name.clone(), object);
         Ok(name)
     }
 
@@ -125,7 +137,7 @@ impl<'r> ImportNames<'r> {
     fn types(&self) -> impl Iterator<Item = TypedObject<'_, 'r>> {
         self.placed.iter().map(|(name, imported)| TypedObject {
             name,
-            object: self.taken[name],
+            object: self.fields[name],
             imported,
         })
     }
@@ -134,7 +146,7 @@ impl<'r> ImportNames<'r> {
     fn typed_objects(&self) -> Vec<NamedObject<'r>> {
         let named = |name: &TypeName| NamedObject {
             name: name.clone(),
-            object: self.taken[name],
+            object: self.fields[name],
         };
         self.placed.keys().map(named).collect()
     }
@@ -147,20 +159,20 @@ impl<'r> ProductionNames<'r> {
         self.names.typed_objects()
     }
 
-    /// The unit type of `object`, which a command set makes, its prerequisites name or its
-    /// variations hold, as `ImportNames::unit_type` makes it; an object typed for the first time
-    /// joins the ones `take_fresh` gives.
+    /// The unit type of `object`, which a command set makes or its prerequisites name, as
+    /// `ImportNames::unit_type` makes it; an object typed for the first time
+    /// joins the ones `take_fresh` gives, by the object that fields it.
     pub(crate) fn unit_type(
         &mut self,
         object: &'r IniObject,
-        rules: &ZeroHourRules,
-    ) -> Result<NamedType, TypeError> {
+        rules: &'r ZeroHourRules,
+    ) -> Result<NamedType<'r>, TypeError> {
         let typed = TypeName::of(object).is_ok_and(|name| self.names.placed.contains_key(&name));
         let named = self.names.unit_type(object, rules)?;
         if !typed {
             self.fresh.push(NamedObject {
                 name: named.name.clone(),
-                object,
+                object: named.object,
             });
         }
         Ok(named)
@@ -229,8 +241,8 @@ mod tests {
             second: "ROCKS1".to_owned(),
         };
         assert_eq!(names.take(object("ROCKS1")), Err(clash.clone().into()));
-        let refused = names.unit_type(object("ROCKS1"), &rules);
-        assert_eq!(refused, Err(TypeError::Name(clash.into())));
+        let refused = names.unit_type(object("ROCKS1"), &rules).unwrap_err();
+        assert_eq!(refused, TypeError::Name(clash.into()));
         // A look alone is no unit type: the file lists the placed types, which neither drive nor
         // block, so no speed bounds them.
         names.take(object("Oak")).unwrap();

@@ -1,6 +1,7 @@
 use campfire_common::MapName;
 
 use crate::zero_hour::dropped::Dropped;
+use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
 use crate::zero_hour::model_writer::SkippedModel;
 use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::supply_import::SupplyDropCause;
@@ -33,4 +34,8 @@ pub enum ImportLoss {
     /// An object whose body starts below its most life, by its name, which the engine starts
     /// full.
     Wounded(String),
+    /// An object's build variations the import converts otherwise than whole, by the parent's
+    /// name, or a map's placement of a variation it converts otherwise than to its parent, by the
+    /// variation's (09-zero-hour.md, A chassis converts to the parent of its file).
+    Variation(Dropped<VariationDropCause>),
 }

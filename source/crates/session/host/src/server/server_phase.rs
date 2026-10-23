@@ -28,8 +28,8 @@ impl ServerPhase {
         }
     }
 
-    /// Goes to `phase` at the next transition.
-    pub fn go(world: &mut World, phase: Self) {
-        world.resource_mut::<NextState<Self>>().set(phase);
+    /// Goes to it at the next transition.
+    pub fn go(self, world: &mut World) {
+        world.resource_mut::<NextState<Self>>().set(self);
     }
 }

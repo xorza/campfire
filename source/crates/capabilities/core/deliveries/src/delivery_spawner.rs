@@ -62,6 +62,7 @@ impl DeliverySpawner<'_, '_> {
             team,
             owner: owner.copied(),
             angle: Num::ZERO,
+            variation: None,
         };
         let parts = make(id);
         self.commands.queue(move |world: &mut World| {

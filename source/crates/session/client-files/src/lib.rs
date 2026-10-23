@@ -11,8 +11,10 @@
 
 mod camera_file;
 mod client_file;
+mod client_model;
 mod client_objects;
 mod client_path;
+mod client_unit;
 mod client_units;
 mod error;
 mod hud_file;
@@ -21,6 +23,7 @@ mod ktx2_image;
 mod map_conditions;
 mod map_lights;
 mod material_extras;
+mod object_look;
 mod picking_file;
 mod team_colors;
 mod terrain_file;
@@ -29,10 +32,10 @@ mod texture_levels;
 
 pub use crate::camera_file::{CameraFile, CameraHeight};
 pub use crate::client_file::{ClientFile, ClientFormat};
+pub use crate::client_model::{ClientModel, ModelScale, ModelTop};
 pub use crate::client_objects::{ClientObject, ClientObjects};
-pub use crate::client_units::{
-    ClientModel, ClientUnit, ClientUnits, LookVariant, ModelScale, ModelTop,
-};
+pub use crate::client_unit::{ClientUnit, DrawnLook, LookVariant, LookVariation};
+pub use crate::client_units::ClientUnits;
 pub use crate::error::{ClientFileError, TeamColorsError, TerrainFileError, TextureLevelsError};
 pub use crate::hud_file::{HudFile, ShownBars};
 pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};
@@ -40,6 +43,7 @@ pub use crate::ktx2_image::Ktx2Image;
 pub use crate::map_conditions::MapConditions;
 pub use crate::map_lights::{MapLight, MapLights};
 pub use crate::material_extras::{Blend, MaterialExtras, TeamPaint};
+pub use crate::object_look::ObjectLook;
 pub use crate::picking_file::{PickingFile, PixelRadius};
 pub use crate::team_colors::TeamColors;
 pub use crate::terrain_file::{

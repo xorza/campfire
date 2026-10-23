@@ -27,9 +27,10 @@ use bevy::world_serialization::WorldInstanceReady;
 use campfire_client_files::{ClientObject, MaterialExtras};
 use campfire_combat::TurretAngle;
 use campfire_common::DeclaredName;
+use campfire_declarations::ById;
 use campfire_sim::Unpredicted;
-use campfire_units::TypeOriginBook;
-use campfire_values::{PackageIndex, Team};
+use campfire_units::{TypeOriginBook, Variations};
+use campfire_values::{PackageIndex, Team, UnitType};
 use serde::Deserialize;
 use tracing::error;
 
@@ -39,7 +40,7 @@ use crate::view::file_material::{FileBlend, FileMaterial, FileMaterialPlugin};
 use crate::view::float_num::FloatNum;
 use crate::view::ground_heights::GroundHeights;
 use crate::view::match_colors::{MatchColors, Paint};
-use crate::view::unit_looks::{LookModel, LookNodes, UnitLooks};
+use crate::view::unit_looks::{LookModel, LookNodes, LookTypes, UnitLooks};
 
 /// Draws units and the map's client objects with their packages' models: loads each unit type's
 /// models, each primitive in the file material of its glTF material and its extras, once for each
@@ -87,12 +88,19 @@ impl Plugin for UnitModelsPlugin {
 impl UnitModelsPlugin {
     /// Loads every unit type's models, once the match's types are known.
     fn load_looks(
-        origins: Res<'_, TypeOriginBook>,
+        (origins, variations): (
+            Res<'_, TypeOriginBook>,
+            Option<Res<'_, ById<UnitType, Variations>>>,
+        ),
         load: Res<'_, ClientLoad>,
         assets: Res<'_, AssetServer>,
         mut commands: Commands<'_, '_>,
     ) {
-        commands.insert_resource(UnitLooks::of(&origins, &load, &assets));
+        let types = LookTypes {
+            origins: &origins,
+            variations: variations.as_deref(),
+        };
+        commands.insert_resource(UnitLooks::of(types, &load, &assets));
     }
 
     /// Places each of the map's client objects (09-zero-hour.md, The multiplayer rule for client
@@ -119,7 +127,7 @@ impl UnitModelsPlugin {
                         error!(look, "a client object's look is none of its package's");
                         continue;
                     };
-                    new.insert(LookModel::all(PackageIndex::MODE, look, &assets))
+                    new.insert(LookModel::all(PackageIndex::MODE, look.drawn(), &assets))
                 }
             };
             let root = commands

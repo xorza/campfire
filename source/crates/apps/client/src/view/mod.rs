@@ -27,7 +27,7 @@ use campfire_host::JoinState;
 use campfire_mode::{MatchEnd, MatchResult};
 use campfire_projectiles::Projectile;
 use campfire_sim::{EntityIndex, Position, Unpredicted};
-use campfire_units::{Avatar, Body, BodyUnit, Dead, Facing, MapBook, MoveStep};
+use campfire_units::{Avatar, Body, BodyUnit, Dead, Facing, MapBook, MoveStep, Variation};
 use campfire_values::{Team, UnitType};
 
 use crate::engine_text::{EngineMessage, EngineText};
@@ -140,6 +140,7 @@ type NewUnits<'w, 's> = Query<
         Has<Unpredicted>,
         Option<&'static Body>,
         &'static UnitType,
+        Option<&'static Variation>,
         Option<&'static Facing>,
     ),
     (With<BodyUnit>, Without<Drawing>, Allow<Unpredicted>),
@@ -181,6 +182,7 @@ type NewShots<'w, 's> = Query<
         Entity,
         &'static Position,
         &'static UnitType,
+        Option<&'static Variation>,
         Has<Unpredicted>,
     ),
     (With<Projectile>, Without<Drawing>, Allow<Unpredicted>),
@@ -294,11 +296,23 @@ impl ViewPlugin {
         mut commands: Commands<'_, '_>,
     ) {
         let heights = lifts.get();
-        for (unit, &position, team, walks, avatar, dead, received, body, &unit_type, facing) in
-            &units
+        for (
+            unit,
+            &position,
+            team,
+            walks,
+            avatar,
+            dead,
+            received,
+            body,
+            &unit_type,
+            variation,
+            facing,
+        ) in &units
         {
             let at = ground(position, heights);
-            match looks.look(unit_type) {
+            let variation = variation.copied();
+            match looks.look(unit_type, variation) {
                 // A look of no models draws nothing: its drawing has no shape to point at, ring
                 // or gauge, only the place its unit stands.
                 Some([]) => {
@@ -319,8 +333,11 @@ impl ViewPlugin {
                         point: at,
                         yaw: yaw(facing),
                     };
-                    let shape =
-                        UnitShape::of(ShapeKind::of(avatar, walks), body, looks.top(unit_type));
+                    let shape = UnitShape::of(
+                        ShapeKind::of(avatar, walks),
+                        body,
+                        looks.top(unit_type, variation),
+                    );
                     let root = commands
                         .spawn((
                             DrawingOf(unit),
@@ -400,7 +417,7 @@ impl ViewPlugin {
         mut commands: Commands<'_, '_>,
     ) {
         let heights = lifts.get();
-        for (shot, &position, &unit_type, received) in &shots {
+        for (shot, &position, &unit_type, variation, received) in &shots {
             let at = ground(position, heights);
             let root = commands
                 .spawn((
@@ -417,7 +434,7 @@ impl ViewPlugin {
                     ),
                 ))
                 .id();
-            match looks.look(unit_type) {
+            match looks.look(unit_type, variation.copied()) {
                 Some(models) => {
                     commands.entity(root).insert(Heading { from: at });
                     for model in models {

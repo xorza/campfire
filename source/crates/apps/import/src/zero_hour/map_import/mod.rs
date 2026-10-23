@@ -25,6 +25,7 @@ use crate::zero_hour::format::map::map_file::{MapHeights, ZeroHourMap};
 use crate::zero_hour::format::map::map_object::ObjectPlace;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::import_team::{ImportTeam, SLOTS};
+use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::terrain_atlas::{ClassTexture, TerrainAtlas};
 use crate::zero_hour::terrain_cells::TerrainCells;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
@@ -229,15 +230,25 @@ impl MapImport {
                     }
                     continue;
                 }
-                let placed_type =
-                    names
-                        .unit_type(template, rules)
-                        .map_err(|error| MapError::UnitType {
-                            object: template.name.clone(),
-                            error,
-                        })?;
+                let typed = |error| MapError::UnitType {
+                    object: template.name.clone(),
+                    error,
+                };
+                // A variation stands as its parent's type at its place, of its own body
+                // (09-zero-hour.md, A chassis converts to the parent of its file).
+                let variation = rules.objects.variations().placed(template);
+                let of_type = variation.map_or(template, |placed| &rules.objects[placed.parent]);
+                let placed_type = names.unit_type(of_type, rules).map_err(typed)?;
+                let own;
+                let body = match variation {
+                    Some(_) => {
+                        own = ImportedType::of(template, rules).map_err(typed)?;
+                        &own
+                    }
+                    None => &placed_type.imported,
+                };
                 // The bounds hold its whole body, as a placed box's load needs.
-                if let Some(reach) = placed_type.imported.reach(degrees) {
+                if let Some(reach) = body.reach(degrees) {
                     for corner in [[-1, -1], [1, 1]] {
                         take([0, 1].map(|axis| ground[axis] + reach[axis] * corner[axis]));
                     }
@@ -250,6 +261,7 @@ impl MapImport {
                     height,
                     path: None,
                     from: None,
+                    variation: variation.map(|placed| placed.place),
                 };
                 match placed {
                     PlacedAs::Bridge => bridges.push(unit),

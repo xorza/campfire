@@ -79,6 +79,7 @@ impl<P: Bundle<Effect: NoBundleEffect>> Spawn<P> {
             owner: None,
             position: self.position,
             angle: self.angle,
+            variation: None,
         };
         Spawner::place_any(world, at, self.parts);
         id

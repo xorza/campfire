@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "2c0504131f560f65ac595b237b310e9db036ddf14c64e9f9e32d64a788b00dd6"
+game = "78d35b422b1453534c64af7784e43c42ce1b6eaf547246ee19c5985e4d6b1c79"
 rules = "e98a921607dd058bfc04bfeb5f215541a8de96088b42c762b5c4b64156d04c64"
 
 [map]
@@ -84,8 +84,8 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 310
 
 [base]
-standing = [12, 7]
-think_ops = 19745
+standing = [10, 8]
+think_ops = 19637
 
 [[base.drops]]
 untaken = 0
@@ -107,20 +107,20 @@ slot_kind = 0
 no_build = 0
 
 [[base.drops]]
-untaken = 29
+untaken = 0
 
 [base.drops.unsent]
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 11
+no_target = 0
 no_place = 0
 no_stack = 0
 
 [base.drops.dropped]
 no_unit = 0
-no_walker = 29
-no_weapon = 12
+no_walker = 0
+no_weapon = 0
 hidden = 0
 slot_kind = 0
 no_build = 0

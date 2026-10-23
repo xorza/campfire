@@ -157,6 +157,12 @@ pub enum ModeError {
     /// A placed unit of the type walks from an end of no path.
     #[error("a placed \"{0}\" walks from an end of no path")]
     NoPathToWalk(DeclaredName),
+    /// A placed unit of the type names a variation its type does not have.
+    #[error("a placed \"{unit_type}\" is of variation {variation}, which its type does not have")]
+    NoVariation {
+        unit_type: DeclaredName,
+        variation: u8,
+    },
     /// A point of the map has the shape of the other metric's points.
     #[error("a point of the map does not fit its metric")]
     PointShape,

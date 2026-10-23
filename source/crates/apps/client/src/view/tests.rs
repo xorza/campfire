@@ -14,20 +14,24 @@ use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 use campfire_actions::ShotDamage;
 use campfire_areas::{AreaSpec, Areas};
 use campfire_capabilities::internals::AreasFixtures;
-use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, ModelScale, ModelTop};
-use campfire_declarations::ById;
+use campfire_client_files::{
+    ClientModel, ClientUnit, ClientUnits, LookVariation, ModelScale, ModelTop,
+};
+use campfire_declarations::{ById, ByIdBuilder};
 use campfire_math::Num;
 use campfire_projectiles::{Flight, Payload};
 use campfire_script::MatchNames;
 use campfire_sim::IdAllocator;
-use campfire_units::{HeightGrid, TypeOrigin, TypeOriginBook};
+use campfire_units::{
+    BodyForm, BodyShape, HeightGrid, Layer, TypeOrigin, TypeOriginBook, Variations,
+};
 use campfire_values::{ActionId, DamageKind, PackageIndex, PackagePath, Rank};
 
 use super::*;
 use crate::test_app;
 use crate::view::area_view::{AREA_LIFT, AreaViewPlugin};
 use crate::view::map_metric::MapMetric;
-use crate::view::unit_looks::LookNodes;
+use crate::view::unit_looks::{LookNodes, LookTypes};
 
 /// A unit type the client data draws with no model, as every type of a view with no looks: its
 /// units take the figure of their team.
@@ -336,14 +340,21 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         hide: hide.iter().map(|&node| node.to_owned()).collect(),
         top: top.and_then(ModelTop::new),
     };
-    let names = ["tank", "sound", "pit", "shed"];
+    let names = ["tank", "sound", "pit", "shed", "technical"];
     let models = [
         vec![model("tank", &["tank.flash"], Some(2.5))],
         Vec::new(),
         vec![model("pit", &[], Some(-1.0))],
         vec![model("shed", &[], None)],
+        vec![model("technical", &[], Some(1.0))],
     ];
-    let looks = ClientUnits {
+    // The technical's two variations, the second's model 1.5 m tall.
+    let variation = |name: &str, top: f32| LookVariation {
+        models: vec![model(name, &[], Some(top))],
+        variants: Vec::new(),
+        turret: None,
+    };
+    let mut looks = ClientUnits {
         units: names
             .into_iter()
             .zip(models)
@@ -351,6 +362,8 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
             .collect(),
         ..ClientUnits::default()
     };
+    let technical = looks.units.get_mut("technical").unwrap();
+    technical.variations = vec![variation("chassis_one", 0.5), variation("chassis_two", 1.5)];
     let data = ClientLoad::of_looks([looks]);
     app.insert_resource(GroundHeights::of(grid, None));
     let origins: TypeOriginBook = names
@@ -360,7 +373,16 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         })
         .into_iter()
         .collect();
-    let looks = UnitLooks::of(&origins, &data, app.world().resource::<AssetServer>());
+    let technical_type = origins.iter().nth(4).unwrap().0;
+    let form = BodyForm::new(BodyShape::circle(Num::ONE).unwrap(), Layer::FIRST);
+    let mut variations = ByIdBuilder::default();
+    variations.set(technical_type, Variations::from([form, form]));
+    let variations = variations.build();
+    let types = LookTypes {
+        origins: &origins,
+        variations: Some(&variations),
+    };
+    let looks = UnitLooks::of(types, &data, app.world().resource::<AssetServer>());
     app.insert_resource(looks);
     app.insert_resource(data);
     let [unit_type, sound_type, pit_type, shed_type] =
@@ -390,6 +412,18 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
             ))
             .id()
     });
+    // A technical of the second variation beside them.
+    let technical = app
+        .world_mut()
+        .spawn((
+            ids.allocate(),
+            BodyUnit,
+            Position::from((7, 0, 0)),
+            Team::new(0),
+            technical_type,
+            Variation::new(1),
+        ))
+        .id();
     app.update();
     let world = app.world();
     // The sound's look has no models: its drawing stands where it does, of no shape, figure or
@@ -432,6 +466,15 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         world.get::<UnitShape>(root).unwrap().height
     };
     assert_eq!([unit, pit, shed].map(height), [2.5, 0.0, 3.8]);
+
+    // The technical draws its second variation's model, as tall as its 1.5 m, not its look's
+    // own (02-engine-core.md, A look varies by its unit's variation).
+    let drawn = world.get::<Drawing>(technical).unwrap().root();
+    let model = world.get::<Children>(drawn).unwrap()[0];
+    let scene = &world.get::<WorldAssetRoot>(model).unwrap().0;
+    let path = scene.path().unwrap().to_string();
+    assert_eq!(path, "package://0/client/models/chassis_two.glb#Scene0");
+    assert_eq!(height(technical), 1.5);
 }
 
 #[test]
@@ -458,7 +501,11 @@ fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as
         })
         .into_iter()
         .collect();
-    let looks = UnitLooks::of(&origins, &data, app.world().resource::<AssetServer>());
+    let types = LookTypes {
+        origins: &origins,
+        variations: None,
+    };
+    let looks = UnitLooks::of(types, &data, app.world().resource::<AssetServer>());
     app.insert_resource(looks);
     app.insert_resource(data);
     let [(shell_type, _), (bolt_type, _)] = [0, 1].map(|at| origins.iter().nth(at).unwrap());

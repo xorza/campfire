@@ -16,7 +16,7 @@ use campfire_common::{DeclaredName, MapName};
 use campfire_declarations::{BookPlace, NamesListError};
 use campfire_geometry::Metric;
 use campfire_math::Num;
-use campfire_mode::{ModeData, ModeDataError, PlayerControl};
+use campfire_mode::{ModeData, ModeDataError, ModeError, PlayerControl};
 use campfire_package::{
     LoadProblem, ModePackages, ModeRead, PackageName, PackageRef, Place, ScriptProblem,
 };
@@ -991,6 +991,23 @@ fn a_type_of_variations_holds_no_collision_of_its_own_one_to_256_of_them_on_one_
     let varied =
         r#"variations = [{ collision = { radius = "0.9" } }, { collision = { radius = "0.5" } }]"#;
     assert!(load(&edited([(UNITS, Edit::Replace(collision, varied))])).is_ok());
+    // The map's third unit, a tower, places its second variation; its third fails the load at the
+    // map, as the tower has two
+    // (04-capabilities/00-overview.md, A placement may give its variation).
+    let placed = |place: &'static str| {
+        let edits = [
+            (UNITS, Edit::Replace(collision, varied)),
+            (MAP, Edit::Set("units.2.variation", place)),
+        ];
+        load(&edited(edits))
+    };
+    assert!(placed("1").is_ok());
+    let past = ModeError::NoVariation {
+        unit_type: DeclaredName::new("tower").unwrap(),
+        variation: 2,
+    };
+    let error = placed("2").unwrap_err();
+    assert!(rule(&error.problem, &past), "{error:?}");
     let both = format!("{collision}\n{varied}");
     let none = "variations = []";
     let layered = r#"variations = [{ collision = { radius = "0.9" } }, { collision = { radius = "0.5", layer = "air" } }]"#;

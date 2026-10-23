@@ -330,7 +330,7 @@ impl Lobby {
             checked: lobby.checked,
         };
         ServerMatch::begin(world, begin).expect("the lobby's terms come from its own packages");
-        ServerPhase::go(world, ServerPhase::Running);
+        ServerPhase::Running.go(world);
         world.start_spectators();
     }
 

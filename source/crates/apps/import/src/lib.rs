@@ -18,6 +18,7 @@ pub use crate::zero_hour::error::{
 pub use crate::zero_hour::format::big::error::ArchiveError;
 pub use crate::zero_hour::format::csf::error::CsfError;
 pub use crate::zero_hour::format::ini::error::{IniError, MoneyError};
+pub use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
 pub use crate::zero_hour::format::map::error::{Chunk, MapReadError, Packing, TerrainError};
 pub use crate::zero_hour::format::ref_pack::error::RefPackError;
 pub use crate::zero_hour::format::w3d::error::W3dError;

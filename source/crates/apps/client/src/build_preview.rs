@@ -205,7 +205,7 @@ impl BuildPreviewPlugin {
             ))
             .add_child(footprint)
             .id();
-        for model in looks.look(placing.building).unwrap_or_default() {
+        for model in looks.look(placing.building, None).unwrap_or_default() {
             commands.spawn((model.bundle(Paint::default()), ChildOf(root)));
         }
     }

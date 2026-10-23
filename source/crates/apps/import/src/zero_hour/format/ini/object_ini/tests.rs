@@ -109,6 +109,7 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
             "Stump",
             "Tank",
             "TankCamo",
+            "TankPair",
             "TankRed",
             "TankShell",
             "Tree"

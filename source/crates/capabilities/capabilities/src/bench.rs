@@ -220,6 +220,7 @@ fn spawn(
         team,
         owner,
         angle: Num::ZERO,
+        variation: None,
     };
     core.spawn(world, BodyUnit, parts);
     id

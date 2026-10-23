@@ -369,13 +369,20 @@ fn a_dozer_of_variations_spawns_as_its_draw_by_every_start_and_counts_as_its_typ
     // The skirmish's dozer with three variations, circles of 0.25, 0.5 and 0.75 m: each slot's
     // start spawns a dozer, and slot 1's base start two more, by the mode's script; each dozer
     // holds the variation its spawn drew and that variation's body, and every count of the type
-    // finds it.
+    // finds it. A neutral dozer the map places of the third variation spawns as it
+    // (04-capabilities/00-overview.md, A placement may give its variation).
     let mut tree = PackageTree::of(TestMode::Skirmish);
     let varied = "[units.dozer]\nvariations = [{ collision = { radius = \"0.25\" } }, \
                   { collision = { radius = \"0.5\" } }, { collision = { radius = \"0.75\" } }]\n";
     tree.edit(
         "test/engine/modes/skirmish/data/units.toml",
         Edit::Replace("[units.dozer]\n", varied),
+    );
+    let placed = "[[units]]\nunit_type = \"dozer\"\nteam = \"neutral\"\nposition = [18, -18]\n\
+                  variation = 2\n\n[[markers]]\nname = \"w1\"";
+    tree.edit(
+        "test/engine/modes/skirmish/map/field/map.toml",
+        Edit::Replace("[[markers]]\nname = \"w1\"", placed),
     );
     let plan = [
         PlayerSlotPlan::Player,
@@ -408,4 +415,8 @@ fn a_dozer_of_variations_spawns_as_its_draw_by_every_start_and_counts_as_its_typ
             assert_eq!(body.shape().bound(), radius, "{dozer:?}");
         }
     }
+    let neutral = units.unit(units.spawned_at((18, 0, -18)));
+    assert_eq!(neutral.get::<Variation>(), Some(&Variation::new(2)));
+    let body = neutral.get::<Body>().unwrap();
+    assert_eq!(body.shape().bound(), Num::int(3) / 4);
 }

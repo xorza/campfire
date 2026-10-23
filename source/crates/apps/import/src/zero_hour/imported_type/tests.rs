@@ -1,3 +1,4 @@
+use campfire_codec::Toml;
 use campfire_values::FilterData;
 
 use super::*;
@@ -82,15 +83,20 @@ Object Sunk
   GeometryMajorRadius = 5.0
   GeometryHeight = -1.0
 End
+ObjectReskin WideTank Tank
+  GeometryMajorRadius = 20.0
+End
+Object Rig
+  BuildVariations = Tank WideTank
+End
 ";
 
 #[test]
 fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height() {
-    let mut ini = ObjectIni::default();
-    ini.read(BODIES.as_bytes()).unwrap();
     let mut rules = ZeroHourRules::default();
+    rules.objects.read(BODIES.as_bytes()).unwrap();
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
-    let of = |name: &str| ImportedType::of(ini.object(name.as_bytes()).unwrap(), &rules);
+    let of = |name: &str| ImportedType::of(rules.objects.object(name.as_bytes()).unwrap(), &rules);
     let int = Num::int;
     let half = |x: i64| Num::from_bits(x << (Num::FRAC_BITS - 1));
     let body = |shape: Option<BodyShape>, height| {
@@ -111,6 +117,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
             ),
         ]),
         collision: body(circle(radius), height),
+        variations: None,
         combat: None,
         turret: None,
         bounty: None,
@@ -124,6 +131,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         tags: None,
         stats: StatsData::default(),
         collision: body,
+        variations: None,
         combat: None,
         turret: None,
         bounty: None,
@@ -196,6 +204,32 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     assert_eq!(of("Flat"), Err(TypeError::Body));
     assert_eq!(of("Huge"), Err(TypeError::Body));
     assert_eq!(of("Sunk"), Err(TypeError::Body));
+    // The rig, of the tank and its reskin of a box 20 wide, of a circle of √(20² + 10²): the
+    // tank's type, of the body of each in place of its own collision, writes them as its
+    // `variations`, has a body, and reaches as far as the wider
+    // (04-capabilities/00-overview.md, A unit type may vary its units).
+    let wide = of("WideTank").unwrap().collision;
+    assert_ne!(wide, tank.collision);
+    let bodies = [tank.collision.clone(), wide.clone()].map(|collision| VariationData {
+        collision: collision.unwrap(),
+    });
+    let rig = of("Rig").unwrap();
+    let varied = ImportedType {
+        collision: None,
+        variations: Some(VariationsData(bodies.into())),
+        ..tank
+    };
+    assert_eq!(rig, varied);
+    assert!(rig.has_body());
+    let wide_reach = wide.unwrap().shape.circle_radius().unwrap();
+    assert_eq!(rig.reach(Num::ZERO), Some([wide_reach; 2]));
+    let mut writer = SectionWriter::default();
+    rig.write(&mut writer);
+    let written = Toml::write(&writer.into_table());
+    assert!(
+        written.contains("[[variations]]") && !written.contains("[collision]"),
+        "{written}"
+    );
 }
 
 /// The objects of each kind of life and of turret the import tells apart.
@@ -317,6 +351,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
             StatValue::flat(Num::int(life)),
         )]),
         collision: None,
+        variations: None,
         combat: Some(CombatPatch {
             armor: armor.map(|armor| DeclaredName::new(armor).unwrap()),
             ..CombatPatch::default()
@@ -346,6 +381,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
     // Its build cost of 2,000 is its bounty's cost, in money.
     let center = ImportedType {
         collision: Some(CollisionData { shape, layer: None }),
+        variations: None,
         bounty: Some(BountyData {
             resource: declared("money"),
             pays: Pays::Cost(2000),

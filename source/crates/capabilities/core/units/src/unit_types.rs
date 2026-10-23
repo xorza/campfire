@@ -229,14 +229,14 @@ impl UnitTypes {
 
     /// Tags each unit type that stands with the name of the layer its body moves on, as the
     /// mode's layers name them: the first with no body.
-    pub fn tag_bodies(cx: &BookCx<'_>, types: &mut Self) -> Result<(), BookError> {
+    pub fn tag_bodies(&mut self, cx: &BookCx<'_>) -> Result<(), BookError> {
         let Some(layers) = cx.names_if::<Layer>()? else {
             return Ok(());
         };
         let bodies = cx.book::<ById<UnitType, BodyForm>>()?;
         let standing = cx.standing().map(|unit| unit.unit_type);
         let bodies = standing.map(|unit_type| (unit_type, bodies.get(unit_type).copied()));
-        types.tag_layers(layers, bodies);
+        self.tag_layers(layers, bodies);
         Ok(())
     }
 

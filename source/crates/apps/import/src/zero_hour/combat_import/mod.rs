@@ -116,6 +116,12 @@ struct Stages {
 const QUARTER_DEG: f32 = 90.0;
 
 impl CombatImport {
+    /// Whether a weapon it converted arms `unit`.
+    pub(crate) fn arms(&self, unit: &DeclaredName) -> bool {
+        let weapons = self.weapons.get(unit);
+        weapons.is_some_and(|weapons| !weapons.is_empty())
+    }
+
     /// The combat of `rules`, of the unit types `names` made, each type's weapons by its name;
     /// the projectile types its weapons fire join `names`. An error for a type whose armor no file
     /// defines by the name of its case, which the game's debug build stops at as wrong data and

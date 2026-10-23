@@ -1,15 +1,18 @@
 use std::collections::BTreeMap;
 use std::ops::Index;
+use std::sync::OnceLock;
 
 use campfire_client_files::ModelScale;
 
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{FlagList, FlagSet, IniLine, IniText};
+use crate::zero_hour::format::ini::object_ini::build_variations::BuildVariations;
 use crate::zero_hour::format::ini::object_ini::fight_data::{FightBlock, FightData};
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, ProductionModule};
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSupply, SupplyModule};
 use crate::zero_hour::format::look_conditions::LookConditions;
 
+pub(crate) mod build_variations;
 pub(crate) mod fight_data;
 pub(crate) mod ini_build;
 pub(crate) mod ini_supply;
@@ -22,7 +25,16 @@ pub(crate) struct ObjectIni {
     objects: Vec<IniObject>,
     /// Each object's id by its name, of its case, as `ThingFactory::findTemplate` finds it.
     by_name: BTreeMap<String, ObjectId>,
+    /// The files read so far.
+    files: u32,
+    /// The objects' build variations, resolved from every file read so far at the first query
+    /// after a read, as a variation may name an object a later file defines.
+    variations: OnceLock<BuildVariations>,
 }
+
+/// An object INI file, by its place in the order the files are read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct IniFile(u32);
 
 /// An object of the INI files, by its place in their order: what every stage names an object by,
 /// as the files hold one object of a name.
@@ -38,6 +50,8 @@ pub(crate) struct ObjectId(u32);
 pub(crate) struct IniObject {
     pub(crate) id: ObjectId,
     pub(crate) name: String,
+    /// The file that defines it, a reskin's own.
+    file: IniFile,
     draws: Vec<DrawModule>,
     kinds: ObjectKinds,
     fence_width: f32,
@@ -296,6 +310,7 @@ impl ObjectIni {
     /// where the game's release build parses the second definition into the first, and refuses
     /// a reskin of no base.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
+        self.variations.take();
         let text = IniText::of(bytes);
         let mut reading = Reading::default();
         for line in text.lines() {
@@ -312,6 +327,7 @@ impl ObjectIni {
                 reading.line(&word, &line)?;
             }
         }
+        self.files += 1;
         if reading.stack.is_empty() {
             Ok(())
         } else {
@@ -329,6 +345,29 @@ impl ObjectIni {
     pub(crate) fn object(&self, template: &[u8]) -> Option<&IniObject> {
         let name: String = template.iter().map(|&byte| char::from(byte)).collect();
         self.named(&name)
+    }
+
+    /// The objects' build variations, as the import converts them.
+    pub(crate) fn variations(&self) -> &BuildVariations {
+        self.variations.get_or_init(|| BuildVariations::of(self))
+    }
+
+    /// The build variations of `parent`, in its line's order; none for an object of none.
+    pub(crate) fn variations_of(
+        &self,
+        parent: &IniObject,
+    ) -> Option<impl ExactSizeIterator<Item = &IniObject>> {
+        let of_parent = self.variations().of_parent(parent)?;
+        Some(of_parent.iter().map(|&variation| &self[variation]))
+    }
+
+    /// The object whose fields `object`'s unit type takes but its body and look: a parent's
+    /// first build variation, else the object itself.
+    pub(crate) fn fielded<'a>(&'a self, object: &'a IniObject) -> &'a IniObject {
+        match self.variations().of_parent(object) {
+            Some(of_parent) => &self[of_parent[0]],
+            None => object,
+        }
     }
 
     /// The object of the name `name`, of its case; none for a name no object has.
@@ -360,6 +399,7 @@ impl ObjectIni {
             None => IniObject {
                 id,
                 name: name.to_owned(),
+                file: IniFile(self.files),
                 draws: Vec::new(),
                 kinds: ObjectKinds::default(),
                 fence_width: 0.0,
@@ -374,6 +414,7 @@ impl ObjectIni {
             Some(base) => IniObject {
                 id,
                 name: name.to_owned(),
+                file: IniFile(self.files),
                 ..self.named(base).ok_or(IniError::NoBase { line })?.clone()
             },
         };
@@ -671,6 +712,22 @@ impl StateLook {
 impl IniObject {
     pub(crate) fn draws(&self) -> &[DrawModule] {
         &self.draws
+    }
+
+    pub(crate) const fn file(&self) -> IniFile {
+        self.file
+    }
+
+    /// Whether `other` differs from it in its body and its look alone: its geometry, its draw
+    /// modules and its scale (09-zero-hour.md, A variation varies the body and the look alone).
+    pub(crate) fn varies_alone(&self, other: &Self) -> bool {
+        self.kinds == other.kinds
+            && self.fence_width == other.fence_width
+            && self.is_bridge == other.is_bridge
+            && self.locomotors == other.locomotors
+            && self.build == other.build
+            && self.supply == other.supply
+            && self.fight == other.fight
     }
 
     /// Who draws an object of it a map places: a bridge-like object, a landmark bridge or a wall

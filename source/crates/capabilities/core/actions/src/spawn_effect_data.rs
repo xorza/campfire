@@ -130,6 +130,7 @@ impl ListedSpec for SpawnEffectSpec {
             owner: allegiance.owner,
             position,
             angle: Num::ZERO,
+            variation: None,
         };
         let life = self.duration_ms.map(|ms| ms.duration(frame, view.rate()));
         frame.queue(ActionsEffect { at: spawn, life });

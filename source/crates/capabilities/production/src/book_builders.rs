@@ -89,17 +89,10 @@ impl Production {
                     if action.keys.targeting != Targeting::None {
                         return fail(ProductionDataError::TrainAims);
                     }
-                    // A train of variants makes them, and never its own type.
-                    let made = if train.variants.is_empty() {
-                        std::slice::from_ref(&train.unit_type)
-                    } else {
-                        train.variants.as_slice()
-                    };
-                    let trained = made.iter().filter_map(|name| source.units.get(name));
                     let walks = |unit: &UnitTypeData| {
                         unit.section::<StatsData>().is_some_and(StatsData::walks)
                     };
-                    for unit in trained {
+                    if let Some(unit) = source.units.get(&train.unit_type) {
                         if unit.delivers() {
                             return fail(ProductionDataError::Trained);
                         }
@@ -239,8 +232,7 @@ impl BuildBook {
 }
 
 impl TrainSpec {
-    /// What each train makes: a unit type of its package, and its variants; an error for one it
-    /// does not have.
+    /// What each train makes: a unit type of its package; an error for one it does not have.
     pub fn book(cx: &BookCx<'_>) -> Result<ById<ActionId, Self>, BookError> {
         let mut book = ByIdBuilder::default();
         for action in LoadedAction::all(cx)? {
@@ -254,11 +246,6 @@ impl TrainSpec {
             };
             let spec = Self {
                 unit_type: resolve(&data.unit_type)?,
-                variants: data
-                    .variants
-                    .iter()
-                    .map(resolve)
-                    .collect::<Result<_, _>>()?,
             };
             book.set(action.action, spec);
         }

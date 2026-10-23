@@ -9,7 +9,8 @@ use crate::collision_data::{CollisionData, VariationsData};
 use crate::error::UnitTypeError;
 
 /// A unit type's variations: the body of each, one of which every spawn of the type draws for its
-/// unit, so every rule reads the one type (unit-variations.md, A unit type may vary its units).
+/// unit, so every rule reads the one type
+/// (04-capabilities/00-overview.md, A unit type may vary its units).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Variations {
     bodies: Box<[BodyForm]>,

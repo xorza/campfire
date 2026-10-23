@@ -8,10 +8,10 @@ use campfire_actions::{
     SlotCommit, SlotTimes, StartChecked,
 };
 use campfire_declarations::{ById, RoleForm};
-use campfire_math::{Num, RngStream, Vec3};
+use campfire_math::{Num, Vec3};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_sim::{
-    DueIndex, DueUnit, IdAllocator, Keyed, Ordered, Position, SimRng, SimTick, SimWorld, StableId,
+    DueIndex, DueUnit, IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld, StableId,
 };
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
 use campfire_units::{
@@ -33,10 +33,6 @@ use crate::rally_target::RallyTarget;
 use crate::train_queue::{QueueDues, QueueIndex, Queued, TrainQueue};
 use crate::train_spec::TrainSpec;
 use crate::trained_units::{Trained, TrainedUnits};
-
-/// The random stream a producer draws the variant of each train of variants from, once a tick
-/// (04-capabilities/production.md, A train may make one of several types).
-const VARIANT_STREAM: RngStream = RngStream::new("production.variant");
 
 /// Where a producer's trained units come out and where they go, on the ground plane: its exit
 /// point, and the rally point its player set, else its default one; none of a producer that
@@ -225,25 +221,13 @@ impl Trains {
             entity,
         } in due
         {
-            // A producer's draws of the tick, opened at its first train of variants.
-            let mut draws = None;
             while let Some(head) = world
                 .get::<TrainQueue>(entity)
                 .and_then(|queue| queue.done(now))
             {
                 let trains = world.resource::<ById<ActionId, TrainSpec>>();
                 let spec = trains.get(head.action).expect("a train queues only trains");
-                let unit_type = match &*spec.variants {
-                    [] => spec.unit_type,
-                    variants => {
-                        let rng = draws.get_or_insert_with(|| {
-                            world.resource::<SimRng>().open(VARIANT_STREAM, trainer)
-                        });
-                        let at = rng.below(u64::try_from(variants.len()).expect("a few variants"));
-                        variants[usize::try_from(at).expect("a variant's place")]
-                    }
-                };
-                let unit = Self::leave(world, entity, unit_type);
+                let unit = Self::leave(world, entity, spec.unit_type);
                 world.resource_mut::<TrainedUnits>().0.extend([Trained {
                     unit,
                     producer: trainer,
@@ -297,6 +281,7 @@ impl Trains {
             position,
             owner,
             angle: Num::ZERO,
+            variation: None,
         };
         ExitSpawn {
             at,

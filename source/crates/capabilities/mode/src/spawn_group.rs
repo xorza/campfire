@@ -42,6 +42,7 @@ impl SpawnGroup {
                 owner: None,
                 position,
                 angle: Num::ZERO,
+                variation: None,
             };
             Spawner::spawn(world, at, walker);
         }

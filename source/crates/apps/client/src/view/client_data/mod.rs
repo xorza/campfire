@@ -159,7 +159,10 @@ impl ClientLoad {
             .conditions;
         for package in &mut self.packages {
             let units = &mut package.units;
-            for look in units.units.values_mut().chain(units.objects.values_mut()) {
+            for look in units.units.values_mut() {
+                look.settle(&conditions);
+            }
+            for look in units.objects.values_mut() {
                 look.settle(&conditions);
             }
         }

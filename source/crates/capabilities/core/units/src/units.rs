@@ -166,7 +166,7 @@ impl Module for Units {
         d.fact::<UnitTypes>(UnitTypes::build);
         d.names::<UnitType>(UnitTypes::type_names);
         d.names::<Tag>(UnitTypes::tag_names);
-        d.extend::<UnitTypes>(UnitTypes::tag_bodies);
+        d.extend::<UnitTypes>(|cx, types| types.tag_bodies(cx));
         d.book::<UnitTypeBook>(UnitTypes::build_type_book);
         d.book::<UnitStateBook>(UnitTypes::build_state_book);
         d.book::<TypeOriginBook>(UnitTypes::build_origin_book);
@@ -239,7 +239,7 @@ impl Units {
     /// Visits each kind of entity of the core's units, which state types name as their host.
     /// The body of each unit type that stands with a `collision` or `variations`: its
     /// collision's, or the bound of its variations
-    /// (unit-variations.md, A unit type may vary its units).
+    /// (04-capabilities/00-overview.md, A unit type may vary its units).
     fn bodies(cx: &BookCx<'_>) -> Result<ById<UnitType, BodyForm>, BookError> {
         let variations = cx.book::<ById<UnitType, Variations>>()?;
         let mut bodies = ByIdBuilder::default();

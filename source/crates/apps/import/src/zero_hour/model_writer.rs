@@ -2,7 +2,8 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_client_files::{
-    ClientModel, ClientUnit, ClientUnits, LookVariant, ModelScale, ModelTop,
+    ClientModel, ClientUnit, ClientUnits, LookVariant, LookVariation, ModelScale, ModelTop,
+    ObjectLook,
 };
 use campfire_common::DeclaredName;
 use campfire_package_disk::PackageWriter;
@@ -11,7 +12,7 @@ use crate::gltf::model_bounds::ModelBounds;
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::ini::object_ini::{
-    DrawKind, DrawModule, DrawnState, ObjectIni, PlacedAs, StateLook,
+    DrawKind, DrawModule, DrawnState, IniObject, ObjectIni, PlacedAs, StateLook,
 };
 use crate::zero_hour::format::look_conditions::LookConditions;
 use crate::zero_hour::game_path;
@@ -132,7 +133,9 @@ impl ModelWriter<'_, '_> {
     /// object that maps place as client objects, as the client's tree or prop buffer draws it
     /// (09-zero-hour.md, The multiplayer rule for client objects): a tree's models of its tree draw
     /// modules, a prop's of its first draw module, when the `W3DModelDraw` family's, each created
-    /// by its name, so only the meshes hidden by their own flag are hidden.
+    /// by its name, so only the meshes hidden by their own flag are hidden; and the look of each
+    /// build variation of an object of them, its own, or its object's for a variation whose models
+    /// the package lacks (02-engine-core.md, A look varies by its unit's variation).
     pub(crate) fn units<'r>(
         &mut self,
         ini: &'r ObjectIni,
@@ -151,6 +154,13 @@ impl ModelWriter<'_, '_> {
             // A preview of its build stands at the angle the original's cursor shows it at.
             unit_look.placement_angle = object.build().placement_angle;
             unit_look.turret = self.turret(draws)?;
+            if let Some(of_parent) = ini.variations_of(object) {
+                let mut looks = Vec::with_capacity(of_parent.len());
+                for variation in of_parent {
+                    looks.push(self.variation_look(variation, &unit_look)?);
+                }
+                unit_look.variations = looks;
+            }
             let declared = DeclaredName::from(names.take(object)?);
             // A tree draws its module's model whatever the map; a prop the model of its first
             // module's best state, all of it shown, as `W3DTerrainVisual::addProp` draws it.
@@ -175,11 +185,39 @@ impl ModelWriter<'_, '_> {
             if let Some(object_look) = self.look(drawn, scale)?
                 && !object_look.models.is_empty()
             {
+                let object_look = ObjectLook {
+                    models: object_look.models,
+                    variants: object_look.variants,
+                };
                 units.objects.insert(declared.clone(), object_look);
             }
             units.units.insert(declared, unit_look);
         }
         Ok(units)
+    }
+
+    /// The look of `variation`, a build variation of the object of `parent`: its models, their
+    /// variants and its turret's node, or `parent`'s own for one whose models the package lacks.
+    fn variation_look(
+        &mut self,
+        variation: &IniObject,
+        parent: &ClientUnit,
+    ) -> Result<LookVariation, ZeroHourError> {
+        let draws = variation.draws();
+        let drawn = |conditions| draws.iter().map(move |draw| draw.drawn(conditions));
+        let look = match self.look(drawn, variation.scale())? {
+            Some(look) => LookVariation {
+                models: look.models,
+                variants: look.variants,
+                turret: self.turret(draws)?,
+            },
+            None => LookVariation {
+                models: parent.models.clone(),
+                variants: parent.variants.clone(),
+                turret: parent.turret.clone(),
+            },
+        };
+        Ok(look)
     }
 
     /// The node the turret of `draws` turns: the pivot of the first module's model that its
@@ -230,10 +268,8 @@ impl ModelWriter<'_, '_> {
             return Ok(None);
         }
         Ok(Some(ClientUnit {
-            models: own.models,
             variants,
-            placement_angle: None,
-            turret: None,
+            ..ClientUnit::new(own.models)
         }))
     }
 

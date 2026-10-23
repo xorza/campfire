@@ -79,11 +79,12 @@ fn check_walkable(
         relations: &[],
         teams: ModeMap::team_names(&teams).unwrap(),
         paths: Some(&navigation.paths),
+        variations: None,
     };
     let map = ModeMap::of(input, unit_type).unwrap();
     let name = |unit_type: UnitType| TYPES[unit_type.index()];
     let named = |unit_type| DeclaredName::new(name(unit_type)).unwrap();
-    let body = |unit_type| body_of(name(unit_type));
+    let body = |unit_type, _| body_of(name(unit_type));
     let kinds: WalkerKinds = walkers.iter().copied().collect();
     let check = WalkCheck {
         ground: &ground,

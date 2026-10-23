@@ -7,7 +7,7 @@ use campfire_mode::{BountyData, IncomeData, IncomePays, Pays};
 use campfire_orders::AcquirePatch;
 use campfire_projectiles::ProjectileData;
 use campfire_stats::{StatValue, StatsData, TypePoolsData};
-use campfire_units::{BodyShape, CollisionData, TypeTagsData};
+use campfire_units::{BodyShape, CollisionData, TypeTagsData, VariationData, VariationsData};
 use campfire_values::{EngineStat, Stat};
 
 use crate::zero_hour::error::TypeError;
@@ -45,6 +45,9 @@ pub(crate) struct ImportedType {
     tags: Option<TypeTagsData>,
     stats: StatsData,
     collision: Option<CollisionData>,
+    /// The body of each of its build variations, in their order, of a type that varies, in place
+    /// of its own `collision` (04-capabilities/00-overview.md, A unit type may vary its units).
+    variations: Option<VariationsData>,
     /// The armor of its starting armor set, the one field of its `combat` the install gives; the
     /// engine's own load completes it from the rules data's defaults.
     combat: Option<CombatPatch>,
@@ -69,8 +72,39 @@ impl ImportedType {
     /// The unit type of `object`, its locomotors found in `rules`, its names those `rules`
     /// give; an error for a locomotor no file defines, as the game refuses one, a number past what
     /// the engine holds, or a body or a turret a unit type's load refuses, as the engine's types
-    /// refuse them.
+    /// refuse them. An object of build variations takes its first variation's type, of the body of
+    /// each.
     pub(crate) fn of(object: &IniObject, rules: &ZeroHourRules) -> Result<Self, TypeError> {
+        match rules.objects.variations_of(object) {
+            Some(variations) => Self::varied(variations, rules),
+            None => Self::plain(object, rules),
+        }
+    }
+
+    /// The type of the first of `variations`, of the body of each, which every other part of
+    /// theirs is alike in; of no body, of none; an error for a variation of no body beside one
+    /// of a body.
+    fn varied<'r>(
+        mut variations: impl Iterator<Item = &'r IniObject>,
+        rules: &ZeroHourRules,
+    ) -> Result<Self, TypeError> {
+        let first = variations.next().expect("a parent's variations are some");
+        let mut varied = Self::plain(first, rules)?;
+        let Some(collision) = varied.collision.take() else {
+            return Ok(varied);
+        };
+        let mut bodies = vec![VariationData { collision }];
+        for variation in variations {
+            let collision = Self::plain(variation, rules)?.collision;
+            let collision = collision.ok_or(TypeError::Body)?;
+            bodies.push(VariationData { collision });
+        }
+        varied.variations = Some(VariationsData(bodies));
+        Ok(varied)
+    }
+
+    /// The type of `object` alone.
+    fn plain(object: &IniObject, rules: &ZeroHourRules) -> Result<Self, TypeError> {
         let names = &rules.names;
         let mut drive = None;
         for name in object.locomotors() {
@@ -183,6 +217,7 @@ impl ImportedType {
             tags: (!tags.is_empty()).then_some(TypeTagsData(tags)),
             stats: stats.into_iter().collect(),
             collision,
+            variations: None,
             combat,
             turret,
             bounty,
@@ -234,6 +269,9 @@ impl ImportedType {
         if let Some(collision) = &self.collision {
             writer.section(collision);
         }
+        if let Some(variations) = &self.variations {
+            writer.section(variations);
+        }
         if let Some(combat) = &self.combat {
             writer.patch::<CombatData>(combat);
         }
@@ -259,6 +297,7 @@ impl ImportedType {
             tags: None,
             stats: StatsData::default(),
             collision: None,
+            variations: None,
             combat: None,
             turret: None,
             bounty: None,
@@ -279,15 +318,27 @@ impl ImportedType {
     }
 
     /// How far its body reaches from its unit's place along `x` and `z`, at `angle` degrees, as
-    /// a map's load measures a placed box against its bounds; none for no body.
+    /// a map's load measures a placed box against its bounds, of a type that varies the farthest
+    /// of its variations' along each; none for no body.
     pub(crate) fn reach(&self, angle: Num) -> Option<[Num; 2]> {
-        let shape = self.collision.as_ref()?.shape;
-        if let Some(radius) = shape.circle_radius() {
-            return Some([radius; 2]);
-        }
-        let size = shape.box_size().expect("a shape is a circle or a box");
-        let body = BodyBox::new(size, angle).expect("a box's size alone decides whether it is one");
-        Some(body.extent())
+        let reach = |collision: &CollisionData| {
+            let shape = collision.shape;
+            if let Some(radius) = shape.circle_radius() {
+                return [radius; 2];
+            }
+            let size = shape.box_size().expect("a shape is a circle or a box");
+            let body = BodyBox::new(size, angle);
+            body.expect("a box's size alone decides whether it is one")
+                .extent()
+        };
+        let varied = self.variations.iter().flat_map(|variations| &variations.0);
+        let bodies = self
+            .collision
+            .iter()
+            .chain(varied.map(|variation| &variation.collision));
+        bodies
+            .map(reach)
+            .reduce(|far, reach| [0, 1].map(|axis| far[axis].max(reach[axis])))
     }
 
     /// Whether its units walk: it drives, so it has a `move_speed`.
@@ -295,9 +346,10 @@ impl ImportedType {
         self.stats.walks()
     }
 
-    /// Whether it has a body, a box or a circle, which a build places.
+    /// Whether it has a body, a box or a circle, which a build places, of its own or of each
+    /// variation.
     pub(crate) const fn has_body(&self) -> bool {
-        self.collision.is_some()
+        self.collision.is_some() || self.variations.is_some()
     }
 
     /// Its speed in meters a second, when it drives.

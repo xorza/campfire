@@ -116,7 +116,7 @@ impl SimServerWorld for World {
                 ServerPhase::Restoring
             }
         };
-        ServerPhase::go(self, phase);
+        phase.go(self);
     }
 
     fn end_session(&mut self) -> Result<(), SnapshotWriteError> {

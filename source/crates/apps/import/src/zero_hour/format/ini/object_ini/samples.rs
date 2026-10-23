@@ -73,7 +73,7 @@ End
 ";
 
 /// `Data\INI\Object.ini` of the fixture install: two reskins of the tank, one with its own
-/// draw module, a stump of no model, a prop of a lone mesh at a scale of 1.5 and its
+/// draw module, a pair whose build variations they are, a stump of no model, a prop of a lone mesh at a scale of 1.5 and its
 /// reskin, an optimized tree, fluff, a wall a unit walks on, a structure of a box of half
 /// extents 10 and 2.5, and the fixture map's tank, which drives on its treads, a box of half
 /// extents 4 and 3, its gun on a turret of 180° a second, and its fence; the shell the tank's
@@ -91,6 +91,9 @@ ConditionState NONE\r
   ShowSubObject = Hatch\r
 End\r
   End\r
+End\r
+Object TankPair\r
+  BuildVariations = TankCamo TankRed\r
 End\r
 Object Stump\r
   Draw = W3DPropDraw ModuleTag_01\r

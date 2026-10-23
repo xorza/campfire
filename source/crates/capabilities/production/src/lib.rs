@@ -412,28 +412,13 @@ pub mod internals {
             time: Ticks,
             resource_cost: Option<ResourceAmount>,
         ) -> ActionId {
-            Self::add_varied_train(world, unit_type, &[], time, resource_cost)
-        }
-
-        /// Adds a train of `unit_type` as `add_train` does, which makes `variants` in its type's
-        /// place, one drawn for each unit.
-        pub fn add_varied_train(
-            world: &mut World,
-            unit_type: UnitType,
-            variants: &[UnitType],
-            time: Ticks,
-            resource_cost: Option<ResourceAmount>,
-        ) -> ActionId {
             let action = TestAction {
                 resource_cost,
                 ..TestAction::new(ActionKind::Train, Aim::None, ActionRange::Global, time)
             };
             let id = Actions::add(world, "train", action);
             if world.contains_resource::<ById<ActionId, TrainSpec>>() {
-                let spec = TrainSpec {
-                    unit_type,
-                    variants: variants.into(),
-                };
+                let spec = TrainSpec { unit_type };
                 ById::<ActionId, TrainSpec>::amend(world, |_, book| book.set(id, spec));
             }
             id
@@ -458,7 +443,6 @@ pub mod internals {
             };
             let spec = TrainSpec {
                 unit_type: named(&train.unit_type),
-                variants: train.variants.iter().map(named).collect(),
             };
             ById::<ActionId, TrainSpec>::amend(world, |_, book| book.set(action, spec));
         }

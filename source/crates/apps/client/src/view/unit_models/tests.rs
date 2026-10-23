@@ -13,7 +13,7 @@ use bevy::mesh::MeshTag;
 use bevy::world_serialization::{WorldAssetRoot, WorldSerializationPlugin};
 use campfire_app_threads::OneThreadPlugins;
 use campfire_client_files::{
-    ClientModel, ClientObjects, ClientUnit, ClientUnits, ModelScale, TeamColors,
+    ClientModel, ClientObjects, ClientUnits, ModelScale, ObjectLook, TeamColors,
 };
 use campfire_math::Num;
 use campfire_units::HeightGrid;
@@ -168,14 +168,14 @@ fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales
         objects: [
             (
                 name("oak"),
-                ClientUnit::new(vec![
+                ObjectLook::new(vec![
                     model("client/models/oak.glb", 1.5, &[]),
                     model("client/models/leaves.glb", 1.0, &["leaves.stump"]),
                 ]),
             ),
             (
                 name("bush"),
-                ClientUnit::new(vec![model("client/models/bush.glb", 1.0, &[])]),
+                ObjectLook::new(vec![model("client/models/bush.glb", 1.0, &[])]),
             ),
         ]
         .into(),

@@ -218,6 +218,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         position: halves(0, -12),
         owner: Some(player),
         angle: Num::int(90),
+        variation: None,
     };
     let slots = TimedSlots::new(ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]));
     Spawner::place_any(&mut game, at, (slots, TrainQueue::default()));

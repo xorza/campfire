@@ -71,6 +71,11 @@ fn warn_of(loss: &ImportLoss) {
             object,
             "an object's body starts below its most life, which the engine starts full"
         ),
+        ImportLoss::Variation(dropped) => warn!(
+            object = dropped.name,
+            cause = ?dropped.cause,
+            "an object's build variations are not imported whole"
+        ),
     }
 }
 

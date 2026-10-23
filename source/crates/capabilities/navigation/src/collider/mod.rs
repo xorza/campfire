@@ -51,14 +51,14 @@ impl Collider {
                 ContactBodies::Walkers { first, second } => {
                     debug_assert!(first < second);
                     let (head, tail) = colliders.split_at_mut(second);
-                    Self::separate(&mut head[first], &mut tail[0]);
+                    head[first].separate(&mut tail[0]);
                 }
                 ContactBodies::Static { walker, body } => {
                     let (walker, mut fixed) = (&mut colliders[walker], Self::fixed(&body));
                     if walker.id < body.id {
-                        Self::separate(walker, &mut fixed);
+                        walker.separate(&mut fixed);
                     } else {
-                        Self::separate(&mut fixed, walker);
+                        fixed.separate(walker);
                     }
                 }
             }
@@ -87,7 +87,7 @@ impl Collider {
         if !self.may_separate(other) {
             return false;
         }
-        match Self::boxed(self, other) {
+        match self.boxed(other) {
             Some((body, at, mover)) => body.push_out(at, mover.point, mover.radius()).is_some(),
             None => self.overlap(other).is_some(),
         }
@@ -109,12 +109,12 @@ impl Collider {
         }
     }
 
-    /// The box of the two, where it stands, and the other, which may be pushed: none when
-    /// neither is a box. Only a body that may not be pushed is one.
-    const fn boxed<'a>(a: &'a Self, b: &'a Self) -> Option<(BodyBox, Vec3, &'a Self)> {
-        let (body, at, mover) = match (a.shape, b.shape) {
-            (Shape::Box(body), _) => (body, a.point, b),
-            (_, Shape::Box(body)) => (body, b.point, a),
+    /// The box of it and `other`, where it stands, and the other, which may be pushed: none
+    /// when neither is a box. Only a body that may not be pushed is one.
+    const fn boxed<'a>(&'a self, other: &'a Self) -> Option<(BodyBox, Vec3, &'a Self)> {
+        let (body, at, mover) = match (self.shape, other.shape) {
+            (Shape::Box(body), _) => (body, self.point, other),
+            (_, Shape::Box(body)) => (body, other.point, self),
             _ => return None,
         };
         Some((body, at, mover))
@@ -133,18 +133,18 @@ impl Collider {
         (square < reach * reach).then_some(Overlap { dx, dz, reach })
     }
 
-    fn separate(a: &mut Self, b: &mut Self) {
-        if !a.may_separate(b) {
+    fn separate(&mut self, other: &mut Self) {
+        if !self.may_separate(other) {
             return;
         }
-        if let Some((body, at, _)) = Self::boxed(a, b) {
-            let mover = if b.movable { b } else { a };
+        if let Some((body, at, _)) = self.boxed(other) {
+            let mover = if other.movable { other } else { self };
             if let Some(moved) = body.push_out(at, mover.point, mover.radius()) {
                 mover.point = moved;
             }
             return;
         }
-        let Some(Overlap { dx, dz, reach }) = a.overlap(b) else {
+        let Some(Overlap { dx, dz, reach }) = self.overlap(other) else {
             return;
         };
         let change = match Direction::of([dx, dz]) {
@@ -154,8 +154,8 @@ impl Collider {
                 [0, 1].map(|axis| parted[axis] - [dx, dz][axis])
             }
         };
-        let moves = match (a.movable, b.movable) {
-            (true, true) if a.walking != b.walking => (a.walking, b.walking),
+        let moves = match (self.movable, other.movable) {
+            (true, true) if self.walking != other.walking => (self.walking, other.walking),
             pair => pair,
         };
         let back = change.map(|along| match moves {
@@ -163,8 +163,8 @@ impl Collider {
             (true, false) => along,
             _ => 0,
         });
-        a.point = Self::moved(a.point, back.map(|along| -along));
-        b.point = Self::moved(b.point, [0, 1].map(|axis| change[axis] - back[axis]));
+        self.point = Self::moved(self.point, back.map(|along| -along));
+        other.point = Self::moved(other.point, [0, 1].map(|axis| change[axis] - back[axis]));
     }
 
     /// `point` moved by `by` bits along x and z; its height stays.

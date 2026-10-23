@@ -252,6 +252,7 @@ impl Construction {
             position: start.position,
             owner: owner.map(Owner::player_slot),
             angle: start.angle,
+            variation: None,
         };
         let spec = world
             .resource::<BuildBook>()

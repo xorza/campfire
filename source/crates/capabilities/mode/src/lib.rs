@@ -481,6 +481,7 @@ impl Mode {
                 position: placed.position,
                 owner: None,
                 angle: placed.angle,
+                variation: placed.variation,
             };
             match placed.path {
                 None => Spawner::spawn(world, at, ()),

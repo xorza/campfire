@@ -18,9 +18,10 @@ use crate::unit_states::UnitStates;
 use crate::variation::Variation;
 
 /// What every unit spawns with, a delivery among them: its stable id, place, type, team and
-/// owner, the angle in degrees it faces, and its script state; its type gives it its tags, and
-/// its variation when the type varies. Every spawn of a unit goes through `UnitCore::spawn`, the
-/// mode's spawner's and a delivery's alike.
+/// owner, the angle in degrees it faces, its variation when it is given one, and its script
+/// state; its type gives it its tags, and its variation when the type varies and none is given.
+/// Every spawn of a unit goes through `UnitCore::spawn`, the mode's spawner's and a delivery's
+/// alike.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitCore {
     pub id: StableId,
@@ -29,6 +30,7 @@ pub struct UnitCore {
     pub team: Team,
     pub owner: Option<Owner>,
     pub angle: Num,
+    pub variation: Option<Variation>,
 }
 
 impl UnitCore {
@@ -55,14 +57,20 @@ impl UnitCore {
             team,
             owner,
             angle,
+            variation,
         } = self;
         let avatar = world.get_resource::<TagBook>().is_some_and(|book| {
             let tags = book.unit_tags(unit_type, iter::empty());
             tags.tags.contains(Avatar::TAG.tag())
         });
-        // Drawn once, as its stream opens once for its unit in a tick, before the write, which
-        // gives each part the one draw.
-        let variation = Variation::draw(world, id, unit_type);
+        // Given, as a map's placement gives it, or drawn once, as its stream opens once for its
+        // unit in a tick, before the write, which gives each part the one variation
+        // (04-capabilities/00-overview.md, A placement may give its variation).
+        debug_assert!(
+            variation.is_none_or(|variation| variation.fits(world, unit_type)),
+            "a given variation is one of its type's"
+        );
+        let variation = variation.or_else(|| Variation::draw(world, id, unit_type));
         // The write takes the parts by their components, which it finds registered.
         world.register_bundle::<(K, B)>();
         let mut unit = world.spawn_empty();

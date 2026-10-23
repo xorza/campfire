@@ -7,6 +7,7 @@ use campfire_values::{Distance, FilterData, Scalar};
 use super::*;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
+use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::supply_import::{ImportedGather, SupplyDropCause};
@@ -16,23 +17,21 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
     // The dozer builds the center, which the start already holds, the barracks twice, by two
     // buttons, and gathers, which makes nothing; the worker the barracks again and the factory.
     // The center trains the dozer, the barracks the ranger, the dozer again and the mortar, the
-    // factory the tank, the truck, which gathers, the scout and the technical, whose chassis
-    // variant holds its weapon: the base is the barracks and the factory, and the dozer, the
+    // factory the tank, the truck, which gathers, the scout and the technical: the base is the
+    // barracks and the factory, and the dozer, the
     // ranger, the mortar, the tank, the truck, the scout and the technical, in that order
     // (09-zero-hour.md, A base start); its army the ranger, the tank and the technical, which
     // neither build nor gather and a weapon arms, but the scout, of no weapon, and the mortar,
     // whose weapon dropped; its gatherers the dozer and the truck; and its drop-offs the center
     // and the factory, which take a load.
     let name = |text: &str| DeclaredName::new(text).unwrap();
-    let train_of = |unit: &str, variants: &[&str]| ImportedAction {
+    let train = |unit: &str| ImportedAction {
         keys: ActionKeys::new(Targeting::None),
         made: MadeSection::Train(TrainData {
             unit_type: name(unit),
             requires: None,
-            variants: variants.iter().map(|&variant| name(variant)).collect(),
         }),
     };
-    let train = |unit: &str| train_of(unit, &[]);
     let build = |unit: &str| ImportedAction {
         keys: ActionKeys::new(Targeting::Point),
         made: MadeSection::Build(BuildData {
@@ -57,7 +56,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         ("train_truck", train("truck")),
         ("train_mortar", train("mortar")),
         ("train_scout", train("scout")),
-        ("train_technical", train_of("technical", &["chassis"])),
+        ("train_technical", train("technical")),
     ] {
         import.actions.insert(name(id), action);
     }
@@ -100,7 +99,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
     for (unit, weapon) in [
         ("ranger", "weapon_rifle"),
         ("tank", "weapon_cannon"),
-        ("chassis", "weapon_gun"),
+        ("technical", "weapon_gun"),
     ] {
         combat
             .weapons
@@ -358,30 +357,22 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
             ("hack_lamer", &hack(None, 1000, None, 1)),
         ]
     );
-    // The jeep, of no locomotor, trains as one of its two variations, each a type of its own; the
-    // kite, one of whose variations flies, drops (09-zero-hour.md, `BuildVariations` converts to a
-    // train's variants).
-    let MadeSection::Train(jeep) = &import.actions[&declared("train_jeep")].made else {
-        panic!("the jeep's train");
+    // The jeep, of no locomotor, trains as its own type, which walks as its variations do; the
+    // kite, one of whose variations flies, trains as its first variation alone
+    // (04-capabilities/00-overview.md, A unit type may vary its units).
+    for (train, unit) in [("train_jeep", "jeep"), ("train_kite", "kite")] {
+        let MadeSection::Train(made) = &import.actions[&declared(train)].made else {
+            panic!("{train}");
+        };
+        assert_eq!(made.unit_type, declared(unit));
+    }
+    let unalike = Dropped {
+        name: "Kite".to_owned(),
+        cause: VariationDropCause::Unalike,
     };
-    assert_eq!(
-        (&jeep.unit_type, &jeep.variants),
-        (
-            &declared("jeep"),
-            &vec![declared("jeepone"), declared("jeeptwo")]
-        )
-    );
-    let kite = Dropped {
-        name: "Command_Kite".to_owned(),
-        cause: ButtonDropCause::NoWalker,
-    };
-    assert!(
-        (&import.dropped)
-            .into_iter()
-            .any(|dropped| *dropped == kite),
-        "{:?}",
-        import.dropped
-    );
+    let dropped: Vec<&Dropped<VariationDropCause>> =
+        rules.objects.variations().dropped().into_iter().collect();
+    assert_eq!(dropped, [&unalike]);
     // The site of a production update keeps 3 guards, each back 30,000 ms, 900 frames, after
     // it dies, and trains nothing (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns).
     let spawns = SpawnsData {
@@ -425,15 +416,16 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     );
 }
 
-/// The objects a converted button's variations hold and its prerequisites name join the walk, so
-/// their own command sets convert too: the center trains the jeep, which trains as its one
-/// variation, the scout, whose set trains the wisp; the wisp needs the lab, which no button makes
-/// and no map places, and whose set trains the ghost.
+/// A converted button's type of build variations and the objects its prerequisites name join the
+/// walk, so their own command sets convert too: the center trains the jeep and the rover, whose
+/// one variation, the scout, fields each, and whose set trains the wisp, a command of both; the
+/// wisp needs the lab, which no button makes and no map places, and whose set trains the ghost.
 #[test]
 fn a_variation_and_a_prerequisite_convert_their_own_command_sets() {
     const OBJECTS: &str = "\
         Object Center\n CommandSet = CenterSet\n Behavior = ProductionUpdate M1\n End\nEnd\n\
         Object Jeep\n BuildCost = 500\n BuildTime = 5.0\n BuildVariations = Scout\nEnd\n\
+        Object Rover\n BuildCost = 600\n BuildTime = 5.0\n BuildVariations = Scout\nEnd\n\
         Object Scout\n Locomotor = SET_NORMAL TankTreads\n CommandSet = ScoutSet\n\
          Behavior = ProductionUpdate M1\n End\nEnd\n\
         Object Wisp\n Locomotor = SET_NORMAL TankTreads\n BuildCost = 100\n BuildTime = 1.0\n\
@@ -441,11 +433,12 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets() {
         Object Lab\n CommandSet = LabSet\n Behavior = ProductionUpdate M1\n End\nEnd\n\
         Object Ghost\n Locomotor = SET_NORMAL TankTreads\n BuildCost = 100\n BuildTime = 1.0\n\
         End\n";
-    const SETS: &str = "CommandSet CenterSet\n 1 = Command_Jeep\nEnd\n\
+    const SETS: &str = "CommandSet CenterSet\n 1 = Command_Jeep\n 2 = Command_Rover\nEnd\n\
                         CommandSet ScoutSet\n 1 = Command_Wisp\nEnd\n\
                         CommandSet LabSet\n 1 = Command_Ghost\nEnd\n";
     const BUTTONS: &str = "\
         CommandButton Command_Jeep\n Command = UNIT_BUILD\n Object = Jeep\nEnd\n\
+        CommandButton Command_Rover\n Command = UNIT_BUILD\n Object = Rover\nEnd\n\
         CommandButton Command_Wisp\n Command = UNIT_BUILD\n Object = Wisp\nEnd\n\
         CommandButton Command_Ghost\n Command = UNIT_BUILD\n Object = Ghost\nEnd\n";
     let mut rules = ZeroHourRules::default();
@@ -458,12 +451,16 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets() {
     names.unit_type(center, &rules).unwrap();
     let import = ProductionImport::of(&rules, &mut names.into_production());
     let declared = |name: &str| DeclaredName::new(name).unwrap();
-    for train in ["train_jeep", "train_wisp", "train_ghost"] {
+    for train in ["train_jeep", "train_rover", "train_wisp", "train_ghost"] {
         assert!(
             import.actions.contains_key(&declared(train)),
             "{train}: {:?}, {:?}",
             import.actions.keys().collect::<Vec<_>>(),
             import.dropped
         );
+    }
+    let wisp = [declared("train_wisp")];
+    for parent in ["jeep", "rover"] {
+        assert_eq!(import.commands[&TypeName::named(parent)], wisp, "{parent}");
     }
 }

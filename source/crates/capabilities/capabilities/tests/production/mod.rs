@@ -169,6 +169,7 @@ impl Shop {
             position: Vec3::new(Num::int(x), Num::ZERO, Num::ZERO),
             owner,
             angle: Num::ZERO,
+            variation: None,
         };
         Spawner::place_any(game, at, (slots, queue));
     }
@@ -304,42 +305,6 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
         .iter()
         .map(|spawned| game.part::<Variation>(spawned.id).get());
     assert_eq!(drawn.collect::<Vec<u8>>(), [0, 1, 1, 0, 1, 0]);
-}
-
-#[test]
-fn a_train_of_variants_makes_one_drawn_for_each_unit_alike_in_every_run() {
-    // A train of the grunt whose variants are the grunt, the depot and the forge: a producer's
-    // twelve trains of no time spawn in one tick, each of a type drawn from its own stream, of the
-    // test match's seed 5 grunts, 3 depots and 4 forges, and a match of the same seed draws the
-    // same types in the same order; a train of no variants makes its own type.
-    let run = |variants: &[fn(&Shop) -> UnitType]| {
-        let mut game = shop_match();
-        let shop = Shop::place(&mut game);
-        let variants: Vec<UnitType> = variants.iter().map(|variant| variant(&shop)).collect();
-        let grunt = shop.grunt;
-        let train = Production::add_varied_train(&mut game, grunt, &variants, Ticks::ZERO, None);
-        let producer = Production::allocate_id(&mut game);
-        let trains = queue(train, &[0; 12]);
-        shop.producer(&mut game, producer, 10, Team::new(1), None, train, trains);
-        game.step();
-        let mut units = game.query::<(&StableId, &UnitType)>();
-        let mut made: Vec<(StableId, UnitType)> = units
-            .iter(&game)
-            .filter(|&(&id, _)| id != producer)
-            .map(|(&id, &unit_type)| (id, unit_type))
-            .collect();
-        made.sort_unstable();
-        let made: Vec<UnitType> = made.into_iter().map(|(_, unit_type)| unit_type).collect();
-        (made, shop)
-    };
-    let variants: [fn(&Shop) -> UnitType; 3] =
-        [|shop| shop.grunt, |shop| shop.depot, |shop| shop.forge];
-    let (drawn, shop) = run(&variants);
-    assert_eq!(drawn, run(&variants).0);
-    assert_eq!(drawn.len(), 12);
-    let of = |unit_type: UnitType| drawn.iter().filter(|&&made| made == unit_type).count();
-    assert_eq!([of(shop.grunt), of(shop.depot), of(shop.forge)], [5, 3, 4]);
-    assert_eq!(run(&[]).0, [shop.grunt; 12]);
 }
 
 #[test]

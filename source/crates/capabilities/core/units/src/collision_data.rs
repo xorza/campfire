@@ -115,7 +115,7 @@ impl Section for CollisionData {
 
 /// A unit type's `variations`: each a body, of its own `collision`, one of which every spawn of the
 /// type draws for its unit, in place of the type's own `collision`
-/// (unit-variations.md, A unit type may vary its units).
+/// (04-capabilities/00-overview.md, A unit type may vary its units).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct VariationsData(pub Vec<VariationData>);

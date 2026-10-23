@@ -1,6 +1,6 @@
 use std::mem;
 
-use campfire_client_files::ClientUnit;
+use campfire_client_files::ObjectLook;
 use campfire_codec::TomlTable;
 use campfire_declarations::SectionReaders;
 use campfire_units::{GroundError, MetricData};
@@ -83,7 +83,7 @@ impl MapFixture {
         let objects = ["oak", "rock", "rockred", "bush"].map(|look| {
             (
                 DeclaredName::new(look).unwrap(),
-                ClientUnit::new(Vec::new()),
+                ObjectLook::new(Vec::new()),
             )
         });
         let looks = ClientUnits {
@@ -143,6 +143,25 @@ fn a_map_s_lights_are_its_time_of_day_s_on_the_engine_s_axes() {
     let refused = fixture.import(&file, &mut names, 3).map(drop);
     assert_eq!(refused, Err(MapError::LightDirection));
     assert!(fixture.import(&file, &mut names, 1).is_ok());
+}
+
+#[test]
+fn a_placed_variation_stands_as_its_parents_type_of_its_place_and_its_own_body() {
+    // The tank as the second variation of a jeep, whose first is the tank of a radius of 30: the
+    // map's tank stands as the jeep of the second variation, and the bounds hold its own body, of
+    // radius 5 at x 30, as the import of the tank alone does
+    // (09-zero-hour.md, A chassis converts to the parent of its file).
+    let mut fixture = MapFixture::new();
+    let jeep = "Object Jeep\n BuildVariations = Wide AmericaTankCrusader\nEnd\n\
+                ObjectReskin Wide AmericaTankCrusader\n GeometryMajorRadius = 30.0\nEnd\n";
+    fixture.rules.objects.read(jeep.as_bytes()).unwrap();
+    let file = ZeroHourMap::read(&map(8)).unwrap();
+    let mut names = ImportNames::default();
+    let map = read_map(&fixture.import(&file, &mut names, 3).unwrap().map);
+    let jeep = &map.units[1];
+    assert_eq!((jeep.unit_type.as_str(), jeep.variation), ("jeep", Some(1)));
+    let bounds = Toml::parse("min = [-10, -15]\nmax = [35, 10]").unwrap();
+    assert_eq!(map.bounds(), bounds);
 }
 
 #[test]
@@ -224,6 +243,7 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
         height,
         path: None,
         from: None,
+        variation: None,
     };
     assert_eq!(
         map.units,
