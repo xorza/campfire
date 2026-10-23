@@ -118,11 +118,44 @@ impl Order {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_sim::Command;
+    use campfire_items::ItemsDirective;
+    use campfire_orders::OrdersDirective;
+    use campfire_players::{CapabilityDirective, OrderUnits};
+    use campfire_production::ProductionDirective;
+    use campfire_progression::ProgressionDirective;
+    use campfire_sim::{Capability, Command};
 
-    use crate::order::Order;
+    use crate::order::{Directive, Order};
 
     impl Order {
+        /// The orders of `payload`, one a command, as a test reads what a bot sent; none for a
+        /// payload that is no list of orders.
+        pub fn of_payload(payload: &[u8]) -> Option<Vec<Self>> {
+            let (mut orders, mut units, mut whole) = (Vec::new(), Vec::new(), true);
+            let read = Command::read(payload, |command, _| {
+                units.clear();
+                let body = command.body;
+                let directive = match command.capability {
+                    Capability::Orders => {
+                        OrdersDirective::decode_into(body, &mut units).map(Directive::Orders)
+                    }
+                    Capability::Progression => ProgressionDirective::decode_into(body, &mut units)
+                        .map(Directive::Progression),
+                    Capability::Production => ProductionDirective::decode_into(body, &mut units)
+                        .map(Directive::Production),
+                    Capability::Items => {
+                        ItemsDirective::decode_into(body, &mut units).map(Directive::Items)
+                    }
+                    _ => None,
+                };
+                match directive.zip(OrderUnits::new(&units)) {
+                    Some((directive, units)) => orders.push(Self { units, directive }),
+                    None => whole = false,
+                }
+            });
+            (read && whole).then_some(orders)
+        }
+
         /// The body of its command: its units, then its directive as its capability reads it.
         pub fn encode(&self) -> Vec<u8> {
             let mut body = Vec::new();

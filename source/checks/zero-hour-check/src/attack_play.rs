@@ -8,6 +8,7 @@ use campfire_protocol::{InputRules, PlayerSlotPlan};
 use crate::failure::CheckFailure;
 use crate::match_play::{MatchPlay, START_MONEY};
 use crate::pins::{BotMatchEnd, HZ};
+use crate::probe_arg::ProbeFile;
 
 /// The most ticks the play's match runs.
 const ATTACK_LIMIT: u64 = HZ * 60 * 20;
@@ -26,6 +27,7 @@ impl AttackPlay {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
+        probe: Option<ProbeFile>,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<BotMatchEnd> {
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
@@ -43,7 +45,7 @@ impl AttackPlay {
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&factions);
-        let mut play = MatchPlay::new(session.start(), session.packages());
+        let mut play = MatchPlay::new(session.start(), session.packages(), probe);
         let fought = Self::fight(&mut play, session.packages());
         let ended = play.end();
         match fought.and_then(|fought| ended.map(|()| fought)) {

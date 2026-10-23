@@ -25,6 +25,7 @@ use crate::failure::CheckFailure;
 use crate::golden::{Golden, Measured};
 use crate::import_check::ImportCheck;
 use crate::pins::{Fingerprints, MAP};
+use crate::play_selection::PlaySelection;
 
 mod attack_play;
 mod base_play;
@@ -37,6 +38,9 @@ mod import_check;
 mod match_play;
 mod missile_play;
 mod pins;
+mod play;
+mod play_selection;
+mod probe_arg;
 mod skirmish_play;
 mod start_drive;
 mod supply_play;
@@ -55,7 +59,14 @@ fn main() -> ExitCode {
         error!("no directory for the packages: the line names none, and there is no home");
         return ExitCode::from(ExitStatus::Usage);
     };
-    match run(&out) {
+    let selection = match line.selection() {
+        Ok(selection) => selection,
+        Err(problem) => {
+            error!(%problem, "the line's probes");
+            return ExitCode::from(ExitStatus::Usage);
+        }
+    };
+    match run(&out, &selection) {
         Ok(failures) if failures.is_empty() => {
             info!("the Zero Hour check passed");
             ExitCode::from(ExitStatus::Success)
@@ -77,7 +88,7 @@ fn main() -> ExitCode {
 /// Imports the install into `out`, in place of the packages an earlier run wrote there once the
 /// new ones are whole, and checks Tournament Desert against the golden file, or, in a run that
 /// blesses, writes the file again; the failures it found.
-fn run(out: &Path) -> Result<Vec<CheckFailure>, CheckError> {
+fn run(out: &Path, selection: &PlaySelection) -> Result<Vec<CheckFailure>, CheckError> {
     let golden = if Golden::is_blessing() {
         None
     } else {
@@ -94,6 +105,7 @@ fn run(out: &Path) -> Result<Vec<CheckFailure>, CheckError> {
         golden,
         measured: Measured::default(),
         failures: Vec::new(),
+        selection,
     };
     check.fingerprints(Fingerprints {
         game: imported.fingerprint,

@@ -74,7 +74,7 @@ Every check, test and bench runs through `cargo drive`, from `source/` ([The dri
 | `cargo drive check` | `cargo fmt`, then the lint of every target with every feature, to the first failure: after each change |
 | `cargo drive test [nextest arguments]` | each workspace package's `package.index` and the script API's reference written again, then the tests, each time; with arguments, those nextest selects |
 | `cargo drive bench [criterion arguments]` | the benches, only when the task asks for them |
-| `cargo drive run lan`, `cargo drive run zero-hour [out]` | the LAN check and the Zero Hour check, on request |
+| `cargo drive run lan`, `cargo drive run zero-hour [out] [--play <play>] [--probe <play>:<ms>:<units>]` | the LAN check and the Zero Hour check, on request; with `--play`, the check runs only the plays it names, and a `--probe` writes a table of a play's units every `ms` to `target/zero-hour/<play>.probe` |
 | `cargo drive run vocabulary [out]` | the repository's layout and the names its Rust files declare, in `target/vocabulary.txt` unless `out` names another file, on request |
 | `cargo drive run index` | each workspace package's `package.index`, after a change to a package |
 | `cargo drive run reference` | the script API's reference, after a change to the API |

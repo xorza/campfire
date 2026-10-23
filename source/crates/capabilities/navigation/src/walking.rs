@@ -83,13 +83,13 @@ impl Walking {
     /// Steers each walker round the units in their way, as `Steering::steer` says, in stable-id
     /// order, with the work the planner has left this tick; once it has none, the rest keep their
     /// routes, and steer again in a later tick. A walker is stuck once it has moved less than half
-    /// a step a tick for `Steering::STUCK_MS`, and its progress starts again when it takes a short
-    /// route. A predicting client counts the units it holds that stand: one that stands has not
-    /// moved since the server sent it. With no pathing grid no walker steers, and one that does not
-    /// walk this tick, waits for its route, or has none ahead, does not either: none of them
-    /// takes a place in the order. On a server, each unit of a stuck walker's team that stands
-    /// idle in its way steps aside, as `Steering::asides` says, to the nearest place it may stand
-    /// there.
+    /// a step a tick for the ticks of `Progress::stuck_after`, and its progress starts again when
+    /// it takes a short route. A predicting client counts the units it holds that stand: one that
+    /// stands has not moved since the server sent it. With no pathing grid no walker steers, and
+    /// one that does not walk this tick, waits for its route, or has none ahead, does not either:
+    /// none of them takes a place in the order. On a server, each unit of a stuck walker's team
+    /// that stands idle in its way steps aside, as `Steering::asides` says, to the nearest place it
+    /// may stand there.
     pub(super) fn steer<F: RoleForm>(
         (rate, index, tick): (Res<'_, MatchRate>, Res<'_, EntityIndex>, Res<'_, SimTick>),
         mut asks: ResMut<'_, DueIndex<Route>>,
@@ -118,10 +118,7 @@ impl Walking {
         );
         steering.read(&statics, read);
         let mut walkers = units.p1();
-        let stuck_ticks = rate
-            .ticks(Steering::STUCK_MS)
-            .expect("a fixed time fits")
-            .get();
+        let stuck_ticks = Progress::stuck_after(*rate);
         let ordered = walkers
             .iter()
             .filter(|(_, _, destination, _, _, route, _, tags, forced)| {
@@ -140,7 +137,7 @@ impl Walking {
                 team: team.copied(),
                 step: step.get(),
                 walker: Walker::walking(Some(body)),
-                stuck: u64::from(progress.track(at.get(), step.get())) >= stuck_ticks,
+                stuck: progress.track(at.get(), step.get()) >= stuck_ticks,
                 gathering: tags.is_some_and(|tags| tags.passes()),
             };
             let ahead = route.read().ahead()[0];

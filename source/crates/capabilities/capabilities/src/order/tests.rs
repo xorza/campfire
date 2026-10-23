@@ -87,6 +87,18 @@ fn orders_decode_exactly() {
     );
     assert_eq!(commands[1].body, attack.encode());
     assert_eq!(commands[4].body, orders[4].encode());
+    // A test reads the payload back as its orders, and a payload with a flaw as none: a byte
+    // past its commands, or a body no capability reads.
+    assert_eq!(Order::of_payload(&payload), Some(orders.to_vec()));
+    assert_eq!(
+        Order::of_payload(&[payload.as_slice(), &[0]].concat()),
+        None
+    );
+    let flawed = Command::encode(&[Command {
+        capability: Capability::Orders,
+        body: &[1, 0, 6],
+    }]);
+    assert_eq!(Order::of_payload(&flawed), None);
 
     // A written payload follows what the buffer holds: 1 command, of capability 5 (`orders`),
     // its 6 body bytes; then the learn's, of capability 9 (`progression`), its 4 bytes; then the

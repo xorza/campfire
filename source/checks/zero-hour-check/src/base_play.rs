@@ -15,6 +15,7 @@ use campfire_values::{Scalar, UnitType};
 use crate::failure::CheckFailure;
 use crate::match_play::{MatchPlay, START_MONEY};
 use crate::pins::{BotMatchEnd, HZ};
+use crate::probe_arg::ProbeFile;
 
 /// The most ticks the bots' match runs.
 const BASE_LIMIT: u64 = HZ * 60 * 20;
@@ -66,6 +67,7 @@ impl BasePlay {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
+        probe: Option<ProbeFile>,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<BotMatchEnd> {
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
@@ -90,7 +92,7 @@ impl BasePlay {
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&player_slot_picks);
-        let mut play = MatchPlay::new(session.start(), session.packages());
+        let mut play = MatchPlay::new(session.start(), session.packages(), probe);
         let ended = Self::play(&mut play, session.packages(), failures);
         let closed = play.end();
         match ended.and_then(|ended| closed.map(|()| ended)) {

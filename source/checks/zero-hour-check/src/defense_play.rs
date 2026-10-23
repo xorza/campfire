@@ -6,6 +6,7 @@ use campfire_package::ModePackages;
 use crate::failure::{CheckFailure, Differs};
 use crate::match_play::{AgainstAmerica, BuildingDozer, MatchPlay, PlannedBuilding, STEP_LIMIT};
 use crate::pins::DefenseTicks;
+use crate::probe_arg::ProbeFile;
 
 /// How far south of its defense the bot's dozer drives, in meters: within the 225 m that the
 /// Gattling Cannon's gun, the Patriot battery's missiles and the Stinger soldiers' reach.
@@ -99,10 +100,13 @@ impl DefensePlay {
         &self,
         packages: ModePackages,
         rate: NonZeroU32,
+        probe: Option<ProbeFile>,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<DefenseTicks> {
         self.against
-            .play(packages, rate, |play, packages| self.steps(play, packages))
+            .play(packages, rate, probe, |play, packages| {
+                self.steps(play, packages)
+            })
             .map_err(|failure| failures.push(failure))
             .ok()
     }

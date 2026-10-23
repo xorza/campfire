@@ -14,6 +14,7 @@ use campfire_units::{Body, Destination, GroundPoint, WallBook};
 use crate::failure::CheckFailure;
 use crate::match_play::{CENTER, DOZER, MatchPlay, america};
 use crate::pins::HZ;
+use crate::probe_arg::ProbeFile;
 
 /// The most ticks the check waits for the dozer's walk to end, past which it never arrives.
 const DRIVE_LIMIT: u64 = HZ * 60 * 10;
@@ -37,12 +38,13 @@ impl StartDrive {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
+        probe: Option<ProbeFile>,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<Self> {
         let session = FixedSession::new(packages, 1)
             .rate(rate)
             .player_slot_picked(&america(1));
-        let mut play = MatchPlay::new(session.start(), session.packages());
+        let mut play = MatchPlay::new(session.start(), session.packages(), probe);
         let start = |name| {
             let of = MarkerOf {
                 tag: "start",

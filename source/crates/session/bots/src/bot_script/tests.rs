@@ -237,16 +237,18 @@ fn a_due_order_of_a_slot_goes_to_its_units_by_the_place_each_holds_the_action_at
     assert_eq!(slotted, []);
 }
 
-/// What a bot's step gave: each payload sent, and why each unsent order went unsent.
+/// What a bot's step gave: the orders of each payload sent, as typed values, so a failure names
+/// them, and why each unsent order went unsent.
 #[derive(Debug, Default)]
 pub(crate) struct Heard {
-    pub(crate) sent: Vec<Vec<u8>>,
+    pub(crate) sent: Vec<Order>,
     pub(crate) unsent: Vec<OrderUnsent>,
 }
 
 impl BotSink for Heard {
     fn send(&mut self, _: PlayerSlot, payload: &[u8]) {
-        self.sent.push(payload.to_vec());
+        let orders = Order::of_payload(payload).expect("a bot sends orders");
+        self.sent.extend(orders);
     }
 
     fn unsent(&mut self, _: PlayerSlot, _: &Directive<NamedRefs>, cause: OrderUnsent) {
@@ -307,7 +309,7 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
         heard
     };
     let first = step(&fixed, 0);
-    assert_eq!(first.sent, Vec::<Vec<u8>>::new());
+    assert_eq!(first.sent, []);
     assert_eq!(first.unsent, [OrderUnsent::NoTarget]);
     fixed.step();
     let second = step(&fixed, 1);
@@ -318,12 +320,7 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
             target: ActionTarget::Unit(runner),
         },
     );
-    let payload = |order: Order| {
-        let mut payload = Vec::new();
-        order.write_payload(&mut Vec::new(), &mut payload);
-        payload
-    };
-    assert_eq!(second.sent, [payload(cast.clone())]);
+    assert_eq!(second.sent, std::slice::from_ref(&cast));
     assert_eq!(
         second.unsent,
         [
@@ -336,14 +333,14 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
     fixed.step();
     let third = step(&fixed, 2);
     let attack = Order::one(walker, OrdersDirective::Attack { target: runner });
-    assert_eq!(third.sent, [payload(attack)]);
+    assert_eq!(third.sent, [attack]);
     assert_eq!(third.unsent, [OrderUnsent::NoTarget]);
     let runner = fixed.game().unit_entity(runner);
     let mut life = fixed.game_mut().get_mut::<Life>(runner).unwrap();
     let full = life.max();
     life.take(full);
     let fourth = step(&fixed, 3);
-    assert_eq!(fourth.sent, [payload(cast)]);
+    assert_eq!(fourth.sent, [cast]);
     assert_eq!(fourth.unsent, [OrderUnsent::NoTarget]);
 }
 

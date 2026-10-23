@@ -12,6 +12,7 @@ use crate::match_play::{
     self, AgainstAmerica, BuildingDozer, CHINA_DOZER, MatchPlay, PlannedBuilding, STEP_LIMIT,
 };
 use crate::pins::MissileTicks;
+use crate::probe_arg::ProbeFile;
 
 /// China's barracks, 216 m along −z from `Player_1_Start`, where the skirmish play places its
 /// own, at China's `PlacementViewAngle` of −45°.
@@ -44,10 +45,11 @@ impl MissilePlay {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
+        probe: Option<ProbeFile>,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<MissileTicks> {
         AgainstAmerica::CHINA
-            .play(packages, rate, Self::steps)
+            .play(packages, rate, probe, Self::steps)
             .map_err(|failure| failures.push(failure))
             .ok()
     }

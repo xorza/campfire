@@ -86,9 +86,6 @@ impl Steering {
     /// The cells a short route's window reaches from the walker's along each axis: room to go
     /// round a unit some cells wide on either side, in a search of at most 17 × 17 cells.
     pub(crate) const WINDOW: usize = 8;
-    /// How long a walker moves less than half a step a tick before it marks the walkers it
-    /// touches: long enough that a walker yielding for a moment keeps its way.
-    pub(crate) const STUCK_MS: u64 = 150;
 
     /// Reads this tick's `bodies`, in one pass: those of the units that stand into an index with
     /// the buckets of `statics`, and those of the units that walk into a grid; the units in a

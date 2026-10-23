@@ -12,6 +12,7 @@ use crate::match_play::{
     BuildingDozer, CHINA, CHINA_DOZER, MatchPlay, PlannedBuilding, START_MONEY, STEP_LIMIT,
 };
 use crate::pins::{DELIVERIES, SupplyDelivery, SupplySteps};
+use crate::probe_arg::ProbeFile;
 
 /// China's command center, and the supply center's free truck.
 const CENTER: &str = "chinacommandcenter";
@@ -49,6 +50,7 @@ impl SupplyPlay {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
+        probe: Option<ProbeFile>,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<SupplySteps> {
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
@@ -64,7 +66,7 @@ impl SupplyPlay {
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&[china]);
-        let mut play = MatchPlay::new(session.start(), session.packages());
+        let mut play = MatchPlay::new(session.start(), session.packages(), probe);
         let names = play.game().resource::<MatchNames>();
         let Some(money) = names.named::<ResourceId>("money") else {
             failures.push(CheckFailure::NoMoney);

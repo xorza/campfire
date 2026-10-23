@@ -21,11 +21,14 @@ use campfire_protocol::{InputRules, PlayerSlotPlan, ServerInput};
 use campfire_runner::SessionWorld;
 use campfire_sim::MatchRate;
 use campfire_sim::{Position, StableId};
+use campfire_store::{DurableDir, DurableFile};
 use campfire_units::{BuildTarget, GroundPoint, Life, MapPoint, MoveStep, Units, UnitsWorld};
 use campfire_values::{ResourceId, UnitType};
+use tracing::info;
 
 use crate::failure::CheckFailure;
 use crate::pins::{BotDrops, BotMatchEnd, HZ};
+use crate::probe_arg::ProbeFile;
 
 /// America's command center, the building a skirmish starts a player with.
 pub(crate) const CENTER: &str = "americacommandcenter";
@@ -79,6 +82,7 @@ pub(crate) struct MatchPlay {
     think_ops: u64,
     books: Arc<Books>,
     due: DuePayloads,
+    probe: Option<ProbeFile>,
 }
 
 /// The home of a play's bot, and the farthest any of its units stood from there.
@@ -157,6 +161,7 @@ impl AgainstAmerica {
         self,
         packages: ModePackages,
         rate: NonZeroU32,
+        probe: Option<ProbeFile>,
         steps: impl FnOnce(&mut MatchPlay, &ModePackages) -> Result<T, CheckFailure>,
     ) -> Result<T, CheckFailure> {
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
@@ -169,7 +174,7 @@ impl AgainstAmerica {
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&[player, bot]);
-        let mut play = MatchPlay::new(session.start(), session.packages());
+        let mut play = MatchPlay::new(session.start(), session.packages(), probe);
         let played = steps(&mut play, session.packages());
         let ended = play.end();
         let played = played?;
@@ -179,19 +184,25 @@ impl AgainstAmerica {
 }
 
 impl MatchPlay {
-    /// `fixed`, a match of `packages`, before its first tick.
-    pub(crate) fn new(mut fixed: FixedMatch, packages: &ModePackages) -> Self {
+    /// `fixed`, a match of `packages`, before its first tick, that `probe` probes, if any.
+    pub(crate) fn new(
+        mut fixed: FixedMatch,
+        packages: &ModePackages,
+        probe: Option<ProbeFile>,
+    ) -> Self {
         let world = fixed.game_mut();
         let pools = world.resource::<MatchFacts>().role.pools();
         let pool = pools.expect("a check's match runs scripts").limits.think;
         let bots = TickBots::new(world, pool);
+        let books = Arc::clone(packages.load_books());
         Self {
             fixed,
             bots,
             homes: Vec::new(),
             think_ops: 0,
-            books: Arc::clone(packages.load_books()),
+            books,
             due: DuePayloads::default(),
+            probe,
         }
     }
 
@@ -348,6 +359,9 @@ impl MatchPlay {
                 .expect("a bot's input within the session's limits");
         }
         self.fixed.game_mut().run_tick_alone();
+        if let Some(ProbeFile { probe, .. }) = &mut self.probe {
+            probe.record(self.fixed.game());
+        }
         // A tick that checked no orders, as a match that ended runs none, leaves an earlier
         // tick's drops.
         let dropped = self.fixed.game().get_resource::<DroppedOrders>();
@@ -463,12 +477,22 @@ impl MatchPlay {
     }
 
     /// Ends the match: it takes the log's events while it lives, as its harness checks them, so
-    /// it ends before the check logs again; the first think of a bot that failed, as a failure.
+    /// it ends before the check logs again; then writes its probe's file: the first think of a
+    /// bot that failed, or why the file did not write, as a failure.
     pub(crate) fn end(mut self) -> Result<(), CheckFailure> {
         self.fixed.end();
-        self.due
-            .failed
-            .map_or(Ok(()), |error| Err(CheckFailure::BotThink(error)))
+        if let Some(error) = self.due.failed {
+            return Err(CheckFailure::BotThink(error));
+        }
+        let Some(ProbeFile { probe, file }) = self.probe else {
+            return Ok(());
+        };
+        if let Some(dir) = file.parent() {
+            DurableDir::create_all(dir).map_err(CheckFailure::ProbeDir)?;
+        }
+        DurableFile::write(&file, probe.text().as_bytes()).map_err(CheckFailure::ProbeWrite)?;
+        info!(file = %file.display(), "the play's probe");
+        Ok(())
     }
 }
 

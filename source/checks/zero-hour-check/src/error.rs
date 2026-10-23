@@ -1,3 +1,4 @@
+use std::num::ParseIntError;
 use std::path::PathBuf;
 
 use campfire_codec::{BinaryError, TomlError};
@@ -6,6 +7,8 @@ use campfire_package::LoadError;
 use campfire_package_format::ContentError;
 use campfire_store::{DurableDirError, DurableError, PathError, ReadError};
 use thiserror::Error;
+
+use crate::play::Play;
 
 /// Why the check did not run to its verdict.
 #[derive(Debug, Error)]
@@ -43,4 +46,33 @@ pub(crate) enum CheckError {
     GoldenParse(#[source] TomlError),
     #[error("the golden file does not write")]
     GoldenWrite(#[source] PathError<DurableError>),
+}
+
+/// Why a probe's argument does not read.
+#[derive(Debug, Error)]
+pub(crate) enum ProbeArgError {
+    #[error("a probe reads `<play>:<period_ms>:<units>`")]
+    Shape,
+    #[error("a probe names no play the check plays")]
+    Play,
+    #[error("a probe's period is no whole count of milliseconds above 0")]
+    Period(#[source] ParseIntError),
+    #[error("a probe's units are `all`, `slot=<n>`, `team=<n>`, `type=<name>` or `ids=<id>,<id>`")]
+    Units,
+    #[error("a probe's number does not read")]
+    Number(#[source] ParseIntError),
+    /// Player slots count from 1, as the check names its players.
+    #[error("a probe's player is counted from 1")]
+    Player,
+    #[error("a probe's type is no name a package declares")]
+    Name,
+}
+
+/// Why the command line's plays and probes make no run.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub(crate) enum SelectionError {
+    #[error("two probes name the play {}", .0.name())]
+    Twice(Play),
+    #[error("a probe names the play {}, which the run does not play", .0.name())]
+    Unplayed(Play),
 }

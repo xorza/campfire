@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
-use campfire_sim::SimComponent;
+use campfire_sim::{MatchRate, SimComponent};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_visibility::DataKind;
@@ -18,6 +18,22 @@ pub struct Progress {
 }
 
 impl Progress {
+    /// How long a walker moves less than half a step a tick before it is stuck and marks the
+    /// walkers it touches: long enough that a walker yielding for a moment keeps its way.
+    const STUCK_MS: u64 = 150;
+
+    /// The ticks in a row it has moved less than half a step a tick.
+    pub const fn stuck_ticks(&self) -> u32 {
+        self.stuck
+    }
+
+    /// The ticks in a row, at `rate`, a walker that moves less than half a step a tick takes to be
+    /// stuck.
+    pub fn stuck_after(rate: MatchRate) -> u32 {
+        let ticks = rate.ticks(Self::STUCK_MS).expect("a fixed time fits").get();
+        u32::try_from(ticks).expect("a fixed time's ticks fit u32")
+    }
+
     /// Notes that the walker stands at `position` as this tick steers, with a step of `step`; the
     /// ticks in a row it has moved less than half a step.
     pub(crate) fn track(&mut self, position: Vec3, step: Num) -> u32 {

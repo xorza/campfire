@@ -2,13 +2,17 @@
 //! learns with its points, and fells creeps for their experience. Its waves trade to an end
 //! before the next, and a wave with none to meet falls to the tower it strikes.
 
+use std::num::NonZeroU64;
+
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
 use campfire_capabilities::{Directive, Order};
 use campfire_combat::{Combat, DamageCause};
-use campfire_common::{StateHash, Tick};
-use campfire_harness::{ArchetypeWatch, FixedMatch, FixedSession, MatchRecord, MatchUnits};
+use campfire_common::{PlayerSlot, StateHash, Tick};
+use campfire_harness::{
+    ArchetypeWatch, FixedMatch, FixedSession, MatchProbe, MatchRecord, MatchUnits, ProbeUnits,
+};
 use campfire_math::Num;
 use campfire_navigation::PathWalker;
 use campfire_orders::OrdersDirective;
@@ -424,4 +428,68 @@ fn a_victim_the_experience_filter_leaves_out_gives_none() {
     };
     assert_eq!(xp_of_a_site_kill(true), Num::ZERO);
     assert_eq!(xp_of_a_site_kill(false), Num::int(60));
+}
+
+/// The stable ids of the units the table of `probe`'s last record holds, in its order.
+fn probed(probe: &MatchProbe) -> Vec<u64> {
+    let block = probe.text().trim_end().rsplit("\n\n").next().unwrap();
+    let rows = block
+        .lines()
+        .skip_while(|line| !line.trim_start().starts_with("id"));
+    rows.skip(1)
+        .map(|row| row.split_whitespace().next().unwrap().parse().unwrap())
+        .collect()
+}
+
+#[test]
+fn a_probe_prints_the_units_it_selects_at_its_period() {
+    // The walker spawns at (0, −2) and walks to (0, 8) from tick 0 at 7.5 m/s, 0.25 m a tick at
+    // 30 ticks a second: after tick k it stands at z = −2 + 0.25 (k + 1), −1.75 after tick 0 and
+    // 5.75 after tick 30. The west tower stands at (−8, −3) with 1500 life, and has no owner,
+    // destination, route or progress. A period of 30 ticks writes ticks 0 and 30 of 31.
+    let mut fixed = quiet_lane();
+    let world = fixed.game();
+    let hero = MatchUnits::of(world).hero(0);
+    let tower = *world.get::<StableId>(unowned(world, 0, false)[0]).unwrap();
+    let every = NonZeroU64::new(30).unwrap();
+    let mut probe = MatchProbe::new(every, ProbeUnits::Ids(vec![tower, hero]));
+    for _ in 0..31 {
+        fixed.step();
+        probe.record(fixed.game());
+    }
+    assert_eq!(
+        probe.text(),
+        "\
+tick 0, 0 s
+player slot 0: 0 idle, 1 walking (0 stuck), 0 working, 0 fighting, 0 acting
+id  type         slot  team   x      z  doing  target  destination  goal  stuck       life
+ 0  tower           -     0  -8     -3  idle   -       -            -         -  1500/1500
+ 2  hero-walker     0     0   0  -1.75  walk   -       0, 8         0, 8      0    600/600
+
+tick 30, 1 s
+player slot 0: 0 idle, 1 walking (0 stuck), 0 working, 0 fighting, 0 acting
+id  type         slot  team   x     z  doing  target  destination  goal  stuck       life
+ 0  tower           -     0  -8    -3  idle   -       -            -         -  1500/1500
+ 2  hero-walker     0     0   0  5.75  walk   -       0, 8         0, 8      0    600/600
+
+"
+    );
+
+    // Each selection, of a probe of every tick: the lane holds two towers, 0 and 1, the walker,
+    // 2, and the first wave's creeps, 3 and 4 of team 0 and 5 and 6 of team 1.
+    let world = fixed.game();
+    let creep = Units::type_named(world, "creep").unwrap();
+    let every = NonZeroU64::new(1).unwrap();
+    for (units, ids) in [
+        (ProbeUnits::All, &[0, 1, 2, 3, 4, 5, 6][..]),
+        (ProbeUnits::Owner(PlayerSlot::new(0)), &[2]),
+        (ProbeUnits::Team(Team::new(1)), &[1, 5, 6]),
+        (ProbeUnits::Type(creep), &[3, 4, 5, 6]),
+        // In any order, each once.
+        (ProbeUnits::Ids(vec![hero, tower, hero]), &[0, 2]),
+    ] {
+        let mut probe = MatchProbe::new(every, units.clone());
+        probe.record(world);
+        assert_eq!(probed(&probe), ids, "{units:?}");
+    }
 }

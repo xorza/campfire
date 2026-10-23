@@ -1,3 +1,4 @@
+use campfire_capabilities::Order;
 use campfire_harness::{FixedMatch, FixedSession};
 use campfire_package::{LoadProblem, ModePackages, ScriptProblem};
 use campfire_script::{ApiError, FailureKind};
@@ -280,7 +281,7 @@ fn on_bot_think(ctx) {
     );
     let first = think(&packages, &mut fixed, 100_000).unwrap();
     assert_eq!(first.sent.len(), 1);
-    fixed.send(0, Tick::new(0), &first.sent[0]);
+    fixed.send(0, Tick::new(0), &Order::payload(&first.sent));
     fixed.step();
     assert_eq!(think(&packages, &mut fixed, 100_000).unwrap().sent.len(), 0);
 }

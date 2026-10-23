@@ -22,6 +22,7 @@ use crate::match_play::{
     america,
 };
 use crate::pins::{BOT_TYPES, BotBase, CRUSADERS, FactorySteps, FightSteps, ProductionSteps};
+use crate::probe_arg::ProbeFile;
 
 /// The unit types the play makes beside the start's.
 const BARRACKS: &str = "americabarracks";
@@ -102,6 +103,7 @@ impl SkirmishPlay {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
+        probe: Option<ProbeFile>,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<SkirmishSteps> {
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
@@ -125,7 +127,7 @@ impl SkirmishPlay {
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&america(2));
-        let mut playing = MatchPlay::new(session.start(), session.packages());
+        let mut playing = MatchPlay::new(session.start(), session.packages(), probe);
         let names = playing.game().resource::<MatchNames>();
         let Some(money) = names.named::<ResourceId>("money") else {
             failures.push(CheckFailure::NoMoney);
