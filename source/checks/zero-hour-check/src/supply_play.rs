@@ -61,7 +61,7 @@ impl SupplyPlay {
             }
         };
         let china: PlayerSlotPick = CHINA.parse().expect("the play's pick");
-        let session = FixedSession::planned(packages, InputRules::ROOMY, [PlayerSlotPlan::Player])
+        let session = FixedSession::planned(packages, InputRules::LAN, [PlayerSlotPlan::Player])
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&[china]);

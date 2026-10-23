@@ -476,7 +476,7 @@ fn bot_and_returning_player(fixed: &mut FixedMatch, tick: u64) {
 fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hashes() {
     let session = FixedSession::planned(
         packages(),
-        InputRules::ROOMY,
+        InputRules::LAN,
         [PlayerSlotPlan::Player, PlayerSlotPlan::Bot],
     );
     let mut fixed = session.start();

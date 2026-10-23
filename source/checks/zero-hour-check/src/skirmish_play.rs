@@ -121,7 +121,7 @@ impl SkirmishPlay {
             }
         };
         let plan = [PlayerSlotPlan::Player, PlayerSlotPlan::Bot];
-        let session = FixedSession::planned(packages, InputRules::ROOMY, plan)
+        let session = FixedSession::planned(packages, InputRules::LAN, plan)
             .rate(rate)
             .picked(picks.places())
             // America, whose start the play reads, in place of a faction drawn (09-zero-hour.md,

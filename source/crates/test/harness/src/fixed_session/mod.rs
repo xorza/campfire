@@ -39,10 +39,10 @@ fn server_key() -> XOnlyPublicKey {
 const LIFETIME: u64 = 86_400;
 
 impl FixedSession {
-    /// A session of `packages` at its manifest's default rate for `players` players, with roomy
-    /// input limits.
+    /// A session of `packages` at its manifest's default rate for `players` players, under the
+    /// LAN's input limits, which the client plays under.
     pub fn new(packages: ModePackages, players: u32) -> Self {
-        Self::with_rules(packages, players, InputRules::ROOMY)
+        Self::with_rules(packages, players, InputRules::LAN)
     }
 
     /// A session of `packages` at its manifest's default rate for `players` players, its inputs

@@ -20,8 +20,8 @@ pub use crate::player_slot_rules::error::PlayerSlotRuleError;
 pub use crate::replay::Replay;
 pub use crate::replay::error::ReplayError;
 pub use crate::session::error::{
-    CheckpointBeginError, ResultMismatch, ResumeError, SaveLoadError, ServerInputRefusal,
-    SnapshotCheckError, StartError,
+    BotInputDrop, CheckpointBeginError, ResultMismatch, ResumeError, SaveLoadError,
+    ServerInputRefusal, SnapshotCheckError, StartError,
 };
 pub use crate::session::session_source::{ResumeAt, SessionSource, UncheckedSource};
 pub use crate::session::session_world::SessionWorld;

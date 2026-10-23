@@ -4,22 +4,23 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_capabilities::Match;
-use campfire_common::{AfterLeave, PlayerSlot, Tick, Ticks};
+use campfire_common::{AfterLeave, ErrorReport, PlayerSlot, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
 use campfire_package::ModePackages;
 use campfire_players::PlayerSlotHolder;
 use campfire_protocol::{
     Applied, Checkpoint, CheckpointBegun, CheckpointError, Controller, Delegation, InputChain,
     InputError, Journal, LogLoadError, LogReplay, PlayerPacket, PlayerSlotChangeKind,
-    PlayerSlotStart, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog,
-    SessionResult, Signer, SnapshotFingerprint, Taken,
+    PlayerSlotStart, RecordSink, ResultError, SeedError, ServerInput, ServerInputError,
+    ServerSeeds, SessionLog, SessionResult, Signer, SnapshotFingerprint, Taken,
 };
 use campfire_sim::{MatchRate, SimWorld};
 
 use crate::match_build::MatchBuild;
 use crate::player_slot_rules::PlayerSlotRules;
 use crate::session::error::{
-    CheckpointBeginError, ResumeError, ServerInputRefusal, SnapshotCheckError, StartError,
+    BotInputDrop, CheckpointBeginError, ResumeError, ServerInputRefusal, SnapshotCheckError,
+    StartError,
 };
 use crate::session::session_source::{ResumeAt, SessionSource};
 use crate::session_rules::{CheckedTerms, SessionRules};
@@ -263,6 +264,31 @@ impl Session {
         serving
             .log(server, self.journal.as_mut())
             .map_err(ServerInputRefusal::Log)
+    }
+
+    /// Logs `payload` as an input of the bot of `player_slot`, as `serve` logs a server input; the
+    /// cause the log refused it for, which drops it. A bot's input holds every other rule of the
+    /// log, so any other refusal is a logic error.
+    pub fn serve_bot(
+        &mut self,
+        player_slot: PlayerSlot,
+        payload: &[u8],
+    ) -> Result<(), BotInputDrop> {
+        let input = ServerInput::Bot {
+            player_slot,
+            payload,
+        };
+        match self.serve(input) {
+            Ok(()) => Ok(()),
+            Err(ServerInputRefusal::Log(ServerInputError::PayloadTooLarge)) => {
+                Err(BotInputDrop::TooLarge)
+            }
+            Err(ServerInputRefusal::Log(ServerInputError::AheadOfTime)) => {
+                Err(BotInputDrop::AheadOfTime)
+            }
+            Err(ServerInputRefusal::Log(ServerInputError::LogFull)) => Err(BotInputDrop::LogFull),
+            Err(error) => panic!("the server's bot input holds: {}", ErrorReport::of(&error)),
+        }
     }
 
     /// The server's signer, which a server's session holds: only a server serves and records.

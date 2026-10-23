@@ -112,7 +112,7 @@ impl ProvingMatch {
     pub fn load() -> ScriptedMode<Self> {
         let packages = TestMode::Proving.packages();
         let plan = [PlayerSlotPlan::Player, PlayerSlotPlan::Open];
-        let session = FixedSession::planned(packages, InputRules::ROOMY, plan);
+        let session = FixedSession::planned(packages, InputRules::LAN, plan);
         ScriptedMode::new(session, SCRIPT.to_vec())
     }
 }

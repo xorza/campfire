@@ -10,12 +10,12 @@ use campfire_capabilities::{Books, Directive, NamedRefs};
 use campfire_common::{ErrorReport, PlayerSlot, Tick};
 use campfire_declarations::MatchFacts;
 use campfire_log::LogEvent;
-use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog};
-use campfire_runner::{ServerInputRefusal, Session};
+use campfire_protocol::{Controller, SessionLog};
+use campfire_runner::Session;
 use campfire_sim::MatchRate;
 
 use crate::events::bot_order_unsent::BotOrderUnsent;
-use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
+use crate::events::bot_payload_dropped::BotPayloadDropped;
 use crate::events::bot_think_failed::BotThinkFailed;
 use crate::server::server_bots::{BotPlay, PlayerSlotBot, ServerBots};
 
@@ -165,16 +165,8 @@ impl BotSink for BotServer<'_> {
     /// past the ticks up to its max input lead, which the player slot's inputs fill, or past a full
     /// log, is dropped.
     fn send(&mut self, player_slot: PlayerSlot, payload: &[u8]) {
-        let input = ServerInput::Bot {
-            player_slot,
-            payload,
-        };
-        let cause = match self.session.serve(input) {
-            Ok(()) => return,
-            Err(ServerInputRefusal::Log(ServerInputError::PayloadTooLarge)) => DropCause::TooLarge,
-            Err(ServerInputRefusal::Log(ServerInputError::AheadOfTime)) => DropCause::AheadOfTime,
-            Err(ServerInputRefusal::Log(ServerInputError::LogFull)) => DropCause::LogFull,
-            Err(error) => panic!("the server's bot input holds: {}", ErrorReport::of(&error)),
+        let Err(cause) = self.session.serve_bot(player_slot, payload) else {
+            return;
         };
         BotPayloadDropped {
             player_slot,

@@ -11,7 +11,7 @@ use campfire_protocol::{
 
 use crate::fixed_session::FixedSession;
 use crate::match_probe::ProbeFile;
-use campfire_runner::{ServerInputRefusal, SessionWorld};
+use campfire_runner::{BotInputDrop, ServerInputRefusal, SessionWorld};
 
 /// A match of a `FixedSession`, and the input chain of each player slot's player, so a test sends
 /// inputs as a player's client would, and server inputs as its server would.
@@ -114,6 +114,16 @@ impl FixedMatch {
     /// Logs `input` before the next tick, signed by the server at the place it takes.
     pub fn serve(&mut self, input: ServerInput<'_>) -> Result<(), ServerInputRefusal> {
         self.game.session_mut().serve(input)
+    }
+
+    /// Logs `payload` as an input of the bot of `player_slot`, as the server's bot driver logs it;
+    /// the cause the log refused it for, which drops it.
+    pub fn serve_bot(
+        &mut self,
+        player_slot: PlayerSlot,
+        payload: &[u8],
+    ) -> Result<(), BotInputDrop> {
+        self.game.session_mut().serve_bot(player_slot, payload)
     }
 
     /// The delegation the session starts player `player` with, of `TestKey::player(player)`.

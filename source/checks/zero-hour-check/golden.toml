@@ -102,6 +102,11 @@ no_target = 0
 no_place = 0
 no_stack = 0
 
+[base.drops.refused]
+too_large = 0
+ahead_of_time = 0
+log_full = 0
+
 [base.drops.dropped]
 no_unit = 0
 no_walker = 0
@@ -120,6 +125,11 @@ no_slot = 0
 no_target = 5
 no_place = 0
 no_stack = 0
+
+[base.drops.refused]
+too_large = 0
+ahead_of_time = 0
+log_full = 0
 
 [base.drops.dropped]
 no_unit = 0
@@ -148,6 +158,11 @@ no_target = 0
 no_place = 0
 no_stack = 0
 
+[attack.drops.refused]
+too_large = 0
+ahead_of_time = 0
+log_full = 0
+
 [attack.drops.dropped]
 no_unit = 0
 no_walker = 0
@@ -166,6 +181,11 @@ no_slot = 0
 no_target = 0
 no_place = 0
 no_stack = 0
+
+[attack.drops.refused]
+too_large = 0
+ahead_of_time = 0
+log_full = 0
 
 [attack.drops.dropped]
 no_unit = 0

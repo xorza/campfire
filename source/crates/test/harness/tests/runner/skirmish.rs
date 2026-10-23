@@ -33,7 +33,7 @@ fn session(plan: [PlayerSlotPlan; 3]) -> FixedSession {
 /// The session of a skirmish whose slots `plan` opens, of no faction picked.
 fn unpicked(plan: [PlayerSlotPlan; 3]) -> FixedSession {
     let packages = TestMode::Skirmish.packages();
-    FixedSession::planned(packages, InputRules::ROOMY, plan)
+    FixedSession::planned(packages, InputRules::LAN, plan)
 }
 
 /// A skirmish whose slots `plan` opens, after its start's tick.
@@ -283,7 +283,7 @@ fn a_kill_pays_its_killers_player_its_share_of_the_victims_cost_rounded_up() {
         PlayerSlotPlan::Bot,
         PlayerSlotPlan::Bot,
     ];
-    let mut fixed = FixedSession::planned(tree.load().unwrap(), InputRules::ROOMY, plan)
+    let mut fixed = FixedSession::planned(tree.load().unwrap(), InputRules::LAN, plan)
         .each_picked("faction", "base")
         .start();
     let dozer = one(&fixed, "dozer", 0);
@@ -341,7 +341,7 @@ fn a_kill_of_a_site_under_construction_pays_no_bounty_by_the_victim_filter() {
             PlayerSlotPlan::Bot,
             PlayerSlotPlan::Bot,
         ];
-        let mut fixed = FixedSession::planned(tree.load().unwrap(), InputRules::ROOMY, plan)
+        let mut fixed = FixedSession::planned(tree.load().unwrap(), InputRules::LAN, plan)
             .each_picked("faction", "base")
             .start();
         let dozer = one(&fixed, "dozer", 0);
@@ -396,7 +396,7 @@ fn a_dozer_of_variations_spawns_as_its_draw_by_every_start_and_counts_as_its_typ
         "0:start=base",
     ]
     .map(|pick| pick.parse::<PlayerSlotPick>().unwrap());
-    let fixed = FixedSession::planned(tree.packages(), InputRules::ROOMY, plan)
+    let fixed = FixedSession::planned(tree.packages(), InputRules::LAN, plan)
         .player_slot_picked(&picks)
         .start();
     let world = fixed.game();

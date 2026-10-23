@@ -1,3 +1,4 @@
+mod bot_inputs;
 mod joins;
 mod lane_match;
 mod late_rules;

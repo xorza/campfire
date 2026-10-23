@@ -40,7 +40,7 @@ impl AttackPlay {
         let factions: Vec<PlayerSlotPick> = ["0:faction=china", "1:faction=gla"]
             .map(|pick| pick.parse().expect("a player slot's pick reads"))
             .into();
-        let session = FixedSession::planned(packages, InputRules::ROOMY, [PlayerSlotPlan::Bot; 2])
+        let session = FixedSession::planned(packages, InputRules::LAN, [PlayerSlotPlan::Bot; 2])
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&factions);

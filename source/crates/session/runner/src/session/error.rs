@@ -90,6 +90,18 @@ pub enum CheckpointBeginError {
     Log(CheckpointError),
 }
 
+/// Why a session's log refused a bot's input, which the server drops, as a bot's payload changes
+/// no player slot's controller for the mode's rules to refuse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BotInputDrop {
+    /// The payload passes the session's max length.
+    TooLarge,
+    /// The player slot's inputs fill every tick up to the session's max input lead.
+    AheadOfTime,
+    /// The session log is full: the session ends at the next boundary.
+    LogFull,
+}
+
 /// Why a session refused a server input: the log's structure, or the mode's rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum ServerInputRefusal {

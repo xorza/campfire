@@ -1,6 +1,7 @@
 use campfire_common::PlayerSlot;
 use campfire_log::{JsonText, LogEvent, LogLine};
-use serde::{Deserialize, Serialize};
+use campfire_runner::BotInputDrop;
+use serde::Deserialize;
 use tracing::warn;
 
 /// The server dropped an input of the bot of `player_slot`, its payload `len` bytes long, for
@@ -10,18 +11,7 @@ pub(crate) struct BotPayloadDropped {
     pub player_slot: PlayerSlot,
     pub len: usize,
     #[serde(deserialize_with = "LogLine::json")]
-    pub cause: DropCause,
-}
-
-/// Why the log refused a bot's input.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DropCause {
-    /// The payload passes the session's max length.
-    TooLarge,
-    /// The player slot's inputs fill every tick up to the session's max input lead.
-    AheadOfTime,
-    /// The session log is full: the session ends at the next boundary.
-    LogFull,
+    pub cause: BotInputDrop,
 }
 
 impl LogEvent for BotPayloadDropped {
@@ -46,7 +36,7 @@ mod tests {
 
     #[test]
     fn the_event_reads_back_what_it_logs() {
-        for cause in [DropCause::TooLarge, DropCause::AheadOfTime] {
+        for cause in [BotInputDrop::TooLarge, BotInputDrop::AheadOfTime] {
             round_trip(&BotPayloadDropped {
                 player_slot: PlayerSlot::new(2),
                 len: 4097,

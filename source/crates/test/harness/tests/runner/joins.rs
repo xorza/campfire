@@ -118,7 +118,7 @@ fn a_joiner_takes_its_player_slot_the_one_it_left_or_one_the_rules_open() {
     // The lane admits no late join: an open player slot takes no new player.
     let lane = FixedSession::planned(
         TestMode::Lane.packages(),
-        InputRules::ROOMY,
+        InputRules::LAN,
         [PlayerSlotPlan::Player, PlayerSlotPlan::Open],
     )
     .start();

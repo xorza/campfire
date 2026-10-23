@@ -23,24 +23,7 @@ impl InputRules {
     pub const LAN: Self = Self {
         max_delay: Ticks::new(10),
         max_lead: Ticks::new(30),
-        max_payload_len: 64,
+        max_payload_len: 1024,
         max_per_tick: 4,
     };
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use campfire_common::Ticks;
-
-    use crate::input_rules::InputRules;
-
-    impl InputRules {
-        /// Limits no test reaches.
-        pub const ROOMY: Self = Self {
-            max_delay: Ticks::new(10),
-            max_lead: Ticks::new(10),
-            max_payload_len: 256,
-            max_per_tick: 4,
-        };
-    }
 }

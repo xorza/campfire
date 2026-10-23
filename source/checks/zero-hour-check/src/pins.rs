@@ -6,6 +6,7 @@ use campfire_common::PackageFingerprint;
 use campfire_import::{ButtonDropCause, SupplyDropCause, WeaponDropCause};
 use campfire_mode::MatchResult;
 use campfire_orders::OrderDropCause;
+use campfire_runner::BotInputDrop;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
@@ -122,12 +123,14 @@ pub(crate) struct BotMatchEnd {
 }
 
 /// The orders of a player slot's bot that came to nothing over a play: those its search left
-/// unsent, the orders no unit took, and each unit's drop of an order, by its cause, as an order
-/// that no unit takes shows only as a count (09-zero-hour.md, What a play drops is counted).
+/// unsent, the inputs the session log refused, the orders no unit took, and each unit's drop of
+/// an order, by its cause, as an order that no unit takes shows only as a count (09-zero-hour.md,
+/// What a play drops is counted).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BotDrops {
     pub(crate) unsent: UnsentCounts,
+    pub(crate) refused: RefusedCounts,
     pub(crate) untaken: u64,
     pub(crate) dropped: DroppedCounts,
 }
@@ -142,6 +145,15 @@ pub(crate) struct UnsentCounts {
     pub(crate) no_target: u64,
     pub(crate) no_place: u64,
     pub(crate) no_stack: u64,
+}
+
+/// The bot's inputs the session log refused, which the server drops, by `BotInputDrop`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RefusedCounts {
+    pub(crate) too_large: u64,
+    pub(crate) ahead_of_time: u64,
+    pub(crate) log_full: u64,
 }
 
 /// The units' drops of orders, by `OrderDropCause`.
@@ -166,6 +178,18 @@ impl UnsentCounts {
             OrderUnsent::NoTarget => &mut self.no_target,
             OrderUnsent::NoPlace => &mut self.no_place,
             OrderUnsent::NoStack => &mut self.no_stack,
+        };
+        *counted += 1;
+    }
+}
+
+impl RefusedCounts {
+    /// Counts one input refused for `cause`.
+    pub(crate) const fn count(&mut self, cause: BotInputDrop) {
+        let counted = match cause {
+            BotInputDrop::TooLarge => &mut self.too_large,
+            BotInputDrop::AheadOfTime => &mut self.ahead_of_time,
+            BotInputDrop::LogFull => &mut self.log_full,
         };
         *counted += 1;
     }

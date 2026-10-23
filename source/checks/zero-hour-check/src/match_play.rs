@@ -16,7 +16,7 @@ use campfire_mode::{MatchEnd, Mode, OptionPicks, OptionValue, PlayerSlotPick};
 use campfire_orders::{DroppedOrders, OrdersDirective};
 use campfire_package::ModePackages;
 use campfire_production::Site;
-use campfire_protocol::{InputRules, PlayerSlotPlan, ServerInput};
+use campfire_protocol::{InputRules, PlayerSlotPlan};
 use campfire_runner::SessionWorld;
 use campfire_sim::MatchRate;
 use campfire_sim::{Position, StableId};
@@ -171,7 +171,7 @@ impl AgainstAmerica {
         let plan = [PlayerSlotPlan::Player, PlayerSlotPlan::Bot];
         let player: PlayerSlotPick = self.player.parse().expect("the play's pick");
         let bot: PlayerSlotPick = "1:faction=america".parse().expect("the bot's pick");
-        let session = FixedSession::planned(packages, InputRules::ROOMY, plan)
+        let session = FixedSession::planned(packages, InputRules::LAN, plan)
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&[player, bot]);
@@ -354,15 +354,14 @@ impl<'p> MatchPlay<'p> {
         let world = self.fixed.game_mut();
         let thinks = self.bots.play(world, tick, &names, &mut self.due);
         self.think_ops = self.think_ops.max(thinks.most);
-        for (player_slot, payload) in self.due.payloads.drain(..) {
-            let input = ServerInput::Bot {
-                player_slot,
-                payload: &payload,
-            };
-            self.fixed
-                .serve(input)
-                .expect("a bot's input within the session's limits");
+        for at in 0..self.due.payloads.len() {
+            let (player_slot, payload) = &self.due.payloads[at];
+            let player_slot = *player_slot;
+            if let Err(cause) = self.fixed.serve_bot(player_slot, payload) {
+                self.due.drops_of(player_slot).refused.count(cause);
+            }
         }
+        self.due.payloads.clear();
         self.fixed.step();
         if let Some(record) = &mut self.record {
             record.tick(self.fixed.game_mut());

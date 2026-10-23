@@ -36,7 +36,6 @@ pub use crate::client::server_pin::ServerPin;
 pub use crate::client::session_signer::SessionSigner;
 pub use crate::error::{JoinError, OrderFileError, ReceiptRefusal, SaveRefusal};
 pub use crate::events::bot_order_unsent::BotOrderUnsent;
-pub use crate::events::bot_payload_dropped::DropCause;
 pub use crate::events::checkpoint_failed::CheckpointFailed;
 pub use crate::events::client_frame::ClientFrame;
 pub use crate::events::input_dropped::InputDropped;
