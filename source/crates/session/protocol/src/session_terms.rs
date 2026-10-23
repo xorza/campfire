@@ -11,7 +11,7 @@ use crate::seed_commitment::SeedCommitment;
 use crate::session_id::SessionId;
 
 /// Starts the session id, so no other BLAKE3 use can produce one.
-const SESSION_ID_DOMAIN: HashDomain<SessionId> = HashDomain::new("campfire/session-id/v5");
+const SESSION_ID_DOMAIN: HashDomain<SessionId> = HashDomain::new("campfire/session-id/v6");
 
 /// The most bytes postcard writes for a `u64`, and for a `u32` or a length.
 const VARINT_64: u64 = 10;
@@ -66,19 +66,18 @@ impl SessionTerms {
         self.player_slots.contains(&PlayerSlotPlan::Player)
     }
 
-    /// `BLAKE3(domain ‖ server key ‖ u32 tick rate ‖ u64 max delay ‖ u64 max lead ‖ u32 max payload
-    /// length ‖ u32 max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release ‖ mode
-    /// fingerprint ‖ u64 map name length ‖ map name ‖ u64 dependency count ‖ dependency
-    /// fingerprints ‖ u64 player slot count ‖ u8 per player slot, its plan's code ‖ u64 visibility
-    /// length ‖ visibility ‖ u64 option count ‖ u8 per option, its pick's place ‖ u64 player slot
-    /// pick count ‖ u8 per player slot pick, its place)`, integers little-endian.
+    /// `BLAKE3(domain ‖ server key ‖ u32 tick rate ‖ u64 max lead ‖ u32 max payload length ‖ u32
+    /// max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release ‖ mode fingerprint ‖
+    /// u64 map name length ‖ map name ‖ u64 dependency count ‖ dependency fingerprints ‖ u64 player
+    /// slot count ‖ u8 per player slot, its plan's code ‖ u64 visibility length ‖ visibility ‖ u64
+    /// option count ‖ u8 per option, its pick's place ‖ u64 player slot pick count ‖ u8 per player
+    /// slot pick, its place)`, integers little-endian.
     pub fn session_id(&self) -> SessionId {
         let release = self.release.as_str();
         let mut hasher = DomainHasher::new(SESSION_ID_DOMAIN);
         hasher
             .update(&self.server_key.serialize())
             .update(&self.tick_hz.get().to_le_bytes())
-            .update(&self.inputs.max_delay.get().to_le_bytes())
             .update(&self.inputs.max_lead.get().to_le_bytes())
             .update(&self.inputs.max_payload_len.to_le_bytes())
             .update(&self.inputs.max_per_tick.to_le_bytes())
@@ -111,7 +110,8 @@ impl SessionTerms {
     /// a bot's payload or a delegation, whose JSON `Delegation::MAX_JSON` bounds; a checkpoint by
     /// its carry, each player slot's delegation and its inputs still to apply, which the stamps'
     /// window bounds, as a player slot logs at most `max_per_tick` of a stamp and none stamped past
-    /// `max_lead` nor before `max_delay`; the header by the terms and a delegation a player slot.
+    /// `max_lead`, nor more in all than the ticks up to it hold; the header by the terms and a
+    /// delegation a player slot.
     pub(crate) fn largest_record(&self) -> Option<u64> {
         let payload = u64::from(self.inputs.max_payload_len);
         let inputs = u64::from(self.inputs.max_per_tick);
@@ -120,12 +120,7 @@ impl SessionTerms {
         let input = VARINT_64 + VARINT_32 + payload;
         let packet = inputs.checked_mul(input)?.checked_add(SIGNATURE + SLACK)?;
         let server = payload.max(delegation) + SIGNATURE + SLACK;
-        let window = self
-            .inputs
-            .max_delay
-            .get()
-            .checked_add(self.inputs.max_lead.get())?
-            .checked_add(1)?;
+        let window = self.inputs.max_lead.get().checked_add(1)?;
         // Each carried input holds its tick and its player slot beside what its packet held.
         let carried = input + VARINT_64 + VARINT_32;
         let pending = inputs.checked_mul(window)?.checked_mul(carried)?;

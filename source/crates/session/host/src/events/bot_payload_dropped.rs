@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn the_event_reads_back_what_it_logs() {
-        for cause in [BotInputDrop::TooLarge, BotInputDrop::AheadOfTime] {
+        for cause in [BotInputDrop::AheadOfTime, BotInputDrop::LogFull] {
             round_trip(&BotPayloadDropped {
                 player_slot: PlayerSlot::new(2),
                 len: 4097,

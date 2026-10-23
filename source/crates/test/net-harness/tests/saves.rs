@@ -23,7 +23,7 @@ use campfire_net_connection::Connected;
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_timeline::TimelineRate;
-use campfire_protocol::{InputRules, JournalFrames, SeedChain, SessionLog};
+use campfire_protocol::{JournalFrames, SeedChain, SessionLog};
 use campfire_runner::{Replay, Session, SessionWorld};
 use campfire_sim::{MatchRate, SimWorld};
 use campfire_store::InputFile;
@@ -158,12 +158,11 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     assert_eq!(log(&local).next_tick(), save.tick);
     assert_eq!(world.state_hash(), save.state_hash);
     // At speed 2 the timelines run at twice the session's 30 Hz, 60 Hz, whose tick is
-    // 16,666,666.6… ns, to the nearest 16,666,667, and a frame runs the LAN's max input delay of
-    // 10 ticks less one at most.
+    // 16,666,666.6… ns, to the nearest 16,666,667, and a frame runs 9 ticks at most
+    // (08-sessions.md, A burst after a stall runs 9 ticks at most).
     let session = MatchRate::new(local.packages().manifest().tick_hz.default()).rate();
     let doubled = PaceSpeed::Double.rate(session);
     assert_eq!(doubled.hz(), Some(NonZeroU32::new(60).unwrap()));
-    assert_eq!(InputRules::LAN.max_delay.get(), 10);
     assert_eq!(world.resource::<TimelineRate>().0, doubled);
     assert_eq!(
         world.resource::<Time<Virtual>>().max_delta(),

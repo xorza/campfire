@@ -242,13 +242,14 @@ impl BotOrder {
             ..
         } = buffers;
         orders.clear();
-        let mut unsent = self.orders(player_slot, view, scratch, orders);
+        let unsent = self.orders(player_slot, view, scratch, orders);
         let max_len = sink.max_payload_len();
         for order in orders.iter() {
-            if !order.write_payloads(max_len, order_payloads) {
-                unsent.get_or_insert(OrderUnsent::TooLarge);
-                continue;
-            }
+            let fits = order.write_payloads(max_len, order_payloads);
+            assert!(
+                fits,
+                "an order fits payloads, as the session's terms hold every input"
+            );
             for payload in &*order_payloads {
                 sink.send(player_slot, payload);
             }

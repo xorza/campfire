@@ -122,6 +122,23 @@ fn a_script_reads_its_mode_inputs_in_tick_order_or_its_flaw() {
         flaw("end = 3\n[[input]]\ntick = 4\nname = \"a\"\nvalue = \"x\"\n"),
         OrderScriptError::EndsEarly { end: 3 }
     );
+    // A text of 247 bytes, of name `a`, takes a payload of the least a session holds, 256 bytes:
+    // the count of commands, its addressee of 2, the body's length of 2, and the body, the name in
+    // 2 and the text with its length of 2, 251. One of 248 takes 257, and is refused
+    // (05-protocol-spec.md, A session's terms hold every input).
+    let input = |len: usize| {
+        let text = "x".repeat(len);
+        format!("[[input]]\ntick = 4\nname = \"a\"\nvalue = \"{text}\"\n")
+    };
+    assert!(OrderScript::parse(&input(247)).is_ok());
+    assert_eq!(
+        flaw(&input(248)),
+        OrderScriptError::InputTooLarge {
+            tick: 4,
+            len: 257,
+            least: 256,
+        }
+    );
     // A value of another shape, and a field the entry does not know.
     for flawed in [
         "[[input]]\ntick = 4\nname = \"a\"\nvalue = 3\n",

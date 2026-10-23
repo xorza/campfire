@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Tells a player where the inputs of a packet the server logged take effect, as Gambetta's
 /// client-side prediction has the server acknowledge each input it processed: from the input of
-/// seq `first` on, the tick each applies in, or none for one logged late or early, which never
+/// seq `first` on, the tick each applies in, or none for one logged early, which never
 /// takes effect. The client replays each in that tick, so a rollback predicts its own inputs
 /// where the server applied them, not where it stamped them.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,7 +22,7 @@ impl InputAck {
         self.applied
             .extend(applied.iter().map(|applied| match *applied {
                 Applied::At(tick) => Some(tick),
-                Applied::Late | Applied::Early => None,
+                Applied::Early => None,
             }));
     }
 }

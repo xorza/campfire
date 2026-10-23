@@ -21,6 +21,10 @@ pub enum TermsError {
     /// The packages' dependencies are others than the ones the terms name.
     #[error("the dependencies are not the ones the session names")]
     OtherDependencies,
+    /// The terms let a payload hold `max` bytes, fewer than the `least` the engine's inputs need
+    /// (05-protocol-spec.md, A session's terms hold every input).
+    #[error("a payload of at most {max} bytes, and the engine's inputs need {least}")]
+    PayloadTooSmall { max: u32, least: u32 },
     /// The tick rate the terms fix is outside the mode's range.
     #[error("{0} ticks a second is outside the mode's range")]
     TickRate(NonZeroU32),

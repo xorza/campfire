@@ -46,14 +46,10 @@ impl InputSchedule {
         }
     }
 
-    /// When an input stamped `stamp`, logged before `next`, applies.
+    /// When an input stamped `stamp`, logged before `next`, applies: at its stamp, or at the next
+    /// tick for one stamped before it however long before (05-protocol-spec.md, A late input
+    /// applies at the next tick); never for one stamped past the max lead.
     pub(super) fn applied(&self, stamp: Tick, next: Tick) -> Applied {
-        if next
-            .since(stamp)
-            .is_some_and(|delay| delay > self.rules.max_delay)
-        {
-            return Applied::Late;
-        }
         if stamp
             .since(next)
             .is_some_and(|lead| lead > self.rules.max_lead)

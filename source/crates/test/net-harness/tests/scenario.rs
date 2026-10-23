@@ -496,11 +496,12 @@ fn a_route_round_a_tower_through_delayed_links() {
 }
 
 #[test]
-fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
-    // The lane mode at 30 ticks a second, with a max input delay of 10 ticks: a frame advances
-    // the server 9 ticks at most. A stall of 8 ticks, as the first orders go out in tick 60,
-    // runs all 8 in one frame, and the orders it held are read after them, 8 ticks late at most:
-    // none is late, and the match plays out as it does with no stall.
+fn a_server_stall_runs_at_most_its_bound_and_its_held_orders_apply() {
+    // The lane mode at 30 ticks a second: a frame advances the server 9 ticks at most
+    // (08-sessions.md, A burst after a stall runs 9 ticks at most). A stall of 8 ticks, as the
+    // first orders go out in tick 60, runs all 8 in one frame, and the orders it held are read
+    // after them, 8 ticks past their stamps, and apply at the next tick, so the match plays out
+    // as it does with no stall.
     let mut local = InProcessMatch::new(InProcessSetup::duo(
         LinkModel::perfect(),
         InProcessMatch::SEED_CHAIN,

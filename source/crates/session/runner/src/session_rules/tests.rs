@@ -16,9 +16,8 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     let key = XOnlyPublicKey::from_byte_array(&[8; 32]).unwrap();
     let commitment = SeedChain::new([7; 32], NonZeroU32::MIN).commitment();
     let inputs = InputRules {
-        max_delay: Ticks::new(3),
         max_lead: Ticks::new(5),
-        max_payload_len: 7,
+        max_payload_len: 256,
         max_per_tick: 2,
     };
     let plan = [
@@ -74,7 +73,16 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         player_slots,
         most: 6,
     };
-    let changes: [(Change, TermsError); 11] = [
+    let changes: [(Change, TermsError); 12] = [
+        // The least payload the engine's inputs need is 256 bytes: the fixture's terms hold it,
+        // and a byte fewer is refused.
+        (
+            |terms| terms.inputs.max_payload_len = 255,
+            TermsError::PayloadTooSmall {
+                max: 255,
+                least: 256,
+            },
+        ),
         (|terms| terms.player_slots.clear(), player_slots(0)),
         (
             |terms| terms.player_slots = vec![PlayerSlotPlan::Open; 7],

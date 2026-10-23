@@ -94,8 +94,6 @@ pub enum CheckpointBeginError {
 /// no player slot's controller for the mode's rules to refuse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BotInputDrop {
-    /// The payload passes the session's max length.
-    TooLarge,
     /// The player slot's inputs fill every tick up to the session's max input lead.
     AheadOfTime,
     /// The session log is full: the session ends at the next boundary.

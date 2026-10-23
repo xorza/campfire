@@ -36,6 +36,7 @@ use campfire_host::Hosting;
 use campfire_host::InputLogged;
 use campfire_host::InputMessageRefused;
 use campfire_host::InputMessageUnfit;
+use campfire_host::InputNeverApplied;
 use campfire_host::LogFilled;
 use campfire_host::MatchClock;
 use campfire_host::MatchEnded;
@@ -46,7 +47,6 @@ use campfire_host::TicksCaughtUp;
 use campfire_host::TimeDropped;
 use campfire_host::UnitDied;
 use campfire_host::WorkerFaults;
-use campfire_host::{InputNeverApplied, Unapplied};
 
 use crate::net_protocol::NetProtocolPlugin;
 use crate::sim_server::ack_sender::AckSender;
@@ -386,19 +386,18 @@ fn record_inputs(
             let first_seq = chain.next_seq() - u64::try_from(applied.len()).expect("a count fits");
             acks.send(entity, first_seq, &applied);
             for (((stamp, _), &outcome), seq) in inputs.zip(applied.iter()).zip(first_seq..) {
-                match Unapplied::try_from(outcome) {
-                    Err(tick) => InputLogged {
+                match outcome {
+                    Applied::At(tick) => InputLogged {
                         player_slot: link.player_slot(),
                         seq,
                         stamp,
                         tick,
                     }
                     .log(),
-                    Ok(outcome) => InputNeverApplied {
+                    Applied::Early => InputNeverApplied {
                         player_slot: link.player_slot(),
                         stamp,
                         next_tick,
-                        outcome,
                     }
                     .log(),
                 }

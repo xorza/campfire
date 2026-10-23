@@ -83,6 +83,12 @@ mod state_only;
 pub struct Release;
 
 impl Release {
+    /// The least payload length a session's terms may set, so every input the engine makes fits
+    /// one (05-protocol-spec.md, A session's terms hold every input): the largest order to one
+    /// unit, 51 bytes, and a bot script's mode input, which the load bounds to it, a declared name
+    /// of 64 bytes and its value among it.
+    pub const LEAST_PAYLOAD_LEN: u32 = 256;
+
     /// Visits, with `v`, every module a match builds with, in the order they install: what the
     /// match's build puts in itself, the core's and the mode's core, then each capability after
     /// the ones it builds on. Each capability's

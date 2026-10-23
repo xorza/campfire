@@ -21,8 +21,8 @@ fn the_client_knows_the_units_of_the_last_whole_select_the_server_applied() {
     // The server applied 4: `a` alone needs no select.
     known.acknowledge(4, &[applied(10)]);
     assert!(known.commands(&a) && !known.commands(&b));
-    // A select of `b` in seq 6 that came late changes nothing once its ack says so; while it
-    // waits, no order goes without a select.
+    // A select of `b` in seq 6 the server logged early changes nothing once its ack says so; while
+    // it waits, no order goes without a select.
     known.sent(6, &b);
     assert!(!known.commands(&a));
     known.acknowledge(5, &[applied(11), None]);

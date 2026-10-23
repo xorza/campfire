@@ -557,9 +557,8 @@ impl SessionLog {
     }
 
     /// Logs a player's packet before the next tick. Writes when each input applies into
-    /// `applied`, which is cleared first:
-    /// late when the next tick is more than the max input delay after its stamp; early when its
-    /// stamp is more than the max input lead ahead; else at `max(stamp, next tick)`, or later,
+    /// `applied`, which is cleared first: early when its stamp is more than the max input lead
+    /// ahead; else at `max(stamp, next tick)`, or later,
     /// when the player's inputs before it fill that tick: a player's inputs fill each tick up to
     /// the max inputs per tick, in chain order, and the rest spill to the next. A packet is
     /// refused for what its client controls alone, so one that follows the rules is never

@@ -5,10 +5,10 @@ use campfire_common::Tick;
 use campfire_sim::StableId;
 
 /// What the client knows of the units the server commands for its player: those of the last of
-/// its selects the server applied, while none it sent waits for the server's word, as a late input
-/// never takes effect, so an order sent behind a select that came late would command the units
-/// before it (04-capabilities/control.md, A select goes with each order until its sender knows the
-/// server commands those units).
+/// its selects the server applied, while none it sent waits for the server's word, as an input
+/// the server logs early never takes effect, so an order sent behind a select it never applied
+/// would command the units before it (04-capabilities/control.md, A select goes with each order
+/// until its sender knows the server commands those units).
 #[derive(Resource, Debug, Default)]
 pub struct KnownCommanded {
     /// The units of the last whole select the server applied, when that is what it commands.

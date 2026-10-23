@@ -455,7 +455,6 @@ mod tests {
             server_key: key.x_only_public_key().0,
             tick_hz: NonZeroU32::new(30).unwrap(),
             inputs: InputRules {
-                max_delay: Ticks::new(3),
                 max_lead: Ticks::new(3),
                 max_payload_len: 64,
                 max_per_tick: 4,

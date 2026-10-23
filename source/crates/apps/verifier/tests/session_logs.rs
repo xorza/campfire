@@ -9,7 +9,7 @@ use std::ops::Range;
 use std::path::Path;
 
 use campfire_actions::{ActionProgress, ActionSlots};
-use campfire_capabilities::{Match, Order};
+use campfire_capabilities::{Match, Order, Release};
 use campfire_common::ErrorReport;
 use campfire_common::{
     AfterLeave, PackageFingerprint, PlayerSlot, StateHash, Tick, Ticks, Version,
@@ -72,13 +72,13 @@ const ORDERS: [Sent; 3] = [
         z: 5,
         applied: Applied::At(Tick::new(22)),
     },
-    // 4 ticks after its stamp, past the max delay of 3: logged, never applied.
+    // 4 ticks ahead of its tick, past the max lead of 3: logged, never applied.
     Sent {
         arrives: 30,
-        stamp: 26,
+        stamp: 34,
         x: 9,
         z: 9,
-        applied: Applied::Late,
+        applied: Applied::Early,
     },
 ];
 
@@ -103,12 +103,11 @@ fn refusal(log: &SessionLog, store: &PackageStore) -> Option<VerifyError> {
 }
 
 /// A session of the test lane mode at its 30 ticks a second, for its one player, whose inputs
-/// may come 3 ticks late or early.
+/// may come 3 ticks early, and whose payloads hold the least the engine's inputs need.
 fn session() -> FixedSession {
     let rules = InputRules {
-        max_delay: Ticks::new(3),
         max_lead: Ticks::new(3),
-        max_payload_len: 64,
+        max_payload_len: Release::LEAST_PAYLOAD_LEN,
         max_per_tick: 4,
     };
     FixedSession::with_rules(packages(), 1, rules)

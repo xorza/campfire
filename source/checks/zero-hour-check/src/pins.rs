@@ -145,14 +145,12 @@ pub(crate) struct UnsentCounts {
     pub(crate) no_target: u64,
     pub(crate) no_place: u64,
     pub(crate) no_stack: u64,
-    pub(crate) too_large: u64,
 }
 
 /// The bot's inputs the session log refused, which the server drops, by `BotInputDrop`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RefusedCounts {
-    pub(crate) too_large: u64,
     pub(crate) ahead_of_time: u64,
     pub(crate) log_full: u64,
 }
@@ -179,7 +177,6 @@ impl UnsentCounts {
             OrderUnsent::NoTarget => &mut self.no_target,
             OrderUnsent::NoPlace => &mut self.no_place,
             OrderUnsent::NoStack => &mut self.no_stack,
-            OrderUnsent::TooLarge => &mut self.too_large,
         };
         *counted += 1;
     }
@@ -189,7 +186,6 @@ impl RefusedCounts {
     /// Counts one input refused for `cause`.
     pub(crate) const fn count(&mut self, cause: BotInputDrop) {
         let counted = match cause {
-            BotInputDrop::TooLarge => &mut self.too_large,
             BotInputDrop::AheadOfTime => &mut self.ahead_of_time,
             BotInputDrop::LogFull => &mut self.log_full,
         };

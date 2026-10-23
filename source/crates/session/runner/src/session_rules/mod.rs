@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
+use campfire_capabilities::Release;
 use campfire_common::{DeclaredName, Version};
 use campfire_mode::{
     ChoiceData, HostPickError, HostPicks, OptionData, OptionPicks, PlayerSlotPicks,
@@ -100,9 +101,9 @@ impl<'p> SessionRules<'p> {
 
     /// Whether `terms` name a session by these rules: of this release, of the mode, its map and the
     /// dependencies, in their order, at a rate the mode runs at, of a player slot at least and no
-    /// more than the mode's teams have, and of a visibility and picks the mode admits, which it
-    /// gives. The check is the one way to the terms' visibility and picks, so no reader takes them
-    /// from terms unchecked.
+    /// more than the mode's teams have, of a payload that holds every input the engine makes, and
+    /// of a visibility and picks the mode admits, which it gives. The check is the one way to the
+    /// terms' visibility and picks, so no reader takes them from terms unchecked.
     pub fn check(&self, terms: &SessionTerms) -> Result<CheckedTerms, TermsError> {
         Self::check_release(terms)?;
         let packages = self.packages;
@@ -127,6 +128,11 @@ impl<'p> SessionRules<'p> {
             return Err(TermsError::PlayerSlots { player_slots, most });
         }
         self.runs_at(terms.tick_hz)?;
+        let least = Release::LEAST_PAYLOAD_LEN;
+        let max = terms.inputs.max_payload_len;
+        if max < least {
+            return Err(TermsError::PayloadTooSmall { max, least });
+        }
         let visibility = Visibility::decode(&terms.visibility).map_err(TermsError::Visibility)?;
         if !self.visibility().admits(&visibility) {
             return Err(TermsError::OtherVisibility);

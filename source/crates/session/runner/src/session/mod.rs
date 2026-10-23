@@ -280,9 +280,6 @@ impl Session {
         };
         match self.serve(input) {
             Ok(()) => Ok(()),
-            Err(ServerInputRefusal::Log(ServerInputError::PayloadTooLarge)) => {
-                Err(BotInputDrop::TooLarge)
-            }
             Err(ServerInputRefusal::Log(ServerInputError::AheadOfTime)) => {
                 Err(BotInputDrop::AheadOfTime)
             }

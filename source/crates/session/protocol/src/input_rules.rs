@@ -1,11 +1,11 @@
 use campfire_common::Ticks;
 use serde::{Deserialize, Serialize};
 
-/// The limits of a session's terms on its inputs. They encode field by field, in the terms.
+/// The limits of a session's terms on its inputs. They encode field by field, in the terms. An
+/// input that lands after its stamp applies at the next tick, as an order is an event a player
+/// gave (05-protocol-spec.md, A late input applies at the next tick).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputRules {
-    /// The most ticks an input may land after its stamp; a later one is logged as late.
-    pub max_delay: Ticks,
     /// The most ticks an input's stamp may be ahead of the next tick; a further one is logged as
     /// early. The server holds each input until its tick, so this bounds what a client can make
     /// it hold.
@@ -21,7 +21,6 @@ pub struct InputRules {
 impl InputRules {
     /// The limits the reference server runs a session on a LAN by.
     pub const LAN: Self = Self {
-        max_delay: Ticks::new(10),
         max_lead: Ticks::new(30),
         max_payload_len: 1024,
         max_per_tick: 4,

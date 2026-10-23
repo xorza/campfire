@@ -1,4 +1,4 @@
-use campfire_capabilities::{Directive, NamedRefs};
+use campfire_capabilities::{Directive, NamedRefs, Release};
 use campfire_codec::Toml;
 use campfire_common::{DeclaredName, Tick};
 use campfire_mode::{InputValue, ModeInput};
@@ -84,8 +84,9 @@ impl OrderScript {
     pub const MAX_FILE_LEN: usize = 1 << 20;
 
     /// The script `text` holds; an error when it is not TOML of this shape, when a coordinate is
-    /// past what a sim number holds, when the ticks of its orders or of its inputs do not grow, or
-    /// when the script ends before an order or an input.
+    /// past what a sim number holds, when the ticks of its orders or of its inputs do not grow,
+    /// when a mode input's payload passes the least a session's terms let one hold, or when the
+    /// script ends before an order or an input.
     pub fn parse(text: &str) -> Result<Self, OrderScriptError> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
@@ -137,6 +138,7 @@ impl OrderScript {
             })
             .collect();
         Self::growing(inputs.iter().map(|input| input.tick))?;
+        Self::fitting(&inputs)?;
         let end = file.end.map(Tick::new);
         let last = orders
             .last()
@@ -165,6 +167,25 @@ impl OrderScript {
             inputs: Vec::new(),
             end: None,
         })
+    }
+
+    /// An error at the first of `inputs` whose payload passes the least a session's terms let one
+    /// hold, so a session that takes the script sends each.
+    fn fitting(inputs: &[ScriptedInput]) -> Result<(), OrderScriptError> {
+        let least = Release::LEAST_PAYLOAD_LEN;
+        let (mut body, mut payload) = (Vec::new(), Vec::new());
+        for input in inputs {
+            payload.clear();
+            input.write_payload(&mut body, &mut payload);
+            if payload.len() > usize::try_from(least).expect("a u32 fits usize") {
+                return Err(OrderScriptError::InputTooLarge {
+                    tick: input.tick.get(),
+                    len: payload.len(),
+                    least,
+                });
+            }
+        }
+        Ok(())
     }
 
     /// An error at the first of `ticks` below the one before it.

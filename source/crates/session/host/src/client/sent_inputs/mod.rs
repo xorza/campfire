@@ -34,7 +34,7 @@ enum Landing {
     Expected,
     /// The server applies it in its `tick`.
     Applied,
-    /// The server logged it late or early, and it never takes effect.
+    /// The server logged it early, and it never takes effect.
     Never,
 }
 
@@ -66,14 +66,16 @@ impl SentInputs {
     }
 
     /// Keeps the payload `write` appends, with a body buffer it may use, as the input of `seq`
-    /// stamped `stamp`; `false`, keeping nothing, when the payload passes `max_payload_len`.
+    /// stamped `stamp`. The payload holds `max_payload_len` bytes at most, as the terms the client
+    /// joined hold every input the engine makes (05-protocol-spec.md, A session's terms hold every
+    /// input): a longer one is a logic error, which the server would refuse and end the link for.
     pub fn push(
         &mut self,
         seq: u64,
         stamp: Tick,
         max_payload_len: u32,
         write: impl FnOnce(&mut Vec<u8>, &mut Vec<u8>),
-    ) -> bool {
+    ) {
         let last = self.inputs.last();
         debug_assert!(
             last.is_none_or(|last| last.stamp <= stamp && last.seq + 1 == seq),
@@ -82,10 +84,11 @@ impl SentInputs {
         let tick = last.map_or(stamp, |last| last.tick.max(stamp));
         let start = self.payloads.len();
         write(&mut self.body, &mut self.payloads);
-        if self.payloads.len() - start > max_payload_len as usize {
-            self.payloads.truncate(start);
-            return false;
-        }
+        let len = self.payloads.len() - start;
+        assert!(
+            u32::try_from(len).is_ok_and(|len| len <= max_payload_len),
+            "an input of {len} bytes passes the session's {max_payload_len}"
+        );
         self.inputs.push(SentInput {
             seq,
             stamp,
@@ -93,7 +96,6 @@ impl SentInputs {
             landing: Landing::Expected,
             payload: start..self.payloads.len(),
         });
-        true
     }
 
     /// Takes the server's word on where the inputs from seq `first` on take effect, each in the

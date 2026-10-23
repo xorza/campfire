@@ -22,9 +22,6 @@ pub enum OrderUnsent {
     NoPlace,
     /// The unit it commands first carries no stack of the item type it names.
     NoStack,
-    /// Its directive and one unit it commands pass the session's max payload length, so no
-    /// input holds it.
-    TooLarge,
 }
 
 /// Why a bot's script does not start in a match, or why the orders a think gave name what the

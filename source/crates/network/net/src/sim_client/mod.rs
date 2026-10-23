@@ -54,7 +54,6 @@ use campfire_host::ClientFrame;
 use campfire_host::Dismissed;
 use campfire_host::Hosting;
 use campfire_host::InputAck;
-use campfire_host::InputDropped;
 use campfire_host::InputMessage;
 use campfire_host::InputsDiscarded;
 use campfire_host::KnownCommanded;
@@ -63,7 +62,6 @@ use campfire_host::MatchEnded;
 use campfire_host::MatchLoaded;
 use campfire_host::MatchStart;
 use campfire_host::MatchStarted;
-use campfire_host::OrderDropped;
 use campfire_host::OrdersSent;
 use campfire_host::Os;
 use campfire_host::PlayerSigner;
@@ -192,8 +190,9 @@ impl PendingOrders {
     /// an order to the units the server is known to command with no select, any other with its
     /// select, split past one payload, whose parts past the tick's inputs wait at its front for
     /// the next (04-capabilities/control.md, A select goes with each order until its sender knows
-    /// the server commands those units). An input of no payload within the max length, as an
-    /// order whose directive and one unit pass it, is dropped and logged.
+    /// the server commands those units). Every input fits a payload, as the terms the client
+    /// joined hold every input the engine makes (05-protocol-spec.md, A session's terms hold every
+    /// input).
     fn stamp(&mut self, stamping: Stamping<'_>) {
         let Stamping {
             stamp,
@@ -214,19 +213,17 @@ impl PendingOrders {
             match &self.0[done] {
                 Pending::Order(order) if known.commands(order.units.get()) => {
                     let seq = seq(sent);
-                    let kept = sent.push(seq, stamp, max_len, |body, out| {
+                    sent.push(seq, stamp, max_len, |body, out| {
                         order.write_commanded_payload(body, out);
                     });
-                    if kept {
-                        left -= 1;
-                    } else {
-                        OrderDropped::of(order).log();
-                    }
+                    left -= 1;
                 }
                 Pending::Order(order) => {
-                    if !order.write_payloads(max_len, payloads) {
-                        OrderDropped::of(order).log();
-                    }
+                    let fits = order.write_payloads(max_len, payloads);
+                    assert!(
+                        fits,
+                        "an order fits payloads, as the joined terms hold every input"
+                    );
                     let parts = payloads.iter().len();
                     for (at, part) in payloads.iter().enumerate() {
                         if at >= left {
@@ -234,10 +231,7 @@ impl PendingOrders {
                             continue;
                         }
                         let seq = seq(sent);
-                        let kept = sent.push(seq, stamp, max_len, |_, out| {
-                            out.extend_from_slice(part);
-                        });
-                        debug_assert!(kept, "an order's part fits a payload");
+                        sent.push(seq, stamp, max_len, |_, out| out.extend_from_slice(part));
                         if parts == 1 {
                             known.sent(seq, order.units.get());
                         } else {
@@ -248,24 +242,16 @@ impl PendingOrders {
                 }
                 Pending::Part(part) => {
                     let seq = seq(sent);
-                    let kept = sent.push(seq, stamp, max_len, |_, out| {
-                        out.extend_from_slice(part);
-                    });
-                    debug_assert!(kept, "an order's part fits a payload");
+                    sent.push(seq, stamp, max_len, |_, out| out.extend_from_slice(part));
                     known.sent_part(seq);
                     left -= 1;
                 }
                 Pending::Input(input) => {
                     let seq = seq(sent);
-                    let kept = sent.push(seq, stamp, max_len, |body, out| {
+                    sent.push(seq, stamp, max_len, |body, out| {
                         input.write_payload(body, out);
                     });
-                    if kept {
-                        left -= 1;
-                    } else {
-                        let name = input.name.clone();
-                        InputDropped { name }.log();
-                    }
+                    left -= 1;
                 }
             }
             done += 1;
@@ -827,6 +813,12 @@ fn send_orders(
         payloads: &mut order_payloads,
     });
     let payloads = sent.since(first);
+    // The message keeps the terms, as the server refuses one that does not and ends the link, so
+    // a client's own fault crashes here rather than there.
+    debug_assert!(
+        u32::try_from(payloads.len()).is_ok_and(|count| count <= session.inputs.max_per_tick),
+        "a stamp holds the max inputs a tick at most"
+    );
     if payloads.len() == 0 {
         return;
     }

@@ -28,7 +28,6 @@ use crate::snapshot_fingerprint::SnapshotFingerprint;
 use crate::spill::Spill;
 use crate::stamp_count::StampCount;
 
-const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;
 const MAX_PAYLOAD_LEN: u32 = 4;
 const MAX_INPUTS_PER_TICK: u32 = 2;
@@ -80,7 +79,6 @@ fn terms() -> SessionTerms {
         server_key: server_key(),
         tick_hz: TICK_HZ,
         inputs: InputRules {
-            max_delay: Ticks::new(MAX_DELAY),
             max_lead: Ticks::new(MAX_LEAD),
             max_payload_len: MAX_PAYLOAD_LEN,
             max_per_tick: MAX_INPUTS_PER_TICK,
@@ -187,7 +185,7 @@ fn script_applied() -> PerTick {
         &[(1, b"a")],
         &[(0, b"b"), (0, b"c")],
         &[],
-        &[(0, b"g"), (0, b"h"), (1, b"f")],
+        &[(0, b"g"), (0, b"h"), (1, b"e"), (1, b"f")],
         &[(0, b"m"), (0, b"n")],
     ])
 }
@@ -369,8 +367,8 @@ fn inputs_apply_by_the_delay_rule_in_player_slot_order() {
         }
         drop(log.seal_tick(None));
     }
-    // Applied at max(stamp, next tick); late when the next tick is more than 2 ticks after the
-    // stamp, early when the stamp is more than 2 ticks ahead; and a player's inputs fill each tick
+    // Applied at max(stamp, next tick), however long after its stamp; early when the stamp is
+    // more than 2 ticks ahead; and a player's inputs fill each tick
     // up to 2, in chain order, the rest spilling to the next. Player 0's g, h and m arrive before
     // one tick, one past the max of 2, as a network that holds packets groups them: no stamp
     // holds more than 2, so the log takes all three, and m spills.
@@ -380,8 +378,8 @@ fn inputs_apply_by_the_delay_rule_in_player_slot_order() {
             (&b"a"[..], Applied::At(Tick::new(0))), // stamp 0, before tick 0
             (b"b", Applied::At(Tick::new(1))),      // stamp 1 is ahead of tick 0
             (b"c", Applied::At(Tick::new(1))),      // stamp 1, before tick 1: the second of tick 1
-            (b"e", Applied::Late),                  // stamp 0, before tick 3: 3 ticks late
-            (b"f", Applied::At(Tick::new(3))), // stamp 1, before tick 3: 2 ticks late, the most allowed
+            (b"e", Applied::At(Tick::new(3))),      // stamp 0, before tick 3: at the next tick
+            (b"f", Applied::At(Tick::new(3))), // stamp 1, before tick 3: the second of player 1's
             (b"g", Applied::At(Tick::new(3))), // stamp 2, before tick 3
             (b"h", Applied::At(Tick::new(3))), // the second of player 0's tick 3
             (b"d", Applied::At(Tick::new(5))), // stamp 5, before tick 3: 2 ticks ahead, the most allowed
@@ -572,11 +570,11 @@ fn a_tampered_packet_is_refused() {
 
 #[test]
 fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
-    // Each record of the terms takes at most their largest, 9,778 bytes, and 64 more, and the
-    // session's end keeps four: 4 × 9,842 = 39,368. Player 1's packet of a, stamped 0, is its
+    // Each record of the terms takes at most their largest, 9,506 bytes, and 64 more, and the
+    // session's end keeps four: 4 × 9,570 = 38,280. Player 1's packet of a, stamped 0, is its
     // player slot, its count, a's stamp, length and byte, and the 64-byte signature, 69 bytes: 70
     // in the file with its kind's byte, and 4 + 1 + 69 + 32 = 106 in the journal, framed.
-    let (unit, kept) = (9_842, 4 * 9_842);
+    let (unit, kept) = (9_570, 4 * 9_570);
     let start = new_log().file_len;
     assert_eq!(start, len(encoded(&new_log()).len()));
     let bounded = |file: u64| {
@@ -653,7 +651,7 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     assert_eq!(len(encoded(&log).len()), start + 129);
     // A checkpoint begun keeps the room of its record: a seal and the begin, whose count of
     // segments stays a byte and whose own count of ticks takes one, leave a log of 2 bytes more
-    // full within 2 + 9,842 + 5 × 9,842 bytes less one.
+    // full within 2 + 9,570 + 5 × 9,570 bytes less one.
     let mut log = bounded(2 + 6 * unit - 1);
     drop(log.seal_tick(None));
     assert!(!log.is_full(None));
@@ -739,13 +737,13 @@ fn a_delegation_for_another_server_or_session_is_refused() {
 
     // The largest record of the terms, a checkpoint's: each of the 2 player slots carries a
     // delegation of at most 4,096 bytes and its length, 4,101, and its inputs still to apply, 2 a
-    // stamp over the delay, the lead and the next tick, 5 stamps, each a tick, a player slot, a
-    // stamp, a length and 4 bytes, 10 + 5 + 10 + 5 + 4 = 34: 4,101 + 340 + 256 = 4,697 a player
-    // slot; then two hashes, the signature and the slack, 64 + 64 + 256 = 384: 2 × 4,697 + 384 =
-    // 9,778. A packet takes 2 × 19 + 320 = 358, a server input 4,101 + 320 = 4,421, the header 2 ×
-    // 4,357 + 2 × 32 + 5 + 256 = 9,039.
-    assert_eq!(terms().largest_record(), Some(9_778));
-    // A lead of 2¹⁸ ticks lets each player slot hold 2 × (2¹⁸ + 3) inputs of 34 bytes, past 16 MiB
+    // stamp over the lead and the next tick, 3 stamps, each a tick, a player slot, a stamp, a
+    // length and 4 bytes, 10 + 5 + 10 + 5 + 4 = 34: 4,101 + 204 + 256 = 4,561 a player slot; then
+    // two hashes, the signature and the slack, 64 + 64 + 256 = 384: 2 × 4,561 + 384 = 9,506. A
+    // packet takes 2 × 19 + 320 = 358, a server input 4,101 + 320 = 4,421, the header 2 × 4,357
+    // + 2 × 32 + 5 + 256 = 9,039.
+    assert_eq!(terms().largest_record(), Some(9_506));
+    // A lead of 2¹⁸ ticks lets each player slot hold 2 × (2¹⁸ + 1) inputs of 34 bytes, past 16 MiB
     // in all.
     let mut far = header();
     far.terms.inputs.max_lead = Ticks::new(1 << 18);
@@ -754,7 +752,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         Some(HeaderError::RecordTooLarge)
     );
     let mut endless = header();
-    endless.terms.inputs.max_delay = Ticks::new(u64::MAX);
+    endless.terms.inputs.max_lead = Ticks::new(u64::MAX);
     assert_eq!(endless.terms.largest_record(), None);
     assert_eq!(
         SessionLog::new(endless).err(),
@@ -763,10 +761,9 @@ fn a_delegation_for_another_server_or_session_is_refused() {
 
     // The session id hashes the terms, so a change to any of them leaves every delegation
     // naming another session.
-    let changes: [fn(&mut SessionTerms); 19] = [
+    let changes: [fn(&mut SessionTerms); 18] = [
         |terms| terms.server_key = x_only(42),
         |terms| terms.tick_hz = NonZeroU32::new(301).unwrap(),
-        |terms| terms.inputs.max_delay = Ticks::new(terms.inputs.max_delay.get() + 1),
         |terms| terms.inputs.max_lead = Ticks::new(terms.inputs.max_lead.get() + 1),
         |terms| terms.inputs.max_payload_len += 1,
         |terms| terms.inputs.max_per_tick += 1,
@@ -800,11 +797,10 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     }
 
     // The id, as the protocol spells it (05-protocol-spec.md, Keys).
-    let mut spelled = Hasher::new_derive_key("campfire/session-id/v5");
+    let mut spelled = Hasher::new_derive_key("campfire/session-id/v6");
     spelled
         .update(&server_key().serialize())
         .update(&300_u32.to_le_bytes())
-        .update(&2_u64.to_le_bytes())
         .update(&2_u64.to_le_bytes())
         .update(&4_u32.to_le_bytes())
         .update(&2_u32.to_le_bytes())
@@ -915,11 +911,10 @@ fn frame(
     tail: &[Sent<'_>],
     revealed: Option<&ServerSeed>,
 ) -> Vec<u8> {
-    let mut bytes = b"campfire/session-log/v11".to_vec();
+    let mut bytes = b"campfire/session-log/v12".to_vec();
     let terms = &header.terms;
     put(&mut bytes, &terms.server_key.serialize());
     put(&mut bytes, &terms.tick_hz);
-    put(&mut bytes, &terms.inputs.max_delay);
     put(&mut bytes, &terms.inputs.max_lead);
     put(&mut bytes, &terms.inputs.max_payload_len);
     put(&mut bytes, &terms.inputs.max_per_tick);
@@ -1048,12 +1043,12 @@ fn a_log_file_has_its_layout() {
 
     let [first, second] = [0, 1].map(delegation);
     let expected = [
-        &b"campfire/session-log/v11"[..],
+        &b"campfire/session-log/v12"[..],
         // The terms, and no session id: it is their hash.
         &server_key().serialize(),
-        // 300 ticks a second = 0b10_0101100: varint 0xAC 0x02. Max input delay 2, lead 2,
-        // payload length 4, inputs per tick 2.
-        &[0xAC, 0x02, 2, 2, 4, 2],
+        // 300 ticks a second = 0b10_0101100: varint 0xAC 0x02. Max input lead 2, payload length
+        // 4, inputs per tick 2.
+        &[0xAC, 0x02, 2, 4, 2],
         SEED_CHAIN.commitment().as_bytes(),
         // The release as a length and UTF-8, the mode's fingerprint, the map's name as a length
         // and UTF-8, and the count and fingerprints of its 2 dependencies.
@@ -1097,7 +1092,7 @@ fn a_log_file_has_its_layout() {
     assert_eq!(encoded(&log), expected);
 
     // A rate of 0 ticks a second does not decode.
-    let tick_at = b"campfire/session-log/v11".len() + 32;
+    let tick_at = b"campfire/session-log/v12".len() + 32;
     let zero_rate = [&expected[..tick_at], &[0], &expected[tick_at + 2..]].concat();
     assert!(matches!(
         SessionLog::decode(&zero_rate),
@@ -1179,7 +1174,7 @@ fn assert_truncations_and_flips_refused(bytes: &[u8]) {
         SessionLog::decode(bytes).map(|log| log.next_tick()),
         Ok(Tick::new(1))
     );
-    let tag = b"campfire/session-log/v11".len();
+    let tag = b"campfire/session-log/v12".len();
     // Each byte on a core of its own, as the sweep is long (02-engine-core.md, A sweep runs on
     // every core).
     Parallel::map_init(bytes.len(), Vec::new, |corrupt, at| {
