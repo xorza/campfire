@@ -81,12 +81,73 @@ fn display_is_exact() {
     );
 }
 
+#[test]
+fn debug_is_the_shortest_decimal_that_reads_back() {
+    // ε = 5.96…·10⁻⁸: 6·10⁻⁸ · 2²⁴ = 1.007 rounds to 1, and 1·10⁻⁷ · 2²⁴ = 1.68 rounds to 2.
+    // MAX's fraction 1 − ε = 0.99999994039…: 0.99999994 · 2²⁴ = 16777214.99 rounds to 2²⁴ − 1,
+    // and 0.9999999 · 2²⁴ = 16777214.32 to 2²⁴ − 2.
+    let cases = [
+        (0, "0"),
+        (ONE, "1"),
+        (7 * ONE + HALF, "7.5"),
+        (-QUARTER, "-0.25"),
+        (1, "0.00000006"),
+        (-1, "-0.00000006"),
+        (i64::MAX, "549755813887.99999994"),
+        (i64::MIN, "-549755813888"),
+    ];
+    for (bits, text) in cases {
+        assert_eq!(format!("{:?}", n(bits)), text);
+    }
+    for text in ["0.1", "999.8", "-12.345"] {
+        let value = text.parse::<Num>().unwrap();
+        assert_eq!(format!("{value:?}"), text);
+        assert_ne!(value.to_string(), text, "{text} is no exact `Num`");
+    }
+    assert_eq!(format!("{:>6}|", n(7 * ONE + HALF)), "   7.5|");
+}
+
+#[test]
+#[should_panic = "a `Num` prints whole"]
+fn display_with_a_precision_panics() {
+    let _ = format!("{:.2}", n(7 * ONE + HALF));
+}
+
+#[test]
+#[should_panic = "a `Num` prints whole"]
+fn debug_with_a_precision_panics() {
+    let _ = format!("{:.2?}", n(7 * ONE + HALF));
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(CASES))]
 
     #[test]
     fn display_parses_back(a in bits()) {
         prop_assert_eq!(n(a).to_string().parse::<Num>(), Ok(n(a)));
+    }
+
+    #[test]
+    fn debug_parses_back_and_no_shorter_decimal_does(a in bits()) {
+        let text = format!("{:?}", n(a));
+        prop_assert_eq!(text.parse::<Num>(), Ok(n(a)));
+        if let Some((_, frac)) = text.split_once('.') {
+            // The nearest decimal of one digit fewer is the only one of that length that could
+            // read back: each other one lies farther from the value.
+            let shorter = &frac[..frac.len() - 1];
+            let scale = 10_i128.pow(u32::try_from(shorter.len()).unwrap());
+            let value = i128::from(n(a).to_bits()).abs();
+            let nearest = nearest_even(value * scale, 1 << 24);
+            let sign = if a < 0 { "-" } else { "" };
+            let (whole, part) = (nearest / scale, nearest % scale);
+            let digits = shorter.len();
+            let candidate = if digits == 0 {
+                format!("{sign}{whole}")
+            } else {
+                format!("{sign}{whole}.{part:0digits$}")
+            };
+            prop_assert_ne!(candidate.parse::<Num>(), Ok(n(a)), "{} reads back too", candidate);
+        }
     }
 
     #[test]

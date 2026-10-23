@@ -69,7 +69,7 @@ pub(super) const fn parse(text: &[u8]) -> Result<Num, ParseNumError> {
     }
 }
 
-/// The exact decimal text of a `Num`.
+/// The decimal text of a `Num`: exact, or the shortest that reads back to its bits.
 #[derive(Debug)]
 pub(super) struct Decimal {
     bytes: [u8; MAX_LEN],
@@ -104,6 +104,42 @@ impl Decimal {
         decimal
     }
 
+    /// The fewest fractional digits that `parse` reads back to `value`, the nearest such decimal,
+    /// as Rust's shortest float form is chosen. A step of 10⁻⁸ is below half of 2⁻²⁴, so 8 digits
+    /// always read back.
+    pub(super) const fn shortest(value: Num) -> Self {
+        let mut decimal = Self {
+            bytes: [0; MAX_LEN],
+            len: 0,
+        };
+        let bits = value.to_bits();
+        if bits < 0 {
+            decimal.push(b'-');
+        }
+        let magnitude = bits.unsigned_abs();
+        decimal.push_int(magnitude >> Num::FRAC_BITS);
+        let frac = (magnitude & ((1 << Num::FRAC_BITS) - 1)) as u128;
+        if frac == 0 {
+            return decimal;
+        }
+        let mut digits = 1;
+        let mut scale = 10;
+        let mut nearest = nearest_even(frac * scale, 1 << Num::FRAC_BITS);
+        while nearest_even(nearest << Num::FRAC_BITS, scale) != frac {
+            digits += 1;
+            scale *= 10;
+            nearest = nearest_even(frac * scale, 1 << Num::FRAC_BITS);
+        }
+        debug_assert!(digits <= 8 && nearest < scale && !nearest.is_multiple_of(10));
+        decimal.push(b'.');
+        while digits != 0 {
+            scale /= 10;
+            decimal.push(ascii_digit(nearest / scale % 10));
+            digits -= 1;
+        }
+        decimal
+    }
+
     pub(super) const fn as_str(&self) -> &str {
         match str::from_utf8(self.bytes.split_at(self.len).0) {
             Ok(text) => text,
@@ -125,6 +161,17 @@ impl Decimal {
             self.push(ascii_digit((value / scale % 10) as u128));
             scale /= 10;
         }
+    }
+}
+
+/// `numerator / denominator`, rounded to nearest, ties to even, as `parse` rounds.
+const fn nearest_even(numerator: u128, denominator: u128) -> u128 {
+    let quotient = numerator / denominator;
+    let twice_rest = 2 * (numerator % denominator);
+    if twice_rest > denominator || (twice_rest == denominator && quotient & 1 == 1) {
+        quotient + 1
+    } else {
+        quotient
     }
 }
 

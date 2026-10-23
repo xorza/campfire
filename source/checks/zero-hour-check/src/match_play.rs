@@ -13,7 +13,7 @@ use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
 use campfire_math::{Num, Vec3};
 use campfire_mode::internals::MarkerOf;
 use campfire_mode::{MatchEnd, Mode, OptionPicks, OptionValue, PlayerSlotPick};
-use campfire_orders::OrdersDirective;
+use campfire_orders::{DroppedOrders, OrdersDirective};
 use campfire_package::ModePackages;
 use campfire_players::PlayersWorld;
 use campfire_production::Site;
@@ -25,7 +25,7 @@ use campfire_units::{BuildTarget, GroundPoint, Life, MapPoint, MoveStep, Units, 
 use campfire_values::{ResourceId, UnitType};
 
 use crate::failure::CheckFailure;
-use crate::pins::{BotMatchEnd, HZ};
+use crate::pins::{BotDrops, BotMatchEnd, HZ};
 
 /// America's command center, the building a skirmish starts a player with.
 pub(crate) const CENTER: &str = "americacommandcenter";
@@ -91,11 +91,24 @@ struct BotHome {
 
 /// The payloads the bots give in a tick, each with its player slot, which the play serves once
 /// they, which read the match, are done; an order of no unit the server's driver drops goes unsent
-/// here too; and the first think that failed, which fails the play.
+/// here too; the orders of each player slot that came to nothing so far, by its index; and the
+/// first think that failed, which fails the play.
 #[derive(Debug, Default)]
 struct DuePayloads {
     payloads: Vec<(PlayerSlot, Vec<u8>)>,
+    drops: Vec<BotDrops>,
     failed: Option<ThinkError>,
+}
+
+impl DuePayloads {
+    /// The drops of `player_slot` so far.
+    fn drops_of(&mut self, player_slot: PlayerSlot) -> &mut BotDrops {
+        let index = player_slot.index();
+        if self.drops.len() <= index {
+            self.drops.resize(index + 1, BotDrops::default());
+        }
+        &mut self.drops[index]
+    }
 }
 
 impl BotSink for DuePayloads {
@@ -103,7 +116,9 @@ impl BotSink for DuePayloads {
         self.payloads.push((player_slot, payload.to_vec()));
     }
 
-    fn unsent(&mut self, _: PlayerSlot, _: &Directive<NamedRefs>, _: OrderUnsent) {}
+    fn unsent(&mut self, player_slot: PlayerSlot, _: &Directive<NamedRefs>, cause: OrderUnsent) {
+        self.drops_of(player_slot).unsent.count(cause);
+    }
 
     fn failed(&mut self, _: PlayerSlot, error: ThinkError) {
         self.failed.get_or_insert(error);
@@ -290,11 +305,13 @@ impl MatchPlay {
                 })
                 .count()
         });
+        let drops = [0, 1].map(|index| self.due.drops.get(index).copied().unwrap_or_default());
         BotMatchEnd {
             ended: end.map(|end| end.tick().get()),
             result: end.map(MatchEnd::result),
             standing,
             think_ops: self.think_ops,
+            drops,
         }
     }
 
@@ -331,6 +348,18 @@ impl MatchPlay {
                 .expect("a bot's input within the session's limits");
         }
         self.fixed.game_mut().run_tick_alone();
+        // A tick that checked no orders, as a match that ended runs none, leaves an earlier
+        // tick's drops.
+        let dropped = self.fixed.game().get_resource::<DroppedOrders>();
+        if let Some(dropped) = dropped.filter(|dropped| dropped.tick() == tick) {
+            for drop in dropped {
+                let drops = self.due.drops_of(drop.player_slot);
+                drops.dropped.count(drop.cause);
+            }
+            for drop in dropped.untaken() {
+                self.due.drops_of(drop.player_slot).untaken += 1;
+            }
+        }
         let units = MatchUnits::of(self.fixed.game());
         for BotHome {
             player_slot,

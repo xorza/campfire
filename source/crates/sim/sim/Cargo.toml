@@ -9,7 +9,10 @@ autotests = false
 kind = "glue"
 
 [features]
+# Bevy's `debug` names each type in a panic and an archetype, for tests and checks alone
+# (debug-loop.md, Tests and checks name Bevy's types).
 internals = [
+    "bevy_ecs/debug",
     "dep:campfire-measure",
     "campfire-codec/internals",
     "campfire-math/internals",

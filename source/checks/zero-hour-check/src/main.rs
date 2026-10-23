@@ -2,7 +2,7 @@
 //! the import and its matches against a closed form of the game's data and against `golden.toml`
 //! (09-zero-hour.md, The check's measures are a golden file), and fails when it names no install.
 //!
-//! Run it with `cargo drive run zero-hour [out]`, which builds it with the `release-dev` profile;
+//! Run it with `cargo drive run zero-hour [out]`, which builds it with the `checks` profile;
 //! it writes to `~/zh-package` unless `out` names another directory. `CAMPFIRE_BLESS=1` before
 //! it writes the golden file again of what the run measured.
 

@@ -375,22 +375,31 @@ impl Walking {
                 continue;
             };
             let collider = &mut colliders[walker];
-            let radius = collider.radius();
-            let inside = statics.any_near(collider.layer, collider.point, radius, |body| {
-                collider.overlaps(&Collider::fixed(body))
-            });
-            if !inside {
+            if !Self::in_static(collider, statics) {
                 continue;
             }
             let kind = Walker {
                 layer: collider.layer,
-                radius,
+                radius: collider.radius(),
             };
             let walkable = Walkable::of(grid.clearance(kind), statics);
             if let Some(place) = planner.stand_at(walkable, collider.point) {
                 collider.point = place;
             }
+            debug_assert!(
+                !Self::in_static(collider, statics),
+                "the walker {:?} stays in a static body at {:?}",
+                collider.id,
+                collider.point,
+            );
         }
+    }
+
+    /// Whether `collider` overlaps a body of `statics`.
+    fn in_static(collider: &Collider, statics: &BodyIndex) -> bool {
+        statics.any_near(collider.layer, collider.point, collider.radius(), |body| {
+            collider.overlaps(&Collider::fixed(body))
+        })
     }
 
     /// Whether a unit walks this tick: it has a destination, and neither its tags nor its

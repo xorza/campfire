@@ -343,6 +343,12 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     for (at, order) in [(0, None), (7, None), (2, None), (1, Some(train_order))] {
         game.step_with(&[(PlayerSlot::new(0), &slot(at))]);
         assert_eq!(ordered(&game), order, "slot {at}");
+        let kind = [(Some(hero), OrderDropCause::SlotKind)];
+        assert_eq!(
+            dropped(&game),
+            if order.is_some() { &[][..] } else { &kind },
+            "slot {at}"
+        );
     }
 
     // With a vision grid, the train at a unit: at the other hero while no team sees it, nothing
@@ -368,6 +374,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     };
     game.step_with(&[(PlayerSlot::new(0), &at_unit(other))]);
     assert_eq!(ordered(&game), Some(train_order));
+    assert_eq!(dropped(&game), [(Some(hero), OrderDropCause::Hidden)]);
     // A player's entity of the hero's team holds a team and no `SeenBy`, and is no unit: an order
     // at it changes nothing either.
     let own = PlayerSlot::new(0);
@@ -608,6 +615,11 @@ fn attack_orders_need_a_living_enemy() {
             None,
             "{order:?}"
         );
+        assert_eq!(
+            dropped(&game),
+            [(Some(fighter), OrderDropCause::NoWeapon)],
+            "{order:?}"
+        );
     }
 
     // With a vision grid, an attack aims only at a unit the fighter's team sees as the order
@@ -626,7 +638,40 @@ fn attack_orders_need_a_living_enemy() {
             expected.then_some(enemy),
             "{seers:?}"
         );
+        let hidden = [(Some(fighter), OrderDropCause::Hidden)];
+        assert_eq!(
+            dropped(&game),
+            if expected { &[][..] } else { &hidden },
+            "{seers:?}"
+        );
     }
+
+    // An attack of the fighter and an unarmed hero of its player: the fighter takes it, so the
+    // unarmed hero's drop leaves the order taken.
+    let unarmed = Orders::hero(&mut game, strong, (0, 0, 2), Team::new(0), 0);
+    game.step_with(&[(
+        PlayerSlot::new(0),
+        &order_to(
+            &[fighter, unarmed],
+            OrdersDirective::Attack { target: enemy },
+        ),
+    )]);
+    assert_eq!(
+        game.part::<ActionProgress>(fighter).attack_target(),
+        Some(enemy)
+    );
+    let drops: Vec<_> = game.resource::<DroppedOrders>().iter().copied().collect();
+    assert_eq!(
+        drops,
+        [DroppedOrder {
+            player_slot: PlayerSlot::new(0),
+            number: 0,
+            unit: Some(unarmed),
+            cause: OrderDropCause::NoWeapon,
+            untaken: false,
+        }]
+    );
+    assert_eq!(game.resource::<DroppedOrders>().untaken().count(), 0);
 
     // A dead hero takes no order, and no one can order an attack on it. The fighter, 1 m away,
     // starts in tick 0 and kills it in tick 2.
@@ -648,6 +693,33 @@ fn attack_orders_need_a_living_enemy() {
     ]);
     assert_eq!(game.part::<Position>(doomed).get(), Vec3::from((1, 0, 0)));
     assert_eq!(game.part::<ActionProgress>(fighter).attack_target(), None);
+    // The dead hero's move has no unit to carry it; the attack on it, no weapon to.
+    assert_eq!(
+        dropped(&game),
+        [
+            (None, OrderDropCause::NoUnit),
+            (Some(fighter), OrderDropCause::NoWeapon)
+        ]
+    );
+    let orders: Vec<_> = game
+        .resource::<DroppedOrders>()
+        .untaken()
+        .map(|drop| (drop.player_slot, drop.number))
+        .collect();
+    assert_eq!(orders, [(PlayerSlot::new(1), 0), (PlayerSlot::new(0), 0)]);
+}
+
+/// The orders the last tick dropped, each a single unit's whole order: each one's unit and its
+/// cause.
+fn dropped(game: &Match) -> Vec<(Option<StableId>, OrderDropCause)> {
+    let dropped = game.resource::<DroppedOrders>();
+    assert_eq!(
+        dropped.tick().get() + 1,
+        game.resource::<SimTick>().start().get()
+    );
+    assert!(dropped.iter().all(|drop| drop.untaken));
+    assert_eq!(dropped.untaken().count(), dropped.iter().count());
+    dropped.iter().map(|drop| (drop.unit, drop.cause)).collect()
 }
 
 /// 1000 health; reaches nothing and never moves, so only its target changes.

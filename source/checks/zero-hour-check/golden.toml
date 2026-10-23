@@ -87,6 +87,44 @@ farthest_m = 310
 standing = [12, 7]
 think_ops = 19745
 
+[[base.drops]]
+untaken = 0
+
+[base.drops.unsent]
+no_avatar = 0
+no_unit = 0
+no_slot = 0
+no_target = 0
+no_place = 0
+no_stack = 0
+
+[base.drops.dropped]
+no_unit = 0
+no_walker = 0
+no_weapon = 0
+hidden = 0
+slot_kind = 0
+no_build = 0
+
+[[base.drops]]
+untaken = 29
+
+[base.drops.unsent]
+no_avatar = 0
+no_unit = 0
+no_slot = 0
+no_target = 11
+no_place = 0
+no_stack = 0
+
+[base.drops.dropped]
+no_unit = 0
+no_walker = 29
+no_weapon = 12
+hidden = 0
+slot_kind = 0
+no_build = 0
+
 [attack]
 ended = 17790
 standing = [4, 0]
@@ -94,3 +132,41 @@ think_ops = 9101
 
 [attack.result]
 Won = 0
+
+[[attack.drops]]
+untaken = 0
+
+[attack.drops.unsent]
+no_avatar = 0
+no_unit = 0
+no_slot = 0
+no_target = 0
+no_place = 0
+no_stack = 0
+
+[attack.drops.dropped]
+no_unit = 0
+no_walker = 0
+no_weapon = 0
+hidden = 0
+slot_kind = 0
+no_build = 0
+
+[[attack.drops]]
+untaken = 0
+
+[attack.drops.unsent]
+no_avatar = 0
+no_unit = 0
+no_slot = 0
+no_target = 0
+no_place = 0
+no_stack = 0
+
+[attack.drops.dropped]
+no_unit = 0
+no_walker = 0
+no_weapon = 0
+hidden = 0
+slot_kind = 0
+no_build = 0

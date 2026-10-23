@@ -463,6 +463,7 @@ impl ImportCheck<'_> {
                 ended = ?base.ended,
                 result = ?base.result,
                 standing = ?base.standing,
+                drops = ?base.drops,
                 "two bots started with their bases, and fought"
             );
         }
@@ -476,6 +477,7 @@ impl ImportCheck<'_> {
                 ended = ?attack.ended,
                 result = ?attack.result,
                 standing = ?attack.standing,
+                drops = ?attack.drops,
                 "the attacker bot built its base and fought the builder bot"
             );
         }

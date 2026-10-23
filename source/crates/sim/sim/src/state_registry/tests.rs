@@ -181,6 +181,23 @@ fn types_hash_in_name_order() {
 }
 
 #[test]
+fn a_test_build_names_each_part_of_an_archetype() {
+    let world = plain_world();
+    let entity = world.resource::<EntityIndex>().iter().next().unwrap().1;
+    let unit = world.entity(entity);
+    let mut names: Vec<_> = unit
+        .archetype()
+        .iter_components()
+        .map(|id| {
+            let name = world.components().get_name(id).unwrap();
+            name.shortname().to_string()
+        })
+        .collect();
+    names.sort_unstable();
+    assert_eq!(names, ["Life", "Position", "StableId"]);
+}
+
+#[test]
 fn build_order_does_not_matter() {
     let registry = registry();
     assert_eq!(

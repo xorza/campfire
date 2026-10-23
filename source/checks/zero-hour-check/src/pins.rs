@@ -1,9 +1,11 @@
 //! What the check expects: what the game's data gives by a closed form, and the shapes of what
 //! it measures, which `golden.toml` pins.
 
+use campfire_bots::OrderUnsent;
 use campfire_common::PackageFingerprint;
 use campfire_import::{ButtonDropCause, SupplyDropCause, WeaponDropCause};
 use campfire_mode::MatchResult;
+use campfire_orders::OrderDropCause;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
@@ -116,6 +118,72 @@ pub(crate) struct BotMatchEnd {
     pub(crate) result: Option<MatchResult>,
     pub(crate) standing: [usize; 2],
     pub(crate) think_ops: u64,
+    pub(crate) drops: [BotDrops; 2],
+}
+
+/// The orders of a player slot's bot that came to nothing over a play: those its search left
+/// unsent, the orders no unit took, and each unit's drop of an order, by its cause, as an order
+/// that no unit takes shows only as a count (debug-loop.md, What a play drops is counted).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BotDrops {
+    pub(crate) unsent: UnsentCounts,
+    pub(crate) untaken: u64,
+    pub(crate) dropped: DroppedCounts,
+}
+
+/// The orders a bot's search left unsent, by `OrderUnsent`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct UnsentCounts {
+    pub(crate) no_avatar: u64,
+    pub(crate) no_unit: u64,
+    pub(crate) no_slot: u64,
+    pub(crate) no_target: u64,
+    pub(crate) no_place: u64,
+    pub(crate) no_stack: u64,
+}
+
+/// The units' drops of orders, by `OrderDropCause`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DroppedCounts {
+    pub(crate) no_unit: u64,
+    pub(crate) no_walker: u64,
+    pub(crate) no_weapon: u64,
+    pub(crate) hidden: u64,
+    pub(crate) slot_kind: u64,
+    pub(crate) no_build: u64,
+}
+
+impl UnsentCounts {
+    /// Counts one order left unsent for `cause`.
+    pub(crate) const fn count(&mut self, cause: OrderUnsent) {
+        let counted = match cause {
+            OrderUnsent::NoAvatar => &mut self.no_avatar,
+            OrderUnsent::NoUnit => &mut self.no_unit,
+            OrderUnsent::NoSlot => &mut self.no_slot,
+            OrderUnsent::NoTarget => &mut self.no_target,
+            OrderUnsent::NoPlace => &mut self.no_place,
+            OrderUnsent::NoStack => &mut self.no_stack,
+        };
+        *counted += 1;
+    }
+}
+
+impl DroppedCounts {
+    /// Counts one unit's drop for `cause`.
+    pub(crate) const fn count(&mut self, cause: OrderDropCause) {
+        let counted = match cause {
+            OrderDropCause::NoUnit => &mut self.no_unit,
+            OrderDropCause::NoWalker => &mut self.no_walker,
+            OrderDropCause::NoWeapon => &mut self.no_weapon,
+            OrderDropCause::Hidden => &mut self.hidden,
+            OrderDropCause::SlotKind => &mut self.slot_kind,
+            OrderDropCause::NoBuild => &mut self.no_build,
+        };
+        *counted += 1;
+    }
 }
 
 /// The fight's steps: the ticks from the first train to the last crusader trained, and from the

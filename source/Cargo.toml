@@ -145,12 +145,13 @@ steps = [
     { program = ["{target}/debug/campfire-lan-check{exe}", "{target}/drive/lan-check"] },
 ]
 
-# The Zero Hour check, which needs `GENERALSZH_DATA`: its arguments are the check's own.
+# The Zero Hour check, which needs `GENERALSZH_DATA`: its arguments are the check's own; its
+# plays run the crates' asserts.
 [workspace.metadata.drive.commands.zero-hour]
-steps = [{ cargo = "run --profile release-dev -p campfire-zero-hour-check", args = true }]
+steps = [{ cargo = "run --profile checks -p campfire-zero-hour-check", args = true }]
 
 # The repository's layout and the names its Rust files declare, in one text file for review: its
-# argument is the file it writes. It builds in `release-dev`, as the Zero Hour check does.
+# argument is the file it writes. It builds in `release-dev`.
 [workspace.metadata.drive.commands.vocabulary]
 steps = [{ cargo = "run --profile release-dev -p campfire-vocabulary", args = true }]
 
@@ -330,6 +331,12 @@ lto = "thin"
 codegen-units = 16
 incremental = true
 debug = "line-tables-only"
+
+# The Zero Hour check's build (02-engine-core.md, The Zero Hour check runs the asserts).
+[profile.checks]
+inherits = "release-dev"
+debug-assertions = true
+lto = false
 
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }

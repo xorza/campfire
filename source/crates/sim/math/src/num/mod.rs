@@ -23,7 +23,7 @@ mod trig;
 /// no search of the hard cases proves them correctly rounded. Operators panic on
 /// overflow and on division by zero, which in engine code are bugs; the `checked_*` methods
 /// return `None` instead.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Num(i64);
 
@@ -463,9 +463,20 @@ impl FromStr for Num {
 }
 
 impl fmt::Display for Num {
-    /// The exact decimal value; 24 fractional bits always end within 24 decimal digits.
+    /// The exact decimal value; 24 fractional bits always end within 24 decimal digits. A
+    /// precision, which would cut the text, is a caller's bug.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        debug_assert!(f.precision().is_none(), "a `Num` prints whole");
         f.pad(Decimal::new(*self).as_str())
+    }
+}
+
+impl fmt::Debug for Num {
+    /// The shortest decimal that reads back to the same bits, as Rust prints a float, so a value
+    /// in a dump reads as what it is. A precision, which would cut the text, is a caller's bug.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        debug_assert!(f.precision().is_none(), "a `Num` prints whole");
+        f.pad(Decimal::shortest(*self).as_str())
     }
 }
 

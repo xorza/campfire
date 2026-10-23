@@ -16,6 +16,7 @@ use campfire_values::Team;
 use campfire_vision::{SeenTargets, TeamSight};
 
 use crate::attack_move::{AttackMove, GoalDues};
+use crate::dropped_orders::{DroppedOrders, OrderDropCause};
 use crate::orders_directive::OrdersDirective;
 use crate::resetting::Resetting;
 use crate::unit_order::{OrderedUnit, UnitDues, UnitOrder};
@@ -72,20 +73,26 @@ impl UnitOrders {
     /// send anything. A use goes on to `interaction`, which drops one by a unit with no use slot or
     /// that the object's users do not select. A move or an attack-move to two units or more that
     /// walk moves them as a group: each walks to its own goal by the group's box, as one party,
-    /// the order's.
+    /// the order's. Each drop goes in `dropped`, with its cause.
     pub(super) fn check_player_orders<S: TeamSight>(
         (tick, map): (Res<'_, SimTick>, Res<'_, MapBook>),
         mut orders: TickCommands<'_, '_, OrdersDirective>,
         book: Res<'_, ActionBook>,
         (targets, visible): (Targets<'_, '_>, SeenTargets<'_, '_, S>),
         units: OrderedUnits<'_, '_, Commanded, (Without<Dead>, Without<Resetting>)>,
-        mut checked: ResMut<'_, OrderQueue>,
+        (mut checked, mut dropped): (ResMut<'_, OrderQueue>, ResMut<'_, DroppedOrders>),
         mut movers: Local<'_, Vec<Mover>>,
     ) {
         debug_assert!(checked.is_clear(), "the last tick applied its orders");
         let now = tick.start();
+        dropped.start(now);
         orders.for_each(|order| {
-            let controlled = units.controlled(&order);
+            dropped.open(order.player_slot, order.number, checked.0.len());
+            let mut controlled = units.controlled(&order).peekable();
+            if controlled.peek().is_none() {
+                dropped.refuse(None, OrderDropCause::NoUnit);
+                return;
+            }
             let walk = match order.directive {
                 OrdersDirective::Move { to } => Some((to, Walk::Move)),
                 OrdersDirective::AttackMove { to } => Some((to, Walk::AttackMove)),
@@ -100,6 +107,7 @@ impl UnitOrders {
                     },
                 ));
                 let Some(group) = GroupBox::of(movers.iter().map(|mover| mover.position)) else {
+                    dropped.refuse(None, OrderDropCause::NoWalker);
                     return;
                 };
                 if let &[Mover { entity, .. }] = movers.as_slice() {
@@ -126,7 +134,7 @@ impl UnitOrders {
                 }
                 return;
             }
-            for (_, entity, (team, _, _, slots)) in controlled {
+            for (id, entity, (team, _, _, slots)) in controlled {
                 let sees = |target| team.is_some_and(|&team| visible.sees(team, target));
                 let unit_order = match order.directive {
                     OrdersDirective::Attack { target } => {
@@ -138,7 +146,11 @@ impl UnitOrders {
                             };
                             slots.may_attack(&test, target)
                         });
-                        (armed && sees(target)).then_some(UnitOrder::Attack { target })
+                        match (armed, sees(target)) {
+                            (false, _) => Err(OrderDropCause::NoWeapon),
+                            (true, false) => Err(OrderDropCause::Hidden),
+                            (true, true) => Ok(UnitOrder::Attack { target }),
+                        }
                     }
                     OrdersDirective::Slot { slot, target } => {
                         let kind = slots
@@ -146,14 +158,14 @@ impl UnitOrders {
                             .and_then(|held| held.kind_in(&book));
                         let hidden = matches!(target, ActionTarget::Unit(unit) if !sees(unit));
                         match (kind, target) {
-                            _ if hidden => None,
+                            _ if hidden => Err(OrderDropCause::Hidden),
                             (Some(ActionKind::Cast | ActionKind::Train), _) => {
-                                Some(UnitOrder::Slot { slot, target })
+                                Ok(UnitOrder::Slot { slot, target })
                             }
                             (Some(ActionKind::Gather), ActionTarget::Unit(target)) => {
-                                Some(UnitOrder::Gather { slot, target })
+                                Ok(UnitOrder::Gather { slot, target })
                             }
-                            _ => None,
+                            _ => Err(OrderDropCause::SlotKind),
                         }
                     }
                     OrdersDirective::Build { slot, target } => {
@@ -161,20 +173,27 @@ impl UnitOrders {
                             .and_then(|slots| slots.learned(slot))
                             .and_then(|held| held.kind_in(&book));
                         let hidden = matches!(target, BuildTarget::Site(site) if !sees(site));
-                        (kind == Some(ActionKind::Build) && !hidden)
-                            .then_some(UnitOrder::Build { slot, target })
+                        match (kind == Some(ActionKind::Build), hidden) {
+                            (false, _) => Err(OrderDropCause::NoBuild),
+                            (true, true) => Err(OrderDropCause::Hidden),
+                            (true, false) => Ok(UnitOrder::Build { slot, target }),
+                        }
                     }
-                    OrdersDirective::Use { target } => {
-                        sees(target).then_some(UnitOrder::Use { target })
-                    }
-                    OrdersDirective::Stop => Some(UnitOrder::Stop),
+                    OrdersDirective::Use { target } => sees(target)
+                        .then_some(UnitOrder::Use { target })
+                        .ok_or(OrderDropCause::Hidden),
+                    OrdersDirective::Stop => Ok(UnitOrder::Stop),
                     OrdersDirective::Move { .. } | OrdersDirective::AttackMove { .. } => {
                         unreachable!("a walk was checked as a group")
                     }
                 };
-                checked.0.extend(unit_order.map(|order| (entity, order)));
+                match unit_order {
+                    Ok(order) => checked.0.push((entity, order)),
+                    Err(cause) => dropped.refuse(Some(id), cause),
+                }
             }
         });
+        dropped.close(checked.0.len());
     }
 
     /// Gives each unit whose wind-down ended since the last run the order it holds, as every order
