@@ -12,6 +12,7 @@ use campfire_protocol::{
 use crate::fixed_session::FixedSession;
 use crate::match_probe::ProbeFile;
 use campfire_runner::{BotInputDrop, ServerInputRefusal, SessionWorld};
+use campfire_sim::{UnreadCommand, UnreadCommands};
 
 /// A match of a `FixedSession`, and the input chain of each player slot's player, so a test sends
 /// inputs as a player's client would, and server inputs as its server would.
@@ -63,8 +64,22 @@ impl FixedMatch {
     }
 
     /// Runs the match's next tick on the inputs it holds, as its session does, and records it in
-    /// its probe, if any.
+    /// its probe, if any; it fails on a command nothing read (02-engine-core.md, A command nothing
+    /// reads is counted).
     pub fn step(&mut self) {
+        self.run_tick();
+        UnreadCommands::assert_read(&self.game);
+    }
+
+    /// Runs the match's next tick as `step` does, and takes the commands nothing read, which a
+    /// play that counts them, as the Zero Hour check's, reads.
+    pub fn step_unread(&mut self) -> Vec<UnreadCommand> {
+        self.run_tick();
+        UnreadCommands::take(&mut self.game)
+    }
+
+    /// Runs the match's next tick on the inputs it holds, and records it in its probe, if any.
+    fn run_tick(&mut self) {
         self.game.run_tick_alone();
         if let Some(probe) = &mut self.probe.0 {
             probe.probe.record(&self.game);

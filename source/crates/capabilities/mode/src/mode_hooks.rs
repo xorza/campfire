@@ -8,7 +8,7 @@ use campfire_script::{
     Ctx, HookDecl, IdName, ModeEvents, PlayerHandle, ScriptList, ScriptRole, ScriptText,
     ScriptValue,
 };
-use campfire_sim::{SimTick, TickInputs};
+use campfire_sim::{SimTick, TickInputs, UnreadCause, UnreadCommands};
 
 use crate::calls::Calls;
 use crate::mode_input::{InputValue, ModeInput};
@@ -86,14 +86,17 @@ mode_hook! {
 impl ModeHooks {
     /// Runs `on_input` for each mode input of the tick, in input order, from its player's
     /// pool. An input whose name the mode does not declare, or whose value is not of its type, is
-    /// ignored.
+    /// none the mode reads, which the tick's report of unread commands keeps (02-engine-core.md,
+    /// A command nothing reads is counted).
     pub(super) fn mode_inputs(
         world: &mut World,
         mut bodies: Local<'_, Vec<u8>>,
         mut inputs: Local<'_, Vec<Input>>,
+        mut undecoded: Local<'_, Vec<PlayerSlot>>,
     ) {
         bodies.clear();
         inputs.clear();
+        undecoded.clear();
         for command in world
             .resource::<TickInputs>()
             .commands(ModeInput::ADDRESSEE)
@@ -114,6 +117,7 @@ impl ModeHooks {
                 let Some(decoded) = ModeInput::decode(&bodies[input.body.clone()], |name| {
                     call.book().schema.input_type_named(name)
                 }) else {
+                    undecoded.push(input.player_slot);
                     continue;
                 };
                 let value = match decoded.value {
@@ -137,6 +141,10 @@ impl ModeHooks {
                 debug_assert!(answered.is_continue(), "an input's call never waits");
             }
         });
+        let mut unread = world.resource_mut::<UnreadCommands>();
+        for &player_slot in &*undecoded {
+            unread.push(player_slot, UnreadCause::Undecodable(ModeInput::ADDRESSEE));
+        }
     }
 
     /// Answers the events of the queue `Q` in this tick's Mode stage, those that wait from

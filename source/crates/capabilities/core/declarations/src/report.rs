@@ -1,5 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_script::{ScriptBudgets, ScriptFailures, ScriptPrints};
+use campfire_sim::UnreadCommands;
 
 use crate::role::Role;
 
@@ -23,6 +24,14 @@ impl Report for ScriptBudgets {
 impl Report for ScriptPrints {
     fn installed(role: &Role) -> Option<Self> {
         role.scripts().then(Self::default)
+    }
+}
+
+/// The commands of the last tick nothing read, which every match holds, as every match reads
+/// inputs.
+impl Report for UnreadCommands {
+    fn installed(_: &Role) -> Option<Self> {
+        Some(Self::default())
     }
 }
 

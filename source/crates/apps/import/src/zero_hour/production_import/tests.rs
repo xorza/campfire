@@ -217,6 +217,10 @@ const SUPPLY: &str = "Object Center\n\
     Object Shelter\n Behavior = SpawnBehavior M1\n  SpawnNumber = 2\n\
        SpawnTemplateName = Guard\n End\n\
     End\n\
+    Object Crypt\n Behavior = ProductionUpdate M1\n End\n\
+     Behavior = SpawnBehavior M2\n  SpawnNumber = 2\n  SpawnTemplateName = Ghoul\n End\n\
+    End\n\
+    Object Ghoul\n Locomotor = SET_NORMAL NoSuchTreads\nEnd\n\
     Object Mob\n Locomotor = SET_NORMAL TankTreads\n\
      Behavior = SpawnBehavior M1\n  SpawnNumber = 3\n  SpawnReplaceDelay = 30000\n\
        SpawnTemplateName = Guard\n  SpawnTemplateName = Watch\n  AggregateHealth = Yes\n End\n\
@@ -281,6 +285,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         "Shelter",
         "Crowd",
         "Haunt",
+        "Crypt",
         "Hacker",
         "Lamer",
     ] {
@@ -432,8 +437,9 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     assert_eq!(import.supply.spawns.get(&name("Burrow")), None);
     // The drop zone, whose objects come over time, the dock of no box, the helicopter, which
     // flies, the guard of a tunnel and of a shelter, of no production, once for its cause, the
-    // guard a crowd keeps none of, and the wisp a haunt keeps, of no life, are dropped, in the
-    // order the types are visited; the Helix, of no box, is no gatherer, so nothing of it is
+    // guard a crowd keeps none of, the ghoul a crypt keeps, whose locomotor no file defines, so
+    // it gives no type, and the wisp a haunt keeps, of no life, are dropped, in the order the
+    // types are visited; the Helix, of no box, is no gatherer, so nothing of it is
     // dropped. Of the hacker go its cash past regular, its experience, its delay in a building
     // and its pack's spread; the lamer, whose cash is 1 at each level, whose delays are one and
     // who packs at once, loses nothing. The mob, which the walk visits last as the center trains
@@ -446,6 +452,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         dropped,
         [
             ("Guard", SupplyDropCause::BadNumber),
+            ("Ghoul", SupplyDropCause::NoType),
             ("DropZone", SupplyDropCause::ObjectsOverTime),
             ("EmptyDock", SupplyDropCause::NoBoxes),
             ("Hacker", SupplyDropCause::HackVeterancy),

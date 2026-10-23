@@ -5,6 +5,7 @@ use bevy_ecs::system::{Query, ResMut};
 use campfire_players::PlayerSlotHolder;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
+use campfire_sim::{Addressee, UnreadCause, UnreadCommand};
 use campfire_units::internals::UnitsWorldInternals;
 use campfire_units::{BodyUnit, Deaths};
 use campfire_values::{NameId, Named};
@@ -28,7 +29,7 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
         name: "hero",
         value: InputValue::StringList(vec!["hero-x"]),
     };
-    Mode::tick_inputs(
+    let unread = Mode::tick_inputs_unread(
         &mut game,
         &[
             (0, spells),
@@ -44,6 +45,13 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
             (1, input("phase", "")),
         ],
     );
+    // The two the mode does not declare, by name or by type, are commands nothing reads
+    // (02-engine-core.md, A command nothing reads is counted).
+    let unread_of = UnreadCommand {
+        player_slot: PlayerSlot::new(2),
+        cause: UnreadCause::Undecodable(Addressee::Capability(Capability::Mode)),
+    };
+    assert_eq!(unread, [unread_of; 2]);
     // The failed calls count no input and spawn nothing: three calls succeeded, player 0's two
     // and player 2's choice of the other hero. The thrown call fails with no refusal of the API,
     // and the id it took for its grunt is free again.

@@ -48,6 +48,14 @@ impl PlayerResources {
         self.0[self.at(resource)]
     }
 
+    /// Adds `gain`, which is none or more, up to the most an amount holds and no further, so no
+    /// gain is lost (04-capabilities/games.md, A gain stops at the most an amount holds).
+    pub fn gain(&mut self, resource: ResourceId, gain: i64) {
+        debug_assert!(gain >= 0, "a gain is none or more");
+        let at = self.at(resource);
+        self.0[at] = self.0[at].saturating_add(gain);
+    }
+
     /// Adds `amount`; `None` when the sum overflows, which leaves it unchanged.
     pub fn add(&mut self, resource: ResourceId, amount: i64) -> Option<()> {
         let at = self.at(resource);
@@ -115,5 +123,14 @@ mod tests {
         assert!(!held.affords(&[cost(gold, 5), cost(gems, 1)]));
         held.pay(&[cost(gold, 5)]);
         assert_eq!([held.amount(gold), held.amount(gems)], [0, 0]);
+        // A gain adds as an add does, and stops at the most an amount holds: 3 below it, a gain
+        // of 5 leaves it at `i64::MAX`, where an add of 1 is refused and changes nothing.
+        held.gain(gold, 7);
+        assert_eq!(held.amount(gold), 7);
+        held.add(gold, i64::MAX - 10).unwrap();
+        held.gain(gold, 5);
+        assert_eq!(held.amount(gold), i64::MAX);
+        assert_eq!(held.add(gold, 1), None);
+        assert_eq!(held.amount(gold), i64::MAX);
     }
 }

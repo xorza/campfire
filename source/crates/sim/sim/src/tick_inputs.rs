@@ -16,6 +16,8 @@ pub struct TickInputs {
     payloads: Vec<u8>,
     /// The commands of the inputs, in order: none of an input whose payload has a flaw.
     commands: Vec<Stored>,
+    /// The player of each input whose payload has a flaw, in order.
+    flawed: Vec<PlayerSlot>,
     /// The player slot events, in the order the log took them.
     player_slot_events: Vec<PlayerSlotEvent>,
 }
@@ -71,6 +73,7 @@ impl TickInputs {
         });
         if !whole {
             self.commands.truncate(held);
+            self.flawed.push(input.player_slot);
         }
     }
 
@@ -94,6 +97,11 @@ impl TickInputs {
         })
     }
 
+    /// The player of each input whose payload has a flaw, in order.
+    pub fn flawed(&self) -> &[PlayerSlot] {
+        &self.flawed
+    }
+
     pub fn push_player_slot_event(&mut self, event: PlayerSlotEvent) {
         self.player_slot_events.push(event);
     }
@@ -115,6 +123,7 @@ impl TickInputs {
         self.inputs.clear();
         self.payloads.clear();
         self.commands.clear();
+        self.flawed.clear();
         self.player_slot_events.clear();
     }
 }
@@ -182,6 +191,7 @@ mod tests {
             ]
         );
         assert_eq!(inputs.iter().len(), 3);
+        assert_eq!(inputs.flawed(), [PlayerSlot::new(2)]);
         let joined = PlayerSlotEvent {
             player_slot: PlayerSlot::new(2),
             kind: PlayerSlotEventKind::Joined,
@@ -190,6 +200,7 @@ mod tests {
         assert_eq!(inputs.player_slot_events(), [joined]);
         inputs.clear();
         assert_eq!(read(&inputs, orders), []);
+        assert_eq!(inputs.flawed(), []);
         assert_eq!(inputs.player_slot_events(), []);
     }
 }

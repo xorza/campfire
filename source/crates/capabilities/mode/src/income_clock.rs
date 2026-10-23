@@ -165,7 +165,7 @@ impl IncomeClock {
         for income in &*incomes {
             let owner = Owner::new(income.player_slot);
             if let Some(mut held) = resources.of_mut(Some(&owner)) {
-                let _ = held.add(income.resource, income.amount);
+                held.gain(income.resource, income.amount);
             }
         }
     }

@@ -35,6 +35,7 @@ mod tick_clock;
 mod tick_inputs;
 mod timed_process;
 mod unpredicted;
+mod unread_commands;
 
 pub use crate::capability::Capability;
 pub use crate::command::{Addressee, Command};
@@ -68,6 +69,7 @@ pub use crate::tick_clock::TickClock;
 pub use crate::tick_inputs::{PlayerCommand, TickInput, TickInputs};
 pub use crate::timed_process::{TimedKept, TimedProcess, TimedRuns};
 pub use crate::unpredicted::Unpredicted;
+pub use crate::unread_commands::{UnreadCause, UnreadCommand, UnreadCommands};
 
 #[cfg(feature = "internals")]
 pub mod internals {

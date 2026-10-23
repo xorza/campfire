@@ -58,6 +58,16 @@ pub trait SimWorld {
     fn changes(&mut self, delta: &mut StateDelta);
 }
 
+/// Runs one sim tick of `world`, and clears its change trackers after it, as an `App` does after
+/// each frame.
+fn run_tick(world: &mut World) {
+    // A test's match whose build its loads left open ends it before its first tick.
+    #[cfg(feature = "internals")]
+    crate::sim_world_builder::SimWorldBuilder::finish_open(world);
+    world.run_schedule(SimUpdate);
+    world.clear_trackers();
+}
+
 impl SimWorld for World {
     fn entity_of(&self, id: StableId) -> Option<Entity> {
         self.resource::<EntityIndex>().get(id)
@@ -78,11 +88,15 @@ impl SimWorld for World {
     }
 
     fn step(&mut self) {
-        // A test's match whose build its loads left open ends it before its first tick.
+        run_tick(self);
+        // A test fails on a command nothing read, unless it takes them (02-engine-core.md, A
+        // command nothing reads is counted).
         #[cfg(feature = "internals")]
-        crate::sim_world_builder::SimWorldBuilder::finish_open(self);
-        self.run_schedule(SimUpdate);
-        self.clear_trackers();
+        #[expect(
+            clippy::absolute_paths,
+            reason = "a gated statement names its path whole, as no import is gated mid-file"
+        )]
+        crate::unread_commands::UnreadCommands::assert_read(self);
     }
 
     fn state_hash(&self) -> StateHash {
@@ -157,6 +171,7 @@ pub(crate) mod internals {
     use crate::sim_tick::SimTick;
     use crate::sim_update::{SimUpdate, TickEndSystems, begin_tick};
     use crate::sim_world::SimWorld;
+    use crate::sim_world::run_tick;
     use crate::sim_world_builder::internals::OpenBuild;
     use crate::stable_id::StableId;
     use crate::stable_id::entity_index::EntityIndex;
@@ -164,6 +179,7 @@ pub(crate) mod internals {
     use crate::state_registry::error::SnapshotError;
     use crate::state_registry::internals::{Draws, Mutation};
     use crate::tick_inputs::{TickInput, TickInputs};
+    use crate::unread_commands::{UnreadCommand, UnreadCommands};
 
     /// What the sim gives a world it built for the tests and benches of every crate: its
     /// schedule's checks, changes to its state no input makes, its ticks with inputs, and its
@@ -202,6 +218,10 @@ pub(crate) mod internals {
 
         /// Runs a tick in which each player slot sends its payload, in their order.
         fn step_with(&mut self, inputs: &[(PlayerSlot, &[u8])]);
+
+        /// Runs a tick as `step_with` does, and takes the commands nothing read, which a test that
+        /// sends them asserts on.
+        fn step_with_unread(&mut self, inputs: &[(PlayerSlot, &[u8])]) -> Vec<UnreadCommand>;
 
         /// The tick the match runs next.
         fn now(&self) -> Tick;
@@ -309,6 +329,14 @@ pub(crate) mod internals {
                 self.push_input(player_slot, payload);
             }
             self.step();
+        }
+
+        fn step_with_unread(&mut self, inputs: &[(PlayerSlot, &[u8])]) -> Vec<UnreadCommand> {
+            for &(player_slot, payload) in inputs {
+                self.push_input(player_slot, payload);
+            }
+            run_tick(self);
+            UnreadCommands::take(self)
         }
 
         fn now(&self) -> Tick {

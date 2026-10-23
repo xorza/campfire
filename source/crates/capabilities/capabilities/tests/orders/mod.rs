@@ -31,7 +31,7 @@ use campfire_script::{
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Addressee, Capability, Command, IdAllocator, Position, SimComponent, SimTick, StableId,
-    Unpredicted,
+    Unpredicted, UnreadCause, UnreadCommand,
 };
 use campfire_stats::Stats;
 use campfire_units::internals::Spawn;
@@ -454,7 +454,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
         to: Addressee::Capability(Capability::Items),
         body: &order,
     }]);
-    game.step_with(&[
+    let unread = game.step_with_unread(&[
         (PlayerSlot::new(0), &beyond),
         (PlayerSlot::new(0), &not_an_order),
         (PlayerSlot::new(0), &undeclared),
@@ -463,6 +463,26 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
         (PlayerSlot::new(2), &move_to(first, 9, 9)),
         (PlayerSlot::new(1), &edge),
     ]);
+    // Nothing reads three of player 0's: the order's body sent as a payload, which is no list of
+    // commands, first, then, in their order, the body the orders do not decode and the order to
+    // items, which the match does not install (02-engine-core.md, A command nothing reads is
+    // counted).
+    let unread_of = |cause| UnreadCommand {
+        player_slot: PlayerSlot::new(0),
+        cause,
+    };
+    assert_eq!(
+        unread,
+        [
+            unread_of(UnreadCause::Flawed),
+            unread_of(UnreadCause::Undecodable(Addressee::Capability(
+                Capability::Orders
+            ))),
+            unread_of(UnreadCause::Unaddressed(Addressee::Capability(
+                Capability::Items
+            ))),
+        ]
+    );
     // Only the order past the bound reaches the first hero, which walks 1 m along z = −1 towards
     // the edge; the second takes only its own player's.
     assert_eq!(game.part::<Position>(first).get(), Vec3::from((1, 0, -1)));
@@ -1631,9 +1651,16 @@ fn a_select_commands_what_its_player_controls_and_an_order_the_units_commanded_a
             z: Num::int(z),
         },
     };
-    // No unit, units out of order and a unit twice select nothing, so their orders command none.
+    // No unit, units out of order and a unit twice select nothing, so their orders command none,
+    // and each select is a body the players do not decode (02-engine-core.md, A command nothing
+    // reads is counted).
+    let refused = [UnreadCommand {
+        player_slot: PlayerSlot::new(0),
+        cause: UnreadCause::Undecodable(Addressee::Players),
+    }];
     for units in [vec![], vec![second, first], vec![first, first]] {
-        game.step_with(&[(PlayerSlot::new(0), &order_to(&units, to(0, 5)))]);
+        let unread = game.step_with_unread(&[(PlayerSlot::new(0), &order_to(&units, to(0, 5)))]);
+        assert_eq!(unread, refused, "{units:?}");
         assert_eq!(game.part::<Destination>(first).get(), None, "{units:?}");
         assert_eq!(commanded(&game), [], "{units:?}");
     }
@@ -1670,7 +1697,7 @@ fn a_select_commands_what_its_player_controls_and_an_order_the_units_commanded_a
     assert_eq!(commanded(&game), [fourth]);
     // A select that continues one adds its units, and an order then goes to all of them; a
     // select refused leaves them.
-    game.step_with(&[
+    let unread = game.step_with_unread(&[
         (PlayerSlot::new(0), &select_alone(Selecting::More, &[first])),
         (
             PlayerSlot::new(0),
@@ -1678,6 +1705,7 @@ fn a_select_commands_what_its_player_controls_and_an_order_the_units_commanded_a
         ),
         (PlayerSlot::new(0), &commanded_to(OrdersDirective::Stop)),
     ]);
+    assert_eq!(unread, refused);
     assert_eq!(commanded(&game), [first, fourth]);
     assert_eq!(game.part::<Destination>(first).get(), None);
     assert_eq!(game.part::<Destination>(fourth).get(), None);

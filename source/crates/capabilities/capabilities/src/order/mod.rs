@@ -32,6 +32,9 @@ pub enum Directive<R: OrderRefs = Ids> {
 
 impl Copy for Directive {}
 
+/// A decoder of one capability's directives, as `Directive::decoder` gives it.
+pub(crate) type DirectiveDecoder = fn(&[u8]) -> Option<Directive>;
+
 impl<R: OrderRefs> Directive<R> {
     /// The same directive with each reference as `refs` gives it (04-capabilities/control.md, A
     /// directive is generic over its references).
@@ -49,6 +52,30 @@ impl<R: OrderRefs> Directive<R> {
 }
 
 impl Directive {
+    /// The decoder of `capability`'s directives, as its reader decodes the body of a command to
+    /// it; none for a capability whose commands hold no directive.
+    pub(crate) fn decoder(capability: Capability) -> Option<DirectiveDecoder> {
+        match capability {
+            Capability::Orders => Some(|body| OrdersDirective::decode(body).map(Self::Orders)),
+            Capability::Progression => {
+                Some(|body| ProgressionDirective::decode(body).map(Self::Progression))
+            }
+            Capability::Production => {
+                Some(|body| ProductionDirective::decode(body).map(Self::Production))
+            }
+            Capability::Items => Some(|body| ItemsDirective::decode(body).map(Self::Items)),
+            Capability::Combat
+            | Capability::Stats
+            | Capability::Abilities
+            | Capability::Projectiles
+            | Capability::Areas
+            | Capability::Navigation
+            | Capability::Vision
+            | Capability::Mode
+            | Capability::Interaction => None,
+        }
+    }
+
     /// The capability that owns it, to which its order is a command.
     pub const fn capability(self) -> Capability {
         match self {
@@ -275,12 +302,8 @@ impl ExactSizeIterator for OrderPayloadsIter<'_> {}
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_items::ItemsDirective;
-    use campfire_orders::OrdersDirective;
-    use campfire_players::{CapabilityDirective, OrderUnits, Select, Selecting};
-    use campfire_production::ProductionDirective;
-    use campfire_progression::ProgressionDirective;
-    use campfire_sim::{Addressee, Capability, Command, StableId};
+    use campfire_players::{OrderUnits, Select, Selecting};
+    use campfire_sim::{Addressee, Command, StableId};
 
     use crate::order::{Directive, Order};
 
@@ -309,17 +332,7 @@ pub(crate) mod internals {
                     }
                     Addressee::Capability(capability) => capability,
                 };
-                let directive = match capability {
-                    Capability::Orders => OrdersDirective::decode(body).map(Directive::Orders),
-                    Capability::Progression => {
-                        ProgressionDirective::decode(body).map(Directive::Progression)
-                    }
-                    Capability::Production => {
-                        ProductionDirective::decode(body).map(Directive::Production)
-                    }
-                    Capability::Items => ItemsDirective::decode(body).map(Directive::Items),
-                    _ => None,
-                };
+                let directive = Directive::decoder(capability).and_then(|decode| decode(body));
                 match directive.zip(OrderUnits::new(&units)) {
                     Some((directive, units)) => orders.push(Self { units, directive }),
                     None => whole = false,

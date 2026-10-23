@@ -58,7 +58,7 @@ pub enum SupplyDropCause {
     NoWalker,
     /// A unit a building of no production spawns, which has no exit to leave.
     NoExit,
-    /// A spawned unit that no file defines, or that gives no unit type.
+    /// A spawned unit that no file defines.
     NoObject,
     /// A kept spawn of no life, which never dies to come back.
     Unliving,
@@ -83,6 +83,9 @@ pub enum SupplyDropCause {
     /// its catch-up, its crisis bail and its self-tasking go, and no spawn of a hurt leader goes
     /// prone (09-zero-hour.md, The import converts a mob).
     LedSpawns,
+    /// A spawn whose object gives no unit type, as one of a locomotor no file defines, which the
+    /// import refuses as it refuses the type.
+    NoType,
 }
 
 /// How a spawner sends its kept spawns: each out of its exit, or as their leader, which buds each
@@ -230,7 +233,7 @@ impl SupplyImport {
                     name: typed.name,
                     object: typed.object,
                 }),
-                Err(_) => self.drop(spawned, SupplyDropCause::NoObject),
+                Err(_) => self.drop(spawned, SupplyDropCause::NoType),
             }
         }
         freed
@@ -275,7 +278,7 @@ impl SupplyImport {
         let mut units: Vec<NamedObject<'r>> = Vec::with_capacity(walkers.len());
         for spawned in walkers {
             let Ok(typed) = names.unit_type(spawned, rules) else {
-                self.drop(spawned, SupplyDropCause::NoObject);
+                self.drop(spawned, SupplyDropCause::NoType);
                 return Vec::new();
             };
             if typed.imported.life().is_none() {
@@ -328,7 +331,7 @@ impl SupplyImport {
         let cause = match ImportedType::of(spawned, rules) {
             Ok(imported) if imported.walks() => return Some(spawned),
             Ok(_) => SupplyDropCause::NoWalker,
-            Err(_) => SupplyDropCause::NoObject,
+            Err(_) => SupplyDropCause::NoType,
         };
         self.drop(spawned, cause);
         None

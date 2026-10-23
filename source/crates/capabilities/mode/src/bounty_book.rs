@@ -116,7 +116,7 @@ impl Bounty {
         } in &*payments
         {
             if let Some(mut resources) = world.player_resources_mut(player_slot) {
-                resources.add(resource, amount);
+                resources.gain(resource, amount);
             }
         }
     }

@@ -36,7 +36,7 @@ nodes = 4
 drop_offs = 15
 gathers = 12
 hacks = 5
-dropped = [0, 0, 5, 6, 0, 0, 0, 5, 5, 5, 5, 5, 4]
+dropped = [0, 0, 5, 6, 0, 0, 0, 5, 5, 5, 5, 5, 4, 0]
 
 [fought]
 weapons = 67
@@ -92,6 +92,7 @@ think_ops = 20143
 Won = 1
 
 [[base.drops]]
+unread = 0
 untaken = 0
 
 [base.drops.unsent]
@@ -115,6 +116,7 @@ slot_kind = 0
 no_build = 0
 
 [[base.drops]]
+unread = 0
 untaken = 0
 
 [base.drops.unsent]
@@ -146,6 +148,7 @@ think_ops = 9101
 Won = 0
 
 [[attack.drops]]
+unread = 0
 untaken = 0
 
 [attack.drops.unsent]
@@ -169,6 +172,7 @@ slot_kind = 0
 no_build = 0
 
 [[attack.drops]]
+unread = 0
 untaken = 0
 
 [attack.drops.unsent]

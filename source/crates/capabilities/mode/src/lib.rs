@@ -534,7 +534,7 @@ pub mod internals {
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
         EntityIndex, PlayerSlotEvent, PlayerSlotEventKind, Position, SimTick, SimWorld, StableId,
-        TickInputs,
+        TickInputs, UnreadCommand,
     };
     use campfire_stats::Stats;
     use campfire_units::{Owner, UnitsWorld};
@@ -597,13 +597,40 @@ pub mod internals {
 
         /// Runs a tick with `inputs`, each a player's player slot and a mode input.
         pub fn tick_inputs(world: &mut World, inputs: &[(u32, ModeInput<'_>)]) {
-            let (mut body, mut payload) = (Vec::new(), Vec::new());
-            for (player_slot, input) in inputs {
-                payload.clear();
+            let payloads = Self::input_payloads(inputs);
+            world.step_with(&Self::sent(&payloads));
+        }
+
+        /// Runs a tick as `tick_inputs` does, and takes the commands nothing read, which a test
+        /// that sends them asserts on.
+        pub fn tick_inputs_unread(
+            world: &mut World,
+            inputs: &[(u32, ModeInput<'_>)],
+        ) -> Vec<UnreadCommand> {
+            let payloads = Self::input_payloads(inputs);
+            world.step_with_unread(&Self::sent(&payloads))
+        }
+
+        /// The payload of each of `inputs`, by its player slot.
+        fn input_payloads(inputs: &[(u32, ModeInput<'_>)]) -> Vec<(PlayerSlot, Vec<u8>)> {
+            let mut body = Vec::new();
+            let mut payload = |input: &ModeInput<'_>| {
+                let mut payload = Vec::new();
                 input.write_payload(&mut body, &mut payload);
-                world.push_input(PlayerSlot::new(*player_slot), &payload);
-            }
-            world.step();
+                payload
+            };
+            inputs
+                .iter()
+                .map(|(player_slot, input)| (PlayerSlot::new(*player_slot), payload(input)))
+                .collect()
+        }
+
+        /// `payloads` as a tick takes them.
+        fn sent(payloads: &[(PlayerSlot, Vec<u8>)]) -> Vec<(PlayerSlot, &[u8])> {
+            payloads
+                .iter()
+                .map(|(player_slot, payload)| (*player_slot, payload.as_slice()))
+                .collect()
         }
 
         /// Runs a tick in which the session logged `events`, each a player's join or leave.

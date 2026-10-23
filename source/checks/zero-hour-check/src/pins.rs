@@ -123,14 +123,16 @@ pub(crate) struct BotMatchEnd {
 }
 
 /// The orders of a player slot's bot that came to nothing over a play: those its search left
-/// unsent, the inputs the session log refused, the orders no unit took, and each unit's drop of
-/// an order, by its cause, as an order that no unit takes shows only as a count (09-zero-hour.md,
+/// unsent, the inputs the session log refused, the commands nothing read (02-engine-core.md, A
+/// command nothing reads is counted), the orders no unit took, and each unit's drop of an order,
+/// by its cause, as an order that no unit takes shows only as a count (09-zero-hour.md,
 /// What a play drops is counted).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BotDrops {
     pub(crate) unsent: UnsentCounts,
     pub(crate) refused: RefusedCounts,
+    pub(crate) unread: u64,
     pub(crate) untaken: u64,
     pub(crate) dropped: DroppedCounts,
 }

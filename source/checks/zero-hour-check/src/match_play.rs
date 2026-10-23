@@ -380,7 +380,9 @@ impl<'p> MatchPlay<'p> {
             }
         }
         self.due.payloads.clear();
-        self.fixed.step();
+        for unread in self.fixed.step_unread() {
+            self.due.drops_of(unread.player_slot).unread += 1;
+        }
         if let Some(record) = &mut self.record {
             record.tick(self.fixed.game_mut());
         }

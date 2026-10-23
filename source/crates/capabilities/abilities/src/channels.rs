@@ -157,7 +157,7 @@ impl Channeling {
             return;
         };
         if let Some(mut resources) = world.player_resources_mut(player_slot) {
-            let _ = resources.add(resource, amount);
+            resources.gain(resource, amount);
         }
     }
 
