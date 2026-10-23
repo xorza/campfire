@@ -52,6 +52,9 @@ pub enum DataKind {
     PlayerStateAll,
     /// State no client receives.
     Server,
+    /// The units a player's orders command, on its entity, which its prediction reads
+    /// (commanded-units.md, The commanded units are their player's prediction).
+    Commanded,
 }
 
 impl DataKind {
@@ -85,7 +88,8 @@ impl DataKind {
             | Self::Prediction
             | Self::UnitStateOwner
             | Self::PlayerStateOwner
-            | Self::Server => Recipients::NONE,
+            | Self::Server
+            | Self::Commanded => Recipients::NONE,
         }
     }
 
@@ -111,7 +115,9 @@ impl DataKind {
             | Self::PlayerStateOwner
             | Self::PlayerStateTeam
             | Self::PlayerStateAll => Recipients::SPECTATORS,
-            Self::Unit | Self::Match | Self::Prediction | Self::Server => Recipients::NONE,
+            Self::Unit | Self::Match | Self::Prediction | Self::Server | Self::Commanded => {
+                Recipients::NONE
+            }
         }
     }
 

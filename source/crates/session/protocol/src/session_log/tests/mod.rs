@@ -915,7 +915,7 @@ fn frame(
     tail: &[Sent<'_>],
     revealed: Option<&ServerSeed>,
 ) -> Vec<u8> {
-    let mut bytes = b"campfire/session-log/v10".to_vec();
+    let mut bytes = b"campfire/session-log/v11".to_vec();
     let terms = &header.terms;
     put(&mut bytes, &terms.server_key.serialize());
     put(&mut bytes, &terms.tick_hz);
@@ -1048,7 +1048,7 @@ fn a_log_file_has_its_layout() {
 
     let [first, second] = [0, 1].map(delegation);
     let expected = [
-        &b"campfire/session-log/v10"[..],
+        &b"campfire/session-log/v11"[..],
         // The terms, and no session id: it is their hash.
         &server_key().serialize(),
         // 300 ticks a second = 0b10_0101100: varint 0xAC 0x02. Max input delay 2, lead 2,
@@ -1097,7 +1097,7 @@ fn a_log_file_has_its_layout() {
     assert_eq!(encoded(&log), expected);
 
     // A rate of 0 ticks a second does not decode.
-    let tick_at = b"campfire/session-log/v10".len() + 32;
+    let tick_at = b"campfire/session-log/v11".len() + 32;
     let zero_rate = [&expected[..tick_at], &[0], &expected[tick_at + 2..]].concat();
     assert!(matches!(
         SessionLog::decode(&zero_rate),
@@ -1179,7 +1179,7 @@ fn assert_truncations_and_flips_refused(bytes: &[u8]) {
         SessionLog::decode(bytes).map(|log| log.next_tick()),
         Ok(Tick::new(1))
     );
-    let tag = b"campfire/session-log/v10".len();
+    let tag = b"campfire/session-log/v11".len();
     // Each byte on a core of its own, as the sweep is long (02-engine-core.md, A sweep runs on
     // every core).
     Parallel::map_init(bytes.len(), Vec::new, |corrupt, at| {

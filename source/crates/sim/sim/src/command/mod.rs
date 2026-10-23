@@ -5,14 +5,22 @@ use serde::{Deserialize, Serialize, Serializer};
 
 use crate::capability::Capability;
 
-/// One command of a player input: the capability it goes to, and its body in that capability's
-/// format. A payload is a list of commands, so one input can carry commands for
-/// several capabilities, and each capability reads only its own.
+/// One command of a player input: what it goes to, and its body in that one's format. A payload
+/// is a list of commands, so one input can carry commands for several capabilities and the
+/// players, and each reads only its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Command<'a> {
-    pub capability: Capability,
+    pub to: Addressee,
     #[serde(serialize_with = "serialize_body")]
     pub body: &'a [u8],
+}
+
+/// What a command goes to: the players, whose select sets the units a player's orders command
+/// (commanded-units.md, A select is the players' command), or a capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Addressee {
+    Players,
+    Capability(Capability),
 }
 
 impl<'a> Command<'a> {
@@ -66,16 +74,15 @@ fn serialize_body<S: Serializer>(body: &&[u8], serializer: S) -> Result<S::Ok, S
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::Capability;
-    use crate::command::Command;
+    use crate::command::{Addressee, Command};
 
     impl Command<'_> {
-        /// A payload of `bodies`, each a command to `capability`, in order.
-        pub fn payload<B: AsRef<[u8]>>(capability: Capability, bodies: &[B]) -> Vec<u8> {
+        /// A payload of `bodies`, each a command to `to`, in order.
+        pub fn payload<B: AsRef<[u8]>>(to: Addressee, bodies: &[B]) -> Vec<u8> {
             let commands: Vec<Command<'_>> = bodies
                 .iter()
                 .map(|body| Command {
-                    capability,
+                    to,
                     body: body.as_ref(),
                 })
                 .collect();

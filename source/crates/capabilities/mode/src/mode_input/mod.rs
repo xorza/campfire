@@ -1,5 +1,5 @@
 use campfire_codec::{Binary, Decoded};
-use campfire_sim::{Capability, Command};
+use campfire_sim::{Addressee, Capability, Command};
 
 use crate::mode_data::InputType;
 
@@ -18,8 +18,8 @@ pub enum InputValue<'a> {
 }
 
 impl<'a> ModeInput<'a> {
-    /// The owner of mode inputs.
-    pub const CAPABILITY: Capability = Capability::Mode;
+    /// What mode inputs go to.
+    pub const ADDRESSEE: Addressee = Addressee::Capability(Capability::Mode);
 
     /// Appends the body of the input to `out`.
     pub fn encode_into(&self, out: &mut Vec<u8>) {
@@ -59,7 +59,7 @@ impl<'a> ModeInput<'a> {
         body.clear();
         self.encode_into(body);
         let command = Command {
-            capability: ModeInput::CAPABILITY,
+            to: ModeInput::ADDRESSEE,
             body,
         };
         Command::write(&[command], out);
@@ -83,7 +83,7 @@ pub(crate) mod internals {
                     body
                 })
                 .collect();
-            Command::payload(ModeInput::CAPABILITY, &bodies)
+            Command::payload(ModeInput::ADDRESSEE, &bodies)
         }
     }
 }

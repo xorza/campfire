@@ -37,7 +37,7 @@ mod timed_process;
 mod unpredicted;
 
 pub use crate::capability::Capability;
-pub use crate::command::Command;
+pub use crate::command::{Addressee, Command};
 pub use crate::due_index::{DueIndex, DueUnit};
 pub use crate::host_rule::{Either, HostRule, KindMarker, OnAny};
 pub use crate::id_allocator::IdAllocator;

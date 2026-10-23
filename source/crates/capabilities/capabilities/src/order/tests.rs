@@ -8,14 +8,6 @@ fn id(value: u8) -> StableId {
     Binary::decode(&[value]).unwrap()
 }
 
-/// The action of `body` as `A`'s orders decode it, with its units; `None` for a body that is no
-/// such order.
-fn decode<A: CapabilityDirective>(body: &[u8]) -> Option<(Vec<StableId>, A)> {
-    let mut units = Vec::new();
-    let action = A::decode_into(body, &mut units)?;
-    Some((units, action))
-}
-
 #[test]
 fn orders_decode_exactly() {
     let walk = OrdersDirective::Move {
@@ -26,127 +18,143 @@ fn orders_decode_exactly() {
     };
     let order = Order::one(id(4), walk);
     let body = order.encode();
-    assert_eq!(decode(&body), Some((vec![id(4)], walk)));
+    assert_eq!(OrdersDirective::decode(&body), Some(walk));
     assert_eq!(
-        decode::<OrdersDirective>(&[body.as_slice(), &[0]].concat()),
+        OrdersDirective::decode(&[body.as_slice(), &[0]].concat()),
         None
     );
-    assert_eq!(decode::<OrdersDirective>(&body[..body.len() - 1]), None);
-    assert_eq!(decode::<OrdersDirective>(&[]), None);
+    assert_eq!(OrdersDirective::decode(&body[..body.len() - 1]), None);
+    assert_eq!(OrdersDirective::decode(&[]), None);
 
-    // The count of units, then each unit's id, then variant 1 with the target's id, each a
-    // varint: 300 = 0xAC 0x02.
+    // An order's body is its directive alone, as its units are its player's commanded units
+    // (commanded-units.md, A player's orders go to its commanded units): variant 1 with the
+    // target's id, a varint, 300 = 0xAC 0x02.
     let target = Binary::decode::<StableId>(&[0xAC, 0x02]).unwrap();
     let attack = Order::one(target, OrdersDirective::Attack { target });
-    assert_eq!(attack.encode(), [1, 0xAC, 0x02, 1, 0xAC, 0x02]);
+    assert_eq!(attack.encode(), [1, 0xAC, 0x02]);
     assert_eq!(
-        decode(&[1, 0xAC, 0x02, 1, 0xAC, 0x02]),
-        Some((vec![target], OrdersDirective::Attack { target }))
+        OrdersDirective::decode(&[1, 0xAC, 0x02]),
+        Some(OrdersDirective::Attack { target })
     );
-    // A use of 300 by unit 4, variant 5, the last, so the variants before it keep their bytes;
-    // `orders` has 6 variants, 0 to 5.
+    // A use of 300, variant 5, the last, so the variants before it keep their bytes; `orders`
+    // has 6 variants, 0 to 5.
     let used = Order::one(id(4), OrdersDirective::Use { target });
-    assert_eq!(used.encode(), [1, 4, 5, 0xAC, 0x02]);
-    assert_eq!(
-        decode(&[1, 4, 5, 0xAC, 0x02]),
-        Some((vec![id(4)], OrdersDirective::Use { target }))
-    );
-    assert_eq!(decode::<OrdersDirective>(&[1, 0, 6]), None);
+    assert_eq!(used.encode(), [5, 0xAC, 0x02]);
+    assert_eq!(OrdersDirective::decode(&[6]), None);
 
-    // Each owner's action follows the units in its own format: a learn of slot 2, variant 0;
-    // a cancel of the train at place 3, variant 0; a rally cleared, variant 1 and `None`; a swap
-    // of slots 0 and 1, variant 2.
+    // Each owner's directive in its own format: a learn of slot 2, variant 0; a cancel of the
+    // train at place 3, variant 0; a rally cleared, variant 1 and `None`; a swap of slots 0 and
+    // 1, variant 2.
     let learn = Order::one(id(4), ProgressionDirective::Learn { slot: 2 });
     let cancel = Order::one(id(4), ProductionDirective::CancelTrain { place: 3 });
     let rally = Order::one(id(4), ProductionDirective::Rally { target: None });
     let swap = Order::one(id(4), ItemsDirective::Swap { from: 0, to: 1 });
-    assert_eq!(learn.encode(), [1, 4, 0, 2]);
-    assert_eq!(cancel.encode(), [1, 4, 0, 3]);
-    assert_eq!(rally.encode(), [1, 4, 1, 0]);
-    assert_eq!(swap.encode(), [1, 4, 2, 0, 1]);
+    assert_eq!(learn.encode(), [0, 2]);
+    assert_eq!(cancel.encode(), [0, 3]);
+    assert_eq!(rally.encode(), [1, 0]);
+    assert_eq!(swap.encode(), [2, 0, 1]);
     assert_eq!(
-        decode(&swap.encode()),
-        Some((vec![id(4)], ItemsDirective::Swap { from: 0, to: 1 }))
+        ItemsDirective::decode(&swap.encode()),
+        Some(ItemsDirective::Swap { from: 0, to: 1 })
     );
 
-    // A payload is a list of commands, one per order, each to its action's capability.
+    // A payload is a list of commands, two per order: a select of its units to the players,
+    // then its directive to its capability.
     let orders = [order.clone(), attack.clone(), learn, cancel, swap];
     let payload = Order::payload(&orders);
     let mut commands = Vec::new();
     assert!(Command::read(&payload, |command, _| commands.push(command)));
-    let capabilities: Vec<Capability> = commands.iter().map(|command| command.capability).collect();
+    let to: Vec<Addressee> = commands.iter().map(|command| command.to).collect();
+    let capability = Addressee::Capability;
     assert_eq!(
-        capabilities,
+        to,
         [
-            Capability::Orders,
-            Capability::Orders,
-            Capability::Progression,
-            Capability::Production,
-            Capability::Items,
+            Addressee::Players,
+            capability(Capability::Orders),
+            Addressee::Players,
+            capability(Capability::Orders),
+            Addressee::Players,
+            capability(Capability::Progression),
+            Addressee::Players,
+            capability(Capability::Production),
+            Addressee::Players,
+            capability(Capability::Items),
         ]
     );
-    assert_eq!(commands[1].body, attack.encode());
-    assert_eq!(commands[4].body, orders[4].encode());
+    // The attack's select: a new one, 0, of 1 unit, 300.
+    assert_eq!(commands[2].body, [0, 1, 0xAC, 0x02]);
+    assert_eq!(commands[3].body, attack.encode());
+    assert_eq!(commands[9].body, orders[4].encode());
     // A test reads the payload back as its orders, and a payload with a flaw as none: a byte
-    // past its commands, or a body no capability reads.
+    // past its commands, an order before any select, or a body no capability reads.
     assert_eq!(Order::of_payload(&payload), Some(orders.to_vec()));
     assert_eq!(
         Order::of_payload(&[payload.as_slice(), &[0]].concat()),
         None
     );
-    let flawed = Command::encode(&[Command {
-        capability: Capability::Orders,
-        body: &[1, 0, 6],
+    let unselected = Command::encode(&[Command {
+        to: capability(Capability::Orders),
+        body: &[4],
     }]);
+    assert_eq!(Order::of_payload(&unselected), None);
+    let flawed = Command::encode(&[
+        Command {
+            to: Addressee::Players,
+            body: &[0, 1, 4],
+        },
+        Command {
+            to: capability(Capability::Orders),
+            body: &[6],
+        },
+    ]);
     assert_eq!(Order::of_payload(&flawed), None);
 
-    // A written payload follows what the buffer holds: 1 command, of capability 5 (`orders`),
-    // its 6 body bytes; then the learn's, of capability 9 (`progression`), its 4 bytes; then the
-    // move's payload, the body buffer reused.
+    // A written payload follows what the buffer holds: 2 commands, the select to the players, 0,
+    // its 4 bytes, then the attack to capability 5 (`orders`), 1 and 5, its 3 bytes; then the
+    // learn's, its select of unit 4 in 3 bytes and its 2 bytes to capability 9 (`progression`);
+    // then the move's payload, the body buffer reused.
     let mut out = vec![9];
     let mut body = Vec::new();
     attack.write_payload(&mut body, &mut out);
-    assert_eq!(out, [9, 1, 5, 6, 1, 0xAC, 0x02, 1, 0xAC, 0x02]);
+    assert_eq!(out, [9, 2, 0, 4, 0, 1, 0xAC, 0x02, 1, 5, 3, 1, 0xAC, 0x02]);
     orders[2].write_payload(&mut body, &mut out);
-    assert_eq!(out[10..], [1, 9, 4, 1, 4, 0, 2]);
+    assert_eq!(out[14..], [2, 0, 3, 0, 1, 4, 1, 9, 2, 0, 2]);
     order.write_payload(&mut body, &mut out);
-    assert_eq!(out[17..], Order::payload(&[order]));
+    assert_eq!(out[25..], Order::payload(&[order]));
 }
 
 #[test]
-fn an_order_names_its_units_in_increasing_stable_id_each_once() {
-    // A stop, variant 4, to units 2, 5 and 9.
-    let group = Order {
-        units: OrderUnits::new(&[id(2), id(5), id(9)]).unwrap(),
-        directive: Directive::Orders(OrdersDirective::Stop),
+fn a_select_names_its_units_in_increasing_stable_id_each_once() {
+    // A select of units 2, 5 and 9: a new one, 0, of 3 units.
+    let units = [id(2), id(5), id(9)];
+    let select = Select {
+        selecting: Selecting::New,
+        units: &units,
     };
-    assert_eq!(group.encode(), [3, 2, 5, 9, 4]);
-    assert_eq!(
-        decode(&[3, 2, 5, 9, 4]),
-        Some((vec![id(2), id(5), id(9)], OrdersDirective::Stop))
-    );
-    // No unit, units out of order, a unit twice, and a count past the bytes left decode to
-    // nothing, and leave a buffer as it was.
-    let mut units = vec![id(1)];
+    let mut body = Vec::new();
+    select.encode_into(&mut body);
+    assert_eq!(body, [0, 3, 2, 5, 9]);
+    // No unit, units out of order, a unit twice, a count past the bytes left, a selecting of
+    // neither kind and a byte past the units decode to nothing, and leave a buffer as it was.
+    let mut held = vec![id(1)];
     for flawed in [
-        &[0, 4][..],
-        &[2, 5, 2, 4],
-        &[2, 5, 5, 4],
-        &[3, 2, 5, 4],
-        &[200, 2, 5, 4],
+        &[0, 0][..],
+        &[0, 2, 5, 2],
+        &[0, 2, 5, 5],
+        &[0, 3, 2, 5],
+        &[0, 200, 2, 5],
+        &[2, 1, 4],
+        &[0, 1, 4, 7],
     ] {
-        assert_eq!(
-            OrdersDirective::decode_into(flawed, &mut units),
-            None,
-            "{flawed:?}"
-        );
-        assert_eq!(units, [id(1)]);
+        assert_eq!(Select::decode_into(flawed, &mut held), None, "{flawed:?}");
+        assert_eq!(held, [id(1)]);
     }
+    // A select that continues one, 1, appends its units.
     assert_eq!(
-        OrdersDirective::decode_into(&[2, 2, 5, 4], &mut units),
-        Some(OrdersDirective::Stop)
+        Select::decode_into(&[1, 2, 2, 5], &mut held),
+        Some(Selecting::More)
     );
-    assert_eq!(units, [id(1), id(2), id(5)]);
+    assert_eq!(held, [id(1), id(2), id(5)]);
     // The list type holds the same rule.
     assert_eq!(OrderUnits::new(&[]), None);
     assert_eq!(OrderUnits::new(&[id(5), id(2)]), None);

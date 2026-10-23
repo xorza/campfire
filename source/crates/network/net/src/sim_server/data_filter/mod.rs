@@ -110,6 +110,8 @@ filtered_kinds! {
     PlayerStateTeamKind: PlayerStateTeam;
     /// A player's script state fields of `audience = "all"`.
     PlayerStateAllKind: PlayerStateAll;
+    /// The units a player's orders command.
+    CommandedKind: Commanded;
 }
 
 /// The types of `K`'s kind in the state lists of every capability of the release, as one scope,

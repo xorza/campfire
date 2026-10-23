@@ -3,17 +3,20 @@ use std::marker::PhantomData;
 use bevy_ecs::system::{Local, Res, SystemParam};
 use campfire_common::PlayerSlot;
 use campfire_declarations::MatchFacts;
-use campfire_sim::{StableId, TickInputs};
+use campfire_sim::{Addressee, StableId, TickInputs};
 use campfire_units::Owner;
 use campfire_visibility::OutView;
 
 use crate::capability_directive::CapabilityDirective;
+use crate::commanded_units::CommandedUnits;
 use crate::out_of_play::OutOfPlay;
 use crate::player_rows::PlayerRows;
+use crate::tick_selects::TickSelects;
 
 /// The orders of one capability among the tick's inputs, of directive `A`, each decoded as it is
-/// read, in input order, into buffers each tick reuses. A body that is no such order is left out,
-/// and so is each order of a player out of play in a session whose players out of play see what a
+/// read, in input order, each to the units its player commands at its place (commanded-units.md,
+/// An order goes to the units commanded at its place), which may be none. A body that is no such
+/// order is left out, and so is each order of a player out of play in a session whose players out of play see what a
 /// spectator sees: it would act on what its team does not see (10-replication-audiences.md, A
 /// player out of play sees what its team sees, or what a spectator sees).
 #[derive(SystemParam, Debug)]
@@ -21,8 +24,8 @@ pub struct TickCommands<'w, 's, A: CapabilityDirective> {
     inputs: Res<'w, TickInputs>,
     facts: Res<'w, MatchFacts>,
     out: PlayerRows<'w, 's, OutOfPlay>,
-    /// The units of the order read last.
-    units: Local<'s, Vec<StableId>>,
+    selects: Res<'w, TickSelects>,
+    commanded: PlayerRows<'w, 's, CommandedUnits>,
     /// The orders each player sent this tick so far, for the next one's number.
     sent: Local<'s, Vec<Sent>>,
     directive: PhantomData<A>,
@@ -30,7 +33,7 @@ pub struct TickCommands<'w, 's, A: CapabilityDirective> {
 
 /// An order of the tick: the player that sent it, its place among that player's orders of its
 /// capability in the tick, which a client that predicts its own orders numbers alike, its directive
-/// and its units.
+/// and the units its player commands at it.
 #[derive(Debug, Clone, Copy)]
 pub struct TickCommand<'a, A> {
     pub player_slot: PlayerSlot,
@@ -50,19 +53,24 @@ impl<A: CapabilityDirective> TickCommands<'_, '_, A> {
     pub fn for_each(&mut self, mut apply: impl FnMut(TickCommand<'_, A>)) {
         let spectating = self.facts.visibility.out() == OutView::Spectators;
         self.sent.clear();
-        for command in self.inputs.commands(A::CAPABILITY) {
-            if spectating && self.out.of_player_slot(command.player_slot).is_some() {
+        for command in self.inputs.commands(Addressee::Capability(A::CAPABILITY)) {
+            let player_slot = command.player_slot;
+            if spectating && self.out.of_player_slot(player_slot).is_some() {
                 continue;
             }
-            self.units.clear();
-            let Some(directive) = A::decode_into(command.body, &mut self.units) else {
+            let Some(directive) = A::decode(command.body) else {
                 continue;
             };
+            let units = self.selects.at(player_slot, command.place).or_else(|| {
+                let held = self.commanded.of_player_slot(player_slot)?;
+                Some(held.get())
+            });
+            let units = units.unwrap_or_default();
             apply(TickCommand {
-                player_slot: command.player_slot,
-                number: number(&mut self.sent, command.player_slot),
+                player_slot,
+                number: number(&mut self.sent, player_slot),
                 directive,
-                units: &self.units,
+                units,
             });
         }
     }

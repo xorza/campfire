@@ -9,6 +9,7 @@ use campfire_math::{Num, Vec3};
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup, LinkLayout};
 use campfire_orders::OrdersDirective;
+use campfire_players::CommandedUnits;
 use campfire_protocol::LogReplay;
 use campfire_runner::Session;
 use campfire_sim::{MatchRate, Position, SimWorld, StableId};
@@ -91,6 +92,23 @@ fn play(setup: InProcessSetup) -> [u32; 2] {
     }
 
     check_log(&mut local, InProcessMatch::SCENARIO_SCRIPTS);
+
+    // Each client holds the units its player commands as the server does: its hero, which the
+    // orders of its script select (commanded-units.md, The commanded units are their player's
+    // prediction).
+    for (index, &id) in heroes.iter().enumerate() {
+        let player = StableId::of_player(PlayerSlot::new(u32::try_from(index).unwrap()));
+        let commanded = |app: &App| {
+            let entity = app.world().entity_ref_of(player).unwrap();
+            entity.get::<CommandedUnits>().unwrap().get().to_vec()
+        };
+        assert_eq!(commanded(local.server()), [id], "player {index}");
+        assert_eq!(
+            commanded(local.client(index)),
+            [id],
+            "client of player {index}"
+        );
+    }
 
     // The downlink's worst delay in whole ticks: its latency and its jitter.
     let tick = MatchRate::new(local.packages().manifest().tick_hz.default()).length();

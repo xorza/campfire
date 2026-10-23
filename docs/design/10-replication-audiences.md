@@ -23,6 +23,7 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 | `unit_state_owner`, `unit_state_team`, `unit_state_all` | A unit's script state of each `audience` but `none` |
 | `player_state_owner`, `player_state_team`, `player_state_all` | A player's script state of each `audience` but `none` |
 | `server` | What never leaves the server |
+| `commanded` | The units a player's orders command |
 
 - **One kind for each type.** A filter hides whole components, so a component of two kinds is split along them, as `Pools` into `Life` and `Pools`, and `ActionSlots` into `ActionSlots` and `SlotTimes`.
 
@@ -36,7 +37,7 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 | `life`, `modifiers`, `player_modifiers`, `mode_state` | everyone | enemies, spectators |
 | `pools`, `cooldowns`, `progression`, `inventory`, `resources`, `supply`, `queues` | owner | allies, enemies, spectators |
 | `unit_state_*` | by `audience` | spectators |
-| `prediction` | owner | nothing |
+| `prediction`, `commanded` | owner | nothing |
 | `server` | none | nothing |
 
 - **A mode's hidden data is not predicted.** Where a mode hides a unit's modifiers from enemies, an enemy's client cannot derive its stats, so an aura of it comes from the server as a correction; the defaults hide nothing a prediction reads.

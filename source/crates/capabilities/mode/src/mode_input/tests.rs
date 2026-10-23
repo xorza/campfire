@@ -49,13 +49,13 @@ fn an_input_is_its_name_then_its_value_in_its_declared_type() {
         assert_eq!(ModeInput::decode(&flawed, types), None, "{flawed:?}");
     }
 
-    // A payload holds each as a command of the mode, the capability of index 8.
+    // A payload holds each as a command to the mode: one command, to a capability, 1, of index 8.
     let mut payload = Vec::new();
     spells.write_payload(&mut vec![0xff], &mut payload);
-    assert_eq!(payload[..2], [1, 8]);
+    assert_eq!(payload[..3], [1, 1, 8]);
     let mut bodies = Vec::new();
     assert!(Command::read(&payload, |command, _| {
-        assert_eq!(command.capability, Capability::Mode);
+        assert_eq!(command.to, Addressee::Capability(Capability::Mode));
         bodies.push(command.body);
     }));
     assert_eq!(bodies, [expected.as_slice()]);

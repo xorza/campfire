@@ -1,10 +1,10 @@
 use campfire_codec::Binary;
 use campfire_items::ItemsDirective;
 use campfire_orders::OrdersDirective;
-use campfire_players::{CapabilityDirective, OrderUnits};
+use campfire_players::{CapabilityDirective, OrderUnits, Select, Selecting};
 use campfire_production::ProductionDirective;
 use campfire_progression::ProgressionDirective;
-use campfire_sim::{Capability, Command, StableId};
+use campfire_sim::{Addressee, Capability, Command, StableId};
 use campfire_units::{Ids, OrderRefs, RefMap, SerdeRefs};
 use serde::{Deserialize, Serialize};
 
@@ -93,26 +93,46 @@ impl Order {
         }
     }
 
+    /// Appends its directive, the body of its command, to `body`.
     fn encode_into(&self, body: &mut Vec<u8>) {
-        let units = &self.units;
         match self.directive {
-            Directive::Orders(directive) => Binary::encode_into(&(units, directive), body),
-            Directive::Progression(directive) => Binary::encode_into(&(units, directive), body),
-            Directive::Production(directive) => Binary::encode_into(&(units, directive), body),
-            Directive::Items(directive) => Binary::encode_into(&(units, directive), body),
+            Directive::Orders(directive) => Binary::encode_into(&directive, body),
+            Directive::Progression(directive) => Binary::encode_into(&directive, body),
+            Directive::Production(directive) => Binary::encode_into(&directive, body),
+            Directive::Items(directive) => Binary::encode_into(&directive, body),
         }
     }
 
-    /// Appends the payload of this order alone to `out`, its body encoded in `body`, a buffer the
-    /// caller reuses, so a client that sends orders every tick allocates for none of them.
+    /// Its select, which commands its units.
+    fn select(&self) -> Select<'_> {
+        Select {
+            selecting: Selecting::New,
+            units: self.units.get(),
+        }
+    }
+
+    /// Appends the payload of this order alone to `out`: a select of its units, then its
+    /// directive, as a sender that reads no ack sends each order (commanded-units.md, A select
+    /// goes with each order until its sender knows the server commands those units). Both bodies
+    /// are encoded in `body`, a buffer the caller reuses, so a client that sends orders every tick
+    /// allocates for none of them.
     pub fn write_payload(&self, body: &mut Vec<u8>, out: &mut Vec<u8>) {
         body.clear();
+        self.select().encode_into(body);
+        let split = body.len();
         self.encode_into(body);
-        let command = Command {
-            capability: self.directive.capability(),
-            body,
-        };
-        Command::write(&[command], out);
+        let (select, directive) = body.split_at(split);
+        let commands = [
+            Command {
+                to: Addressee::Players,
+                body: select,
+            },
+            Command {
+                to: Addressee::Capability(self.directive.capability()),
+                body: directive,
+            },
+        ];
+        Command::write(&commands, out);
     }
 }
 
@@ -120,32 +140,47 @@ impl Order {
 pub(crate) mod internals {
     use campfire_items::ItemsDirective;
     use campfire_orders::OrdersDirective;
-    use campfire_players::{CapabilityDirective, OrderUnits};
+    use campfire_players::{CapabilityDirective, OrderUnits, Select, Selecting};
     use campfire_production::ProductionDirective;
     use campfire_progression::ProgressionDirective;
-    use campfire_sim::{Capability, Command};
+    use campfire_sim::{Addressee, Capability, Command, StableId};
 
     use crate::order::{Directive, Order};
 
     impl Order {
-        /// The orders of `payload`, one a command, as a test reads what a bot sent; none for a
-        /// payload that is no list of orders.
+        /// The orders of `payload`, each to the units the selects before it in the payload
+        /// command, as a test reads what a bot sent; none for a payload that is no list of
+        /// selects and orders, or of an order before any select.
         pub fn of_payload(payload: &[u8]) -> Option<Vec<Self>> {
             let (mut orders, mut units, mut whole) = (Vec::new(), Vec::new(), true);
+            let mut named: Vec<StableId> = Vec::new();
             let read = Command::read(payload, |command, _| {
-                units.clear();
                 let body = command.body;
-                let directive = match command.capability {
-                    Capability::Orders => {
-                        OrdersDirective::decode_into(body, &mut units).map(Directive::Orders)
+                let capability = match command.to {
+                    Addressee::Players => {
+                        named.clear();
+                        match Select::decode_into(body, &mut named) {
+                            Some(Selecting::New) => units.clone_from(&named),
+                            Some(Selecting::More) => {
+                                units.extend_from_slice(&named);
+                                units.sort_unstable();
+                                units.dedup();
+                            }
+                            None => whole = false,
+                        }
+                        return;
                     }
-                    Capability::Progression => ProgressionDirective::decode_into(body, &mut units)
-                        .map(Directive::Progression),
-                    Capability::Production => ProductionDirective::decode_into(body, &mut units)
-                        .map(Directive::Production),
-                    Capability::Items => {
-                        ItemsDirective::decode_into(body, &mut units).map(Directive::Items)
+                    Addressee::Capability(capability) => capability,
+                };
+                let directive = match capability {
+                    Capability::Orders => OrdersDirective::decode(body).map(Directive::Orders),
+                    Capability::Progression => {
+                        ProgressionDirective::decode(body).map(Directive::Progression)
                     }
+                    Capability::Production => {
+                        ProductionDirective::decode(body).map(Directive::Production)
+                    }
+                    Capability::Items => ItemsDirective::decode(body).map(Directive::Items),
                     _ => None,
                 };
                 match directive.zip(OrderUnits::new(&units)) {
@@ -156,24 +191,27 @@ pub(crate) mod internals {
             (read && whole).then_some(orders)
         }
 
-        /// The body of its command: its units, then its directive as its capability reads it.
+        /// The body of its command: its directive as its capability reads it.
         pub fn encode(&self) -> Vec<u8> {
             let mut body = Vec::new();
             self.encode_into(&mut body);
             body
         }
 
-        /// A payload of `orders` alone, one command each, to its directive's capability, as a test
-        /// or a check sends them.
+        /// A payload of `orders` alone, a select and a command each, as a test or a check sends
+        /// them.
         pub fn payload(orders: &[Self]) -> Vec<u8> {
-            let bodies: Vec<Vec<u8>> = orders.iter().map(Self::encode).collect();
-            let commands: Vec<Command<'_>> = orders
+            let mut bodies: Vec<(Addressee, Vec<u8>)> = Vec::new();
+            for order in orders {
+                let mut select = Vec::new();
+                order.select().encode_into(&mut select);
+                bodies.push((Addressee::Players, select));
+                let to = Addressee::Capability(order.directive.capability());
+                bodies.push((to, order.encode()));
+            }
+            let commands: Vec<Command<'_>> = bodies
                 .iter()
-                .zip(&bodies)
-                .map(|(order, body)| Command {
-                    capability: order.directive.capability(),
-                    body,
-                })
+                .map(|(to, body)| Command { to: *to, body })
                 .collect();
             Command::encode(&commands)
         }

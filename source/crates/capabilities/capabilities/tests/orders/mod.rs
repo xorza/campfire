@@ -7,7 +7,7 @@ use campfire_actions::{
     ProgressDues, SlotAim, SlotKind, SlotsMut, TimedSlots,
 };
 use campfire_capabilities::internals::*;
-use campfire_capabilities::{Match, Order, Release};
+use campfire_capabilities::{Directive, Match, Order, Release};
 use campfire_codec::Binary;
 use campfire_combat::internals::Armed;
 use campfire_combat::internals::TestWeapon;
@@ -23,14 +23,15 @@ use campfire_navigation::{
     RoutePlanner, Walker, WalkerOnPath,
 };
 use campfire_orders::*;
-use campfire_players::{OutOfPlay, Players, PlayersWorld};
+use campfire_players::{CommandedUnits, OrderUnits, OutOfPlay, Players, PlayersWorld, Selecting};
 use campfire_production::Production;
 use campfire_script::{
     ApiError, CapabilityRefusal, FailureKind, Filter, ScriptFailures, ScriptLimits, TagNames,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    Capability, Command, IdAllocator, Position, SimComponent, SimTick, StableId, Unpredicted,
+    Addressee, Capability, Command, IdAllocator, Position, SimComponent, SimTick, StableId,
+    Unpredicted,
 };
 use campfire_stats::Stats;
 use campfire_units::internals::Spawn;
@@ -435,7 +436,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
         },
     )]);
     let not_an_order = Command::encode(&[Command {
-        capability: Capability::Orders,
+        to: Addressee::Capability(Capability::Orders),
         body: b"not an order",
     }]);
     // A valid order, sent to a capability the mode did not declare.
@@ -450,7 +451,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     )
     .encode();
     let undeclared = Command::encode(&[Command {
-        capability: Capability::Items,
+        to: Addressee::Capability(Capability::Items),
         body: &order,
     }]);
     game.step_with(&[
@@ -1517,13 +1518,21 @@ fn every_orders_type_is_state_and_restores() {
     assert!(restored.try_part::<Resetting>(still).is_some());
 }
 
-/// The payload of an order of `directive` to `units`, in the order given, as a client may send it.
+/// The payload of a select of `units`, in the order given, as a client may send it, then an order
+/// of `directive`.
 fn order_to(units: &[StableId], directive: OrdersDirective) -> Vec<u8> {
-    let body = Binary::encode(&(units, directive));
-    Command::encode(&[Command {
-        capability: Capability::Orders,
-        body: &body,
-    }])
+    let select = Binary::encode(&(Selecting::New, units));
+    let order = Binary::encode(&directive);
+    Command::encode(&[
+        Command {
+            to: Addressee::Players,
+            body: &select,
+        },
+        Command {
+            to: Addressee::Capability(Capability::Orders),
+            body: &order,
+        },
+    ])
 }
 
 #[test]
@@ -1583,25 +1592,132 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
     }
 }
 
+/// The payload of `directive` alone, with no select, to the units its player commands.
+fn commanded_to(directive: OrdersDirective) -> Vec<u8> {
+    let order = Binary::encode(&directive);
+    Command::encode(&[Command {
+        to: Addressee::Capability(Capability::Orders),
+        body: &order,
+    }])
+}
+
+/// The payload of a select alone, of `selecting` and `units`.
+fn select_alone(selecting: Selecting, units: &[StableId]) -> Vec<u8> {
+    let select = Binary::encode(&(selecting, units));
+    Command::encode(&[Command {
+        to: Addressee::Players,
+        body: &select,
+    }])
+}
+
 #[test]
-fn a_list_of_units_out_of_order_or_twice_orders_nothing() {
+fn a_select_commands_what_its_player_controls_and_an_order_the_units_commanded_at_its_place() {
+    // Players 0 and 1, whose entities hold what they command; player 0's heroes at (0, 0) and
+    // (2, 0), the second dead, and player 1's at (4, 2), on no wall; heroes walk 1 m a tick
+    // (commanded-units.md, A select holds what its player controls).
     let mut game = orders_match();
+    Players::spawn(&mut game, 2, 0);
     let TwoHeroes { first, second } = TwoHeroes::place(&mut game);
-    let to = OrdersDirective::Move {
+    let hero = *game.part::<UnitType>(first);
+    let dead = Orders::hero(&mut game, hero, (2, 0, 0), Team::new(0), 0);
+    game.insert_parts(dead, Dead);
+    let commanded = |game: &Match| -> Vec<StableId> {
+        let player = StableId::of_player(PlayerSlot::new(0));
+        game.part::<CommandedUnits>(player).get().to_vec()
+    };
+    let to = |x: i64, z: i64| OrdersDirective::Move {
         to: GroundPoint {
-            x: Num::int(0),
-            z: Num::int(5),
+            x: Num::int(x),
+            z: Num::int(z),
         },
     };
+    // No unit, units out of order and a unit twice select nothing, so their orders command none.
     for units in [vec![], vec![second, first], vec![first, first]] {
-        game.step_with(&[(PlayerSlot::new(0), &order_to(&units, to))]);
+        game.step_with(&[(PlayerSlot::new(0), &order_to(&units, to(0, 5)))]);
         assert_eq!(game.part::<Destination>(first).get(), None, "{units:?}");
+        assert_eq!(commanded(&game), [], "{units:?}");
     }
-    game.step_with(&[(PlayerSlot::new(0), &order_to(&[first, second], to))]);
+    // A select of its two, the other player's and an id no unit holds keeps its own two, the
+    // dead one among them, as a dead hero still learns and buys.
+    let unheld = game.resource_mut::<IdAllocator>().allocate();
+    let named = [first, second, dead, unheld];
+    assert!(named.is_sorted());
+    game.step_with(&[(PlayerSlot::new(0), &order_to(&named, to(0, 5)))]);
+    assert_eq!(commanded(&game), [first, dead]);
     assert_eq!(
         game.part::<Destination>(first).get(),
         Some(Vec3::from((0, 0, 5)))
     );
+    assert_eq!(game.part::<Destination>(second).get(), None);
+
+    // In one tick, an order with no select, then a select of a fourth hero and an order: the
+    // first goes to the units commanded before the select, the second to the fourth alone, and
+    // the tick ends with the fourth commanded (commanded-units.md, An order goes to the units
+    // commanded at its place).
+    let fourth = Orders::hero(&mut game, hero, (6, 0, 0), Team::new(0), 0);
+    game.step_with(&[
+        (PlayerSlot::new(0), &commanded_to(to(0, 9))),
+        (PlayerSlot::new(0), &order_to(&[fourth], to(6, 9))),
+    ]);
+    assert_eq!(
+        game.part::<Destination>(first).get(),
+        Some(Vec3::from((0, 0, 9)))
+    );
+    assert_eq!(
+        game.part::<Destination>(fourth).get(),
+        Some(Vec3::from((6, 0, 9)))
+    );
+    assert_eq!(commanded(&game), [fourth]);
+    // A select that continues one adds its units, and an order then goes to all of them; a
+    // select refused leaves them.
+    game.step_with(&[
+        (PlayerSlot::new(0), &select_alone(Selecting::More, &[first])),
+        (
+            PlayerSlot::new(0),
+            &select_alone(Selecting::New, &[first, first]),
+        ),
+        (PlayerSlot::new(0), &commanded_to(OrdersDirective::Stop)),
+    ]);
+    assert_eq!(commanded(&game), [first, fourth]);
+    assert_eq!(game.part::<Destination>(first).get(), None);
+    assert_eq!(game.part::<Destination>(fourth).get(), None);
+}
+
+#[test]
+fn one_select_and_one_order_move_a_group_of_300() {
+    // Player 0's 300 heroes on a grid of 2 m from (0, 0), 20 a row, and one move of them all to
+    // (100, 100): the payload of its select and its order holds within the LAN terms' 1,024
+    // bytes, and every hero walks (commanded-units.md, A player's orders go to its commanded units).
+    let mut game = orders_match();
+    let hero = armed(&mut game, fighter_stats(), Some(meter()));
+    let units: Vec<StableId> = (0..300)
+        .map(|at| {
+            let place = (2 * (at % 20), 0, 2 * (at / 20));
+            Orders::hero(&mut game, hero, place, Team::new(0), 0)
+        })
+        .collect();
+    let group = Order {
+        units: OrderUnits::new(&units).unwrap(),
+        directive: Directive::Orders(OrdersDirective::Move {
+            to: GroundPoint {
+                x: Num::int(100),
+                z: Num::int(100),
+            },
+        }),
+    };
+    let payload = Order::payload(&[group]);
+    // The heroes take ids 0 to 299: 128 of 1 byte and 172 of 2, 472 bytes, so the select's body,
+    // its kind and its count of 2 bytes besides, is 475 bytes, and its command 478 with its
+    // addressee and its length of 2 bytes; the move, its variant and two coordinates of 100 m of
+    // 5 bytes each, is 11, its command 14; with the count of commands, 493.
+    assert_eq!((units[0].get(), units[299].get()), (0, 299));
+    assert_eq!(payload.len(), 493);
+    game.step_with(&[(PlayerSlot::new(0), &payload)]);
+    let walking = units
+        .iter()
+        .filter(|&&unit| game.part::<Destination>(unit).get().is_some())
+        .count();
+    assert_eq!(walking, 300);
 }
 
 #[test]

@@ -1,4 +1,4 @@
-data_version 62
+data_version 63
 actions.progress 91dd90cbde2fd145
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
@@ -40,6 +40,7 @@ orders.held_order 215a21cbaf28cb1f
 orders.next_scan a53661197d67a547
 orders.next_think fd16837f474306ba
 orders.resetting 38f27f78ec03c9db
+players.commanded_units 78cbe067c7f2f6bb
 players.held_at_start 38f27f78ec03c9db
 players.held_out 38f27f78ec03c9db
 players.match 38f27f78ec03c9db

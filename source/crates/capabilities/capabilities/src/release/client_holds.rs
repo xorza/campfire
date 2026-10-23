@@ -41,7 +41,10 @@ impl ClientHolding {
                 matches!(kind.audience(), Recipients::ALL)
                     || matches!(
                         kind,
-                        DataKind::Resources | DataKind::Supply | DataKind::PlayerModifiers
+                        DataKind::Resources
+                            | DataKind::Supply
+                            | DataKind::PlayerModifiers
+                            | DataKind::Commanded
                     )
             }
         }

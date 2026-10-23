@@ -96,7 +96,7 @@ impl ModeHooks {
         inputs.clear();
         for command in world
             .resource::<TickInputs>()
-            .commands(ModeInput::CAPABILITY)
+            .commands(ModeInput::ADDRESSEE)
         {
             let start = bodies.len();
             bodies.extend_from_slice(command.body);

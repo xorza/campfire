@@ -1,11 +1,15 @@
 use bevy_ecs::entity::Entity;
+use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
-use campfire_declarations::{Declarations, EntityParts, InstallCx, KindVisitor, Module, NoSystems};
-use campfire_sim::{Breach, Capability, Either, StableId};
+use campfire_common::{EnumAll, PlayerSlot};
+use campfire_declarations::{
+    Declarations, EntityParts, InstallCx, KindVisitor, Module, ModuleSystems, SetPlace,
+};
+use campfire_sim::{Breach, Capability, Either, SimEdgeSystems, SimSystems, StableId};
 use campfire_units::{UnitEntity, UnitsWorld};
 use campfire_values::{Relations, ResourceId, Team};
 
+use crate::commanded_units::CommandedUnits;
 use crate::held_at_start::{HeldAtStart, PlayerSlotHolder, StartingPlayerSlot};
 use crate::held_out::HeldOut;
 use crate::match_entity::MatchEntity;
@@ -16,16 +20,38 @@ use crate::players_call::PlayersCall;
 use crate::players_world::PlayersWorld;
 use crate::resource_book::ResourceBook;
 use crate::resources_data::ResourcesData;
+use crate::tick_selects::TickSelects;
 
-/// The players and the match as entities: what spawns them, under every capability.
+/// The players and the match as entities: what spawns them, and the units each player's orders
+/// command, under every capability.
 #[derive(Debug)]
 pub struct Players;
+
+/// The steps of `players`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub enum PlayersSystems {
+    /// Before Inputs: the tick's selects resolve, so every capability's orders read them.
+    Select,
+    /// Once Inputs closes: each player commands the units of its last select.
+    Commit,
+}
+
+impl ModuleSystems for PlayersSystems {
+    const ALL: &'static [Self] = &Self::ALL;
+
+    fn place(self) -> SetPlace {
+        match self {
+            Self::Select => SetPlace::gap(SimEdgeSystems::Start),
+            Self::Commit => SetPlace::gap(SimEdgeSystems::After(SimSystems::Inputs)),
+        }
+    }
+}
 
 impl Module for Players {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
-    type Systems = NoSystems;
+    type Systems = PlayersSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<ResourcesData>();
@@ -38,6 +64,8 @@ impl Module for Players {
         d.component::<HeldAtStart>();
         d.component::<OutOfPlay>();
         d.component::<PlayerResources>();
+        d.component::<CommandedUnits>();
+        d.scratch::<TickSelects>();
         d.call_extension::<PlayersCall>();
         d.require::<Player, Team>();
         d.host::<Team, Either<UnitEntity, Player>>();
@@ -46,9 +74,13 @@ impl Module for Players {
         d.part::<Player, PlayerResources>(|at| {
             Some(PlayerResources::new(at.world().declared_resources()))
         });
+        d.part::<Player, CommandedUnits>(|_| Some(CommandedUnits::default()));
     }
 
-    fn install(_: &mut InstallCx<'_, Self::Systems>) {}
+    fn install(cx: &mut InstallCx<'_, Self::Systems>) {
+        cx.add(PlayersSystems::Select, TickSelects::resolve);
+        cx.add(PlayersSystems::Commit, TickSelects::commit);
+    }
 }
 
 impl Players {
