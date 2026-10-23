@@ -1,7 +1,8 @@
-//! The 3v3 after the skirmish: the heroes farm their lanes to level 6, learning a rank with each
-//! point; walk home and shop; and in the showcase use their items and cast each of their
-//! abilities once, each cast paying its cost and starting its cooldown at its rank, as the
-//! heroes' and the mode's data give them.
+//! The 3v3's farm, which ends with every hero at level 6 or past it; and the showcase, a case of
+//! its own from its setup, whose heroes spawn at level 6, learn a rank with each point, shop at
+//! their fountain and walk to the arena, then use their items and cast each of their abilities
+//! once, each cast paying its cost and starting its cooldown at its rank, as the heroes' and the
+//! mode's data give them (02-engine-core.md, A rule's case starts from its setup).
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -86,8 +87,8 @@ impl Showcase {
     /// The first tick it reads.
     const FIRST: u64 = Moba3v3::SHOP - 1;
 
-    /// Reads tick `tick` of the 3v3 of `moba`, which `world` just ran.
-    pub(crate) fn read(&mut self, world: &World, moba: &ScriptedMode<Moba3v3>, tick: u64) {
+    /// Reads tick `tick` of the 3v3, which `world` just ran.
+    pub(crate) fn read(&mut self, world: &World, tick: u64) {
         if tick < Self::FIRST {
             return;
         }
@@ -107,7 +108,7 @@ impl Showcase {
                     .into_iter()
                     .map(|(id, _)| id)
                     .collect(),
-                gold: gold(moba, world, slot),
+                gold: gold(world, slot),
             }
         });
         self.ticks.push(heroes);
@@ -134,35 +135,61 @@ fn item(moba: &ScriptedMode<Moba3v3>, name: &str) -> ItemId {
     items.named(name).unwrap()
 }
 
-/// The farm: every hero reaches level 6, Gale 8 and Cinder, Husk, Kensho and Rime 7, and learns
-/// every ability, its ultimate, the fourth, at rank 1, so its points left are its level less its ranks.
-pub(crate) fn assert_farm(showcase: &Showcase) {
-    let mut farmed = Vec::new();
+/// The farm, as `world`, the 3v3 at its end, left it: every hero reaches level 6 at least and
+/// learns every ability, its ultimate, the fourth, at rank 1 below level 11, so its points left
+/// are its level less its ranks. Which level each reaches is the golden record's.
+pub(crate) fn assert_farm(world: &World) {
+    let units = MatchUnits::of(world);
     for player in 0..Moba3v3::PLAYERS {
-        let hero = showcase.at(Moba3v3::SHOWCASE - 1, player);
-        let ranks: Vec<u8> = hero.slots[..4]
-            .iter()
-            .map(|slot| Rank::count(slot.rank))
-            .collect();
+        let hero = units.unit(units.hero(player));
+        let level = hero.get::<Level>().unwrap().get();
+        let points = hero.get::<Points>().unwrap().get();
+        let slots = hero.get::<ActionSlots>().unwrap();
+        let ranks = [0, 1, 2, 3].map(|slot| Rank::count(slots.slot(slot).unwrap().rank));
         let spent: u32 = ranks.iter().map(|&rank| u32::from(rank)).sum();
-        assert_eq!(hero.points, hero.level - spent, "player {player}");
-        farmed.push((hero.level, ranks));
+        assert!((6..11).contains(&level), "player {player}: level {level}");
+        assert!(
+            ranks.iter().all(|&rank| rank >= 1),
+            "player {player}: {ranks:?}"
+        );
+        assert_eq!(ranks[3], 1, "player {player}");
+        assert_eq!(points, level - spent, "player {player}");
     }
-    let learned = |level: u32, ranks: [u8; 4]| (level, ranks.to_vec());
-    assert_eq!(
-        farmed,
-        [
-            learned(7, [2, 2, 2, 1]),
-            learned(8, [3, 2, 2, 1]),
-            learned(7, [2, 2, 2, 1]),
-            learned(7, [2, 2, 2, 1]),
-            learned(7, [2, 2, 2, 1]),
-            learned(6, [2, 2, 1, 1]),
-        ]
-    );
 }
 
-/// The shop, in the tick after an income: each hero pays each item's cost, or a built item's
+/// The showcase from its setup, a match of its own, which plays in less than 1 s: its setup, its
+/// shop and its casts; a failed script call fails it by its log check.
+#[test]
+fn each_hero_shops_and_casts_each_of_its_abilities_from_its_setup() {
+    let moba = Moba3v3::showcase();
+    let mut fixed = moba.start();
+    let mut showcase = Showcase::default();
+    let end = Moba3v3::SHOWCASE + Moba3v3::CAST_EVERY * Moba3v3::CASTS;
+    for tick in 0..end {
+        moba.play_tick(&mut fixed);
+        showcase.read(fixed.game(), tick);
+    }
+    assert_setup(&showcase);
+    assert_shop(&moba, &showcase);
+    assert_casts(&moba, &showcase, fixed.game(), end);
+}
+
+/// The setup: each hero spawned with the experience of level 6, its six points, and learned its
+/// ultimate, then the basic of fewest ranks with each point left, the first on a tie: ranks 2, 2
+/// and 1 of its basics and 1 of its ultimate, no point left.
+fn assert_setup(showcase: &Showcase) {
+    for player in 0..Moba3v3::PLAYERS {
+        let hero = showcase.at(Moba3v3::SHOWCASE - 1, player);
+        let ranks = [0, 1, 2, 3].map(|slot| Rank::count(hero.slots[slot].rank));
+        assert_eq!(
+            (hero.level, ranks, hero.points),
+            (6, [2, 2, 1, 1], 0),
+            "player {player}"
+        );
+    }
+}
+
+/// The shop, in no tick of an income: each hero pays each item's cost, or a built item's
 /// cost less its components', and Veil sells her long sword back for 70% of its cost in the
 /// next tick; each item lands in the first empty slot, a built one in its first component's.
 pub(crate) fn assert_shop(moba: &ScriptedMode<Moba3v3>, showcase: &Showcase) {
@@ -310,8 +337,8 @@ pub(crate) fn assert_casts(
     // Cyclone, Gale's first, charges as its first cast starts and starts its cooldown as the
     // second releases it; the toggles, Dread and Chill Arrows, start as they turn on; Night Step
     // spends a charge. Kensho walks to Cinder for Flicker Strike and Cinder to Veil for
-    // Wildfire; Rime, on her way back to her post from her chase of Husk, stands within Snow
-    // Owl's reach of (0, 15) and starts it at once.
+    // Wildfire; Rime, back at her place, (0, −20), stands 20 m from (0, 0), within Snow Owl's
+    // 25 m at rank 1, and starts it at once.
     let expected = [
         (0, 2, INVENTORY, false),
         (7, 5, 0, false),

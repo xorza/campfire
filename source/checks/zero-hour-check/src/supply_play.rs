@@ -1,18 +1,17 @@
 use std::num::NonZeroU32;
 
-use campfire_harness::FixedSession;
+use campfire_harness::{FixedSession, MatchUnits};
 use campfire_mode::{OptionPicks, OptionValue, PlayerSlotPick};
 use campfire_package::ModePackages;
 use campfire_protocol::{InputRules, PlayerSlotPlan};
-use campfire_script::MatchNames;
 use campfire_values::ResourceId;
 
 use crate::failure::CheckFailure;
 use crate::match_play::{
-    BuildingDozer, CHINA, CHINA_DOZER, MatchPlay, PlannedBuilding, START_MONEY, STEP_LIMIT,
+    BuildingDozer, CHINA, CHINA_DOZER, MatchPlay, PlannedBuilding, PlayTools, START_MONEY,
+    STEP_LIMIT,
 };
 use crate::pins::{DELIVERIES, SupplyDelivery, SupplySteps};
-use crate::probe_arg::ProbeFile;
 
 /// China's command center, and the supply center's free truck.
 const CENTER: &str = "chinacommandcenter";
@@ -50,7 +49,7 @@ impl SupplyPlay {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
-        probe: Option<ProbeFile>,
+        tools: PlayTools,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<SupplySteps> {
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
@@ -66,9 +65,8 @@ impl SupplyPlay {
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&[china]);
-        let mut play = MatchPlay::new(session.start(), session.packages(), probe);
-        let names = play.game().resource::<MatchNames>();
-        let Some(money) = names.named::<ResourceId>("money") else {
+        let mut play = MatchPlay::new(session.start(), session.packages(), tools);
+        let Some(money) = MatchUnits::of(play.game()).resource("money") else {
             failures.push(CheckFailure::NoMoney);
             failures.extend(play.end().err());
             return None;
@@ -86,7 +84,7 @@ impl SupplyPlay {
 
     /// The steps in `play` of `packages`, after its start's tick, of player 1's `money`.
     fn steps(
-        play: &mut MatchPlay,
+        play: &mut MatchPlay<'_>,
         packages: &ModePackages,
         money: ResourceId,
     ) -> Result<SupplySteps, CheckFailure> {

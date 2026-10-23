@@ -22,6 +22,7 @@ use crate::defense_play::DefensePlay;
 use crate::error::CheckError;
 use crate::failure::{CheckFailure, Differs};
 use crate::golden::{Golden, Measured};
+use crate::match_play::PlayTools;
 use crate::missile_play::MissilePlay;
 use crate::pins::{
     FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
@@ -30,7 +31,6 @@ use crate::pins::{
 };
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
-use crate::probe_arg::ProbeFile;
 use crate::skirmish_play::{SkirmishPlay, SkirmishSteps};
 use crate::start_drive::StartDrive;
 use crate::supply_play::SupplyPlay;
@@ -326,35 +326,37 @@ impl ImportCheck<'_> {
         info!(%fought, "the weapons, armors and bodies");
     }
 
-    /// The packages of a match of `play`, loaded again, and its probe, resolved in them at `rate`
-    /// before the play runs; none when the run does not play it, or its probe fails, which goes to
-    /// the failures.
+    /// The packages of a match of `play`, loaded again, and its tools, its probe resolved in them
+    /// at `rate` before the play runs; none when the run does not play it, or its probe fails,
+    /// which goes to the failures.
     fn played(
         &mut self,
         play: Play,
         rate: NonZeroU32,
-    ) -> Result<Option<(ModePackages, Option<ProbeFile>)>, CheckError> {
+    ) -> Result<Option<(ModePackages, PlayTools)>, CheckError> {
         if !self.selection.runs(play) {
             return Ok(None);
         }
         let packages = ModePackages::at(self.game, Some(self.map)).map_err(CheckError::Load)?;
-        let probe = Self::probe(self.selection, play, &packages, rate);
-        let probe = probe.map_err(|failure| self.failures.push(failure)).ok();
-        Ok(probe.map(|probe| (packages, probe)))
+        let tools = Self::tools(self.selection, play, &packages, rate);
+        let tools = tools.map_err(|failure| self.failures.push(failure)).ok();
+        Ok(tools.map(|tools| (packages, tools)))
     }
 
-    /// The probe `selection` asks of `play` in a match of `packages` at `rate`, none when it asks
-    /// none, or why it fails.
-    fn probe(
+    /// The tools `selection` gives `play` in a match of `packages` at `rate`: its probe, if it
+    /// asks one, and its record; or why its probe fails.
+    fn tools(
         selection: &PlaySelection,
         play: Play,
         packages: &ModePackages,
         rate: NonZeroU32,
-    ) -> Result<Option<ProbeFile>, CheckFailure> {
+    ) -> Result<PlayTools, CheckFailure> {
         let probe = selection.probe(play);
-        probe
-            .map(|probe| probe.resolve(packages.load_books(), rate))
-            .transpose()
+        let probe = probe.map(|probe| probe.resolve(packages.load_books(), rate));
+        Ok(PlayTools {
+            probe: probe.transpose()?,
+            record: selection.record(),
+        })
     }
 
     /// The skirmish's production and fight, in a match of its own of the packages loaded again,
@@ -363,13 +365,13 @@ impl ImportCheck<'_> {
     pub(crate) fn plays(mut self) -> Result<Vec<CheckFailure>, CheckError> {
         let rate = u32::try_from(HZ).ok().and_then(NonZeroU32::new);
         let rate = rate.expect("a rate");
-        if let Some((played, probe)) = self.played(Play::Skirmish, rate)?
+        if let Some((played, tools)) = self.played(Play::Skirmish, rate)?
             && let Some(SkirmishSteps {
                 production,
                 factory,
                 fight,
                 bot,
-            }) = SkirmishPlay::run(played, rate, probe, &mut self.failures)
+            }) = SkirmishPlay::run(played, rate, tools, &mut self.failures)
         {
             let ticks = SkirmishTicks {
                 barracks: production.barracks_ticks,
@@ -420,8 +422,8 @@ impl ImportCheck<'_> {
                 "the builder bot built its base and trained its units"
             );
         }
-        if let Some((played, probe)) = self.played(Play::Supply, rate)?
-            && let Some(supply) = SupplyPlay::run(played, rate, probe, &mut self.failures)
+        if let Some((played, tools)) = self.played(Play::Supply, rate)?
+            && let Some(supply) = SupplyPlay::run(played, rate, tools, &mut self.failures)
         {
             let ticks = supply.ticks();
             let expected = SupplySteps::expected(self.pinned(|golden| golden.supply, ticks));
@@ -435,9 +437,9 @@ impl ImportCheck<'_> {
                 "player 1 built a supply center as China, and its free truck delivered its loads"
             );
         }
-        if let Some((played, probe)) = self.played(Play::Gattling, rate)?
+        if let Some((played, tools)) = self.played(Play::Gattling, rate)?
             && let Some(defense) =
-                DefensePlay::GATTLING.run(played, rate, probe, &mut self.failures)
+                DefensePlay::GATTLING.run(played, rate, tools, &mut self.failures)
         {
             let expected = self.pinned(|golden| golden.defense, defense);
             self.failures
@@ -450,8 +452,8 @@ impl ImportCheck<'_> {
                 "player 1's Gattling Cannon, ordered nothing, spun up and killed the bot's dozer"
             );
         }
-        if let Some((played, probe)) = self.played(Play::Patriot, rate)?
-            && let Some(patriot) = DefensePlay::PATRIOT.run(played, rate, probe, &mut self.failures)
+        if let Some((played, tools)) = self.played(Play::Patriot, rate)?
+            && let Some(patriot) = DefensePlay::PATRIOT.run(played, rate, tools, &mut self.failures)
         {
             let expected = self.pinned(|golden| golden.patriot, patriot);
             self.failures
@@ -464,8 +466,8 @@ impl ImportCheck<'_> {
                 "player 1's Patriot battery, ordered nothing, killed the bot's dozer"
             );
         }
-        if let Some((played, probe)) = self.played(Play::Stinger, rate)?
-            && let Some(stinger) = DefensePlay::STINGER.run(played, rate, probe, &mut self.failures)
+        if let Some((played, tools)) = self.played(Play::Stinger, rate)?
+            && let Some(stinger) = DefensePlay::STINGER.run(played, rate, tools, &mut self.failures)
         {
             let expected = self.pinned(|golden| golden.stinger, stinger);
             self.failures
@@ -478,8 +480,8 @@ impl ImportCheck<'_> {
                 "player 1's Stinger site's soldiers, ordered nothing, killed the bot's dozer"
             );
         }
-        if let Some((played, probe)) = self.played(Play::Missile, rate)?
-            && let Some(missile) = MissilePlay::run(played, rate, probe, &mut self.failures)
+        if let Some((played, tools)) = self.played(Play::Missile, rate)?
+            && let Some(missile) = MissilePlay::run(played, rate, tools, &mut self.failures)
         {
             let expected = self.pinned(|golden| golden.missile, missile);
             self.failures
@@ -494,8 +496,8 @@ impl ImportCheck<'_> {
                 "player 1's Tank Hunter, ordered nothing, killed the bot's dozer with its missiles"
             );
         }
-        if let Some((played, probe)) = self.played(Play::Base, rate)?
-            && let Some(base) = BasePlay::run(played, rate, probe, &mut self.failures)
+        if let Some((played, tools)) = self.played(Play::Base, rate)?
+            && let Some(base) = BasePlay::run(played, rate, tools, &mut self.failures)
         {
             let expected = self.pinned(|golden| golden.base, base);
             self.failures
@@ -509,8 +511,8 @@ impl ImportCheck<'_> {
                 "two bots started with their bases, and fought"
             );
         }
-        if let Some((played, probe)) = self.played(Play::Attack, rate)?
-            && let Some(attack) = AttackPlay::run(played, rate, probe, &mut self.failures)
+        if let Some((played, tools)) = self.played(Play::Attack, rate)?
+            && let Some(attack) = AttackPlay::run(played, rate, tools, &mut self.failures)
         {
             let expected = self.pinned(|golden| golden.attack, attack);
             self.failures
@@ -526,10 +528,10 @@ impl ImportCheck<'_> {
         }
         let selection = self.selection;
         if selection.runs(Play::Drive)
-            && let Some(probe) = Self::probe(selection, Play::Drive, &self.packages, rate)
+            && let Some(tools) = Self::tools(selection, Play::Drive, &self.packages, rate)
                 .map_err(|failure| self.failures.push(failure))
                 .ok()
-            && let Some(drive) = StartDrive::run(self.packages, rate, probe, &mut self.failures)
+            && let Some(drive) = StartDrive::run(self.packages, rate, tools, &mut self.failures)
         {
             let golden = self.golden.as_ref();
             let expected = golden.map_or(drive.ticks, |golden| golden.drive_ticks);

@@ -9,9 +9,10 @@ use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
 use campfire_capabilities::{Directive, Order};
 use campfire_combat::{Combat, DamageCause};
-use campfire_common::{PlayerSlot, StateHash, Tick};
+use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick};
 use campfire_harness::{
-    ArchetypeWatch, FixedMatch, FixedSession, MatchProbe, MatchRecord, MatchUnits, ProbeUnits,
+    ArchetypeWatch, FixedMatch, FixedSession, MatchProbe, MatchRecord, MatchUnits, ProbeFile,
+    ProbeRefusal, ProbeSpec, ProbeUnits,
 };
 use campfire_math::Num;
 use campfire_navigation::PathWalker;
@@ -19,15 +20,16 @@ use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
 use campfire_production::Production;
 use campfire_progression::{Experience, Points};
-use campfire_runner::{ScriptCallFailed, SessionWorld};
-use campfire_script::ScriptFailures;
+use campfire_runner::ScriptCallFailed;
 use campfire_sim::EntityIndex;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{SimWorld, StableId};
+use campfire_sim::{MatchRate, SimWorld, StableId};
 use campfire_stats::Level;
+use campfire_store::InputFile;
+use campfire_store::internals::TestDir;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{Dead, Deaths, StatusTags, Units};
-use campfire_units::{GroundPoint, Life, MoveStep, Owner};
+use campfire_units::{GroundPoint, Life, MoveStep, Owner, UnitTypeBook};
 use campfire_values::{Rank, Team, TrackId, UnitType};
 
 /// The walker's learning and progress as a tick left them: the ranks of its basic abilities and
@@ -108,14 +110,14 @@ fn two_equal_waves_trade_to_an_end_before_the_next_wave() {
     let mut fixed = quiet_lane();
     let mut tick = 0;
     while unowned(fixed.game(), 0, true).is_empty() {
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
         tick += 1;
     }
     let spawned = tick;
     let mut gone = [None; 2];
     while gone.iter().any(Option::is_none) {
         assert!(tick - spawned < WAVE_TICKS, "the fight ends");
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
         tick += 1;
         for (team, gone) in (0..).zip(&mut gone) {
             if gone.is_none() && unowned(fixed.game(), team, true).is_empty() {
@@ -134,7 +136,7 @@ fn a_wave_with_no_wave_to_meet_strikes_the_tower_and_falls_to_it() {
     let mut fixed = quiet_lane();
     let mut tick = 0;
     while unowned(fixed.game(), 0, true).is_empty() {
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
         tick += 1;
     }
     let spawned = tick;
@@ -144,7 +146,7 @@ fn a_wave_with_no_wave_to_meet_strikes_the_tower_and_falls_to_it() {
     let west = unowned(fixed.game(), 0, false)[0];
     while !unowned(fixed.game(), 1, true).is_empty() {
         assert!(tick - spawned < WAVE_TICKS, "the tower kills the wave");
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
         tick += 1;
     }
     let full = Num::from_int(1500).unwrap();
@@ -215,7 +217,7 @@ mod scripted_match {
                 }
                 _ => {}
             }
-            fixed.game_mut().run_tick_alone();
+            fixed.step();
             record.tick(fixed.game_mut());
             watch.tick(fixed.game(), tick);
             if tick == 0 {
@@ -228,12 +230,6 @@ mod scripted_match {
                     .collect();
             }
             let world = fixed.game();
-            let failures = world.resource::<ScriptFailures>();
-            assert!(
-                failures.get().is_empty(),
-                "tick {tick}: {:?}",
-                failures.get()
-            );
             for death in world.resource::<Deaths>() {
                 if east.contains(&death.fallen.id) {
                     assert_eq!(death.killer, Some(walker), "tick {tick}");
@@ -309,7 +305,7 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
     );
     let mut fixed = session.start();
     for _ in 0..10 {
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
     }
     // The towers, the map's first units, think every ⌈250 ms × 30 / 1000⌉ = 8 ticks, each in the
     // ticks whose remainder by 8 is its stable id: in ticks 0 to 9, 0 and 8 for the west's, id 0,
@@ -340,7 +336,7 @@ fn hashes(packages: ModePackages) -> Vec<StateHash> {
     let mut fixed = session.start();
     (0..300)
         .map(|_| {
-            fixed.game_mut().run_tick_alone();
+            fixed.step();
             fixed.game().state_hash()
         })
         .collect()
@@ -352,7 +348,7 @@ fn a_kill_gives_its_killer_the_victims_experience_and_an_allys_kill_gives_none()
     // creep's 60; it fells one of its own team, an ally's kill: it takes none.
     let session = FixedSession::new(TestMode::Lane.packages(), 2);
     let mut fixed = session.start();
-    fixed.game_mut().run_tick_alone();
+    fixed.step();
     let walker = MatchUnits::of(fixed.game()).hero(0);
     let creep = Units::type_named(fixed.game(), "creep").unwrap();
     let team =
@@ -375,7 +371,7 @@ fn a_kill_gives_its_killer_the_victims_experience_and_an_allys_kill_gives_none()
             100_000,
             DamageCause::Effect,
         );
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
         Progress::of(fixed, walker).xp
     };
     let enemy = creep_of(&fixed, false);
@@ -399,7 +395,7 @@ fn a_victim_the_experience_filter_leaves_out_gives_none() {
         }
         let session = FixedSession::new(tree.load().unwrap(), 2);
         let mut fixed = session.start();
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
         let walker = MatchUnits::of(fixed.game()).hero(0);
         let creep = Units::type_named(fixed.game(), "creep").unwrap();
         let ours = *MatchUnits::of(fixed.game())
@@ -415,7 +411,7 @@ fn a_victim_the_experience_filter_leaves_out_gives_none() {
             .unwrap();
         let site = StatusTags::from([Production::CONSTRUCTING]);
         fixed.game_mut().insert_parts(enemy, site);
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
         Combat::damage(
             fixed.game_mut(),
             Some(walker),
@@ -423,7 +419,7 @@ fn a_victim_the_experience_filter_leaves_out_gives_none() {
             100_000,
             DamageCause::Effect,
         );
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
         Progress::of(&fixed, walker).xp
     };
     assert_eq!(xp_of_a_site_kill(true), Num::ZERO);
@@ -452,13 +448,16 @@ fn a_probe_prints_the_units_it_selects_at_its_period() {
     let hero = MatchUnits::of(world).hero(0);
     let tower = *world.get::<StableId>(unowned(world, 0, false)[0]).unwrap();
     let every = NonZeroU64::new(30).unwrap();
-    let mut probe = MatchProbe::new(every, ProbeUnits::Ids(vec![tower, hero]));
+    let probe = MatchProbe::new(every, ProbeUnits::Ids(vec![tower, hero]));
+    let dir = TestDir::new();
+    let file = dir.path("lane.probe");
+    fixed.probe(ProbeFile { probe, file });
     for _ in 0..31 {
         fixed.step();
-        probe.record(fixed.game());
     }
+    let probe = fixed.take_probe().unwrap();
     assert_eq!(
-        probe.text(),
+        probe.probe.text(),
         "\
 tick 0, 0 s
 player slot 0: 0 idle, 1 walking (0 stuck), 0 working, 0 fighting, 0 acting
@@ -474,6 +473,41 @@ id  type         slot  team   x     z  doing  target  destination  goal  stuck  
 
 "
     );
+
+    // The match writes the probe it holds as it drops: its one tick, 31, of a period of 1.
+    let every = NonZeroU64::new(1).unwrap();
+    let file = dir.path("dropped.probe");
+    let units = ProbeUnits::Ids(vec![hero]);
+    let probe = MatchProbe::new(every, units.clone());
+    fixed.probe(ProbeFile {
+        probe,
+        file: file.clone(),
+    });
+    fixed.step();
+    let mut alone = MatchProbe::new(every, units);
+    alone.record(fixed.game());
+    let written = alone.text().to_owned();
+    assert!(
+        written.starts_with("tick 31, 1 s and 1 ticks\n"),
+        "{written}"
+    );
+
+    // A spec refuses a period of no whole count of the lane's 30 ticks a second, 50 ms being 1.5
+    // ticks, and a type the lane has not.
+    let types = fixed.game().get_resource::<UnitTypeBook>();
+    let hz = fixed.game().resource::<MatchRate>().hz();
+    let refused = |text: &str| {
+        text.parse::<ProbeSpec>()
+            .unwrap()
+            .probe(types, hz)
+            .unwrap_err()
+    };
+    assert_eq!(
+        refused("50:all"),
+        ProbeRefusal::Period(NonZeroU64::new(50).unwrap())
+    );
+    let nowhere = DeclaredName::new("nowhere").unwrap();
+    assert_eq!(refused("100:type=nowhere"), ProbeRefusal::NoType(nowhere));
 
     // Each selection, of a probe of every tick: the lane holds two towers, 0 and 1, the walker,
     // 2, and the first wave's creeps, 3 and 4 of team 0 and 5 and 6 of team 1.
@@ -492,4 +526,7 @@ id  type         slot  team   x     z  doing  target  destination  goal  stuck  
         probe.record(world);
         assert_eq!(probed(&probe), ids, "{units:?}");
     }
+    drop(fixed);
+    let read = InputFile::read_text(&file, 1 << 16).unwrap();
+    assert_eq!(read, written);
 }

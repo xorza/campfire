@@ -12,9 +12,8 @@ use campfire_sim::Position;
 use campfire_units::{Body, Destination, GroundPoint, WallBook};
 
 use crate::failure::CheckFailure;
-use crate::match_play::{CENTER, DOZER, MatchPlay, america};
+use crate::match_play::{CENTER, DOZER, MatchPlay, PlayTools};
 use crate::pins::HZ;
-use crate::probe_arg::ProbeFile;
 
 /// The most ticks the check waits for the dozer's walk to end, past which it never arrives.
 const DRIVE_LIMIT: u64 = HZ * 60 * 10;
@@ -38,13 +37,15 @@ impl StartDrive {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
-        probe: Option<ProbeFile>,
+        tools: PlayTools,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<Self> {
         let session = FixedSession::new(packages, 1)
             .rate(rate)
-            .player_slot_picked(&america(1));
-        let mut play = MatchPlay::new(session.start(), session.packages(), probe);
+            // America, whose start the play reads, in place of a faction drawn (09-zero-hour.md,
+            // No pick is Random).
+            .each_picked("faction", "america");
+        let mut play = MatchPlay::new(session.start(), session.packages(), tools);
         let start = |name| {
             let of = MarkerOf {
                 tag: "start",
@@ -72,7 +73,7 @@ impl StartDrive {
     /// The start and the drive in `play`, from `start` to `goal`, among the walls of the match on
     /// the dozer's layer: a failure that ends it, and each other one in `failures`.
     fn play(
-        play: &mut MatchPlay,
+        play: &mut MatchPlay<'_>,
         [start, goal]: [Vec3; 2],
         failures: &mut Vec<CheckFailure>,
     ) -> Result<Self, CheckFailure> {

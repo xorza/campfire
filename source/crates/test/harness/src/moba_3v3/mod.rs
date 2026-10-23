@@ -13,7 +13,7 @@ use campfire_orders::OrdersDirective;
 use campfire_progression::ProgressionDirective;
 use campfire_protocol::{InputRules, PlayerSlotPlan, ServerInput};
 use campfire_sim::{Position, StableId};
-use campfire_test_packages::TestMode;
+use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::internals::Spawn;
 use campfire_units::{Dead, GroundPoint, Life};
 use campfire_values::{ItemId, Names, Team};
@@ -98,11 +98,16 @@ const FARM: u64 = 3200;
 const FARM_EVERY: usize = 40;
 const LEARN: u64 = 3220;
 const LEARN_EVERY: usize = 200;
-/// The tick the heroes walk home in, to shop in `Moba3v3::SHOP`: after the learn of tick 13,020,
-/// the first after the last hero reaches level 6, in tick 12,888, as the showcase needs each
-/// hero's ultimate, which the 3v3's farm check asserts. Husk walks the west lane home from its
-/// post and reaches its fountain's reach within the 800 ticks before the shop.
-const RECALL: u64 = 13_200;
+
+/// The experience that reaches level 6, the ultimate's first: the fifth of the 3v3's
+/// `[tracks.level]`, whose first reaches level 2; and the gold the showcase's heroes start with,
+/// past what any of them buys.
+const SHOWCASE_XP: u32 = 2400;
+const SHOWCASE_GOLD: u32 = 2000;
+/// The ticks the showcase's heroes learn in, one rank each a tick, its ultimate first, from the
+/// tick after their setup's timer gave them their experience: a learn of the basic of fewest
+/// ranks reads the ranks as the tick before left them.
+const SHOWCASE_LEARN: u64 = 21;
 
 /// The orders of the 3v3's scripted players after the pick, to the farm. Players 0 to 2 hold
 /// Cinder, Gale and Husk, north; 3 to 5 Kensho, Rime and Veil, south. At 20 ticks a second the
@@ -180,36 +185,55 @@ const fn cast(slot: u8, aim: CastAim) -> Moba3v3 {
 
 impl Moba3v3 {
     pub const PLAYERS: u32 = 6;
-    /// The tick the heroes shop in; the tick the showcase's first cast is sent in, each later
-    /// one `CAST_EVERY` ticks after the one before; and how many casts it sends.
-    pub const SHOP: u64 = 14_000;
-    pub const SHOWCASE: u64 = 14_300;
+    /// The ticks the match plays: the skirmish, then the farm to its end, in tick 13,199, after
+    /// the learn of tick 13,020, the first after the last hero reaches level 6, in tick 12,888.
+    pub const FARM_END: u64 = 13_200;
+    /// In the showcase's match, whose heroes spawn in tick 19, at the end of its pick of 1 s: the
+    /// tick they shop in, at their fountain, behind their spawn; the tick the first cast is sent
+    /// in, as they stand in the arena, each later one `CAST_EVERY` ticks after the one before;
+    /// and how many casts it sends.
+    pub const SHOP: u64 = 27;
+    pub const SHOWCASE: u64 = 327;
     pub const CAST_EVERY: u64 = 40;
     pub const CASTS: u64 = 37;
 
-    /// The script: the skirmish; the farm, in which the heroes learn each rank their points
-    /// allow; the walk home, the shop, and the showcase, in which each hero uses its items and
-    /// casts each of its abilities, one cast every `CAST_EVERY` ticks. `item` names an
-    /// item.
-    fn script(item: &impl Fn(&str) -> ItemId) -> Vec<Scripted<Self>> {
+    /// The script: the skirmish; then the farm, in which the heroes learn each rank their points
+    /// allow.
+    fn script() -> Vec<Scripted<Self>> {
         let mut script = SKIRMISH.to_vec();
-        for stamp in (FARM..RECALL).step_by(FARM_EVERY) {
+        for stamp in (FARM..Self::FARM_END).step_by(FARM_EVERY) {
             script.extend(
                 (0..)
                     .zip(POSTS)
                     .map(|(slot, post)| Scripted::new(stamp, slot, farm_at(post))),
             );
         }
-        for stamp in (LEARN..Self::SHOWCASE).step_by(LEARN_EVERY) {
+        for stamp in (LEARN..Self::FARM_END).step_by(LEARN_EVERY) {
             for slot in 0..Self::PLAYERS {
                 let ultimate = Self::Learn { slot: ULTIMATE };
                 script.push(Scripted::new(stamp, slot, ultimate));
                 script.push(Scripted::new(stamp, slot, Self::LearnBasic));
             }
         }
+        script
+    }
+
+    /// The showcase's script, from its heroes at level 6 at their spawn: each learns its
+    /// ultimate, then a rank of its basic of fewest ranks a tick, five of them; shops; walks to
+    /// its place in the arena; and uses its items and casts each of its abilities, one cast every
+    /// `CAST_EVERY` ticks. `item` names an item.
+    fn showcase_script(item: &impl Fn(&str) -> ItemId) -> Vec<Scripted<Self>> {
+        let mut script = Vec::new();
         for slot in 0..Self::PLAYERS {
-            let z = if slot < 3 { -60 } else { 60 };
-            script.push(Scripted::new(RECALL, slot, Self::Move { x: 0, z }));
+            let ultimate = Self::Learn { slot: ULTIMATE };
+            script.push(Scripted::new(SHOWCASE_LEARN, slot, ultimate));
+            for basic in 1..=5 {
+                script.push(Scripted::new(
+                    SHOWCASE_LEARN + basic,
+                    slot,
+                    Self::LearnBasic,
+                ));
+            }
         }
         let buys = [
             (2, "cloth_armor"),
@@ -234,9 +258,9 @@ impl Moba3v3 {
         for (slot, post) in (0..).zip(ARENA) {
             script.push(Scripted::new(Self::SHOP + 2, slot, walk_to(post)));
         }
-        let showcase = Self::showcase(item);
-        assert_eq!(showcase.len() as u64, Self::CASTS);
-        for (at, (slot, plan)) in (0..).zip(showcase) {
+        let casts = Self::casts(item);
+        assert_eq!(casts.len() as u64, Self::CASTS);
+        for (at, (slot, plan)) in (0..).zip(casts) {
             script.push(Scripted::new(
                 Self::SHOWCASE + Self::CAST_EVERY * at,
                 slot,
@@ -251,7 +275,7 @@ impl Moba3v3 {
     /// Rime and Veil. Veil and Gale cast all theirs first, before the others' blows could fell
     /// them; Rime strikes Husk with Chill Arrows on, then walks back to her place, which
     /// ends her attack.
-    fn showcase(item: &impl Fn(&str) -> ItemId) -> Vec<(u32, Self)> {
+    fn casts(item: &impl Fn(&str) -> ItemId) -> Vec<(u32, Self)> {
         let hero = |slot| CastAim::Hero { slot };
         let at = |slot| CastAim::HeroPoint { slot };
         let using = |name, aim| Self::Use {
@@ -290,7 +314,7 @@ impl Moba3v3 {
             (2, cast(SECOND, CastAim::Nothing)),
             (4, cast(FIRST, CastAim::Nothing)),
             (2, cast(FIRST, at(5))),
-            (4, cast(THIRD, CastAim::Point { x: 0, z: 15 })),
+            (4, cast(THIRD, CastAim::Point { x: 0, z: 0 })),
             (3, cast(THIRD, CastAim::Nothing)),
             (2, cast(ULTIMATE, CastAim::Nothing)),
             (0, cast(ULTIMATE, hero(3))),
@@ -307,10 +331,46 @@ impl Moba3v3 {
     /// The MOBA 3v3 with its slots opened as `plan` says.
     pub fn planned(plan: impl IntoIterator<Item = PlayerSlotPlan>) -> ScriptedMode<Self> {
         let packages = TestMode::Moba3v3.packages();
+        let session = FixedSession::planned(packages, InputRules::ROOMY, plan).rate(TICK_HZ);
+        ScriptedMode::new(session, Self::script())
+    }
+
+    /// The showcase's match, a case of its own from its setup: the 3v3 whose pick lasts 1 s and
+    /// whose waves come after the showcase, whose script gives each hero, by a timer of its
+    /// setup in the tick after the heroes spawn, the experience of level 6 and the gold of its
+    /// shop, played by `showcase_script` (02-engine-core.md, A rule's case starts from its setup).
+    pub fn showcase() -> ScriptedMode<Self> {
+        let picked = "        ctx.every(\"income\", ctx.params.income_ms);\n";
+        let timed = format!("{picked}        ctx.after(\"setup\", 50);\n");
+        let income = "    } else if name == \"income\" {\n";
+        let setup = format!(
+            "    }} else if name == \"setup\" {{\n        \
+             for hero in ctx.all_avatars() {{\n            \
+             ctx.add_xp(hero, \"level\", {SHOWCASE_XP});\n            \
+             ctx.add_resource(hero.owner, \"gold\", {SHOWCASE_GOLD});\n        }}\n{income}"
+        );
+        let timers = "[\"income\", \"pick_end\", \"setup\", \"wave\"]";
+        let mut tree = PackageTree::of(TestMode::Moba3v3);
+        tree.edit_all([
+            ("modes/3v3/data/mode.toml", Edit::Set("timers", timers)),
+            (
+                "modes/3v3/data/mode.toml",
+                Edit::Set("params.pick_ms", "1000"),
+            ),
+            (
+                "modes/3v3/data/mode.toml",
+                Edit::Set("params.first_wave_ms", "600000"),
+            ),
+            ("modes/3v3/scripts/mode.rhai", Edit::Replace(picked, &timed)),
+            ("modes/3v3/scripts/mode.rhai", Edit::Replace(income, &setup)),
+        ]);
+        let packages = tree.packages();
         let items = packages.mode().content.items();
         let items: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
         let item = |name: &str| items.named(name).expect("an item of the 3v3");
-        let script = Self::script(&item);
+        let script = Self::showcase_script(&item);
+        let players = usize::try_from(Self::PLAYERS).expect("6 fits usize");
+        let plan = iter::repeat_n(PlayerSlotPlan::Player, players);
         let session = FixedSession::planned(packages, InputRules::ROOMY, plan).rate(TICK_HZ);
         ScriptedMode::new(session, script)
     }

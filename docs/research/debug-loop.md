@@ -36,3 +36,30 @@ Measured on 23 October 2026, the harness's golden records with a sample of their
 - **Size.** The 3v3 match's samples hold 53 samples in 4,007 lines and 213,545 bytes, beside its golden record of 620,090; the lane match's 989 bytes and the proving match's 1,530.
 - **Cost.** The 3v3 match's 53 samples took 2.1 ms in all; its test ran 15.9 to 22.8 s while another process held four cores.
 - **A moved line.** With one unit's life changed in the lane match's pinned samples, its test failed naming the sample at tick 0 and that line, pinned and run.
+
+## The session again
+
+Measured on 23 October 2026: each fix of the session taken out in turn from the tree of the debug loop, and one run of the Zero Hour check.
+
+- **Without the move out of a static body.** The run stopped at the assert: `the walker StableId(148) stays in a static body at Vec3 { x: 1036, y: 0, z: -800 }`.
+- **Without the bots' search by an attack's own test.** The base play's bot of player slot 0 gave 52 attacks that no unit took, and the attack play's 57, with 1,183 drops of no weapon; the attack play did not end in its 20 minutes.
+- **Without the attack that goes on as the army falls.** The attack play ended at tick 34,740, not 17,790; its probe every 60 s showed 7 to 15 of China's units idle and up to 10 walkers stuck, but its counts do not tell units idle at home from those away, so the cause needed its rows' places.
+- **The showcase from its setup.** The 3v3's shop and showcase, from heroes given level 6 and gold by the mode's script, played 1,806 ticks in 0.25 s; Snow Owl, aimed at (0, 15) as in the long match, started late, as its hero stood 35 m away, past its 25 m, and now aims at (0, 0).
+
+## The harness and the check
+
+Read on 23 October 2026, the code at `3d40814ba` and the working tree of the debug loop.
+
+- **Two bot drivers.** The server's `BotDriver` (`host/src/server/bot_driver.rs`) plays `TickBots` into its session through a sink that logs each unsent order, failed think and dropped payload as an event, and drops the think's operation count; the Zero Hour check's `MatchPlay` plays them through a sink of its own, which collects the payloads, serves them after the play, counts the unsent orders and keeps the most operations.
+- **Failed calls already fail a match.** `SessionWorld::run_tick_alone` logs each failed script call of the tick as `ScriptCallFailed`, a warning, and `LogCheck` fails a test on each warning no test takes; five test files assert besides, after each tick, that `ScriptFailures` is empty.
+- **Ticks around `FixedMatch`.** 33 calls in the harness's tests and the check run a tick by `game_mut().run_tick_alone()`, not by `FixedMatch::step`.
+- **Repeated queries.** The units of a type a player slot owns: in the check's `MatchPlay::owned`, `skirmish.rs`'s `owned` and `one`, and the lane test's `unowned`; a player's amount of a resource: `moba.rs`'s `gold`, `skirmish.rs`'s `money` and the check's `MatchPlay::money`; picks of a faction for each slot from text: the check's `america` and `skirmish.rs`'s `bases`.
+- **The Zero Hour plays record nothing.** Unlike the harness's scripted matches, the check's plays keep no `MatchRecord`: no copy check of each tick, no golden and no replay of their log.
+
+## The bot plays' record
+
+Measured on 23 October 2026, the Zero Hour check's base play and attack play, each run twice, with a `MatchRecord` of each tick and the replay of its log, and without.
+
+- **Without a record.** The base play took 17.9 and 18.0 s, the attack play 4.1 and 4.2 s.
+- **With a record.** The base play took 70.2 and 71.4 s, the attack play 18.7 and 18.8 s; every tick's copy checked and each log replayed to the same hashes.
+- **With a record of no golden.** With a `ReplayRecord`, the copy check and the replay alone, the base play took 71.0 s and the attack play 18.6 s: the copy check is the cost.

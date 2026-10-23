@@ -9,10 +9,10 @@ use campfire_projectiles::{Flight, Projectile};
 
 use crate::failure::CheckFailure;
 use crate::match_play::{
-    self, AgainstAmerica, BuildingDozer, CHINA_DOZER, MatchPlay, PlannedBuilding, STEP_LIMIT,
+    self, AgainstAmerica, BuildingDozer, CHINA_DOZER, MatchPlay, PlannedBuilding, PlayTools,
+    STEP_LIMIT,
 };
 use crate::pins::MissileTicks;
-use crate::probe_arg::ProbeFile;
 
 /// China's barracks, 216 m along −z from `Player_1_Start`, where the skirmish play places its
 /// own, at China's `PlacementViewAngle` of −45°.
@@ -45,17 +45,20 @@ impl MissilePlay {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
-        probe: Option<ProbeFile>,
+        tools: PlayTools,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<MissileTicks> {
         AgainstAmerica::CHINA
-            .play(packages, rate, probe, Self::steps)
+            .play(packages, rate, tools, Self::steps)
             .map_err(|failure| failures.push(failure))
             .ok()
     }
 
     /// The steps in `play` of `packages`, after its start's tick.
-    fn steps(play: &mut MatchPlay, packages: &ModePackages) -> Result<MissileTicks, CheckFailure> {
+    fn steps(
+        play: &mut MatchPlay<'_>,
+        packages: &ModePackages,
+    ) -> Result<MissileTicks, CheckFailure> {
         play.step();
         let [dozer] = play.owned(CHINA_DOZER, 0)?[..] else {
             return Err(CheckFailure::ProductionStart);

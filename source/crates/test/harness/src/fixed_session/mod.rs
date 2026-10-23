@@ -2,7 +2,7 @@ use std::iter;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use campfire_common::PlayerSlot;
+use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_log::internals::LogCheck;
 use campfire_mode::{HostPicks, OptionPicks, PlayerSlotPick, PlayerSlotPicks};
 use campfire_package::ModePackages;
@@ -122,6 +122,22 @@ impl FixedSession {
             .expect("picks of the player slots' choices");
         self.terms.player_slot_picks = picks.places().to_vec();
         self
+    }
+
+    /// The session whose every player slot picks `value` of its choice `choice`, as its host
+    /// picks them.
+    #[must_use]
+    pub fn each_picked(self, choice: &str, value: &str) -> Self {
+        let choice = DeclaredName::new(choice).expect("a choice's name");
+        let value = DeclaredName::new(value).expect("a value's name");
+        let picks: Vec<PlayerSlotPick> = (0..self.player_slots())
+            .map(|player_slot| PlayerSlotPick {
+                player_slot: PlayerSlot::new(player_slot),
+                choice: choice.clone(),
+                value: value.clone(),
+            })
+            .collect();
+        self.player_slot_picked(&picks)
     }
 
     pub const fn packages(&self) -> &ModePackages {

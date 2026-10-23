@@ -15,7 +15,7 @@ fn a_mode_runs_the_script_its_rules_package_holds() {
     // The rules package's script ends the match as it starts, its first team the winner.
     let mut target = MatchBuild::test_target(&packages, 1);
     let mut fixed = FixedSession::new(TestMode::Ruled.packages(), 1).start();
-    fixed.game_mut().run_tick_alone();
+    fixed.step();
     assert_eq!(fixed.end().outcome, Outcome::Won { team: 0 });
     // A match of no capability restores, its checks reading no book of one.
     let mut snapshot = Vec::new();
@@ -26,7 +26,7 @@ fn a_mode_runs_the_script_its_rules_package_holds() {
     // The same match with its result replaced by an aborted one: a host may not abort a match
     // the mode ended.
     let mut fixed = FixedSession::new(TestMode::Ruled.packages(), 1).start();
-    fixed.game_mut().run_tick_alone();
+    fixed.step();
     let game = fixed.game_mut();
     let aborted = SessionResult {
         outcome: Outcome::Aborted,

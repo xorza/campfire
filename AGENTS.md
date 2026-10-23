@@ -74,14 +74,14 @@ Every check, test and bench runs through `cargo drive`, from `source/` ([The dri
 | `cargo drive check` | `cargo fmt`, then the lint of every target with every feature, to the first failure: after each change |
 | `cargo drive test [nextest arguments]` | each workspace package's `package.index` and the script API's reference written again, then the tests, each time; with arguments, those nextest selects |
 | `cargo drive bench [criterion arguments]` | the benches, only when the task asks for them |
-| `cargo drive run lan`, `cargo drive run zero-hour [out] [--play <play>] [--probe <play>:<ms>:<units>]` | the LAN check and the Zero Hour check, on request; with `--play`, the check runs only the plays it names, and a `--probe` writes a table of a play's units every `ms` to `target/zero-hour/<play>.probe` |
+| `cargo drive run lan`, `cargo drive run zero-hour [out] [--play <play>] [--probe <play>:<ms>:<units>] [--record]` | the LAN check and the Zero Hour check, on request; with `--play`, the check runs only the plays it names, a `--probe` writes a table of a play's units every `ms` to `target/zero-hour/<play>.probe`, and `--record` checks each tick's copy and replays each play's log, at four times the time |
 | `cargo drive run vocabulary [out]` | the repository's layout and the names its Rust files declare, in `target/vocabulary.txt` unless `out` names another file, on request |
 | `cargo drive run index` | each workspace package's `package.index`, after a change to a package |
 | `cargo drive run reference` | the script API's reference, after a change to the API |
 | `cargo drive gate` | `fmt`, the lints, the build that ships, the Windows lint on Linux, the tests, the LAN check and the build of every bench, to the first failure; CI runs `gate --ci`, which checks the format and runs every step |
 | `cargo drive package` | the release build of the shipped binaries, stripped, each with its debug info beside it in `target/package` |
 
-A step runs again only when one of its inputs changed since it passed, and the tests only for the crates a change reaches. `CAMPFIRE_BLESS=1` before `cargo drive test` writes the tests' pinned files again, `CAMPFIRE_BLESS=1 cargo drive test <test>` those of one test; before `cargo drive run zero-hour`, the check's golden file.
+A step runs again only when one of its inputs changed since it passed, and the tests only for the crates a change reaches. `CAMPFIRE_BLESS=1` before `cargo drive test` writes the tests' pinned files again, `CAMPFIRE_BLESS=1 cargo drive test <test>` those of one test; before `cargo drive run zero-hour`, the check's golden file. `CAMPFIRE_PROBE=<period_ms>:<units>` before `cargo drive test <test>` writes a table of the units of each match the test plays, at that period, to `target/probe/<test>-<session>.probe`, the units `all`, `player=<n>` from 1, `team=<n>`, `type=<name>` or `ids=<id>,<id>`; name the test, as a run of no test skips one whose inputs did not change.
 
 Each step prints one line; a failed step names its log, `target/drive/log/<step>.log`, which holds no passing test. A run ends on one verdict line: `ok`, or `FAIL` with the failed steps and the first error, and `target/drive/last-<command>.txt`, which holds all the run printed; above it, each failed step shows its first lines again. So `| tail -1` is enough: on a failure, read the file it names, rather than run the command again or grep the logs.
 
@@ -93,5 +93,5 @@ Each step prints one line; a failed step names its log, `target/drive/log/<step>
 - **No data in strings.** A fixed set is an enum, a value with rules a checked newtype, an error an enum of cases, each made where its text enters.
 - **All file I/O goes through `store`**, in production code, tests and checks alike: no `std::fs`, no `Path::exists`, no `tempfile`. A read names its bound, and no code asks whether a path exists: it reads or lists, and takes `Missing`.
 - **Game-bound code lives in a module named after its game**, `zero_hour`, in the crate whose interface it serves.
-- **Tests run on nextest.** A new rule of a mode joins its scripted match, in a module named `scripted_match`, the one test exempt from the bound of 1 s.
+- **Tests run on nextest.** A new rule of a mode joins its scripted match, in a module named `scripted_match`, the one test exempt from the bound of 1 s, or, when it needs a later state, a case of its own from its setup ([A rule's case starts from its setup](docs/design/02-engine-core.md#testing-and-diagnostics)).
 - **Benches run only when the user's task asks for them.** A case's id is `<kind>/<group>/<case>`, its code a `bench.rs` beside what it measures, behind `internals`; `cargo drive bench --exact <id>` runs one, `--list` lists them.

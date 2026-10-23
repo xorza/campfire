@@ -9,26 +9,23 @@ use campfire_bots::{
 use campfire_capabilities::{Books, Directive, Location, Match, NamedRefs, Order};
 use campfire_common::{DeclaredName, PlayerSlot, Tick};
 use campfire_declarations::MatchFacts;
-use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
+use campfire_harness::{FixedMatch, FixedSession, MatchUnits, ProbeFile, ReplayRecord};
 use campfire_math::{Num, Vec3};
 use campfire_mode::internals::MarkerOf;
 use campfire_mode::{MatchEnd, Mode, OptionPicks, OptionValue, PlayerSlotPick};
 use campfire_orders::{DroppedOrders, OrdersDirective};
 use campfire_package::ModePackages;
-use campfire_players::PlayersWorld;
 use campfire_production::Site;
 use campfire_protocol::{InputRules, PlayerSlotPlan, ServerInput};
 use campfire_runner::SessionWorld;
 use campfire_sim::MatchRate;
 use campfire_sim::{Position, StableId};
-use campfire_store::{DurableDir, DurableFile};
 use campfire_units::{BuildTarget, GroundPoint, Life, MapPoint, MoveStep, Units, UnitsWorld};
 use campfire_values::{ResourceId, UnitType};
 use tracing::info;
 
 use crate::failure::CheckFailure;
 use crate::pins::{BotDrops, BotMatchEnd, HZ};
-use crate::probe_arg::ProbeFile;
 
 /// America's command center, the building a skirmish starts a player with.
 pub(crate) const CENTER: &str = "americacommandcenter";
@@ -47,10 +44,6 @@ pub(crate) const CHINA: &str = "0:faction=china";
 
 /// The most ticks a play waits for a step, past which it never ends.
 pub(crate) const STEP_LIMIT: u64 = HZ * 60 * 5;
-
-/// The faction every player slot of a play picks, America, whose start the plays read, in place of
-/// a faction drawn (09-zero-hour.md, No pick is Random).
-const AMERICA: &str = "faction=america";
 
 /// A building player 1's dozer builds: its unit type, its build action, and its place,
 /// `[x, z, angle]`.
@@ -74,7 +67,7 @@ pub(crate) struct BuildingDozer {
 /// resolves its orders' names in; and what the bots gave in the tick, with the first think that
 /// failed. A part of the imported mode a play reads and does not find is a failure of the import.
 #[derive(Debug)]
-pub(crate) struct MatchPlay {
+pub(crate) struct MatchPlay<'p> {
     fixed: FixedMatch,
     bots: TickBots,
     homes: Vec<BotHome>,
@@ -82,7 +75,25 @@ pub(crate) struct MatchPlay {
     think_ops: u64,
     books: Arc<Books>,
     due: DuePayloads,
-    probe: Option<ProbeFile>,
+    /// The record of each tick, when the play keeps one: its copy checked, and its log replayed
+    /// to the same hashes as it ends, so a determinism bug names its tick (09-zero-hour.md, A
+    /// play keeps a record on request).
+    record: Option<ReplayRecord<'p>>,
+}
+
+/// What a play watches its match with: the probe it writes, if any, and whether it keeps a
+/// record.
+#[derive(Debug)]
+pub(crate) struct PlayTools {
+    pub(crate) probe: Option<ProbeFile>,
+    pub(crate) record: PlayRecord,
+}
+
+/// Whether a play keeps a record of its match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlayRecord {
+    None,
+    Kept,
 }
 
 /// The home of a play's bot, and the farthest any of its units stood from there.
@@ -129,16 +140,6 @@ impl BotSink for DuePayloads {
     }
 }
 
-/// America for each of `player_slots` player slots, as a host picks it.
-pub(crate) fn america(player_slots: u32) -> Vec<PlayerSlotPick> {
-    (0..player_slots)
-        .map(|player_slot| {
-            let pick = format!("{player_slot}:{AMERICA}");
-            pick.parse().expect("a player slot's pick of America reads")
-        })
-        .collect()
-}
-
 /// A play's match against America's bot: player 1's pick of its faction.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AgainstAmerica {
@@ -161,20 +162,20 @@ impl AgainstAmerica {
         self,
         packages: ModePackages,
         rate: NonZeroU32,
-        probe: Option<ProbeFile>,
-        steps: impl FnOnce(&mut MatchPlay, &ModePackages) -> Result<T, CheckFailure>,
+        tools: PlayTools,
+        steps: impl FnOnce(&mut MatchPlay<'_>, &ModePackages) -> Result<T, CheckFailure>,
     ) -> Result<T, CheckFailure> {
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
         let picks = OptionPicks::named(&packages.data().options, &[start_money])
             .map_err(CheckFailure::Options)?;
         let plan = [PlayerSlotPlan::Player, PlayerSlotPlan::Bot];
         let player: PlayerSlotPick = self.player.parse().expect("the play's pick");
-        let bot = america(2).pop().expect("the bot's pick of America");
+        let bot: PlayerSlotPick = "1:faction=america".parse().expect("the bot's pick");
         let session = FixedSession::planned(packages, InputRules::ROOMY, plan)
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&[player, bot]);
-        let mut play = MatchPlay::new(session.start(), session.packages(), probe);
+        let mut play = MatchPlay::new(session.start(), session.packages(), tools);
         let played = steps(&mut play, session.packages());
         let ended = play.end();
         let played = played?;
@@ -183,18 +184,22 @@ impl AgainstAmerica {
     }
 }
 
-impl MatchPlay {
-    /// `fixed`, a match of `packages`, before its first tick, that `probe` probes, if any.
-    pub(crate) fn new(
-        mut fixed: FixedMatch,
-        packages: &ModePackages,
-        probe: Option<ProbeFile>,
-    ) -> Self {
+impl<'p> MatchPlay<'p> {
+    /// `fixed`, a match of `packages`, before its first tick, played with `tools`.
+    pub(crate) fn new(mut fixed: FixedMatch, packages: &'p ModePackages, tools: PlayTools) -> Self {
         let world = fixed.game_mut();
         let pools = world.resource::<MatchFacts>().role.pools();
         let pool = pools.expect("a check's match runs scripts").limits.think;
         let bots = TickBots::new(world, pool);
         let books = Arc::clone(packages.load_books());
+        let PlayTools { probe, record } = tools;
+        if let Some(probe) = probe {
+            fixed.probe(probe);
+        }
+        let record = match record {
+            PlayRecord::None => None,
+            PlayRecord::Kept => Some(ReplayRecord::of(fixed.game_mut(), packages)),
+        };
         Self {
             fixed,
             bots,
@@ -202,7 +207,7 @@ impl MatchPlay {
             think_ops: 0,
             books,
             due: DuePayloads::default(),
-            probe,
+            record,
         }
     }
 
@@ -358,9 +363,9 @@ impl MatchPlay {
                 .serve(input)
                 .expect("a bot's input within the session's limits");
         }
-        self.fixed.game_mut().run_tick_alone();
-        if let Some(ProbeFile { probe, .. }) = &mut self.probe {
-            probe.record(self.fixed.game());
+        self.fixed.step();
+        if let Some(record) = &mut self.record {
+            record.tick(self.fixed.game_mut());
         }
         // A tick that checked no orders, as a match that ended runs none, leaves an earlier
         // tick's drops.
@@ -408,16 +413,10 @@ impl MatchPlay {
     ) -> Result<Vec<StableId>, CheckFailure> {
         let world = self.fixed.game();
         let typed: UnitType = Units::type_named(world, name).ok_or(CheckFailure::NoType(name))?;
-        let owned = MatchUnits::of(world)
-            .all()
-            .filter(|(_, unit)| {
-                unit.get::<UnitType>() == Some(&typed)
-                    && MatchUnits::owned_by(unit, player_slot)
-                    && unit.get::<Life>().is_none_or(|life| !life.is_empty())
-            })
-            .map(|(id, _)| id)
-            .collect();
-        Ok(owned)
+        let owned = MatchUnits::of(world).owned(typed, player_slot);
+        let living =
+            owned.filter(|(_, unit)| unit.get::<Life>().is_none_or(|life| !life.is_empty()));
+        Ok(living.map(|(id, _)| id).collect())
     }
 
     /// Orders `unit` to `directive` in the tick it runs next, then runs ticks until `done`; the
@@ -470,10 +469,7 @@ impl MatchPlay {
 
     /// Player 1's amount of `money`.
     pub(crate) fn money(&self, money: ResourceId) -> i64 {
-        self.game()
-            .player_resources(PlayerSlot::new(0))
-            .expect("player 1 holds resources")
-            .amount(money)
+        MatchUnits::of(self.game()).amount(0, money)
     }
 
     /// Ends the match: it takes the log's events while it lives, as its harness checks them, so
@@ -481,17 +477,17 @@ impl MatchPlay {
     /// bot that failed, or why the file did not write, as a failure.
     pub(crate) fn end(mut self) -> Result<(), CheckFailure> {
         self.fixed.end();
+        if let Some(record) = &self.record {
+            record.assert_segments_replay(self.fixed.game().session().log(), &[]);
+        }
         if let Some(error) = self.due.failed {
             return Err(CheckFailure::BotThink(error));
         }
-        let Some(ProbeFile { probe, file }) = self.probe else {
+        let Some(probe) = self.fixed.take_probe() else {
             return Ok(());
         };
-        if let Some(dir) = file.parent() {
-            DurableDir::create_all(dir).map_err(CheckFailure::ProbeDir)?;
-        }
-        DurableFile::write(&file, probe.text().as_bytes()).map_err(CheckFailure::ProbeWrite)?;
-        info!(file = %file.display(), "the play's probe");
+        probe.write().map_err(CheckFailure::ProbeWrite)?;
+        info!(file = %probe.file.display(), "the play's probe");
         Ok(())
     }
 }

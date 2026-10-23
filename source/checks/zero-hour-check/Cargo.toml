@@ -33,7 +33,6 @@ campfire-production.workspace = true
 campfire-projectiles.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true
-campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-units = { workspace = true, features = ["internals"] }

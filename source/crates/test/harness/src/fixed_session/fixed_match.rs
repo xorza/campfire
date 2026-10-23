@@ -1,3 +1,5 @@
+use std::thread;
+
 use campfire_capabilities::Match;
 use campfire_common::ErrorReport;
 use campfire_common::{PlayerSlot, Tick};
@@ -8,6 +10,7 @@ use campfire_protocol::{
 };
 
 use crate::fixed_session::FixedSession;
+use crate::match_probe::ProbeFile;
 use campfire_runner::{ServerInputRefusal, SessionWorld};
 
 /// A match of a `FixedSession`, and the input chain of each player slot's player, so a test sends
@@ -20,9 +23,16 @@ pub struct FixedMatch {
     signers: Vec<Signer>,
     terms: SessionTerms,
     applied: Vec<Applied>,
+    probe: PendingProbe,
     /// Last, so it drops after the match and sees what the match logs as it drops.
     log: LogCheck,
 }
+
+/// The probe of a fixed match, which writes its file as it drops, a failing test's among them, so
+/// a test shows its units by `CAMPFIRE_PROBE` with no edit (02-engine-core.md, One probe of a
+/// match).
+#[derive(Debug)]
+struct PendingProbe(Option<ProbeFile>);
 
 /// A match and the check of what it logs, the check last, so it drops after the match and sees
 /// what the match logs as it drops.
@@ -33,26 +43,43 @@ pub struct CheckedMatch {
 }
 
 impl FixedMatch {
-    pub(crate) const fn new(
+    pub(crate) fn new(
         game: Match,
         chains: Vec<InputChain>,
         signers: Vec<Signer>,
         terms: SessionTerms,
         log: LogCheck,
     ) -> Self {
+        let probe = ProbeFile::of_env(&game, terms.session_id());
         Self {
             game,
             chains,
             signers,
             terms,
             applied: Vec::new(),
+            probe: PendingProbe(probe),
             log,
         }
     }
 
-    /// Runs the match's next tick on the inputs it holds, as its session does.
+    /// Runs the match's next tick on the inputs it holds, as its session does, and records it in
+    /// its probe, if any.
     pub fn step(&mut self) {
         self.game.run_tick_alone();
+        if let Some(probe) = &mut self.probe.0 {
+            probe.probe.record(&self.game);
+        }
+    }
+
+    /// Probes the match by `probe` from its next tick, in place of the probe `CAMPFIRE_PROBE`
+    /// asked, whose file is written then.
+    pub fn probe(&mut self, probe: ProbeFile) {
+        self.probe = PendingProbe(Some(probe));
+    }
+
+    /// Takes the match's probe, which it then writes no more, for a caller that writes it.
+    pub const fn take_probe(&mut self) -> Option<ProbeFile> {
+        self.probe.0.take()
     }
 
     /// Sends player `player_slot`'s input of `payload` stamped for `stamp`, in a packet of its own;
@@ -168,5 +195,20 @@ impl FixedMatch {
     /// The events at Warn and Error that the match logged and no test took yet.
     pub const fn log(&self) -> &LogCheck {
         &self.log
+    }
+}
+
+impl Drop for PendingProbe {
+    /// Writes the probe's file; a file that does not write fails the test, unless it fails
+    /// already, as a panic in a panic aborts the test with no message.
+    fn drop(&mut self) {
+        let Some(probe) = self.0.take() else {
+            return;
+        };
+        if let Err(error) = probe.write()
+            && !thread::panicking()
+        {
+            panic!("{}", ErrorReport::of(&error));
+        }
     }
 }

@@ -9,7 +9,6 @@ use campfire_protocol::{LeaveReason, PlayerSlotPlan, ServerInput};
 
 use crate::fixed_session::fixed_match::FixedMatch;
 use crate::match_units::MatchUnits;
-use campfire_runner::SessionWorld;
 
 /// The tick rate of the scripted matches.
 pub(crate) const TICK_HZ: NonZeroU32 = NonZeroU32::new(20).unwrap();
@@ -116,7 +115,7 @@ impl<P: Plan> Scripted<P> {
                 fixed.send(scripted.slot, Tick::new(tick), &Order::payload(&[order]));
             }
         }
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
     }
 }
 

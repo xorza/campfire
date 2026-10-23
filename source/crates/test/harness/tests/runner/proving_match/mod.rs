@@ -17,7 +17,7 @@ use campfire_production::TrainQueue;
 use campfire_progression::Experience;
 use campfire_projectiles::Projectile;
 use campfire_runner::{MatchBuild, Session, SessionWorld};
-use campfire_script::{ScriptFailures, StateValue};
+use campfire_script::StateValue;
 use campfire_sim::internals::{SimWorldInternals, StageClock};
 use campfire_sim::{EntityIndex, MatchRate, Position, SimWorld, StableId};
 use campfire_stats::{Level, Modifiers};
@@ -87,18 +87,12 @@ fn hero(world: &World, player_slot: u32) -> (StableId, EntityRef<'_>) {
     (id, world.entity_ref_of(id).unwrap())
 }
 
-/// Asserts that tick `tick` of `fixed`, a match of `set`, failed no script call; that each part a
-/// unit holds is state or derived, as a list declares it: a part none declares would be held by
+/// Asserts of tick `tick` of `fixed`, a match of `set`, whose failed script calls its log check
+/// fails on, that each part a unit holds is state or derived, as a list declares it: a part none declares would be held by
 /// no hash, snapshot or client; that each resource is declared, its scratch clear; and that each
 /// entity is of a kind.
 fn assert_sound(fixed: &FixedMatch, tick: u64, set: CapabilitySet) {
     let world = fixed.game();
-    let failures = world.resource::<ScriptFailures>();
-    assert!(
-        failures.get().is_empty(),
-        "tick {tick}: {:?}",
-        failures.get()
-    );
     let unlisted = Release::unlisted_components(set, world);
     assert!(unlisted.is_empty(), "tick {tick}: {unlisted:?}");
     let unlisted = Release::unlisted_resources(set, world, &[TypeId::of::<Session>()]);

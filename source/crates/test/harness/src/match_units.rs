@@ -1,13 +1,17 @@
 use bevy_ecs::world::{EntityRef, World};
+use campfire_common::PlayerSlot;
 use campfire_declarations::ById;
 use campfire_items::Shop;
 use campfire_math::Vec3;
+use campfire_players::PlayersWorld;
 use campfire_progression::Experience;
+use campfire_script::MatchNames;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 use campfire_units::{Owner, SpawnPoint};
-use campfire_values::{Team, UnitType};
+use campfire_values::{ResourceId, Team, UnitType};
 
-/// The units of a running match, as a scripted player or a test names them by role.
+/// The units of a running match, as a scripted player or a test names them by role, and its
+/// players' resources.
 #[derive(Debug, Clone, Copy)]
 pub struct MatchUnits<'a> {
     world: &'a World,
@@ -81,6 +85,31 @@ impl<'a> MatchUnits<'a> {
             })
             .map(|(id, _)| id)
             .expect("a team with a shop")
+    }
+
+    /// The units of `unit_type` player `player_slot` owns, living or not, by stable id.
+    pub fn owned(
+        self,
+        unit_type: UnitType,
+        player_slot: u32,
+    ) -> impl Iterator<Item = (StableId, EntityRef<'a>)> {
+        self.all().filter(move |(_, unit)| {
+            unit.get::<UnitType>() == Some(&unit_type) && Self::owned_by(unit, player_slot)
+        })
+    }
+
+    /// The resource the match names `name`.
+    pub fn resource(self, name: &str) -> Option<ResourceId> {
+        self.world
+            .resource::<MatchNames>()
+            .named::<ResourceId>(name)
+    }
+
+    /// Player `player_slot`'s amount of `resource`.
+    pub fn amount(self, player_slot: u32, resource: ResourceId) -> i64 {
+        let held = self.world.player_resources(PlayerSlot::new(player_slot));
+        held.expect("a player of the match holds resources")
+            .amount(resource)
     }
 
     /// Whether player `player_slot` owns `unit`.

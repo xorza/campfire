@@ -6,9 +6,8 @@ use campfire_package::ModePackages;
 use campfire_protocol::{InputRules, PlayerSlotPlan};
 
 use crate::failure::CheckFailure;
-use crate::match_play::{MatchPlay, START_MONEY};
+use crate::match_play::{MatchPlay, PlayTools, START_MONEY};
 use crate::pins::{BotMatchEnd, HZ};
-use crate::probe_arg::ProbeFile;
 
 /// The most ticks the play's match runs.
 const ATTACK_LIMIT: u64 = HZ * 60 * 20;
@@ -27,7 +26,7 @@ impl AttackPlay {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
-        probe: Option<ProbeFile>,
+        tools: PlayTools,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<BotMatchEnd> {
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
@@ -45,7 +44,7 @@ impl AttackPlay {
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&factions);
-        let mut play = MatchPlay::new(session.start(), session.packages(), probe);
+        let mut play = MatchPlay::new(session.start(), session.packages(), tools);
         let fought = Self::fight(&mut play, session.packages());
         let ended = play.end();
         match fought.and_then(|fought| ended.map(|()| fought)) {
@@ -59,7 +58,10 @@ impl AttackPlay {
 
     /// The attacker in player slot 0 and the builder in player slot 1 of `play`, of `packages`,
     /// each from its start, until their match ends or its limit passes.
-    fn fight(play: &mut MatchPlay, packages: &ModePackages) -> Result<BotMatchEnd, CheckFailure> {
+    fn fight(
+        play: &mut MatchPlay<'_>,
+        packages: &ModePackages,
+    ) -> Result<BotMatchEnd, CheckFailure> {
         for (player_slot, bot) in [(0, "attacker"), (1, "builder")] {
             let home = play.start(player_slot + 1)?;
             play.drive_mode_bot(packages, player_slot, bot, home)?;

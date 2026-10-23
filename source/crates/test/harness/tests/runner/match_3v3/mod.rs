@@ -2,11 +2,12 @@
 //! failed call that replays to the same state hashes: a skirmish of first blood, mend, haste and
 //! a tower that turns on a diver; a camp whose wolf answers, resets past its leash and falls; the
 //! lanes, where heroes farm the first waves; heroes that learn ranks with their points; then the
-//! farm to level 6, the shop, and a showcase in which each hero uses its items and casts each of
-//! its abilities. Each rule's result is computed from the mode's numbers. The test pins the
+//! farm to level 6. Each rule's result is computed from the mode's numbers. The test pins the
 //! content's units and values, so a change to the content changes it, by design. It plays a
 //! match long enough for every hero to learn its ultimate, and takes several seconds. The match
-//! checkpoints as a server does, and each segment replays from its own checkpoint.
+//! checkpoints as a server does, and each segment replays from its own checkpoint. The shop and
+//! the showcase, in which each hero uses its items and casts each of its abilities, are a case
+//! of their own, from their setup (02-engine-core.md, A rule's case starts from its setup).
 
 mod showcase;
 
@@ -26,28 +27,26 @@ use campfire_mode::internals::ModeWorldInternals;
 use campfire_navigation::PathWalker;
 use campfire_progression::Points;
 use campfire_runner::SessionWorld;
-use campfire_script::{ScriptFailures, ScriptHost, StateValue};
+use campfire_script::{ScriptHost, StateValue};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, MatchRate, Position, SimWorld, StableId};
 use campfire_stats::{Level, Stats};
 use campfire_units::{Dead, Deaths, Life, Owner};
 use campfire_values::{PackageIndex, Rank, Scalar, Team, UnitType};
 
-use crate::runner::match_3v3::showcase::Showcase;
 use crate::runner::moba::{gold, level_xp};
 
 /// The ticks of the skirmish: the pick, the skirmish, the camp, and the first 400 ticks of the
 /// first waves' fight, which begins in tick 2803.
 const SKIRMISH: u64 = 3200;
-/// The ticks the match plays: the skirmish, the farm, the shop, and the showcase's casts, with
-/// the window of its last.
-const TICKS: u64 = Moba3v3::SHOWCASE + Moba3v3::CAST_EVERY * Moba3v3::CASTS;
-/// The ticks between two checkpoints, which the match takes before each multiple of it: 15 in
-/// its 15,780 ticks.
+/// The ticks the match plays: the skirmish and the farm.
+const TICKS: u64 = Moba3v3::FARM_END;
+/// The ticks between two checkpoints, which the match takes before each multiple of it: 13 in
+/// its 13,200 ticks.
 const CHECKPOINT_EVERY: u64 = 1000;
 /// The segments the match's seed chain holds: one before its first checkpoint and one after
 /// each.
-const SEGMENTS: NonZeroU32 = NonZeroU32::new(16).unwrap();
+const SEGMENTS: NonZeroU32 = NonZeroU32::new(14).unwrap();
 
 #[derive(Debug)]
 struct Run<'p> {
@@ -60,7 +59,6 @@ struct Run<'p> {
     at_first_wave: Vec<Unit>,
     deaths: Vec<Death>,
     seen: Seen,
-    showcase: Showcase,
 }
 
 /// A unit that died: in tick `tick`, felled by `killer` with `assisters`, and the tick it comes
@@ -186,7 +184,6 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
     let (mut at_pick_end, mut at_first_wave) = (Vec::new(), Vec::new());
     let mut deaths = Vec::new();
     let mut seen = Seen::default();
-    let mut showcase = Showcase::default();
     let mut watch = ArchetypeWatch::of(fixed.game_mut());
     let mut snapshots = Vec::new();
     for tick in 0..TICKS {
@@ -199,12 +196,6 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
         record.tick(fixed.game_mut());
         watch.tick(fixed.game(), tick);
         let game = fixed.game();
-        let failures = game.resource::<ScriptFailures>();
-        assert!(
-            failures.get().is_empty(),
-            "tick {tick}: {:?}",
-            failures.get()
-        );
         deaths.extend(game.resource::<Deaths>().iter().map(|death| {
             Death {
                 tick,
@@ -224,7 +215,6 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
         if (pick_end..SKIRMISH).contains(&tick) {
             seen.read(game, moba, tick);
         }
-        showcase.read(game, moba, tick);
     }
     watch.assert_kept();
     fixed.game_mut().session_mut().reveal_seed();
@@ -236,7 +226,6 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
         at_first_wave,
         deaths,
         seen,
-        showcase,
     }
 }
 
@@ -292,7 +281,7 @@ impl Seen {
         }
         if tick == SKIRMISH - 1 {
             self.gold = (0..Moba3v3::PLAYERS)
-                .map(|slot| gold(moba, world, slot))
+                .map(|slot| gold(world, slot))
                 .collect();
         }
     }
@@ -322,12 +311,9 @@ mod scripted_match {
         assert_camp(&run);
         assert_gold(&run, melee);
         assert_learning(&run);
-        showcase::assert_farm(&run.showcase);
-        showcase::assert_shop(&moba, &run.showcase);
-        let world = run.fixed.game();
-        showcase::assert_casts(&moba, &run.showcase, world, TICKS);
+        showcase::assert_farm(run.fixed.game());
         let log = run.fixed.game().session().log();
-        assert_eq!(log.segment(), 15);
+        assert_eq!(log.segment(), 13);
         run.record.assert_segments_replay(log, &run.snapshots);
     }
 }

@@ -12,17 +12,15 @@ use campfire_players::OrderUnits;
 use campfire_production::{Site, TrainQueue};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputRules, PlayerSlotPlan};
-use campfire_script::MatchNames;
 use campfire_units::UnitsWorld;
 use campfire_values::ResourceId;
 
 use crate::failure::CheckFailure;
 use crate::match_play::{
-    self, BuildingDozer, CENTER, DOZER, MatchPlay, PlannedBuilding, START_MONEY, STEP_LIMIT,
-    america,
+    self, BuildingDozer, CENTER, DOZER, MatchPlay, PlannedBuilding, PlayTools, START_MONEY,
+    STEP_LIMIT,
 };
 use crate::pins::{BOT_TYPES, BotBase, CRUSADERS, FactorySteps, FightSteps, ProductionSteps};
-use crate::probe_arg::ProbeFile;
 
 /// The unit types the play makes beside the start's.
 const BARRACKS: &str = "americabarracks";
@@ -103,7 +101,7 @@ impl SkirmishPlay {
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
-        probe: Option<ProbeFile>,
+        tools: PlayTools,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<SkirmishSteps> {
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
@@ -126,10 +124,11 @@ impl SkirmishPlay {
         let session = FixedSession::planned(packages, InputRules::ROOMY, plan)
             .rate(rate)
             .picked(picks.places())
-            .player_slot_picked(&america(2));
-        let mut playing = MatchPlay::new(session.start(), session.packages(), probe);
-        let names = playing.game().resource::<MatchNames>();
-        let Some(money) = names.named::<ResourceId>("money") else {
+            // America, whose start the play reads, in place of a faction drawn (09-zero-hour.md,
+            // No pick is Random).
+            .each_picked("faction", "america");
+        let mut playing = MatchPlay::new(session.start(), session.packages(), tools);
+        let Some(money) = MatchUnits::of(playing.game()).resource("money") else {
             failures.push(CheckFailure::NoMoney);
             failures.extend(playing.end().err());
             return None;
@@ -153,7 +152,11 @@ impl SkirmishPlay {
 impl Play<'_> {
     /// The production steps in `play`, after its start's tick, then the factory's, then the
     /// fight.
-    fn steps(&self, play: &mut MatchPlay, bot: BotScript) -> Result<SkirmishSteps, CheckFailure> {
+    fn steps(
+        &self,
+        play: &mut MatchPlay<'_>,
+        bot: BotScript,
+    ) -> Result<SkirmishSteps, CheckFailure> {
         play.step();
         let home = play.center(1)?;
         play.drive_bot(1, bot, home);
@@ -215,7 +218,7 @@ impl Play<'_> {
     /// ticks of each and the money left.
     fn factory(
         &self,
-        play: &mut MatchPlay,
+        play: &mut MatchPlay<'_>,
         builder: BuildingDozer,
     ) -> Result<FactorySteps, CheckFailure> {
         let mut ticks = [0; FACTORY_CHAIN.len()];
@@ -230,7 +233,7 @@ impl Play<'_> {
 
     /// Player 1's war factory in `play` trains `CRUSADERS`, one order a tick while its queue has
     /// room; the ticks the trains took.
-    fn train_crusaders(&self, play: &mut MatchPlay) -> Result<u64, CheckFailure> {
+    fn train_crusaders(&self, play: &mut MatchPlay<'_>) -> Result<u64, CheckFailure> {
         let [factory] = play.owned(FACTORY, 0)?[..] else {
             return Err(CheckFailure::ProductionStart);
         };
@@ -259,7 +262,7 @@ impl Play<'_> {
 
     /// How many living units of each of `BOT_TYPES` the bot owns in `play`, whole, as a site
     /// counts for no building.
-    fn bot_built(play: &MatchPlay) -> Result<[usize; BOT_TYPES.len()], CheckFailure> {
+    fn bot_built(play: &MatchPlay<'_>) -> Result<[usize; BOT_TYPES.len()], CheckFailure> {
         let units = MatchUnits::of(play.game());
         let mut built = [0; BOT_TYPES.len()];
         for (count, name) in built.iter_mut().zip(BOT_TYPES) {
@@ -276,7 +279,11 @@ impl Play<'_> {
     /// the bot's command center; the ticks from the attack's order to the first shell's launch,
     /// to the first damage to the center, and to its death; the money left, and how the match
     /// ended by then, if it did, as the bot's other buildings count for its victory.
-    fn attack(&self, play: &mut MatchPlay, train_ticks: u64) -> Result<FightSteps, CheckFailure> {
+    fn attack(
+        &self,
+        play: &mut MatchPlay<'_>,
+        train_ticks: u64,
+    ) -> Result<FightSteps, CheckFailure> {
         let [target] = play.owned(CENTER, 1)?[..] else {
             return Err(CheckFailure::FightStart);
         };

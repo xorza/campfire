@@ -1,11 +1,9 @@
-use std::num::NonZeroU64;
-
 use campfire_bots::{BotScriptError, OrderScriptError, ThinkError};
-use campfire_common::DeclaredName;
+use campfire_common::{DeclaredName, ErrorReport};
+use campfire_harness::{ProbeRefusal, ProbeWriteError};
 use campfire_math::{Num, Vec3};
 use campfire_mode::PickError;
 use campfire_orders::OrdersDirective;
-use campfire_store::{DurableDirError, DurableError, PathError};
 use derive_more::Display;
 
 use crate::pins::{
@@ -183,18 +181,12 @@ pub(crate) enum CheckFailure {
     /// The attack play's match stood otherwise than the pinned at its end or its limit.
     #[display("the attacker and the builder ended as {_0}")]
     Attack(Box<Differs<BotMatchEnd>>),
-    /// A probe names a unit type the imported mode has not.
-    #[display("the probe names no unit type {_0}")]
-    ProbeType(DeclaredName),
-    /// A probe's period is no whole count of ticks.
-    #[display("the probe's period of {_0} ms is no whole count of ticks")]
-    ProbePeriod(NonZeroU64),
-    /// A probe's directory does not make.
-    #[display("the probe's directory {_0} does not make")]
-    ProbeDir(PathError<DurableDirError>),
-    /// A probe's file does not write.
-    #[display("the probe's file {_0} does not write")]
-    ProbeWrite(PathError<DurableError>),
+    /// A play's probe that its match refuses.
+    #[display("{_0}")]
+    Probe(ProbeRefusal),
+    /// A play's probe whose file does not write, with why.
+    #[display("{}", ErrorReport::of(_0))]
+    ProbeWrite(ProbeWriteError),
     /// A run that blesses failed before it measured every value the file pins, so it writes none.
     #[display("the run measured not every value it pins, so it writes no golden file")]
     Unmeasured,

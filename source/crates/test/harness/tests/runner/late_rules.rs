@@ -53,7 +53,7 @@ fn the_3v3s_late_rules_follow_each_fall() {
             .map(|respawn| respawn.at),
         Some(Tick::new(6001))
     );
-    assert_eq!(gold(&moba, world, 3), 50);
+    assert_eq!(gold(world, 3), 50);
 
     // Husk fells the warden in tick 1201: its 150 gold to player 2; each north hero takes the
     // blessing, no south hero does; it comes back 360 s, 7200 ticks, after the end of that
@@ -66,7 +66,7 @@ fn the_3v3s_late_rules_follow_each_fall() {
         world.try_part::<Respawn>(warden).map(|respawn| respawn.at),
         Some(Tick::new(8402))
     );
-    assert_eq!(gold(&moba, world, 2), 150);
+    assert_eq!(gold(world, 2), 150);
     let blessing = Stats::modifier(world, PackageIndex::MODE, "warden_blessing").unwrap();
     let blessed: Vec<bool> = (0..Moba3v3::PLAYERS)
         .map(|slot| {
@@ -90,10 +90,7 @@ fn the_3v3s_late_rules_follow_each_fall() {
         .filter(|&&unit| world.part::<Life>(unit).current() == Num::int(1500))
         .collect();
     assert_eq!(supers, [&groups[0][6]]);
-    assert_eq!(
-        (gold(&moba, world, 2), gold(&moba, world, 3)),
-        (96 + 150, 96 + 50)
-    );
+    assert_eq!((gold(world, 2), gold(world, 3)), (96 + 150, 96 + 50));
 
     // In tick 2400 the south's west tower at (−22, 46) and player 4's hero strike Husk; in tick
     // 2401 Kensho kills him, as the pass deals a tick's damage by its source's stable id, which
@@ -109,7 +106,7 @@ fn the_3v3s_late_rules_follow_each_fall() {
     let world = fixed.game();
     assert!(world.try_part::<Dead>(husk).is_some());
     assert_eq!(
-        [2, 3, 4].map(|slot| gold(&moba, world, slot)),
+        [2, 3, 4].map(|slot| gold(world, slot)),
         [96 + 150, 96 + 50 + 300 + 100, 96 + 150]
     );
 

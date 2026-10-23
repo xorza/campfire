@@ -9,10 +9,11 @@ use campfire_units::{Dead, Owner, PoolId, UnitTypeBook};
 use campfire_values::{NameId as _, ResourceId, Team, UnitType};
 
 /// The units of a golden match as text in samples at a period, one line a unit by stable id, then
-/// each player's resources: the parts of units and players the behaviour digest hashes, as a
-/// tick's deaths show as units dead or gone, and its failed calls in the digest alone. A moved
-/// golden names the first sample and the lines that differ, and a bless's diff shows them, as Factorio's heavy mode writes its states as text a
-/// diff tool compares (debug-loop.md, A golden says what moved).
+/// each player's resources: the parts of units and players the behaviour digest hashes, as a tick's
+/// deaths show as units dead or gone, and its failed calls in the digest alone. A moved golden
+/// names the first sample and the lines that differ, and a bless's diff shows them, as Factorio's
+/// heavy mode writes its states as text a diff tool compares
+/// (02-engine-core.md, A golden says what moved).
 #[derive(Debug, Default)]
 pub(crate) struct GoldenUnits {
     text: String,

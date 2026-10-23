@@ -1,11 +1,6 @@
-use std::num::NonZeroU64;
-
-use campfire_common::{DeclaredName, PlayerSlot, StableNumber};
-use campfire_sim::StableId;
-use campfire_values::Team;
+use campfire_harness::ProbeSpec;
 
 use super::*;
-use crate::probe_arg::ProbeUnitsArg;
 
 #[test]
 fn the_packages_go_where_the_line_says_or_to_the_home_directory() {
@@ -24,43 +19,22 @@ fn the_packages_go_where_the_line_says_or_to_the_home_directory() {
 
 #[test]
 fn a_probe_reads_its_play_period_and_units_and_each_names_a_play_it_plays_once() {
-    let every = |ms| NonZeroU64::new(ms).unwrap();
-    let id = |id| StableId::from(StableNumber::new(id));
-    for (text, units) in [
-        ("attack:1000:all", ProbeUnitsArg::All),
-        // Players count from 1, as the check names them: player 2 is slot 1.
-        (
-            "attack:1000:slot=2",
-            ProbeUnitsArg::Owner(PlayerSlot::new(1)),
-        ),
-        ("attack:1000:team=3", ProbeUnitsArg::Team(Team::new(3))),
-        (
-            "attack:1000:type=chinavehicledozer",
-            ProbeUnitsArg::Type(DeclaredName::new("chinavehicledozer").unwrap()),
-        ),
-        (
-            "attack:1000:ids=9,2",
-            ProbeUnitsArg::Ids(vec![id(9), id(2)]),
-        ),
-    ] {
-        let probe: ProbeArg = text.parse().unwrap();
-        let expected = ProbeArg {
+    // The play, then the probe as the harness reads it (`ProbeSpec`, whose own test reads its
+    // units).
+    let probe: ProbeArg = "attack:1000:player=2".parse().unwrap();
+    let spec: ProbeSpec = "1000:player=2".parse().unwrap();
+    assert_eq!(
+        probe,
+        ProbeArg {
             play: Play::Attack,
-            every_ms: every(1000),
-            units,
-        };
-        assert_eq!(probe, expected, "{text}");
-    }
+            spec
+        }
+    );
     for text in [
-        "attack:1000",
+        "attack",
         "nowhere:1000:all",
-        "attack:0:all",
-        "attack:soon:all",
+        "attack:1000",
         "attack:1000:some",
-        "attack:1000:slot=0",
-        "attack:1000:team=x",
-        "attack:1000:ids=1,,2",
-        "attack:1000:type=",
     ] {
         assert!(text.parse::<ProbeArg>().is_err(), "{text}");
     }
@@ -72,6 +46,9 @@ fn a_probe_reads_its_play_period_and_units_and_each_names_a_play_it_plays_once()
         .selection()
         .unwrap();
     assert!(all.runs(Play::Base) && all.runs(Play::Attack));
+    assert_eq!(all.record(), PlayRecord::None);
+    let recorded = line(&["check", "--record"]).selection().unwrap();
+    assert_eq!(recorded.record(), PlayRecord::Kept);
     let probe = all.probe(Play::Attack).unwrap();
     assert_eq!(probe.file, PathBuf::from("target/zero-hour/attack.probe"));
     assert_eq!(all.probe(Play::Base), None);

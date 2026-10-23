@@ -14,30 +14,19 @@ use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{Dead, Life, Owner, StatusTags, Units, UnitsWorld};
-use campfire_values::{Names, ResourceId, UnitType};
+use campfire_values::UnitType;
 
 /// The units of the type `name` that player `player_slot` owns, by stable id.
 fn owned(world: &World, name: &str, player_slot: u32) -> Vec<StableId> {
     let typed: UnitType = Units::type_named(world, name).unwrap();
-    MatchUnits::of(world)
-        .all()
-        .filter(|(_, unit)| {
-            unit.get::<UnitType>() == Some(&typed) && MatchUnits::owned_by(unit, player_slot)
-        })
-        .map(|(id, _)| id)
-        .collect()
+    let owned = MatchUnits::of(world).owned(typed, player_slot);
+    owned.map(|(id, _)| id).collect()
 }
 
-/// The pick of the faction `base`, its center and its dozer, for each of the skirmish's 3 slots.
-fn bases() -> Vec<PlayerSlotPick> {
-    (0..3)
-        .map(|player_slot| format!("{player_slot}:faction=base").parse().unwrap())
-        .collect()
-}
-
-/// The session of a skirmish whose slots `plan` opens, each of the faction `base`.
+/// The session of a skirmish whose slots `plan` opens, each of the faction `base`, its center
+/// and its dozer.
 fn session(plan: [PlayerSlotPlan; 3]) -> FixedSession {
-    unpicked(plan).player_slot_picked(&bases())
+    unpicked(plan).each_picked("faction", "base")
 }
 
 /// The session of a skirmish whose slots `plan` opens, of no faction picked.
@@ -53,12 +42,8 @@ fn skirmish(plan: [PlayerSlotPlan; 3]) -> FixedMatch {
 
 /// The money of player `player_slot`, the skirmish's one resource.
 fn money(world: &World, player_slot: u32) -> i64 {
-    let resources: Names<ResourceId> = ["money"].into_iter().collect();
-    let money = resources.named("money").unwrap();
-    world
-        .player_resources(PlayerSlot::new(player_slot))
-        .unwrap()
-        .amount(money)
+    let units = MatchUnits::of(world);
+    units.amount(player_slot, units.resource("money").unwrap())
 }
 
 /// The one unit of the type `name` that player `player_slot` owns.
@@ -74,7 +59,7 @@ fn destroy(fixed: &mut FixedMatch, centers: &[StableId]) {
     for &center in centers {
         Combat::damage(fixed.game_mut(), None, center, 10, DamageCause::Effect);
     }
-    fixed.game_mut().run_tick_alone();
+    fixed.step();
 }
 
 /// Whether the match ended.
@@ -125,7 +110,7 @@ fn a_skirmish_starts_each_held_slot_and_ends_as_the_last_team_with_a_building_st
     assert_eq!(dozer_life.map(|life| life.is_empty()), Some(true));
     assert!(held_out(world, 1) && !held_out(world, 0) && !held_out(world, 2));
     assert!(!is_ended(world));
-    fixed.game_mut().run_tick_alone();
+    fixed.step();
     assert!(owned(fixed.game(), "dozer", 1).is_empty());
     // The third's center dies alike, and the match ends, player 1's team, the first, the
     // winner. The match runs no stage after it ends, so the center stays dead and that bot's
@@ -166,7 +151,7 @@ fn a_player_whose_last_building_goes_or_changes_hands_is_out() {
     let world = fixed.game_mut();
     let entity = world.unit_entity(center);
     world.despawn(entity);
-    world.run_tick_alone();
+    fixed.step();
     let world = fixed.game();
     assert!(held_out(world, 1) && !held_out(world, 0) && !held_out(world, 2));
     assert!(!is_ended(world));
@@ -178,7 +163,7 @@ fn a_player_whose_last_building_goes_or_changes_hands_is_out() {
     world
         .entity_mut(entity)
         .insert((Owner::new(PlayerSlot::new(0)), team));
-    world.run_tick_alone();
+    fixed.step();
     assert!(held_out(fixed.game(), 2));
     assert_eq!(fixed.end().outcome, Outcome::Won { team: 0 });
 }
@@ -227,8 +212,13 @@ fn a_player_slot_that_picks_a_base_start_gets_its_factions_base_beside_its_start
         PlayerSlotPlan::Bot,
         PlayerSlotPlan::Open,
     ];
-    let mut picks = bases();
-    picks.push("0:start=base".parse().unwrap());
+    let picks = [
+        "0:faction=base",
+        "1:faction=base",
+        "2:faction=base",
+        "0:start=base",
+    ]
+    .map(|pick| pick.parse::<PlayerSlotPick>().unwrap());
     let fixed = unpicked(plan).player_slot_picked(&picks).start();
     let world = fixed.game();
     let counts = |player_slot| {
@@ -293,7 +283,7 @@ fn a_kill_pays_its_killers_player_its_share_of_the_victims_cost_rounded_up() {
         PlayerSlotPlan::Bot,
     ];
     let mut fixed = FixedSession::planned(tree.load().unwrap(), InputRules::ROOMY, plan)
-        .player_slot_picked(&bases())
+        .each_picked("faction", "base")
         .start();
     let dozer = one(&fixed, "dozer", 0);
     let center = one(&fixed, "center", 1);
@@ -304,7 +294,7 @@ fn a_kill_pays_its_killers_player_its_share_of_the_victims_cost_rounded_up() {
         10,
         DamageCause::Effect,
     );
-    fixed.game_mut().run_tick_alone();
+    fixed.step();
     let moneys = |fixed: &FixedMatch| [0, 1, 2].map(|slot| money(fixed.game(), slot));
     assert_eq!(moneys(&fixed), [100 + 251, 100, 100]);
     // The third's dozer kills the first's center: its share of none pays nothing.
@@ -317,7 +307,7 @@ fn a_kill_pays_its_killers_player_its_share_of_the_victims_cost_rounded_up() {
         10,
         DamageCause::Effect,
     );
-    fixed.game_mut().run_tick_alone();
+    fixed.step();
     assert_eq!(moneys(&fixed), [351, 100, 100]);
 }
 
@@ -351,13 +341,13 @@ fn a_kill_of_a_site_under_construction_pays_no_bounty_by_the_victim_filter() {
             PlayerSlotPlan::Bot,
         ];
         let mut fixed = FixedSession::planned(tree.load().unwrap(), InputRules::ROOMY, plan)
-            .player_slot_picked(&bases())
+            .each_picked("faction", "base")
             .start();
         let dozer = one(&fixed, "dozer", 0);
         let center = one(&fixed, "center", 1);
         let site = StatusTags::from([Production::CONSTRUCTING]);
         fixed.game_mut().insert_parts(center, site);
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
         Combat::damage(
             fixed.game_mut(),
             Some(dozer),
@@ -365,7 +355,7 @@ fn a_kill_of_a_site_under_construction_pays_no_bounty_by_the_victim_filter() {
             10,
             DamageCause::Effect,
         );
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
         money(fixed.game(), 0)
     };
     // Each player starts with 100; with no filter the site pays a quarter of 1,001, rounded up.

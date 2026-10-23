@@ -138,7 +138,7 @@ fn the_lane_match_resumes_from_each_checkpoint_to_the_same_hashes() {
     let session = FixedSession::new(packages, 2);
     let at = [100, 300, 600];
     let run = Checkpointed::run(session.start(), at, 900, |fixed| {
-        fixed.game_mut().run_tick_alone();
+        fixed.step();
     });
     run.check(&session, at);
 }

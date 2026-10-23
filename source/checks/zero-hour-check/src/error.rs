@@ -1,7 +1,7 @@
-use std::num::ParseIntError;
 use std::path::PathBuf;
 
 use campfire_codec::{BinaryError, TomlError};
+use campfire_harness::ProbeSpecError;
 use campfire_import::ZeroHourError;
 use campfire_package::LoadError;
 use campfire_package_format::ContentError;
@@ -55,17 +55,8 @@ pub(crate) enum ProbeArgError {
     Shape,
     #[error("a probe names no play the check plays")]
     Play,
-    #[error("a probe's period is no whole count of milliseconds above 0")]
-    Period(#[source] ParseIntError),
-    #[error("a probe's units are `all`, `slot=<n>`, `team=<n>`, `type=<name>` or `ids=<id>,<id>`")]
-    Units,
-    #[error("a probe's number does not read")]
-    Number(#[source] ParseIntError),
-    /// Player slots count from 1, as the check names its players.
-    #[error("a probe's player is counted from 1")]
-    Player,
-    #[error("a probe's type is no name a package declares")]
-    Name,
+    #[error(transparent)]
+    Spec(#[from] ProbeSpecError),
 }
 
 /// Why the command line's plays and probes make no run.

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use crate::error::SelectionError;
+use crate::match_play::PlayRecord;
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
 use crate::probe_arg::ProbeArg;
@@ -17,11 +18,16 @@ pub(crate) struct CommandLine {
     /// A play to run, for each one named; every play when none is
     #[arg(long = "play", value_enum)]
     pub(crate) plays: Vec<Play>,
-    /// A probe of a play's units, `<play>:<period_ms>:<units>`, the units `all`, `slot=<n>` from 1,
-    /// `team=<n>`, `type=<name>` or `ids=<id>,<id>`; it writes `<play>.probe` in the probes'
-    /// directory
+    /// A probe of a play's units, `<play>:<period_ms>:<units>`, the units `all`, `player=<n>`
+    /// from 1, `team=<n>`, `type=<name>` or `ids=<id>,<id>`; it writes `<play>.probe` in the
+    /// probes' directory
     #[arg(long = "probe")]
     pub(crate) probes: Vec<ProbeArg>,
+    /// Each play keeps a record: each tick's copy of its state checked, and its log replayed to
+    /// the same hashes as it ends, so a determinism bug names its tick; the bot plays then take
+    /// about four times as long
+    #[arg(long)]
+    pub(crate) record: bool,
     /// The directory the probes write to
     #[arg(long, default_value = "target/zero-hour")]
     pub(crate) probe_dir: PathBuf,
@@ -38,7 +44,12 @@ impl CommandLine {
     /// The plays it names and their probes; an error when two probes name one play, or a probe
     /// names a play it does not play.
     pub(crate) fn selection(self) -> Result<PlaySelection, SelectionError> {
-        PlaySelection::new(self.plays, self.probes, self.probe_dir)
+        let record = if self.record {
+            PlayRecord::Kept
+        } else {
+            PlayRecord::None
+        };
+        PlaySelection::new(self.plays, self.probes, self.probe_dir, record)
     }
 }
 

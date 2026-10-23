@@ -123,7 +123,7 @@ pub(crate) struct BotMatchEnd {
 
 /// The orders of a player slot's bot that came to nothing over a play: those its search left
 /// unsent, the orders no unit took, and each unit's drop of an order, by its cause, as an order
-/// that no unit takes shows only as a count (debug-loop.md, What a play drops is counted).
+/// that no unit takes shows only as a count (09-zero-hour.md, What a play drops is counted).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BotDrops {
