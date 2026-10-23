@@ -27,7 +27,7 @@ use campfire_client_files::ShownBars;
 use campfire_progression::{Learning, Points};
 use campfire_sim::{EntityIndex, SimTick, StableId, Unpredicted};
 use campfire_stats::{Level, Pools};
-use campfire_units::{Dead, Life};
+use campfire_units::{Dead, Leader, Life, LivingSpawns};
 use campfire_values::{Rank, Relation, Relations, Team};
 
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind, SlotPlace};
@@ -768,15 +768,21 @@ impl HudPlugin {
         }
     }
 
-    /// Puts a ring under each unit the player selected, at its reach, and a wider one under the
-    /// unit the own avatar attacks, once each one's drawing has its shape, and again under a new
-    /// drawing of it; takes each ring away as its unit leaves the selection or the attack.
+    /// Puts a ring under each unit the player selected, at its reach, under each living spawn of a
+    /// selected leader in its place (spawn-leaders.md, A member picks as its leader), and a wider
+    /// one under the unit the own avatar attacks, once each one's drawing has its shape, and again
+    /// under a new drawing of it; takes each ring away as its unit leaves the selection or the
+    /// attack.
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"
     )]
     fn mark_rings(
-        (selection, index): (Res<'_, Selection>, Res<'_, EntityIndex>),
+        (selection, index, leaders): (
+            Res<'_, Selection>,
+            Res<'_, EntityIndex>,
+            Query<'_, '_, &LivingSpawns, With<Leader>>,
+        ),
         palette: Res<'_, HudPalette>,
         own: OwnPlayer<'_, '_>,
         slots: Query<'_, '_, &ActionProgress>,
@@ -786,13 +792,20 @@ impl HudPlugin {
         mut commands: Commands<'_, '_>,
     ) {
         wanted.clear();
-        wanted.extend(selection.get().iter().map(|&unit| (unit, Marks::Selected)));
+        for &unit in selection.get() {
+            let led = index.get(unit).and_then(|unit| leaders.get(unit).ok());
+            match led {
+                Some(spawns) => wanted.extend(spawns.iter().map(|&spawn| (spawn, Marks::Selected))),
+                None => wanted.push((unit, Marks::Selected)),
+            }
+        }
         let target = own
             .avatar()
             .and_then(|avatar| slots.get(avatar.entity).ok())
             .and_then(ActionProgress::attack_target);
         wanted.extend(target.map(|target| (target, Marks::Target)));
         wanted.sort_unstable();
+        wanted.dedup();
         let root_of = |unit| {
             let root = index
                 .get(unit)

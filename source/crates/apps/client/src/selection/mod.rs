@@ -20,14 +20,21 @@ impl Selection {
         &self.0
     }
 
-    /// Selects `units` alone, of any order, a unit there more than once selected once; none
-    /// leaves the selection as it is. Whether it changed.
-    pub(crate) fn pick(&mut self, units: &[StableId]) -> bool {
+    /// Selects `units` alone, of any order, each spawn that `led_by` gives a leader of as that
+    /// leader, as Zero Hour shares one selection between a mob and its members
+    /// (spawn-leaders.md, A member picks as its leader), a unit there more than once selected
+    /// once; none leaves the selection as it is. Whether it changed.
+    pub(crate) fn pick(
+        &mut self,
+        units: &[StableId],
+        led_by: impl Fn(StableId) -> Option<StableId>,
+    ) -> bool {
         if units.is_empty() {
             return false;
         }
         self.0.clear();
-        self.0.extend_from_slice(units);
+        let picked = units.iter().map(|&unit| led_by(unit).unwrap_or(unit));
+        self.0.extend(picked);
         self.0.sort_unstable();
         self.0.dedup();
         true

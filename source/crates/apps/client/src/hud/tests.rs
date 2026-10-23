@@ -173,7 +173,7 @@ fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selecti
     // structure of reach 0.9 m, ringed as it is drawn.
     app.world_mut()
         .resource_mut::<Selection>()
-        .pick(&[tower_id, hero_id]);
+        .pick(&[tower_id, hero_id], |_| None);
     app.update();
     assert_eq!(rings(app.world(), tower), [Vec3::splat(0.9)]);
     // The hero arrives, a player's avatar, of reach 0.5 m: ringed as it is drawn, with no
@@ -193,10 +193,49 @@ fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selecti
     assert_eq!(rings(app.world(), hero), [Vec3::splat(0.5)]);
     assert_eq!(rings(app.world(), tower).len(), 1);
     // The hero alone selected: the tower's ring goes, the hero keeps its one.
-    app.world_mut().resource_mut::<Selection>().pick(&[hero_id]);
+    app.world_mut()
+        .resource_mut::<Selection>()
+        .pick(&[hero_id], |_| None);
     app.update();
     assert_eq!(rings(app.world(), tower), []);
     assert_eq!(rings(app.world(), hero), [Vec3::splat(0.5)]);
+
+    // A leader of two living spawns selected: each spawn is ringed, at the tower's reach as each
+    // is a structure as it stands, and the leader not (spawn-leaders.md, A member picks as its
+    // leader).
+    let [leader_id, first_id, second_id] = [ids.allocate(), ids.allocate(), ids.allocate()];
+    let mut living = LivingSpawns::with_capacity(2);
+    living.push(first_id);
+    living.push(second_id);
+    let unit = |id, x: i32| {
+        (
+            id,
+            BodyUnit,
+            Position::from((x, 0, 8)),
+            team,
+            UnitType::new(0),
+        )
+    };
+    let leader = app
+        .world_mut()
+        .spawn((unit(leader_id, 0), Leader, living))
+        .id();
+    let [first, second] =
+        [(first_id, -2), (second_id, 2)].map(|(id, x)| app.world_mut().spawn(unit(id, x)).id());
+    app.world_mut()
+        .resource_mut::<Selection>()
+        .pick(&[leader_id], |_| None);
+    app.update();
+    assert_eq!(rings(app.world(), first), [Vec3::splat(0.9)]);
+    assert_eq!(rings(app.world(), second), [Vec3::splat(0.9)]);
+    assert_eq!(rings(app.world(), leader), []);
+    assert_eq!(rings(app.world(), hero), []);
+    // The leader and its first spawn both selected: the spawn is ringed once.
+    app.world_mut()
+        .resource_mut::<Selection>()
+        .pick(&[leader_id, first_id], |_| None);
+    app.update();
+    assert_eq!(rings(app.world(), first), [Vec3::splat(0.9)]);
 }
 
 #[test]
@@ -229,12 +268,14 @@ fn a_unit_shows_its_bars_while_selected_when_the_hud_shows_the_selected_alone() 
             *app.world().get::<Visibility>(stand).unwrap() == Visibility::Inherited
         })
     };
-    app.world_mut().resource_mut::<Selection>().pick(&[first.0]);
+    app.world_mut()
+        .resource_mut::<Selection>()
+        .pick(&[first.0], |_| None);
     app.update();
     assert_eq!(shown(&app), [true, false]);
     app.world_mut()
         .resource_mut::<Selection>()
-        .pick(&[second.0]);
+        .pick(&[second.0], |_| None);
     app.update();
     assert_eq!(shown(&app), [false, true]);
 }

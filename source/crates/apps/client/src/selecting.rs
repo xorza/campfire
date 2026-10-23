@@ -7,7 +7,7 @@ use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::SystemCondition;
-use bevy::ecs::system::{Commands, Local, Res, ResMut, Single};
+use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::input::common_conditions::{input_just_pressed, input_just_released};
 use bevy::input::mouse::MouseButton;
 use bevy::math::{Rect, Vec2};
@@ -18,6 +18,7 @@ use bevy::ui::{BackgroundColor, BorderColor, Node, PositionType, UiRect, Val};
 use campfire_client_files::Press;
 use campfire_mode::PlayerControl;
 use campfire_sim::{EntityIndex, StableId};
+use campfire_units::{Leader, SpawnOf};
 
 use crate::input_map::InputMap;
 use crate::input_mode::InputMode;
@@ -139,10 +140,15 @@ impl SelectingPlugin {
     }
 
     /// Ends the held press: a click selects the player's own unit under the cursor alone, a drag
-    /// each of the player's own units its rectangle holds; one that meets none of them leaves
-    /// the selection as it is.
+    /// each of the player's own units its rectangle holds, a leader's spawn as its leader; one
+    /// that meets none of them leaves the selection as it is.
     fn release(
         pointer: Pointer<'_, '_>,
+        (index, spawns, leaders): (
+            Res<'_, EntityIndex>,
+            Query<'_, '_, &SpawnOf>,
+            Query<'_, '_, (), With<Leader>>,
+        ),
         mut held: ResMut<'_, Held>,
         mut selection: ResMut<'_, Selection>,
         mut picked: Local<'_, Vec<StableId>>,
@@ -157,7 +163,11 @@ impl SelectingPlugin {
             let unit = pointer.own_unit_under();
             picked.extend(unit);
         }
-        if selection.bypass_change_detection().pick(&picked) {
+        let led_by = |unit: StableId| {
+            let spawner = spawns.get(index.get(unit)?).ok()?.spawner();
+            leaders.contains(index.get(spawner)?).then_some(spawner)
+        };
+        if selection.bypass_change_detection().pick(&picked, led_by) {
             selection.set_changed();
         }
     }
