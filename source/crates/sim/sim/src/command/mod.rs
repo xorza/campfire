@@ -16,7 +16,7 @@ pub struct Command<'a> {
 }
 
 /// What a command goes to: the players, whose select sets the units a player's orders command
-/// (commanded-units.md, A select is the players' command), or a capability.
+/// (04-capabilities/control.md, A select is the players' command), or a capability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Addressee {
     Players,

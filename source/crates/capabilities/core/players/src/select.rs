@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::order_units::OrderUnits;
 
 /// A select, the body of a command to the players: the units its player's next orders command,
-/// in increasing stable id, each once (commanded-units.md, A select holds what its player
+/// in increasing stable id, each once (04-capabilities/control.md, A select holds what its player
 /// controls).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Select<'a> {

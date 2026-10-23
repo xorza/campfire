@@ -10,9 +10,9 @@ use crate::order_units::OrderUnits;
 use crate::player::Player;
 
 /// The units a player's orders command, on its entity, in increasing stable id, as its last
-/// select left them (commanded-units.md, A player's orders go to its commanded units). Its
-/// player's prediction reads it, so it is sent to its player alone (commanded-units.md, The
-/// commanded units are their player's prediction).
+/// select left them (04-capabilities/control.md, A player's orders go to its commanded units). Its
+/// player's prediction reads it, so it is sent to its player alone (10-replication-audiences.md,
+/// The commanded units are their player's prediction).
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct CommandedUnits(Vec<StableId>);

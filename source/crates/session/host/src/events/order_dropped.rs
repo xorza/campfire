@@ -1,11 +1,11 @@
-use campfire_capabilities::Directive;
+use campfire_capabilities::{Directive, Order};
 use campfire_log::{JsonText, LogEvent, LogLine};
 use campfire_sim::StableId;
 use serde::Deserialize;
 use tracing::warn;
 
-/// The client dropped an order to `units` units, the first of them `unit`, whose payload passes
-/// the session's max length, with its directive.
+/// The client dropped an order to `units` units, the first of them `unit`, whose directive and one
+/// unit pass the session's max payload length, so no input holds it, with its directive.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct OrderDropped {
     pub unit: StableId,
@@ -14,8 +14,21 @@ pub struct OrderDropped {
     pub directive: Directive,
 }
 
+impl OrderDropped {
+    /// The drop of `order`, by its first unit and its count of units.
+    pub fn of(order: &Order) -> Self {
+        let units = order.units.get();
+        Self {
+            unit: units[0],
+            units: units.len(),
+            directive: order.directive,
+        }
+    }
+}
+
 impl LogEvent for OrderDropped {
-    const MESSAGE: &'static str = "dropped an order whose payload passes the session's max length";
+    const MESSAGE: &'static str =
+        "dropped an order whose directive and one unit pass the session's max payload length";
 
     fn log(&self) {
         warn!(

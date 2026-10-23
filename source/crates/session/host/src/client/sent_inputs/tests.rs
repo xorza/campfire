@@ -1,4 +1,4 @@
-use std::array;
+use std::{array, slice};
 
 use campfire_capabilities::Order;
 use campfire_math::Num;
@@ -23,8 +23,8 @@ fn the_inputs_keep_their_stamps_and_payloads_from_the_oldest_on() {
     let payload = |unit: u8| [2, 0, 3, 0, 1, unit, 1, 5, 2, 1, unit];
     let mut sent = SentInputs::default();
     let push = |sent: &mut SentInputs, seq, stamp, order: &Order| {
-        sent.push(seq, Tick::new(stamp), 11, |body, out| {
-            order.write_payload(body, out);
+        sent.push(seq, Tick::new(stamp), 11, |_, out| {
+            out.extend_from_slice(&Order::payload(slice::from_ref(order)));
         })
     };
     for (seq, (stamp, unit)) in [(1, 0), (1, 1), (2, 2), (4, 3)].into_iter().enumerate() {
@@ -74,8 +74,8 @@ fn an_acknowledged_input_replays_where_the_server_applied_it() {
     // Seqs 10 to 15, stamped 1, 1, 2, 4, 4 and 5.
     for (seq, stamp) in (10..).zip([1, 1, 2, 4, 4, 5]) {
         let order = attack(units[usize::try_from(seq - 10).unwrap()]);
-        assert!(sent.push(seq, Tick::new(stamp), 11, |body, out| {
-            order.write_payload(body, out);
+        assert!(sent.push(seq, Tick::new(stamp), 11, |_, out| {
+            out.extend_from_slice(&Order::payload(slice::from_ref(&order)));
         }));
     }
     let none: [[u8; 11]; 0] = [];

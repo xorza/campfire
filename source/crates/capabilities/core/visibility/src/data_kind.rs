@@ -53,7 +53,7 @@ pub enum DataKind {
     /// State no client receives.
     Server,
     /// The units a player's orders command, on its entity, which its prediction reads
-    /// (commanded-units.md, The commanded units are their player's prediction).
+    /// (10-replication-audiences.md, The commanded units are their player's prediction).
     Commanded,
 }
 

@@ -107,15 +107,28 @@ struct BotHome {
 /// The payloads the bots give in a tick, each with its player slot, which the play serves once
 /// they, which read the match, are done; an order of no unit the server's driver drops goes unsent
 /// here too; the orders of each player slot that came to nothing so far, by its index; and the
-/// first think that failed, which fails the play.
-#[derive(Debug, Default)]
+/// first think that failed, which fails the play; and the most bytes the session lets a payload
+/// hold.
+#[derive(Debug)]
 struct DuePayloads {
+    max_payload_len: u32,
     payloads: Vec<(PlayerSlot, Vec<u8>)>,
     drops: Vec<BotDrops>,
     failed: Option<ThinkError>,
 }
 
 impl DuePayloads {
+    /// The payloads of a play of `fixed`, none due yet.
+    fn of(fixed: &FixedMatch) -> Self {
+        let terms = &fixed.game().session().log().header().terms;
+        Self {
+            max_payload_len: terms.inputs.max_payload_len,
+            payloads: Vec::new(),
+            drops: Vec::new(),
+            failed: None,
+        }
+    }
+
     /// The drops of `player_slot` so far.
     fn drops_of(&mut self, player_slot: PlayerSlot) -> &mut BotDrops {
         let index = player_slot.index();
@@ -127,6 +140,10 @@ impl DuePayloads {
 }
 
 impl BotSink for DuePayloads {
+    fn max_payload_len(&self) -> u32 {
+        self.max_payload_len
+    }
+
     fn send(&mut self, player_slot: PlayerSlot, payload: &[u8]) {
         self.payloads.push((player_slot, payload.to_vec()));
     }
@@ -200,13 +217,14 @@ impl<'p> MatchPlay<'p> {
             PlayRecord::None => None,
             PlayRecord::Kept => Some(ReplayRecord::of(fixed.game_mut(), packages)),
         };
+        let due = DuePayloads::of(&fixed);
         Self {
             fixed,
             bots,
             homes: Vec::new(),
             think_ops: 0,
             books,
-            due: DuePayloads::default(),
+            due,
             record,
         }
     }

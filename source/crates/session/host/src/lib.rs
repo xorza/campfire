@@ -29,6 +29,7 @@ pub use crate::client::join_state::error::TermsMismatch;
 pub use crate::client::join_state::{
     JoinState, JoinedSession, Joining, LinkLoss, Loss, Member, Playing, Retry, StartEffect,
 };
+pub use crate::client::known_commanded::KnownCommanded;
 pub use crate::client::player_signer::PlayerSigner;
 pub use crate::client::receipt_writer::ReceiptWriter;
 pub use crate::client::sent_inputs::SentInputs;

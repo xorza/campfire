@@ -5,6 +5,7 @@ pub(crate) mod chain_history;
 pub(crate) mod client_dir;
 pub(crate) mod client_layout;
 pub(crate) mod join_state;
+pub(crate) mod known_commanded;
 pub(crate) mod player_signer;
 pub(crate) mod receipt_writer;
 pub(crate) mod sent_inputs;

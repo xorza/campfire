@@ -4,8 +4,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The directive of one capability's orders, the body of each command to that capability; the
-/// units it commands are its player's (commanded-units.md, A player's orders go to its commanded
-/// units).
+/// units it commands are its player's (04-capabilities/control.md, A player's orders go to its
+/// commanded units).
 pub trait CapabilityDirective: Serialize + DeserializeOwned + Copy + Send + Sync + 'static {
     /// The capability whose commands hold it.
     const CAPABILITY: Capability;

@@ -28,7 +28,7 @@ pub use crate::bot::bot_api::OnBotThink;
 pub use crate::bot::bot_call::{BotCall, BotFacts, ThinkOrder};
 pub use crate::order::location::{GroundLocation, Location, MarkerLocation, NearLocation};
 pub use crate::order::named_refs::NamedRefs;
-pub use crate::order::{Directive, Order};
+pub use crate::order::{Directive, Order, OrderPayloads, OrderPayloadsIter};
 pub use crate::release::Release;
 pub use crate::release::error::CapabilityError;
 pub use crate::release::r#match::Match;

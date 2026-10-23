@@ -13,10 +13,10 @@ use crate::player_rows::{PlayerRows, PlayerRowsMut};
 use crate::select::{Select, Selecting};
 
 /// The units each player's orders of the tick command where its selects of the tick changed them
-/// (commanded-units.md, An order goes to the units commanded at its place): a copy for each order
-/// that follows a change, which that order's units cost anyway, and none for a select no order
-/// reads, so a tick holds no more than its orders reach. The tick's start fills it, and the close
-/// of Inputs gives each player the units of its last select and empties it.
+/// (04-capabilities/control.md, An order goes to the units commanded at its place): a copy for each
+/// order that follows a change, which that order's units cost anyway, and none for a select no
+/// order reads, so a tick holds no more than its orders reach. The tick's start fills it, and the
+/// close of Inputs gives each player the units of its last select and empties it.
 #[derive(Resource, Debug, Default)]
 pub struct TickSelects {
     /// The units of each order that follows a change, from its place on, by player slot, then
@@ -78,7 +78,7 @@ impl TickSelects {
     /// Resolves the tick's selects in the order of its commands: each keeps, in increasing stable
     /// id, each unit it names that the match holds and that its player controls, a dead one among
     /// them, in place of what its player commanded, or beside it for a select that continues one
-    /// (commanded-units.md, A select holds what its player controls); and each command to a
+    /// (04-capabilities/control.md, A select holds what its player controls); and each command to a
     /// capability that follows a change takes a copy of its player's units. A body that is no
     /// select is passed over.
     pub(crate) fn resolve(

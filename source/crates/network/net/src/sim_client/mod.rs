@@ -11,12 +11,12 @@ use bevy_ecs::query::{Added, Allow, Has, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{not, on_message, resource_changed, resource_exists};
-use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
+use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single, SystemParam};
 use bevy_ecs::world::{EntityWorldMut, Mut, World};
 use bevy_replicon::prelude::Remote;
 use bevy_time::{Fixed, Time};
 use campfire_bots::{BotOrder, BotScript, BotUnits, ClientBotView, OrderScratch, ScriptedInput};
-use campfire_capabilities::{MatchKind, MatchSetup, Order, Release};
+use campfire_capabilities::{MatchKind, MatchSetup, Order, OrderPayloads, Release};
 use campfire_common::ErrorReport;
 use campfire_common::{SegmentSeed, Tick};
 use campfire_declarations::Role;
@@ -57,6 +57,7 @@ use campfire_host::InputAck;
 use campfire_host::InputDropped;
 use campfire_host::InputMessage;
 use campfire_host::InputsDiscarded;
+use campfire_host::KnownCommanded;
 use campfire_host::LeaveMatch;
 use campfire_host::MatchEnded;
 use campfire_host::MatchLoaded;
@@ -134,11 +135,44 @@ impl PendingSaves {
 #[derive(Resource, Debug, Default)]
 pub struct PendingOrders(Vec<Pending>);
 
-/// One pending input.
+/// The inputs the client holds: those it sent, what their acks tell of the units the server
+/// commands, and those that wait to be sent, which a client that joins again drops together.
+#[derive(SystemParam, Debug)]
+struct HeldInputs<'w> {
+    sent: ResMut<'w, SentInputs>,
+    known: ResMut<'w, KnownCommanded>,
+    pending: ResMut<'w, PendingOrders>,
+}
+
+impl HeldInputs<'_> {
+    fn clear(&mut self) {
+        self.sent.clear();
+        self.known.clear();
+        self.pending.clear();
+    }
+}
+
+/// One pending input: an order, a mode input, or a part of an order's select past the inputs one
+/// tick takes, which waits for the next.
 #[derive(Debug)]
 enum Pending {
     Order(Order),
     Input(ScriptedInput),
+    Part(Vec<u8>),
+}
+
+/// What `PendingOrders::stamp` stamps its inputs into: the tick of their stamp, the seq of the
+/// first, the session's max inputs a tick and max payload length, the inputs sent, what their
+/// acks tell of the units the server commands, and the buffer an order's payloads are written in.
+#[derive(Debug)]
+struct Stamping<'a> {
+    stamp: Tick,
+    next_seq: u64,
+    max_per_tick: u32,
+    max_len: u32,
+    sent: &'a mut SentInputs,
+    known: &'a mut KnownCommanded,
+    payloads: &'a mut OrderPayloads,
 }
 
 impl PendingOrders {
@@ -152,6 +186,95 @@ impl PendingOrders {
 
     fn clear(&mut self) {
         self.0.clear();
+    }
+
+    /// Stamps its inputs into `stamping.sent`, in order, up to the session's max inputs a tick:
+    /// an order to the units the server is known to command with no select, any other with its
+    /// select, split past one payload, whose parts past the tick's inputs wait at its front for
+    /// the next (04-capabilities/control.md, A select goes with each order until its sender knows
+    /// the server commands those units). An input of no payload within the max length, as an
+    /// order whose directive and one unit pass it, is dropped and logged.
+    fn stamp(&mut self, stamping: Stamping<'_>) {
+        let Stamping {
+            stamp,
+            next_seq,
+            max_per_tick,
+            max_len,
+            sent,
+            known,
+            payloads,
+        } = stamping;
+        let first = sent.len();
+        let seq =
+            |sent: &SentInputs| next_seq + u64::try_from(sent.len() - first).expect("a count fits");
+        let mut left = usize::try_from(max_per_tick).expect("a u32 fits usize");
+        let mut done = 0;
+        let mut carried = Vec::new();
+        while left > 0 && done < self.0.len() {
+            match &self.0[done] {
+                Pending::Order(order) if known.commands(order.units.get()) => {
+                    let seq = seq(sent);
+                    let kept = sent.push(seq, stamp, max_len, |body, out| {
+                        order.write_commanded_payload(body, out);
+                    });
+                    if kept {
+                        left -= 1;
+                    } else {
+                        OrderDropped::of(order).log();
+                    }
+                }
+                Pending::Order(order) => {
+                    if !order.write_payloads(max_len, payloads) {
+                        OrderDropped::of(order).log();
+                    }
+                    let parts = payloads.iter().len();
+                    for (at, part) in payloads.iter().enumerate() {
+                        if at >= left {
+                            carried.push(part.to_vec());
+                            continue;
+                        }
+                        let seq = seq(sent);
+                        let kept = sent.push(seq, stamp, max_len, |_, out| {
+                            out.extend_from_slice(part);
+                        });
+                        debug_assert!(kept, "an order's part fits a payload");
+                        if parts == 1 {
+                            known.sent(seq, order.units.get());
+                        } else {
+                            known.sent_part(seq);
+                        }
+                    }
+                    left -= parts.min(left);
+                }
+                Pending::Part(part) => {
+                    let seq = seq(sent);
+                    let kept = sent.push(seq, stamp, max_len, |_, out| {
+                        out.extend_from_slice(part);
+                    });
+                    debug_assert!(kept, "an order's part fits a payload");
+                    known.sent_part(seq);
+                    left -= 1;
+                }
+                Pending::Input(input) => {
+                    let seq = seq(sent);
+                    let kept = sent.push(seq, stamp, max_len, |body, out| {
+                        input.write_payload(body, out);
+                    });
+                    if kept {
+                        left -= 1;
+                    } else {
+                        let name = input.name.clone();
+                        InputDropped { name }.log();
+                    }
+                }
+            }
+            done += 1;
+            if !carried.is_empty() {
+                break;
+            }
+        }
+        self.0.drain(..done);
+        self.0.splice(0..0, carried.into_iter().map(Pending::Part));
     }
 }
 
@@ -206,6 +329,7 @@ impl Plugin for SimClientPlugin {
             packages: Arc::clone(packages),
         }));
         world.init_resource::<SentInputs>();
+        world.init_resource::<KnownCommanded>();
         if let Some(data) = &self.data {
             world.insert_resource(ReceiptWriter::start(Arc::clone(data)));
         }
@@ -378,8 +502,7 @@ fn receive_loaded(
     mut receivers: Query<'_, '_, &mut MessageReceiver<MatchLoaded>, With<Client>>,
     hosting: Res<'_, Hosting>,
     mut state: ResMut<'_, JoinState>,
-    mut sent: ResMut<'_, SentInputs>,
-    mut pending: ResMut<'_, PendingOrders>,
+    mut held: HeldInputs<'_>,
 ) {
     for mut receiver in &mut receivers {
         for MatchLoaded { tick } in receiver.receive() {
@@ -388,8 +511,7 @@ fn receive_loaded(
                     tick = tick.get(),
                     "the session went back to a save; joining again"
                 );
-                sent.clear();
-                pending.clear();
+                held.clear();
             }
         }
     }
@@ -404,8 +526,7 @@ fn lose_link(
     clock: Res<'_, Clock>,
     os: Res<'_, Os>,
     mut state: ResMut<'_, JoinState>,
-    mut sent: ResMut<'_, SentInputs>,
-    mut pending: ResMut<'_, PendingOrders>,
+    mut held: HeldInputs<'_>,
 ) {
     let Ok(&Unlinked { reason }) = clients.get(unlinked.entity) else {
         return;
@@ -417,8 +538,7 @@ fn lose_link(
     match state.lose(clock.now().elapsed(), os.entropy.random()) {
         LinkLoss::Rejoining => {
             info!(?cause, "the link to the server failed; trying again");
-            sent.clear();
-            pending.clear();
+            held.clear();
         }
         LinkLoss::Stopped(_) => LinkLost { cause }.log(),
         LinkLoss::Nothing => {}
@@ -570,10 +690,12 @@ fn is_playing(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_
 fn receive_input_acks(
     mut receivers: Query<'_, '_, &mut MessageReceiver<InputAck>, With<Client>>,
     mut sent: ResMut<'_, SentInputs>,
+    mut known: ResMut<'_, KnownCommanded>,
 ) {
     for mut receiver in &mut receivers {
         for ack in receiver.receive() {
             sent.acknowledge(ack.first, &ack.applied);
+            known.acknowledge(ack.first, &ack.applied);
         }
     }
 }
@@ -626,10 +748,9 @@ fn report_deaths(
 /// that came back replicates it a little later, so an order due before waits with those after it,
 /// and goes out late; one whose units the player lacks is dropped. Then stamps the pending orders
 /// with that tick, up to the session's max inputs per tick, chains each and keeps it, and sends
-/// them in one message signed over the chain head after the last. The orders past the max wait for
-/// the next tick, so the log never refuses the message; an order whose payload passes the session's
-/// max length can never be sent, and is dropped. The inputs older than the deepest rollback
-/// the network stack takes are dropped first.
+/// them in one message signed over the chain head after the last, as `PendingOrders::stamp` stamps
+/// them. The inputs past the max wait for the next tick, so the log never refuses the message. The
+/// inputs older than the deepest rollback the network stack takes are dropped first.
 #[expect(
     clippy::too_many_arguments,
     reason = "a Bevy system takes each resource it reads"
@@ -646,6 +767,8 @@ fn send_orders(
     mut pending: ResMut<'_, PendingOrders>,
     mut state: ResMut<'_, JoinState>,
     mut sent: ResMut<'_, SentInputs>,
+    mut known: ResMut<'_, KnownCommanded>,
+    mut order_payloads: Local<'_, OrderPayloads>,
     mut sender: Single<'_, '_, (&mut MessageSender<InputMessage>, &RemoteTimeline), With<Client>>,
 ) {
     let (ref mut sender, remote) = *sender;
@@ -694,38 +817,15 @@ fn send_orders(
     }
     let session = playing.member.session;
     let first = sent.len();
-    let stamped = pending
-        .0
-        .len()
-        .min(usize::try_from(session.inputs.max_per_tick).expect("a u32 fits usize"));
-    for pending in pending.0.drain(..stamped) {
-        let seq =
-            playing.chain.next_seq() + u64::try_from(sent.len() - first).expect("a count fits");
-        match pending {
-            Pending::Order(order) => {
-                let kept = sent.push(seq, stamp, session.inputs.max_payload_len, |body, out| {
-                    order.write_payload(body, out);
-                });
-                if !kept {
-                    let units = order.units.get();
-                    OrderDropped {
-                        unit: units[0],
-                        units: units.len(),
-                        directive: order.directive,
-                    }
-                    .log();
-                }
-            }
-            Pending::Input(input) => {
-                let kept = sent.push(seq, stamp, session.inputs.max_payload_len, |body, out| {
-                    input.write_payload(body, out);
-                });
-                if !kept {
-                    InputDropped { name: input.name }.log();
-                }
-            }
-        }
-    }
+    pending.stamp(Stamping {
+        stamp,
+        next_seq: playing.chain.next_seq(),
+        max_per_tick: session.inputs.max_per_tick,
+        max_len: session.inputs.max_payload_len,
+        sent: &mut sent,
+        known: &mut known,
+        payloads: &mut order_payloads,
+    });
     let payloads = sent.since(first);
     if payloads.len() == 0 {
         return;
@@ -820,3 +920,6 @@ fn mark_unpredicted(world: &mut World) {
         },
     );
 }
+
+#[cfg(test)]
+mod tests;

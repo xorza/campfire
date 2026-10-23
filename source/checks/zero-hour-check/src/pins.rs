@@ -145,6 +145,7 @@ pub(crate) struct UnsentCounts {
     pub(crate) no_target: u64,
     pub(crate) no_place: u64,
     pub(crate) no_stack: u64,
+    pub(crate) too_large: u64,
 }
 
 /// The bot's inputs the session log refused, which the server drops, by `BotInputDrop`.
@@ -178,6 +179,7 @@ impl UnsentCounts {
             OrderUnsent::NoTarget => &mut self.no_target,
             OrderUnsent::NoPlace => &mut self.no_place,
             OrderUnsent::NoStack => &mut self.no_stack,
+            OrderUnsent::TooLarge => &mut self.too_large,
         };
         *counted += 1;
     }

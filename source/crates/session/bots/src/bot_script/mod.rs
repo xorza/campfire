@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_capabilities::{Directive, NamedRefs, Order, ThinkOrder};
+use campfire_capabilities::{Directive, NamedRefs, Order, OrderPayloads, ThinkOrder};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_players::OrderUnits;
@@ -51,6 +51,9 @@ pub trait BotSink {
     /// Takes `payload`, an input of the bot of `player_slot`.
     fn send(&mut self, player_slot: PlayerSlot, payload: &[u8]);
 
+    /// The most bytes an input's payload may hold, as the session's terms give it.
+    fn max_payload_len(&self) -> u32;
+
     /// Hears that the order of `directive`, as its script names it, of the bot of `player_slot`
     /// goes unsent to all of its units or to some, as `cause` says.
     fn unsent(
@@ -64,12 +67,14 @@ pub trait BotSink {
     fn failed(&mut self, player_slot: PlayerSlot, error: ThinkError);
 }
 
-/// The buffers of a bot's step, kept so that no input allocates: the payload, the body of the
-/// command in it, the orders of a due one, and what a think reads of its units.
+/// The buffers of a bot's step, kept so that no input allocates: a mode input's payload and the
+/// body of the command in it, an order's payloads, the orders of a due one, and what a think
+/// reads of its units.
 #[derive(Debug, Default)]
 pub struct BotBuffers {
     payload: Vec<u8>,
     body: Vec<u8>,
+    order_payloads: OrderPayloads,
     orders: Vec<Order>,
     scratch: OrderScratch,
     /// The units the thinking bot's player slot owns, which its facts read.
@@ -231,18 +236,22 @@ impl BotOrder {
         sink: &mut impl BotSink,
     ) {
         let BotBuffers {
-            payload,
-            body,
+            order_payloads,
             orders,
             scratch,
             ..
         } = buffers;
         orders.clear();
-        let unsent = self.orders(player_slot, view, scratch, orders);
+        let mut unsent = self.orders(player_slot, view, scratch, orders);
+        let max_len = sink.max_payload_len();
         for order in orders.iter() {
-            payload.clear();
-            order.write_payload(body, payload);
-            sink.send(player_slot, payload);
+            if !order.write_payloads(max_len, order_payloads) {
+                unsent.get_or_insert(OrderUnsent::TooLarge);
+                continue;
+            }
+            for payload in &*order_payloads {
+                sink.send(player_slot, payload);
+            }
         }
         if let Some(cause) = unsent {
             sink.unsent(player_slot, &self.named, cause);

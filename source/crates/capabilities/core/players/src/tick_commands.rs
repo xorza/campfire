@@ -14,11 +14,12 @@ use crate::player_rows::PlayerRows;
 use crate::tick_selects::TickSelects;
 
 /// The orders of one capability among the tick's inputs, of directive `A`, each decoded as it is
-/// read, in input order, each to the units its player commands at its place (commanded-units.md,
-/// An order goes to the units commanded at its place), which may be none. A body that is no such
-/// order is left out, and so is each order of a player out of play in a session whose players out of play see what a
-/// spectator sees: it would act on what its team does not see (10-replication-audiences.md, A
-/// player out of play sees what its team sees, or what a spectator sees).
+/// read, in input order, each to the units its player commands at its place
+/// (04-capabilities/control.md, An order goes to the units commanded at its place), which may be
+/// none. A body that is no such order is left out, and so is each order of a player out of play in
+/// a session whose players out of play see what a spectator sees: it would act on what its team
+/// does not see (10-replication-audiences.md, A player out of play sees what its team sees, or what
+/// a spectator sees).
 #[derive(SystemParam, Debug)]
 pub struct TickCommands<'w, 's, A: CapabilityDirective> {
     inputs: Res<'w, TickInputs>,

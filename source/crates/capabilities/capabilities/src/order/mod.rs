@@ -111,30 +111,167 @@ impl Order {
         }
     }
 
-    /// Appends the payload of this order alone to `out`: a select of its units, then its
-    /// directive, as a sender that reads no ack sends each order (commanded-units.md, A select
-    /// goes with each order until its sender knows the server commands those units). Both bodies
-    /// are encoded in `body`, a buffer the caller reuses, so a client that sends orders every tick
-    /// allocates for none of them.
-    pub fn write_payload(&self, body: &mut Vec<u8>, out: &mut Vec<u8>) {
+    /// Its command, of its directive, as `body` holds it.
+    const fn command<'b>(&self, body: &'b [u8]) -> Command<'b> {
+        Command {
+            to: Addressee::Capability(self.directive.capability()),
+            body,
+        }
+    }
+
+    /// Appends the payload of this order alone to `out`, with no select, as a client sends it to
+    /// the units the server commands for its player (04-capabilities/control.md, A select goes with
+    /// each order until its sender knows the server commands those units); its body is encoded in
+    /// `body`, a buffer the caller reuses.
+    pub fn write_commanded_payload(&self, body: &mut Vec<u8>, out: &mut Vec<u8>) {
         body.clear();
-        self.select().encode_into(body);
-        let split = body.len();
         self.encode_into(body);
-        let (select, directive) = body.split_at(split);
-        let commands = [
-            Command {
-                to: Addressee::Players,
-                body: select,
-            },
-            Command {
-                to: Addressee::Capability(self.directive.capability()),
-                body: directive,
-            },
-        ];
-        Command::write(&commands, out);
+        Command::write(&[self.command(body)], out);
+    }
+
+    /// Writes into `payloads` the inputs of this order, each of `max_len` bytes at most: a select
+    /// of its units with its directive, or, for more units than one payload holds, a select of as
+    /// many as it holds, then selects that continue it, the last with the directive
+    /// (04-capabilities/control.md, A select holds what its player controls). Whether they fit: not
+    /// when one unit and the directive pass `max_len`, and then `payloads` holds none.
+    pub fn write_payloads(&self, max_len: u32, payloads: &mut OrderPayloads) -> bool {
+        let max_len = usize::try_from(max_len).expect("a payload's length fits usize");
+        payloads.clear();
+        self.encode_into(&mut payloads.directive);
+        let mut select = self.select();
+        loop {
+            if payloads.push(select, Some(self), max_len) {
+                return true;
+            }
+            // The most units one payload holds alone, one left at least for the last.
+            let (mut fits, mut past) = (0, select.units.len());
+            while fits + 1 < past {
+                let mid = usize::midpoint(fits, past);
+                let part = Select {
+                    units: &select.units[..mid],
+                    ..select
+                };
+                if payloads.push(part, None, max_len) {
+                    payloads.pop();
+                    fits = mid;
+                } else {
+                    past = mid;
+                }
+            }
+            if fits == 0 {
+                payloads.clear();
+                return false;
+            }
+            let (part, rest) = select.units.split_at(fits);
+            let pushed = payloads.push(
+                Select {
+                    units: part,
+                    ..select
+                },
+                None,
+                max_len,
+            );
+            debug_assert!(pushed, "the part that fits is pushed");
+            select = Select {
+                selecting: Selecting::More,
+                units: rest,
+            };
+        }
     }
 }
+
+/// The inputs of one order, end to end in one buffer, as `Order::write_payloads` writes them, with
+/// the buffers it encodes in, so a sender that keeps it allocates for no order.
+#[derive(Debug, Default)]
+pub struct OrderPayloads {
+    bytes: Vec<u8>,
+    ends: Vec<usize>,
+    body: Vec<u8>,
+    directive: Vec<u8>,
+}
+
+impl OrderPayloads {
+    pub const fn iter(&self) -> OrderPayloadsIter<'_> {
+        OrderPayloadsIter {
+            payloads: self,
+            next: 0,
+        }
+    }
+
+    fn clear(&mut self) {
+        self.bytes.clear();
+        self.ends.clear();
+        self.directive.clear();
+    }
+
+    /// Appends the payload of `select`, then of `order`'s directive when given; whether it holds
+    /// `max_len` bytes at most, as none is appended when it does not.
+    fn push(&mut self, select: Select<'_>, order: Option<&Order>, max_len: usize) -> bool {
+        let start = self.bytes.len();
+        self.body.clear();
+        select.encode_into(&mut self.body);
+        let to_players = Command {
+            to: Addressee::Players,
+            body: &self.body,
+        };
+        match order {
+            Some(order) => Command::write(
+                &[to_players, order.command(&self.directive)],
+                &mut self.bytes,
+            ),
+            None => Command::write(&[to_players], &mut self.bytes),
+        }
+        if self.bytes.len() - start > max_len {
+            self.bytes.truncate(start);
+            return false;
+        }
+        self.ends.push(self.bytes.len());
+        true
+    }
+
+    /// Takes the last payload away.
+    fn pop(&mut self) {
+        self.ends.pop();
+        self.bytes.truncate(self.ends.last().copied().unwrap_or(0));
+    }
+}
+
+impl<'a> IntoIterator for &'a OrderPayloads {
+    type Item = &'a [u8];
+    type IntoIter = OrderPayloadsIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// The payloads of an `OrderPayloads`, in order.
+#[derive(Debug, Clone)]
+pub struct OrderPayloadsIter<'a> {
+    payloads: &'a OrderPayloads,
+    next: usize,
+}
+
+impl<'a> Iterator for OrderPayloadsIter<'a> {
+    type Item = &'a [u8];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let end = *self.payloads.ends.get(self.next)?;
+        let start = self
+            .next
+            .checked_sub(1)
+            .map_or(0, |before| self.payloads.ends[before]);
+        self.next += 1;
+        Some(&self.payloads.bytes[start..end])
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let left = self.payloads.ends.len() - self.next;
+        (left, Some(left))
+    }
+}
+
+impl ExactSizeIterator for OrderPayloadsIter<'_> {}
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {

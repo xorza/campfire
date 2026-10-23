@@ -246,6 +246,11 @@ pub(crate) struct Heard {
 }
 
 impl BotSink for Heard {
+    // As the LAN terms let a payload hold.
+    fn max_payload_len(&self) -> u32 {
+        1024
+    }
+
     fn send(&mut self, _: PlayerSlot, payload: &[u8]) {
         let orders = Order::of_payload(payload).expect("a bot sends orders");
         self.sent.extend(orders);

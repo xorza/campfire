@@ -12,7 +12,7 @@ use campfire_orders::OrdersDirective;
 use campfire_players::CommandedUnits;
 use campfire_protocol::LogReplay;
 use campfire_runner::Session;
-use campfire_sim::{MatchRate, Position, SimWorld, StableId};
+use campfire_sim::{Addressee, Command, MatchRate, Position, SimWorld, StableId};
 use campfire_stats::Pools;
 use campfire_units::{Body, Dead, GroundPoint, Life, PoolId, SeenBy};
 use campfire_values::{NameId, Team};
@@ -91,11 +91,23 @@ fn play(setup: InProcessSetup) -> [u32; 2] {
         }
     }
 
-    check_log(&mut local, InProcessMatch::SCENARIO_SCRIPTS);
+    let selected = check_log(&mut local, InProcessMatch::SCENARIO_SCRIPTS);
+    // Each player's two orders go to its hero, 390 ticks apart: the first carries a select, and
+    // the second, sent once the server's ack said it applied the select, none
+    // (04-capabilities/control.md, A select goes with each order until its sender knows the server
+    // commands those units).
+    for player_slot in [0, 1] {
+        let selects: Vec<bool> = selected
+            .iter()
+            .filter(|&&(of, _)| of == player_slot)
+            .map(|&(_, selects)| selects)
+            .collect();
+        assert_eq!(selects, [true, false], "player {player_slot}");
+    }
 
     // Each client holds the units its player commands as the server does: its hero, which the
-    // orders of its script select (commanded-units.md, The commanded units are their player's
-    // prediction).
+    // orders of its script select (10-replication-audiences.md, The commanded units are their
+    // player's prediction).
     for (index, &id) in heroes.iter().enumerate() {
         let player = StableId::of_player(PlayerSlot::new(u32::try_from(index).unwrap()));
         let commanded = |app: &App| {
@@ -162,7 +174,8 @@ fn play(setup: InProcessSetup) -> [u32; 2] {
 
 /// Checks the server's log: every order of the two `scripts` was logged in time, and took effect
 /// in the tick of its stamp; the replayed log gives the server's hash after every tick.
-fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
+/// Whether each input the log applied carries a select, by player slot, in the order applied.
+fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) -> Vec<(u32, bool)> {
     let inputs: usize = scripts
         .map(|script| OrderScript::parse(script).unwrap().orders().len())
         .iter()
@@ -171,11 +184,26 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
     let decoded = record.log();
     let mut replay = LogReplay::of(&decoded).unwrap();
     let mut applied = Vec::new();
+    let mut selected = Vec::new();
     while !replay.is_done(&decoded) {
         let tick = replay.next_tick().get();
-        applied.extend(replay.seal_tick(&decoded).map(|input| (input.stamp, tick)));
+        for input in replay.seal_tick(&decoded) {
+            applied.push((input.stamp, tick));
+            let mut selects = false;
+            assert!(Command::read(input.payload, |command, _| {
+                selects |= command.to == Addressee::Players;
+            }));
+            selected.push((input.player_slot.get(), selects));
+        }
     }
     assert_eq!(applied.len(), inputs, "{applied:?}");
+    // A player's first order carries a select, as its client knows nothing the server commands
+    // for it yet.
+    for player_slot in [0, 1] {
+        let mut selects = selected.iter().filter(|&&(of, _)| of == player_slot);
+        let first = selects.next().map(|&(_, selects)| selects);
+        assert!(first.is_none_or(|selects| selects), "player {player_slot}");
+    }
     assert!(
         applied
             .iter()
@@ -187,6 +215,7 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
         usize::try_from(decoded.next_tick().get()).unwrap()
     );
     record.assert_replays(local.packages());
+    selected
 }
 
 /// The orders by team, the west, whose hero is the walker, then the east, whose is the runner:
@@ -278,7 +307,7 @@ fn cast(link: &LinkModel) -> [u32; 2] {
             }
         }
     }
-    check_log(&mut local, [west, east]);
+    let _ = check_log(&mut local, [west, east]);
 
     // Each order took effect in its stamp tick: each hero stands on the edge, z = 8; the walker
     // lost 80 health to the runner's cast;
@@ -371,7 +400,7 @@ fn route(link: &LinkModel) -> [u32; 2] {
         let offset = hero(local.server(), walker).position - tower_at;
         closest = closest.min(offset.length_squared_bits());
     }
-    check_log(&mut local, scripts);
+    let _ = check_log(&mut local, scripts);
 
     // It went round the tower, never touching it, and stands on its goal, on the server and on
     // its client.
@@ -422,7 +451,7 @@ fn round(link: &LinkModel) -> [u32; 2] {
         let [walking, standing] = [walker, stander].map(|id| hero(local.server(), id).position);
         closest = closest.min(walking.ground_offset(standing).length_squared_bits());
     }
-    check_log(&mut local, scripts);
+    let _ = check_log(&mut local, scripts);
 
     // It went round the hero that stands, never touching it, and stands on its goal; the other
     // never moved: on the server and on both clients.

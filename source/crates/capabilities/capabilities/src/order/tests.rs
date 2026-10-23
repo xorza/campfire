@@ -1,3 +1,5 @@
+use std::slice;
+
 use campfire_math::Num;
 use campfire_units::GroundPoint;
 use campfire_values::ItemId;
@@ -27,7 +29,7 @@ fn orders_decode_exactly() {
     assert_eq!(OrdersDirective::decode(&[]), None);
 
     // An order's body is its directive alone, as its units are its player's commanded units
-    // (commanded-units.md, A player's orders go to its commanded units): variant 1 with the
+    // (04-capabilities/control.md, A player's orders go to its commanded units): variant 1 with the
     // target's id, a varint, 300 = 0xAC 0x02.
     let target = Binary::decode::<StableId>(&[0xAC, 0x02]).unwrap();
     let attack = Order::one(target, OrdersDirective::Attack { target });
@@ -60,7 +62,7 @@ fn orders_decode_exactly() {
 
     // A payload is a list of commands, two per order: a select of its units to the players,
     // then its directive to its capability.
-    let orders = [order.clone(), attack.clone(), learn, cancel, swap];
+    let orders = [order, attack.clone(), learn, cancel, swap];
     let payload = Order::payload(&orders);
     let mut commands = Vec::new();
     assert!(Command::read(&payload, |command, _| commands.push(command)));
@@ -109,18 +111,61 @@ fn orders_decode_exactly() {
     ]);
     assert_eq!(Order::of_payload(&flawed), None);
 
-    // A written payload follows what the buffer holds: 2 commands, the select to the players, 0,
-    // its 4 bytes, then the attack to capability 5 (`orders`), 1 and 5, its 3 bytes; then the
-    // learn's, its select of unit 4 in 3 bytes and its 2 bytes to capability 9 (`progression`);
-    // then the move's payload, the body buffer reused.
+    // An order that fits one payload writes one: 2 commands, the select to the players, 0, its 4
+    // bytes, then the attack to capability 5 (`orders`), 1 and 5, its 3 bytes, as `payload`
+    // writes it; then the learn's, the buffers reused, its select of unit 4 in 3 bytes and its 2
+    // bytes to capability 9 (`progression`). With no select, the attack is its command alone.
+    let mut payloads = OrderPayloads::default();
+    let written = |payloads: &OrderPayloads| -> Vec<Vec<u8>> {
+        payloads.iter().map(<[u8]>::to_vec).collect()
+    };
+    assert!(attack.write_payloads(1024, &mut payloads));
+    assert_eq!(
+        written(&payloads),
+        [vec![2, 0, 4, 0, 1, 0xAC, 0x02, 1, 5, 3, 1, 0xAC, 0x02]]
+    );
+    assert_eq!(
+        written(&payloads),
+        [Order::payload(slice::from_ref(&attack))]
+    );
+    assert!(orders[2].write_payloads(1024, &mut payloads));
+    assert_eq!(written(&payloads), [vec![2, 0, 3, 0, 1, 4, 1, 9, 2, 0, 2]]);
     let mut out = vec![9];
     let mut body = Vec::new();
-    attack.write_payload(&mut body, &mut out);
-    assert_eq!(out, [9, 2, 0, 4, 0, 1, 0xAC, 0x02, 1, 5, 3, 1, 0xAC, 0x02]);
-    orders[2].write_payload(&mut body, &mut out);
-    assert_eq!(out[14..], [2, 0, 3, 0, 1, 4, 1, 9, 2, 0, 2]);
-    order.write_payload(&mut body, &mut out);
-    assert_eq!(out[25..], Order::payload(&[order]));
+    attack.write_commanded_payload(&mut body, &mut out);
+    assert_eq!(out, [9, 1, 1, 5, 3, 1, 0xAC, 0x02]);
+}
+
+#[test]
+fn an_order_past_one_payload_splits_its_select_and_the_last_part_holds_its_directive() {
+    // A stop, variant 4, to units 0 to 9, each id a byte: a payload of k units and no directive
+    // is the count of commands, the players, the body's length, the selecting and the count of
+    // units, 5 bytes, and the k ids; the stop adds its capability, 1 and 5, its length and its
+    // byte, 4 more (04-capabilities/control.md, A select holds what its player controls).
+    let units: Vec<StableId> = (0..10).map(id).collect();
+    let stop = Order {
+        units: OrderUnits::new(&units).unwrap(),
+        directive: Directive::Orders(OrdersDirective::Stop),
+    };
+    let mut payloads = OrderPayloads::default();
+    let lengths =
+        |payloads: &OrderPayloads| -> Vec<usize> { payloads.iter().map(<[u8]>::len).collect() };
+    // Whole, 5 + 10 + 4 = 19 bytes.
+    assert!(stop.write_payloads(19, &mut payloads));
+    assert_eq!(lengths(&payloads), [19]);
+    // At 12, the most a first part holds with one unit left is 7, 12 bytes; the last 3 and the
+    // stop are 12 too, a select that continues it, 1.
+    assert!(stop.write_payloads(12, &mut payloads));
+    let parts: Vec<&[u8]> = payloads.iter().collect();
+    assert_eq!(parts[0], [1, 0, 9, 0, 7, 0, 1, 2, 3, 4, 5, 6]);
+    assert_eq!(parts[1], [2, 0, 5, 1, 3, 7, 8, 9, 1, 5, 1, 4]);
+    assert_eq!(payloads.iter().len(), 2);
+    // At 10: 5 units, then 4, then the last with the stop, 1 + 9 = 10 bytes.
+    assert!(stop.write_payloads(10, &mut payloads));
+    assert_eq!(lengths(&payloads), [10, 9, 10]);
+    // At 9, one unit and the stop pass it: no payload.
+    assert!(!stop.write_payloads(9, &mut payloads));
+    assert_eq!(payloads.iter().len(), 0);
 }
 
 #[test]
