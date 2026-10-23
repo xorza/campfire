@@ -983,6 +983,32 @@ fn a_box_lies_only_on_a_planar_map() {
 }
 
 #[test]
+fn a_type_of_variations_holds_no_collision_of_its_own_one_to_256_of_them_on_one_layer() {
+    // The 3v3's tower with two variations in place of its collision loads; beside its collision,
+    // or as none, the variations fail the load at the tower; and on two layers of the mode, so
+    // does a variation on the second, as one type moves on one layer.
+    let collision = r#"collision = { radius = "0.9" }"#;
+    let varied =
+        r#"variations = [{ collision = { radius = "0.9" } }, { collision = { radius = "0.5" } }]"#;
+    assert!(load(&edited([(UNITS, Edit::Replace(collision, varied))])).is_ok());
+    let both = format!("{collision}\n{varied}");
+    let none = "variations = []";
+    let layered = r#"variations = [{ collision = { radius = "0.9" } }, { collision = { radius = "0.5", layer = "air" } }]"#;
+    let layers = Edit::Set("navigation.layers", r#"["ground", "air"]"#);
+    let cases = [
+        (both.as_str(), UnitTypeError::VariedCollision),
+        (none, UnitTypeError::VariationCount(0)),
+        (layered, UnitTypeError::VariationLayers),
+    ];
+    for (text, refused) in cases {
+        let edits = [(UNITS, Edit::Replace(collision, text)), (MODE_DATA, layers)];
+        let error = load(&edited(edits)).unwrap_err();
+        let at = rule_at(&error.problem, &unit_type("tower"), &refused);
+        assert!(at, "{text}: {error:?}");
+    }
+}
+
+#[test]
 fn a_player_controls_an_avatar_only_in_a_mode_of_avatars() {
     // The 3v3, of heroes, says its players control them alone; the ruled mode, of no avatar,
     // loads with the default control of units, and fails with control of an avatar.

@@ -6,8 +6,6 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Research
 
-- **Bots.** In the Zero Hour check's base play, the bot of player slot 1 gives 29 moves that no unit takes, as none of their units walks; the bot of player slot 0 gives none.
-
 ## Ready
 
-- **Import.** A base start of a GLA faction spawns `glavehicletechnical`, the technical's train before its variants, a type of no life, body or move, which stands beside the base for good.
+- **Production.** A unit type of Zero Hour's `BuildVariations`, as `glavehicletechnical`, is an empty type that only a train turns into its variants: a base start's `spawn_unit` spawns it, so two technicals of no life, body or move stand by GLA's base for good, and the attacker's attack-moves of them give the base play's 29 moves that no unit takes; and a bot's `ctx.own` of it counts none of the chassis its trains made, so in the base play GLA's attacker trains 14 technicals by minute 5, more than any other type, and never sends one with its army.

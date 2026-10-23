@@ -1,0 +1,17 @@
+# Slice: Unit variations
+
+At its end, a GLA technical that a player or a bot trains, or that a base start spawns, is one of its three chassis, drawn for each unit, with the chassis' body and look; every rule, filter, count and bot list reads it as one type, `glavehicletechnical`, so the GLA attacker of the Zero Hour check counts and sends its technicals, and no technical of no life or move stands by its base. The facts are in [Zero Hour](../research/zero-hour.md#build-variations).
+
+## Decisions
+
+- **A unit type may vary its units.** A unit type's `variations` each give a body, and its client look each a look; every spawn of the type draws one variation for its unit, so every rule reads the one type, as Zero Hour's rules hold a template equal to its build variations (`ThingTemplate::isEquivalentTo`) and 0 A.D. varies one unit's look. Refused: types of their own that every comparison matches as their parent, which a comparison that forgets it breaks, as a script's spawn and a bot's count broke; the import's lists naming the chassis, which leaves the parent type empty for every other script.
+- **The spawn draws, once.** `UnitCore::spawn`, the one spawn of every unit, a train's, a script's, a start's and a map's alike, draws the variation on the stream `units.variation` of the new unit's stable id, and the spawn's core carries it, so each part made at the spawn reads the same draw; a restore reads it from the unit. Refused: a draw in each part's start, which opens one stream twice in a tick; the producer's own stream, which a script's spawn and a start do not have.
+- **A variation is a part.** `Variation` holds the drawn place among the type's variations, state that a snapshot holds and that every client receives once, as `Body`, so a client draws its look. Refused: the body alone as the record, which names no look.
+- **The type's body bounds its variations.** What reads one body of a type before its draw, as a spawn's room, a map's walk check and a teleport's cell, reads the largest of its variations, which every variation fits; every variation lies on one layer, as one type moves on one layer, and a route takes its unit's own body. Refused: the first variation, which a larger draw does not fit; a body for each variation in each such reader, which has no draw to pick by.
+- **A variation varies the body and the look alone.** As Zero Hour's technical chassis differ in nothing else, a variation names a body and a look; the import converts a `BuildVariations` whose variations differ in no other part, the type taking the first variation's other parts and the template's build, and writes down any that differ in more as a loss. Refused: a variation of any part, which no imported game needs yet.
+- **Variations, not variants.** The word is Zero Hour's; "variant" stays the client's word for a look's night and snow models ([Night and snow draw their own models](09-zero-hour.md)). The train's `variants` goes, as a train makes its type and the spawn draws.
+
+## Checks
+
+- **The technicals of the Zero Hour check.** In the base play GLA's attacker gives no move that no unit takes, its technicals of all three chassis, and it sends them with its army; its base start's technicals live and move.
+- **One type in every count.** A test spawns a type of three variations by a train, a script and a start, and counts the units by the type: all of them, each of the variation drawn on its stream, with that variation's body; a restore keeps each variation.

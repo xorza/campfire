@@ -15,10 +15,12 @@ use crate::tag_book::TagBook;
 use crate::unit_entity::UnitEntity;
 use crate::unit_state_book::UnitStateBook;
 use crate::unit_states::UnitStates;
+use crate::variation::Variation;
 
 /// What every unit spawns with, a delivery among them: its stable id, place, type, team and
-/// owner, the angle in degrees it faces, and its script state; its type gives it its tags. Every
-/// spawn of a unit goes through `UnitCore::spawn`, the mode's spawner's and a delivery's alike.
+/// owner, the angle in degrees it faces, and its script state; its type gives it its tags, and
+/// its variation when the type varies. Every spawn of a unit goes through `UnitCore::spawn`, the
+/// mode's spawner's and a delivery's alike.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitCore {
     pub id: StableId,
@@ -58,6 +60,9 @@ impl UnitCore {
             let tags = book.unit_tags(unit_type, iter::empty());
             tags.tags.contains(Avatar::TAG.tag())
         });
+        // Drawn once, as its stream opens once for its unit in a tick, before the write, which
+        // gives each part the one draw.
+        let variation = Variation::draw(world, id, unit_type);
         // The write takes the parts by their components, which it finds registered.
         world.register_bundle::<(K, B)>();
         let mut unit = world.spawn_empty();
@@ -81,6 +86,7 @@ impl UnitCore {
                 position,
                 unit_type,
                 angle,
+                variation: variation.map(Variation::get),
             });
             EntityParts::<UnitEntity>::push(writer, core);
             EntityParts::<K>::push(writer, core);

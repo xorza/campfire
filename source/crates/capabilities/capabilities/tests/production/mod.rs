@@ -19,7 +19,7 @@ use campfire_sim::{Capability, SimComponent, SimTick, SimWorld, StableId, Unpred
 use campfire_units::internals::Spawn;
 use campfire_units::{
     BodyForm, BodyShape, Dead, Destination, Layer, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner,
-    StatusTags, UnitTypeCore, Units,
+    StatusTags, UnitTypeCore, Units, Variation, Variations,
 };
 use campfire_values::{ActionId, Rank, ResourceId, Team, TypeScope, UnitType};
 
@@ -237,6 +237,9 @@ fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
 fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() {
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
+    // Two variations of the grunt's own body, so a train draws one for each unit and moves none.
+    let half = BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST);
+    Shop::give(&mut game, shop.grunt, Variations::from([half, half]));
     let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
     let player = PlayerSlot::new(0);
     // The first id goes to the producer spawned second, so the world holds them out of id order.
@@ -295,6 +298,12 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
     game.step();
     assert_eq!(shop.spawns(&mut game).len(), 6);
     assert_eq!(shop.spawns(&mut game)[5], from_first);
+    // Each trained grunt holds the variation its spawn drew on the stream of its own id.
+    let trained = Shop::spawned(&mut game, shop.grunt);
+    let drawn = trained
+        .iter()
+        .map(|spawned| game.part::<Variation>(spawned.id).get());
+    assert_eq!(drawn.collect::<Vec<u8>>(), [0, 1, 1, 0, 1, 0]);
 }
 
 #[test]

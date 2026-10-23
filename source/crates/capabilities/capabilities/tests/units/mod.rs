@@ -740,6 +740,74 @@ fn a_unit_holds_its_types_tags_on_every_path_in_a_match_without_stats() {
 }
 
 #[test]
+fn a_unit_of_a_type_of_variations_takes_its_draws_body_and_a_restore_keeps_it() {
+    // A type of three variations, circles of 1, 2 and 3 m, its type's body the largest: each of
+    // 24 spawns draws one variation on the stream of its own stable id and takes its body, and a
+    // restore keeps each; a type of no variations takes its own body and no `Variation`.
+    let start = || {
+        let mut game = Match::builder(&[]).role(Role::Rules).build();
+        let core = UnitTypeCore::default();
+        let varied = Units::load_type(&mut game, TypeScope::Mode, "varied", &core);
+        let plain = Units::load_type(&mut game, TypeScope::Mode, "plain", &core);
+        let circle = |radius| BodyShape::circle(Num::int(radius)).unwrap();
+        let forms = [1, 2, 3].map(|radius| BodyForm::new(circle(radius), Layer::FIRST));
+        Units::give_type(&mut game, varied, Variations::from(forms));
+        Units::give_type(&mut game, varied, forms[2]);
+        Units::give_type(&mut game, plain, forms[0]);
+        (game, varied, plain, forms)
+    };
+    let (mut game, varied, plain, forms) = start();
+    let units: Vec<StableId> = (0..24)
+        .map(|at| Spawn::of(varied, (at, 0, 0)).place(&mut game))
+        .collect();
+    let drawn = |game: &Match| -> Vec<u8> {
+        let variation = |&id| game.part::<Variation>(id).get();
+        units.iter().map(variation).collect()
+    };
+    // As the stream of each unit's id draws them, each of the three among them.
+    let variations = drawn(&game);
+    assert_eq!(
+        variations,
+        [
+            1, 1, 1, 1, 2, 2, 2, 0, 1, 1, 1, 0, 2, 2, 1, 0, 1, 2, 0, 1, 1, 2, 2, 2
+        ]
+    );
+    for (&id, &variation) in units.iter().zip(&variations) {
+        let body = forms[usize::from(variation)].at(Num::ZERO);
+        assert_eq!(*game.part::<Body>(id), body, "{id:?}");
+    }
+    let lone = Spawn::of(plain, (0, 0, 9)).place(&mut game);
+    assert!(game.try_part::<Variation>(lone).is_none());
+    assert_eq!(*game.part::<Body>(lone), forms[0].at(Num::ZERO));
+    let (mut restored, ..) = start();
+    Release::restore_into(&game, &mut restored);
+    assert_eq!(drawn(&restored), variations);
+
+    // A snapshot of a unit of the type that holds no variation, one past its type's three, or a
+    // unit of the plain type that holds one, is refused at that unit.
+    let invalid = |id| {
+        Some(SnapshotError::Invalid {
+            ty: Variation::NAME,
+            id: Some(id),
+        })
+    };
+    let entity = game.unit_entity(units[0]);
+    game.entity_mut(entity).remove::<Variation>();
+    assert_eq!(
+        Release::refusal_into(&game, &mut start().0),
+        invalid(units[0])
+    );
+    game.insert_parts(units[0], Variation::new(3));
+    assert_eq!(
+        Release::refusal_into(&game, &mut start().0),
+        invalid(units[0])
+    );
+    game.insert_parts(units[0], Variation::new(2));
+    game.insert_parts(lone, Variation::new(0));
+    assert_eq!(Release::refusal_into(&game, &mut start().0), invalid(lone));
+}
+
+#[test]
 fn a_spawn_gives_its_declared_parts_in_one_move() {
     // A melee unit spawns with its core and the parts combat, stats and actions declare for it,
     // `Life`, `Level` and `ActionSlots` among them: written at once after its kind, they reach

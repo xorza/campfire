@@ -6,8 +6,8 @@ use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_common::EnumAll;
 use campfire_declarations::{
-    ById, Declarations, InstallCx, KindVisitor, MatchFacts, Module, ModuleSystems, SetPlace,
-    StateFields,
+    BookCx, BookError, ById, ByIdBuilder, Declarations, InstallCx, KindVisitor, MatchFacts, Module,
+    ModuleSystems, SetPlace, StateFields,
 };
 use campfire_script::{
     CompileError, CoreApi, Ctx, Listing, MatchNames, ScriptBudgets, ScriptCall, ScriptFailures,
@@ -20,7 +20,7 @@ use crate::arrived_short::ArrivedShort;
 use crate::avatar::Avatar;
 use crate::body::Body;
 use crate::body_form::BodyForm;
-use crate::collision_data::CollisionData;
+use crate::collision_data::{CollisionData, VariationsData};
 use crate::dead::Dead;
 use crate::declared_tags::DeclaredTags;
 use crate::destination::Destination;
@@ -57,6 +57,8 @@ use crate::unit_types::UnitTypes;
 use crate::units_api::UnitsApi;
 use crate::units_call::UnitsCall;
 use crate::units_column::{StateRowReads, UnitsColumn};
+use crate::variation::Variation;
+use crate::variations::Variations;
 use crate::view_reader::ViewReader;
 
 /// The core's steps, the first and the last of each tick, which every module's start and end of
@@ -107,12 +109,14 @@ impl Module for Units {
         d.section::<TypeStateData>();
         d.extend::<StateFields>(Self::state_fields);
         d.section::<CollisionData>();
+        d.section::<VariationsData>();
         d.section::<ModeTagsData>();
         d.section::<MetricData>();
         d.section::<BoundsData>();
         d.section::<GroundData>();
         Self::kinds(d);
         d.component::<Body>();
+        d.component::<Variation>();
         d.component::<BodyUnit>();
         d.component::<Dead>();
         d.component::<Destination>();
@@ -179,13 +183,20 @@ impl Module for Units {
         d.api(ViewApi::register_queries);
         d.book::<ById<UnitType, MoveStep>>(UnitSteps::steps);
         d.book::<ById<UnitType, TurnStep>>(UnitSteps::turns);
-        d.book::<ById<UnitType, BodyForm>>(CollisionData::bodies);
+        d.book::<ById<UnitType, BodyForm>>(Self::bodies);
+        d.book::<ById<UnitType, Variations>>(Variations::book);
         // A unit faces its spawn's angle, which its body turns by.
         d.part::<BodyUnit, Facing>(|at| Some(Facing::of(Facing::angle_of(at))));
         d.part::<BodyUnit, SpawnPoint>(|at| at.position().map(SpawnPoint::new));
+        d.part::<BodyUnit, Variation>(Variation::of);
+        // A unit of a type that varies takes its variation's body, of the one draw its spawn made;
+        // a restored unit of a place past its type's has none, which its variation's check refuses.
         d.part::<BodyUnit, Body>(|at| {
-            at.of_type::<BodyForm>()
-                .map(|form| form.at(Facing::angle_of(at)))
+            let form = match Variation::of(at) {
+                Some(variation) => at.of_type::<Variations>()?.get(variation.get()),
+                None => at.of_type::<BodyForm>(),
+            };
+            form.map(|form| form.at(Facing::angle_of(at)))
         });
         d.part::<BodyUnit, MoveStep>(|at| at.of_type::<MoveStep>().copied());
         d.part::<BodyUnit, TurnStep>(|at| at.of_type::<TurnStep>().copied());
@@ -226,6 +237,25 @@ impl Units {
     }
 
     /// Visits each kind of entity of the core's units, which state types name as their host.
+    /// The body of each unit type that stands with a `collision` or `variations`: its
+    /// collision's, or the bound of its variations
+    /// (unit-variations.md, A unit type may vary its units).
+    fn bodies(cx: &BookCx<'_>) -> Result<ById<UnitType, BodyForm>, BookError> {
+        let variations = cx.book::<ById<UnitType, Variations>>()?;
+        let mut bodies = ByIdBuilder::default();
+        for unit in cx.standing() {
+            let form = match unit.data.section::<CollisionData>() {
+                Some(collision) => collision.form(cx, unit)?,
+                None => match variations.get(unit.unit_type) {
+                    Some(variations) => variations.bound(),
+                    None => continue,
+                },
+            };
+            bodies.set(unit.unit_type, form);
+        }
+        Ok(bodies.build())
+    }
+
     fn kinds<V: KindVisitor>(v: &mut V) {
         v.kind::<BodyUnit>();
         v.state::<BodyUnit, Dead>();

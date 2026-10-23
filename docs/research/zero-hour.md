@@ -164,3 +164,14 @@ The logic draws from one generator: six `u32` words, each draw an add-with-carry
 
 - **Sounds.** The WAV encodings, and an encoder of Ogg Vorbis that gives the same bytes on every OS.
 - **What the INI names.** Of the 6,759 model and animation names the INI gives, 80 are in no archive, most of them editor tiles (`aiblocktile`).
+
+## Build variations
+
+Read on 23 October 2026: Zero Hour from GeneralsX's source, the import's output of the Steam install, and other games from their documentation, as linked.
+
+- **Zero Hour makes a variation at every creation.** `ThingFactory::newObject` turns a template of `BuildVariations` into one of its variations, drawn by `GameLogicRandomValue`, whatever creates it: a train, a script's spawn, a skirmish start. The template itself carries the build's owner, cost, time, prerequisites, `KindOf`, model and cameo ([PPM: different chassis tutorial](https://ppmforums.org/topic-28228/different-chassis-tutorial-zh/)).
+- **Zero Hour counts a variation as its template.** `ThingTemplate::isEquivalentTo` holds a template equal to its build variations and to its reskins, both ways (`Core/.../ThingTemplate.cpp`); the score keeper, the build assistant, a team's counts and recruits and a player's prerequisite counts compare by it (`ScoreKeeper.cpp`, `BuildAssistant.cpp`, `Team.cpp`, `Player.cpp`); the skirmish AI's `Team::tryToRecruit` takes a unit whose template is one of the asked template's build variations (`isInBuildVariations`).
+- **The technical's chassis differ in their bodies alone.** Of the import's `glavehicletechnicalchassisone`, `two` and `three`, every part is alike but the collision: radius 20.1, 17.9 and 16.6, height 7.5, 7.5 and 9.5; their looks differ on the client. The import writes the parent, `glavehicletechnical`, as a unit type of no part, which only the train's `variants` turn into a chassis.
+- **Age of Empires II draws a villager's gender at the Town Center.** A trained villager is a male (unit 83) or a female (unit 293) at random, and a trigger counts villagers by their class, Civilian, not by a unit's id ([forum](https://forums.ageofempires.com/t/help-with-scenario-editor-triggers/282992)).
+- **0 A.D. varies one unit's look.** An actor's groups each hold variants, one drawn by its frequency from the entity's actor seed, for visual variety between otherwise identical units; the unit's template stays one ([0 A.D. wiki: Actors](https://trac.wildfiregames.com/wiki/Actors?version=13)).
+- **OpenRA has no random variant of an actor.** No trait of its documentation draws an actor's type at its creation; its civilian kinds are actors of their own.

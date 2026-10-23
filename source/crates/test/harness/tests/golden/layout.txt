@@ -1,4 +1,4 @@
-data_version 59
+data_version 60
 actions.progress 91dd90cbde2fd145
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
@@ -93,6 +93,7 @@ units.team f240546704223ad0
 units.turn_step 7804eda888eebc63
 units.unit 38f27f78ec03c9db
 units.unit_type 2d8b3ae97840b414
+units.variation 2b6b61ddfe1958ed
 vision.reveals 590ad77e2a7fa792
 vision.seen_by b2fd23206ed6a23e
 vision.sight 855db72791142132

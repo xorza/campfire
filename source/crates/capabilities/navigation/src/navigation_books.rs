@@ -3,7 +3,9 @@ use campfire_declarations::{
 };
 use campfire_geometry::{Grid, Polygon};
 use campfire_math::{Num, Vec3};
-use campfire_units::{BodyForm, DeclaredTags, Layer, MapBook, MapPoint, MoveStep, Wall, WallBook};
+use campfire_units::{
+    BodyForm, DeclaredTags, Layer, MapBook, MapPoint, MoveStep, Variations, Wall, WallBook,
+};
 use campfire_values::{Names, NamesError, PackageIndex, UnitType};
 use std::sync::Arc;
 
@@ -149,20 +151,27 @@ impl Navigation {
 }
 
 impl Walker {
-    /// The kind of walker of each unit type that stands and walks, as its move step says; an error
-    /// for one of a box body.
+    /// The kind of walker of each unit type that stands and walks, as its move step says, of the
+    /// type's body, the largest of its variations for one that varies; an error for one of a box
+    /// body, or of a variation of one.
     pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let bodies = cx.book::<ById<UnitType, BodyForm>>()?;
+        let variations = cx.book_if::<ById<UnitType, Variations>>()?;
         let steps = cx.book::<ById<UnitType, MoveStep>>()?;
         let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             if steps.get(unit.unit_type).is_none() {
                 continue;
             }
-            let walker = Self::of_form(bodies.get(unit.unit_type).copied()).ok_or_else(|| {
+            let boxed = || {
                 let at = BookPlace::UnitType(unit.place());
                 BookError::rule(unit.package, at, NavigationDataError::BoxWalks)
-            })?;
+            };
+            let walker = Self::of_form(bodies.get(unit.unit_type).copied()).ok_or_else(boxed)?;
+            let of_type = variations.and_then(|variations| variations.get(unit.unit_type));
+            if of_type.is_some_and(|forms| forms.iter().any(|form| form.shape().is_box())) {
+                return Err(boxed());
+            }
             book.set(unit.unit_type, walker);
         }
         Ok(book.build())

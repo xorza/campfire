@@ -21,13 +21,15 @@ pub struct KindSpawn<'w, H> {
     host: PhantomData<H>,
 }
 
-/// The core a unit spawns with, as its parts read it: its place, its type, and the angle in
-/// degrees it faces.
+/// The core a unit spawns with, as its parts read it: its place, its type, the angle in degrees
+/// it faces, and the place of its type's variation its spawn drew, when its type varies, so every
+/// part reads the one draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpawnCore {
     pub position: Vec3,
     pub unit_type: UnitType,
     pub angle: Num,
+    pub variation: Option<u8>,
 }
 
 impl<'w, H> KindSpawn<'w, H> {

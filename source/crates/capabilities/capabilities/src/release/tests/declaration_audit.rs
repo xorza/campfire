@@ -499,16 +499,17 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats', the players' and the
     // mode's five parts of a player, its bounty share among them, the mode's three of the match,
-    // the 33 of a unit, items' `UseGroup`, orders' `NextThink`, `NextScan` and `AttackMove`,
-    // production's `StatusTags`, combat's `TurretAngle` and the mode's `IncomeClock` among them,
-    // and the 61 books, 14 of the core's, interaction's two, combat's armors, turrets and weapons,
-    // navigation's walkers, orders' scans, production's trains and gathers, the mode's victory,
-    // bounty, incomes and inputs, and progression's experience among them.
+    // the 34 of a unit, the core's `Variation`, items' `UseGroup`, orders' `NextThink`,
+    // `NextScan` and `AttackMove`, production's `StatusTags`, combat's `TurretAngle` and the
+    // mode's `IncomeClock` among them, and the 62 books, 15 of the core's, its variations among
+    // them, interaction's two, combat's armors, turrets and weapons, navigation's walkers,
+    // orders' scans, production's trains and gathers, the mode's victory, bounty, incomes and
+    // inputs, and progression's experience among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 43);
-    assert_eq!(audit.books.len(), 61);
+    assert_eq!(audit.parts.len(), 44);
+    assert_eq!(audit.books.len(), 62);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
-    assert_eq!(core.count(), 14);
+    assert_eq!(core.count(), 15);
     // The observers, the runs out of the schedule and the parts a server derives, which the
     // installer adds for their modules.
     assert_eq!(

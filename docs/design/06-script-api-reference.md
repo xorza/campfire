@@ -294,6 +294,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `params` | core | since 1.0 |
 | `state` | core | since 1.0 |
 | `collision` | core | since 1.0 |
+| `variations` | core | since 1.0 |
 | `bounty` | core | since 1.0 |
 | `income` | core | since 1.0 |
 | `slots` | core | since 1.0 |

@@ -325,7 +325,7 @@ fn golden_digests() {
         Section {
             name: "state",
             run: state_section,
-            digest: "f51314bfffe766a8f9bad270357df86c63f788712cc8fc26e45f28333a2790ae",
+            digest: "7b03a5499de42185445da550958234a51562b63488d51112b0c4f4b4aadca391",
         },
         Section {
             name: "tick",

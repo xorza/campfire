@@ -30,6 +30,15 @@ pub enum UnitTypeError {
     /// A box body on a spatial map, where a box lies on the ground plane of a planar map.
     #[error("a box lies on a planar map, and the map is spatial")]
     BoxOnSpatial,
+    /// A `collision` beside `variations`, which give the type's bodies in its place.
+    #[error("a type of `variations` takes its bodies of them, and holds no `collision`")]
+    VariedCollision,
+    /// `variations` of none, or of more than 256.
+    #[error("a type's `variations` are 1 to 256, not {0}")]
+    VariationCount(usize),
+    /// Variations on layers apart, where one type moves on one layer.
+    #[error("a type's `variations` lie on one layer")]
+    VariationLayers,
 }
 
 /// Why a map's ground does not load: its coarse cells do not fit its height grid. Packages are

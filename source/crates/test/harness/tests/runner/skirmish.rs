@@ -5,6 +5,7 @@ use bevy_ecs::world::World;
 use campfire_combat::{Combat, DamageCause};
 use campfire_common::PlayerSlot;
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
+use campfire_math::Num;
 use campfire_mode::{Choices, MatchEnd, ModeWorld, Offer, PlayerSlotPick};
 use campfire_players::{HeldOut, PlayersWorld};
 use campfire_production::Production;
@@ -13,7 +14,7 @@ use campfire_runner::{Replay, SessionWorld};
 use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::{Dead, Life, Owner, StatusTags, Units, UnitsWorld};
+use campfire_units::{Body, Dead, Life, Owner, StatusTags, Units, UnitsWorld, Variation};
 use campfire_values::UnitType;
 
 /// The units of the type `name` that player `player_slot` owns, by stable id.
@@ -361,4 +362,50 @@ fn a_kill_of_a_site_under_construction_pays_no_bounty_by_the_victim_filter() {
     // Each player starts with 100; with no filter the site pays a quarter of 1,001, rounded up.
     assert_eq!(money_after_a_site_kill(true), 100);
     assert_eq!(money_after_a_site_kill(false), 100 + 251);
+}
+
+#[test]
+fn a_dozer_of_variations_spawns_as_its_draw_by_every_start_and_counts_as_its_type() {
+    // The skirmish's dozer with three variations, circles of 0.25, 0.5 and 0.75 m: each slot's
+    // start spawns a dozer, and slot 1's base start two more, by the mode's script; each dozer
+    // holds the variation its spawn drew and that variation's body, and every count of the type
+    // finds it.
+    let mut tree = PackageTree::of(TestMode::Skirmish);
+    let varied = "[units.dozer]\nvariations = [{ collision = { radius = \"0.25\" } }, \
+                  { collision = { radius = \"0.5\" } }, { collision = { radius = \"0.75\" } }]\n";
+    tree.edit(
+        "test/engine/modes/skirmish/data/units.toml",
+        Edit::Replace("[units.dozer]\n", varied),
+    );
+    let plan = [
+        PlayerSlotPlan::Player,
+        PlayerSlotPlan::Bot,
+        PlayerSlotPlan::Bot,
+    ];
+    let picks = [
+        "0:faction=base",
+        "1:faction=base",
+        "2:faction=base",
+        "0:start=base",
+    ]
+    .map(|pick| pick.parse::<PlayerSlotPick>().unwrap());
+    let fixed = FixedSession::planned(tree.packages(), InputRules::ROOMY, plan)
+        .player_slot_picked(&picks)
+        .start();
+    let world = fixed.game();
+    let counts = [0, 1, 2].map(|player_slot| owned(world, "dozer", player_slot).len());
+    assert_eq!(counts, [3, 1, 1]);
+    let units = MatchUnits::of(world);
+    for player_slot in 0..3 {
+        for dozer in owned(world, "dozer", player_slot) {
+            let unit = units.unit(dozer);
+            let variation = unit
+                .get::<Variation>()
+                .expect("a dozer of variations")
+                .get();
+            let radius = Num::int(i64::from(variation) + 1) / 4;
+            let body = unit.get::<Body>().unwrap();
+            assert_eq!(body.shape().bound(), radius, "{dozer:?}");
+        }
+    }
 }

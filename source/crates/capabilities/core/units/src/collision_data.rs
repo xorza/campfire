@@ -1,10 +1,8 @@
 use campfire_common::DeclaredName;
-use campfire_declarations::{
-    BookCx, BookError, BookPlace, ById, ByIdBuilder, Section, SectionTable,
-};
+use campfire_declarations::{BookCx, BookError, BookPlace, Section, SectionTable, SourceType};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable, UnknownName};
-use campfire_values::{Named, UnitType};
+use campfire_values::Named;
 use serde::de::Error;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -89,33 +87,53 @@ impl DataSection for CollisionData {
 }
 
 impl CollisionData {
-    /// The body of each unit type that stands with a `collision` section, on the layer it names,
-    /// by the mode's layers, or on the first; an error for a layer the mode does not declare.
-    pub fn bodies(cx: &BookCx<'_>) -> Result<ById<UnitType, BodyForm>, BookError> {
-        let layers = cx.names_if::<Layer>()?;
-        let mut bodies = ByIdBuilder::default();
-        for unit in cx.standing() {
-            let Some(collision) = unit.data.section::<Self>() else {
-                continue;
-            };
-            let layer = match &collision.layer {
-                Some(name) => {
-                    let named = layers.and_then(|layers| layers.named(name.as_str()));
-                    let unknown = || UnknownName::new(Layer::NAMES, name);
-                    let at = || BookPlace::UnitType(unit.place());
-                    named.ok_or_else(|| BookError::unknown(unit.package, at(), unknown()))?
-                }
-                None => Layer::FIRST,
-            };
-            bodies.set(unit.unit_type, BodyForm::new(collision.shape, layer));
-        }
-        Ok(bodies.build())
+    /// The body of `unit`'s collision, on the layer it names, by the mode's layers, or on the
+    /// first; an error for a layer the mode does not declare.
+    pub(crate) fn form(
+        &self,
+        cx: &BookCx<'_>,
+        unit: &SourceType<'_>,
+    ) -> Result<BodyForm, BookError> {
+        let layer = match &self.layer {
+            Some(name) => {
+                let layers = cx.names_if::<Layer>()?;
+                let named = layers.and_then(|layers| layers.named(name.as_str()));
+                let unknown = || UnknownName::new(Layer::NAMES, name);
+                let at = || BookPlace::UnitType(unit.place());
+                named.ok_or_else(|| BookError::unknown(unit.package, at(), unknown()))?
+            }
+            None => Layer::FIRST,
+        };
+        Ok(BodyForm::new(self.shape, layer))
     }
 }
 
 impl Section for CollisionData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "collision";
+}
+
+/// A unit type's `variations`: each a body, of its own `collision`, one of which every spawn of the
+/// type draws for its unit, in place of the type's own `collision`
+/// (unit-variations.md, A unit type may vary its units).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct VariationsData(pub Vec<VariationData>);
+
+/// One of a unit type's `variations`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VariationData {
+    pub collision: CollisionData,
+}
+
+impl DataSection for VariationsData {
+    const TABLE: DataTable = DataTable::new("A unit type's `variations`");
+}
+
+impl Section for VariationsData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "variations";
 }
 
 #[cfg(test)]
