@@ -28,3 +28,11 @@ Measured on 23 October 2026 at `88983289f`, a run of `cargo drive run zero-hour`
 - **The dev profile.** With no change, 49.2 s, its plays 29.4 s, the base play 21.8 s, 2.2 times as long, and the attack play 5.1 s, 2.7 times.
 - **`release-dev` with the asserts, thin LTO.** With no change, 33.0 s, its plays 17.0 s; after a change, 53.0 to 53.5 s. No assert fired.
 - **`release-dev` with the asserts, no LTO.** With no change, 39.2 s, its plays 22.1 s; after a change, 41.2 to 42.1 s, so the build takes about 3 s.
+
+## The golden's samples
+
+Measured on 23 October 2026, the harness's golden records with a sample of their units every 300 ticks.
+
+- **Size.** The 3v3 match's samples hold 53 samples in 4,007 lines and 213,545 bytes, beside its golden record of 620,090; the lane match's 989 bytes and the proving match's 1,530.
+- **Cost.** The 3v3 match's 53 samples took 2.1 ms in all; its test ran 15.9 to 22.8 s while another process held four cores.
+- **A moved line.** With one unit's life changed in the lane match's pinned samples, its test failed naming the sample at tick 0 and that line, pinned and run.

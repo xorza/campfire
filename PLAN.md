@@ -16,13 +16,7 @@ The user. Last: it ends the slice. Its decisions are in [Game scripting](docs/de
 
 A wrong play names its cause in its first run ([The debug loop](docs/design/debug-loop.md)). Each batch is one commit, ends with `cargo drive gate` passing, and stops for review.
 
-### 1. A golden that says what moved (S)
-
-`harness`. Before the rule cases, which move the goldens' fixtures.
-
-- **The checkpoints of the behaviour golden,** every 1,000 ticks, and a failure that names the first checkpoint and units that differ; each golden is blessed once.
-
-### 2. A rule's case from its setup (L)
+### 1. A rule's case from its setup (L)
 
 `harness`, the 3v3 tests. Last: it moves the most tests.
 

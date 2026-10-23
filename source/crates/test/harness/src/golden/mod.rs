@@ -15,15 +15,21 @@ use campfire_store::internals::PinnedFile;
 use campfire_units::{Dead, Deaths, Owner, PoolId};
 use campfire_values::{NameId, Names, ResourceId, Team};
 
+use crate::golden::golden_units::GoldenUnits;
+
+mod golden_units;
+
 /// The pinned record of a whole match, one line a tick: the state hash, which changes with the
 /// state's layout, and a digest of the match's behaviour, which does not. A change of layout
 /// alone moves only the first column; a change of behaviour moves the second, and names itself.
-/// `CAMPFIRE_BLESS=1` writes the record again.
+/// Beside it, a second file holds the units in samples at a period, so a change of behaviour also
+/// names the units it moved. `CAMPFIRE_BLESS=1` writes both again.
 #[derive(Debug)]
 pub(crate) struct Golden {
     resources: Vec<ResourceId>,
     players: u32,
     ticks: Vec<GoldenTick>,
+    units: GoldenUnits,
     /// The bytes of one tick's behaviour, kept between ticks.
     scratch: Vec<u8>,
 }
@@ -48,6 +54,7 @@ impl Golden {
             resources,
             players,
             ticks: Vec::new(),
+            units: GoldenUnits::default(),
             scratch: Vec::new(),
         }
     }
@@ -55,6 +62,10 @@ impl Golden {
     /// Records the tick `game` just ran, whose state hash `state_hash` is, as the `CopyCheck` of
     /// the tick gives it: the state is hashed once a tick.
     pub(crate) fn record(&mut self, game: &Match, state_hash: StateHash) {
+        let tick = u64::try_from(self.ticks.len()).expect("a tick count fits u64");
+        if tick % GoldenUnits::EVERY == 0 {
+            self.units.record(game, tick, self.players, &self.resources);
+        }
         let behaviour = self.behaviour(game);
         self.ticks.push(GoldenTick {
             state_hash,
@@ -129,20 +140,26 @@ impl Golden {
         StateRegistry::digest(bytes)
     }
 
-    /// The most bytes a golden file may hold to be read whole: a line of about 40 bytes for each
-    /// tick, so a mebibyte holds a match of 25 000 ticks, past any the tests play.
+    /// The most bytes a golden file or its samples may hold to be read whole: a line of about 40
+    /// bytes for each tick, so a mebibyte holds a match of 25 000 ticks, past any the tests play,
+    /// and the samples of the longest, the 3v3 match, take a fifth of it.
     const MAX_LEN: usize = 1 << 20;
 
-    /// Compares the record with the golden file `name` of the harness's tests, or writes the file
-    /// with `CAMPFIRE_BLESS=1`. A difference names the first tick each column differs in.
+    /// Compares the record with the golden files `name` of the harness's tests, or writes them
+    /// with `CAMPFIRE_BLESS=1`. A difference names the first tick each column differs in, and the
+    /// units of the first sample that differs.
     pub(crate) fn check(&self, name: &str) {
-        let path = Self::path(name);
         let lines = self.lines();
-        let blessed = PinnedFile::new(&path)
-            .bless(lines.as_bytes())
-            .unwrap_or_else(|error| panic!("{}", ErrorReport::of(&error)));
+        let bless = |path: &Path, text: &str| {
+            PinnedFile::new(path)
+                .bless(text.as_bytes())
+                .unwrap_or_else(|error| panic!("{}", ErrorReport::of(&error)))
+        };
+        let blessed = bless(&Self::path(name), &lines);
+        let units = bless(&Self::units_path(name), self.units.text());
+        debug_assert_eq!(blessed, units, "a run blesses both files or neither");
         if !blessed {
-            self.compare_lines(name, &path, &lines);
+            self.compare_lines(name, &lines);
         }
     }
 
@@ -151,7 +168,7 @@ impl Golden {
     /// `CAMPFIRE_BLESS=1` it compares nothing, as the file it reads is being written again.
     pub(crate) fn compare(&self, name: &str) {
         if !PinnedFile::is_blessing() {
-            self.compare_lines(name, &Self::path(name), &self.lines());
+            self.compare_lines(name, &self.lines());
         }
     }
 
@@ -167,16 +184,21 @@ impl Golden {
         lines
     }
 
-    /// Asserts that the golden file `name` at `path` holds `lines`, naming the first tick each
-    /// column differs in.
-    fn compare_lines(&self, name: &str, path: &Path, lines: &str) {
-        let pinned = InputFile::read_text(path, Self::MAX_LEN).unwrap_or_else(|error| {
-            panic!(
-                "{}; run with CAMPFIRE_BLESS=1 to write it",
-                ErrorReport::of(&error)
-            )
-        });
-        if pinned == lines {
+    /// Asserts that the golden files `name` hold `lines` and the record's units, naming the
+    /// first tick each column differs in, and the units of the first sample that differs.
+    fn compare_lines(&self, name: &str, lines: &str) {
+        let read = |path: &Path| {
+            InputFile::read_text(path, Self::MAX_LEN).unwrap_or_else(|error| {
+                panic!(
+                    "{}; run with CAMPFIRE_BLESS=1 to write it",
+                    ErrorReport::of(&error)
+                )
+            })
+        };
+        let pinned = read(&Self::path(name));
+        let pinned_units = read(&Self::units_path(name));
+        let moved = GoldenUnits::moved(&pinned_units, self.units.text());
+        if pinned == lines && moved.is_none() {
             return;
         }
         let first = |column: usize| {
@@ -184,22 +206,29 @@ impl Golden {
                 .lines()
                 .zip(lines.lines())
                 .position(|(was, is)| was.split(' ').nth(column) != is.split(' ').nth(column))
+                .map_or_else(|| "no tick".to_owned(), |tick| format!("tick {tick}"))
         };
         panic!(
-            "golden {name} differs: {} ticks pinned, {} run; the state first differs at tick \
-             {:?}, the behaviour at tick {:?}. A change of layout alone moves only the state, and \
-             needs the snapshot's `StateRegistry::DATA_VERSION` raised; CAMPFIRE_BLESS=1 writes \
-             the record again",
+            "golden {name} differs: {} ticks pinned, {} run; the state first differs at {}, the \
+             behaviour at {}. A change of layout alone moves only the state, \
+             and needs the snapshot's `StateRegistry::DATA_VERSION` raised; CAMPFIRE_BLESS=1 \
+             writes the record again.\n{}",
             pinned.lines().count(),
             self.ticks.len(),
             first(1),
             first(2),
+            moved.map_or_else(String::new, |moved| moved.to_string()),
         );
     }
 
     fn path(name: &str) -> PathBuf {
         PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden"))
             .join(format!("{name}.txt"))
+    }
+
+    fn units_path(name: &str) -> PathBuf {
+        PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden"))
+            .join(format!("{name}.units.txt"))
     }
 }
 
